@@ -1,0 +1,558 @@
+# O.L.I.V.I.A. 系统架构与底层工程设计规范 (System Design Document)
+
+| 工程元数据 (Engineering Control) | 详细规格说明 (System Specifications) |
+| :--- | :--- |
+| **文档编号 (Document ID)** | `SDD-OLIVIA-V3.2-CLINICAL-SPEC` |
+| **版本号 (Version)** | `v3.2.0` (实施对齐交付版) |
+| **系统全称 (System Name)** | **O.L.I.V.I.A.** (*Observant Listener & Introspective Verbal Interaction Agent*，善察的倾听者与内省式言语交互智能体) |
+| **架构范式 (Paradigm)** | 四位一体神经符号混合双擎架构 (Quad-Pillar Neuro-Symbolic Dual-Engine Architecture) |
+| **四大核心工程子系统** | **M.I.Y.I.** (*Memory Indexing & Yearning Introspection*，记忆索引与渴望内省子系统)<br>**C.O.L.B.O.** (*Compassionate Observation & Logical Belief Organizer*，慈悲观察与逻辑信念编排子系统)<br>**W.I.L.L.O.W.** (*Warm Introspective Language & Lexical Oriented Wisdom*，温润内省言语与词汇意境重塑系统)<br>**C.H.A.N.G.** (*Co-evolving Human-agent Adaptation & Narrative Growth System*，人机协同演化与叙事成长系统) |
+| **统一分类标准 (SSOT)** | 严格绑定并继承根目录统一分类标准规范 (`taxonomy.yaml` v3.2.0) |
+| **底层核心公理** | **「离线自足为基，AI激活升华」**：离线基线以 $P_{99} \le 55\text{ms}$ 的确定性延迟闭环运行，保障绝对隐私与可靠助人；开启 AI 增强时，系统基于“结构先行，语态后润”双通道与本地校验器，实现生活记忆缝合与沉浸式角色转译。 |
+| **性能服务等级目标 (SLO / Latency)** | 符号状态机与镜像翻转: $P_{99} < 1.5\text{ms}$；中文上下文感知前向推断: $P_{99} \le 45.0\text{ms}$；离线端到端控制回路总耗时: $P_{99} \le 55.0\text{ms}$；AI 增强流式首字指标 (TTFT): $P_{90} < 1200\text{ms}$ (降级不增加额外等待延迟) |
+| **资源消耗约束 (Resource Envelope)** | 运行时常驻内存 (RSS) $< 50\text{MB}$；感知权重与知识协议静态体积 $< 4.0\text{MB}$；核心逻辑实现零第三方重型深度学习框架依赖 |
+| **对应产品文档 (Companion PRD)** | `PRD-OLIVIA-V3.2-CLINICAL-SPEC` (《O.L.I.V.I.A. 产品需求与体验设计说明书》) |
+| **文档性质 (Doc Nature)** | 研发前置系统架构与工程规范说明书 (Pre-Development System Architecture Specification) |
+
+---
+
+## 架构修订历史与技术评审签署 (Revision History & Architectural Sign-off)
+
+### 架构修订记录 (Revision History)
+| 版本 | 发布日期 | 主导架构师 | 评审性质 | 核心技术变更摘要 |
+| :--- | :---: | :---: | :---: | :--- |
+| **v1.0.0** | 2026-09-15 | 核心架构组 | 初始设计 | 确立双系统架构雏形，提出 ELIZA 镜像与状态机控制框架。 |
+| **v2.0.0** | 2026-10-18 | 核心架构组 | 架构重构 | 剥离具体文件路径依赖，确立抽象领域契约与六状态有限状态机。 |
+| **v2.1.0** | 2026-10-19 | 联合技术委员会 | 临床深化 | 引入两阶段漏斗危机检查与三级疗法分类，完成 60 份困扰档案与 75 种疗法集成。 |
+| **v3.1.0** | 2026-10-20 | 首席架构师 / 临床总监 | 权威基线 | 1. 修复两阶段危机检测时序漏洞（SAFE-09：危机筛查强制前置于低电量避风港判断）；<br>2. 形式化对齐 `taxonomy.yaml` v3.1.0，修正 7 处转介红线编号与 75 种疗法分级映射；<br>3. 补全 GEO-01~08 属地化与海外危机资源解析协议；<br>4. 统一感知网络为 8 头多任务架构，损失函数严格对齐；<br>5. 规范纯 Thompson 采样模型，废除矛盾的 10% ε-greedy；<br>6. 明确核心信念判定限制在「本会话实时上下文」，增加模块实现映射索引。 |
+| **v3.2.0** | 2026-10-21 | 架构委员会 / 临床总监 | 实施对齐 | 1. 临床禁忌症统一收敛为 13 种固定枚举体系，32 个 Grade A 方法全面对齐；<br>2. 临床转介红线使用稳定动作与禁用 ID，并建立 S_explore 高唤醒稳定化微干预 ID 白名单；<br>3. 危机状态机出口统一为 SafetyConfirmEvent + 连续安全轮数（L2: 2 轮, L3: 3 轮）；<br>4. 属地化与海外资源模型全面升级为 ResourceCard 与 Ed25519 签名；<br>5. PersonaProfile 升级为 UserRegion 架构并新增 clinical_history 敏感健康信息授权；<br>6. 危机前置防御时序图对齐 0.20 低电量避风港阈值与 Stage 1 明确线索熔断；<br>7. 补全各状态字数窗口阻尼模型及危机卡刚性豁免，将存储物理抹除升级为加密擦除 (Crypto-Shredding)。 |
+
+### 技术评审委员会签署表 (Architectural Sign-off)
+| 评审席位 | 签署代表 | 审核领域 | 签署状态 | 签署日期 |
+| :--- | :--- | :--- | :---: | :---: |
+| **系统架构委员会** | 首席架构师 | 架构拓扑、领域契约、状态机代数模型、时延与内存预算 | **待签署 (Pending Review)** | 2026-10-21 |
+| **临床伦理技术组** | 临床总监 | 危机状态机出口闭环、7 处转介红线拦截、禁忌症硬掩码 | **待签署 (Pending Review)** | 2026-10-21 |
+| **安全与合规工程组** | 安全负责人 | PIPL 敏感数据隔离、本地 AES-256 存储加密、防篡改签名 | **待签署 (Pending Review)** | 2026-10-21 |
+
+---
+
+## 目录索引 (Table of Contents)
+
+1. [系统总体架构蓝图与四位一体工程哲学 (Architecture Blueprint & Quad-System Philosophy)](#1-系统总体架构蓝图与四位一体工程哲学-architecture-blueprint--quad-system-philosophy)
+2. [通用领域模型与抽象数据契约规范 (Universal Domain Models & Data Contracts)](#2-通用领域模型与抽象数据契约规范-universal-domain-models--data-contracts)
+3. [子系统 I：M.I.Y.I. 认知感知与透明记忆引擎 (M.I.Y.I. Perception & Memory Engine)](#3-子系统-i-miyi-认知感知与透明记忆引擎-miyi-perception--memory-engine)
+   - 3.1 中文上下文多任务心理感知网络与 8 头联合损失函数
+   - 3.2 萨提亚冰山内省器与会话内核心信念判定准则
+   - 3.3 3D 艾宾浩斯记忆检索与本地静态加密协议
+4. [子系统 II：C.O.L.B.O. 符号状态机与临床协议编排器 (C.O.L.B.O. Symbolic Core & FSM)](#4-子系统-iicolbo-符号状态机与临床协议编排器-colbo-symbolic-core--fsm)
+   - 4.1 语境感知代词镜像重述算法与第三人称冲突消解
+   - 4.2 七状态门控有限状态自动机代数模型 (含回退、越级与闭环出口)
+   - 4.3 32 种 A 级微干预编排、禁忌症硬掩码与只陪伴基线 ($m_0$)
+5. [子系统 III：W.I.L.L.O.W. 温润内省言语与词汇意境重塑引擎 (W.I.L.L.O.W. Language & Metaphor Engine)](#5-子系统-iiiwillow-温润内省言语与词汇意境重塑引擎-willow-language--metaphor-engine)
+   - 5.1 去机械化语调塑形与违规说教词表过滤
+   - 5.2 概念隐喻织造算法与萨提亚意境对齐
+   - 5.3 沉静呼吸节奏与黄金字数窗口阻尼模型
+6. [子系统 IV：C.H.A.N.G. 人机协同演化与叙事成长引擎 (C.H.A.N.G. Co-evolving Adaptation Engine)](#6-子系统-ivchang-人机协同演化与叙事成长引擎-chang-co-evolving-adaptation-engine)
+   - 6.1 首访角色契约领域模型与四维人格光谱配置规范
+   - 6.2 「结构先行，语态后润」双通道网关与本地校验器
+   - 6.3 闭环贝叶斯自进化数学模型 (纯 Thompson 采样与探索安全门禁)
+   - 6.4 7 天情绪周记时空数据聚合算法 (基于用户自评数据)
+   - 6.5 记忆档案原子级写入安全协议 (影子写入与三版本快照)
+7. [多推理模型适配网关与个人信息保护管线 (Inference Gateway & PIPL Pipeline)](#7-多推理模型适配网关与个人信息保护管线-inference-gateway--pipl-pipeline)
+8. [多级安全防御体系、四级危机响应与能力绝对边界 (Multi-Tiered Safety & Crisis Protocols)](#8-多级安全防御体系四级危机响应与能力绝对边界-multi-tiered-safety--crisis-protocols)
+   - 8.1 危机前置防御时序模型 (SAFE-09 强制合规)
+   - 8.2 四级危机分级与权威热线联动
+   - 8.3 属地化与全球危机援助资源解析流水线 (GEO-01 ~ GEO-08)
+   - 8.4 7 处强制临床转介红线与能力绝对边界
+9. [离线感知模型训练与蒸馏工程流水线 (Training & Distillation Pipeline)](#9-离线感知模型训练与蒸馏工程流水线-training--distillation-pipeline)
+10. [系统可靠性、性能预算与可观测性工程 (Reliability, Latency Budget & Observability)](#10-系统可靠性性能预算与可观测性工程-reliability-latency-budget--observability)
+11. [逻辑架构与工程模块组件映射索引 (Modular Implementation Mapping)](#11-逻辑架构与工程模块组件映射索引-modular-implementation-mapping)
+
+---
+
+## 1. 系统总体架构蓝图与四位一体工程哲学 (Architecture Blueprint & Quad-System Philosophy)
+
+### 1.1 双擎协作与四位一体分工体系
+系统在底层确立了**神经符号混合双擎（Neuro-Symbolic Dual-Engine）**架构，将卡尼曼双系统认知理论（Dual-Process Theory）映射为工程模块，并由四大核心子系统形成全功能覆盖：
+- **系统 1（快直觉感知与符号反射层）**：
+  - **M.I.Y.I.**：负责轻量多任务前向推断，毫秒级提取情感极性、归一化唤醒度（$0.0\text{–}1.0$）、深层渴望与历史胜任资产；
+  - **W.I.L.L.O.W.**：负责语言本能反射与意境塑形，消除生硬官腔，提供沉静留白。
+- **系统 2（离散符号控制与长效演化层）**：
+  - **C.O.L.B.O.**：作为从状态机拓扑上提供确定性约束的硬规则护栏，主导七状态门控有限状态机，求解 32 种 A 级临床协议并生成不可篡改的**临床干预动作骨架（Action Skeleton）**；
+  - **C.H.A.N.G.**：贯穿会话周期之外的纵向主枢纽，管理首访角色契约、调度离线/AI双模、驱动纯 Thompson 采样自进化并生成散文式情绪周记。
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   O.L.I.V.I.A. 总体架构拓扑图                                   │
+├─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                                 │
+│  [终端交互与接入层 / Interaction Presentation Layer]                                            │
+│  用户输入捕获 ──► 交互终端控制器 ──► 心力电量/碎片解析 ──► 内部可观测性遥测面板                    │
+│                                           │                                                     │
+│                                           ▼                                                     │
+│  [协调调度网关 / Orchestration Gateway Layer]                                                   │
+│  全局主调度器 ──► 前置两阶段安全检查器 (SAFE-09) ──► 运行模式管理器                             │
+│         │                                                                                       │
+│         ├───► [子系统 I: M.I.Y.I. 认知感知与透明记忆底座] (olivia/core/perception/*)            │
+│         │     ├─► 中文上下文多任务心理感知网络 (8头并发 / 极性 / 唤醒度 / 否定句法消歧)         │
+│         │     ├─► 萨提亚冰山内省器与会话内核心信念判定 (拒绝跨会话未授权嗅探)                   │
+│         │     └─► 3D 艾宾浩斯记忆检索 (时间指数衰减 / 语义余弦 / 显著性资产保护)                │
+│         │                                                                                       │
+│         ├───► [子系统 II: C.O.L.B.O. 符号状态机与临床协议编排器] (olivia/core/fsm/*)            │
+│         │     ├─► 语境感知代词镜像重述引擎 (第一人称从句安全翻转)                                │
+│         │     ├─► A.L.I.C.E. 七状态门控自动机 (就绪/探索/理清/赋能/避风港/结束/危机，含回退/越级)    │
+│         │     └─► 32 种 A 级临床协议编排与动作骨架生成器 (含只陪伴基线 m_0 及禁忌硬掩码)        │
+│         │                                                                                       │
+│         ├───► [子系统 III: W.I.L.L.O.W. 温润内省言语与词汇意境重塑引擎]                         │
+│         │     ├─► 去机械化语调塑形 (官腔/说教排比清单剔除与温润邀请式转换)                       │
+│         │     ├─► 概念隐喻意境织造 (柔韧柳枝 / 流水绕石 / 四季草木冬眠心理外化)                 │
+│         │     └─► 沉静呼吸留白控制 (黄金字数窗口 [140, 260] 阻尼与视觉舒缓断句)                 │
+│         │                                                                                       │
+│         └───► [子系统 IV: C.H.A.N.G. 人机协同演化与叙事成长中枢] (olivia/core/methods/*)       │
+│               ├─► 首访契约共创与四维人格光谱 (GENTLE_HOLDING / 哲思 / 战友 / 树洞，18+ 门禁)    │
+│               ├─► 「结构先行，语态后润」双通道网关与本地校验器 (降级不增加额外等待延迟)         │
+│               ├─► 真正贝叶斯自进化 (纯 Beta-Bernoulli Thompson 采样 / 探索安全门禁)             │
+│               ├─► 7 天情绪周记时空数据聚合 (基于用户自评数据 / 复原力年鉴卡片)                  │
+│               └─► 记忆档案原子级写入安全协议 (影子写入 Shadow-Write 容灾)                       │
+│                                           │                                                     │
+│                                           ▼                                                     │
+│  [底层持久化与模型网关 / Persistence & Inference Adapters]                                      │
+│  纯文本双向透明账本 (可选本地加密) ◄──► 双模推理网关 (本地离线模板 / 本地小模型 / 云端大模型)   │
+│  属地化与海外危机资源库 (olivia/core/resources/*，GEO-01~08，Ed25519 签名防篡改)                 │
+│                                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.2 「离线自足为基，AI激活升华」的核心工程公理
+1. **纯本地离线基线绝对完备公理 (Offline Completeness)**：脱机状态下，系统完全依托本地 8 头多任务感知与符号状态机闭环执行，基于 `taxonomy.yaml` 的 32 种 A 级微方法推荐严密可靠，周记基于离线结构化槽位合成，保障 100% 隐私安全与可用性；
+2. **符号骨架不可穿透公理 (Skeleton Inviolability)**：在 AI 增强激活时，大模型**仅被允许担任表现层语态转译与意境润色**，严禁擅自修改 C.O.L.B.O. 锁定的临床协议类型、步骤约束与安全边界，输出经本地校验器严格验证；
+3. **降级无额外延迟公理 (Zero-Overhead Fallback)**：大模型端点发生网络波动、超时或校验不通过时，网关瞬间切换回本地模板输出，终端用户不经历额外等待卡顿；
+4. **透明记忆双向平权公理 (Radical Memory Transparency)**：所有记忆均以人类可读的标记语言明文存储，支持可选静态加密，用户享有随时查阅、修改、加密擦除 (Crypto-Shredding) 的绝对主权。
+
+---
+
+## 2. 通用领域模型与抽象数据契约规范 (Universal Domain Models & Data Contracts)
+
+系统采用强类型无副作用的抽象数据契约进行跨子系统通信，严格映射 `taxonomy.yaml`：
+
+### 2.1 长期用户人格档案模型 (`PersonaProfile`)
+```
+Type PersonaProfile:
+    user_name: String                   # 用户希望被称呼的名字 (默认: "朋友")
+    agent_name: String                  # 陪伴者名称 (默认: "Olivia")
+    persona_spectrum: PersonaEnum       # GENTLE_HOLDING | ZEN_PHILOSOPHER | RATIONAL_PEER | SILENT_ANCHOR
+    directiveness_preference: Float     # 指导性偏好 [0.0: 纯倾听, 1.0: 强引导] (默认 0.5)
+    taboo_topics: List<String>          # 用户声明的安全雷区词汇/话题
+    region: UserRegion                  # 用户属地模型 (含国家码、省市编码、显示名与 IANA 时区；未知标记为 ZZ)
+    clinical_history: Optional<List<String>> # 用户明确授权录入的既往病史标签 (如 SIT-08-04, 见 PIPL 合规条款)
+    age_confirmed_18_plus: Boolean      # 18+ 成年人准入确认标识 (必须为 True)
+    enable_at_rest_encryption: Boolean  # 是否开启本地静态存储加密 (Crypto-Shredding 销毁保障)
+    created_at: ISO8601String           # 契约建立时间戳
+    updated_at: ISO8601String           # 最近一次修改时间戳
+```
+
+> [!IMPORTANT]
+> `clinical_history` 属于 PIPL 第 28–32 条规定的敏感个人健康信息。系统严格遵循：
+> 1. 绝不通过多任务感知网络被动揣测或跨会话未授权嗅探，仅允许由用户在首访契约或设置面板中主动声明并明示同意（Explicit Consent）；
+> 2. 数据在本地以用户主密钥派生密钥进行 AES-256-GCM 独立加密；
+> 3. 严格纳入一键遗忘（Crypto-Shredding）物理与密码学抹除范围。
+
+### 2.2 单轮与单会话运行时状态模型 (`SessionState`)
+```
+Type SessionState:
+    session_id: UUID                    # 会话唯一标识符
+    current_stage: HelpStage            # S_ready | S_explore | S_clarify | S_empower | S_haven | S_closing | S_crisis
+    global_turn_count: Integer          # 会话全局轮次累计计数器
+    stage_turn_count: Integer           # 当前阶段内连续轮次计数器
+    pure_listening_locked: Boolean      # 纯倾听硬锁标识 (True 则阻断向后跃迁)
+    social_battery: Float               # 本次会话的心力电量 [0.0, 1.0] (默认 1.0)
+    current_risk_level: CrisisLevel     # L0 | L1 | L2 | L3
+    consecutive_l1_count: Integer       # 连续 L1 风险轮次计数
+    user_shelved_actions: List<MethodKey> # 本次会话用户置入锦囊待执行的方法
+```
+
+### 2.3 心理感知上下文模型 (`PerceptionContext`)
+```
+Type PerceptionContext:
+    valence: Float                      # 连续情感极性 [-1.0, 1.0]
+    arousal: Float                      # 归一化生理唤醒度 [0.0, 1.0] (映射 taxonomy.yaml)
+    fine_grained_emotion: String        # 16 种核心离散情绪之一
+    empathy_intent: String              # 共情策略意图 (如: "EXPLORATION", "VALIDATION")
+    risk_level: CrisisLevel             # L0 | L1 | L2 | L3 (四分类头离散预测)
+    crisis_confidence: Float            # 危机置信度得分 [0.0, 1.0] (连续回归预测)
+    communication_stance: SatirStance   # 5 种萨提亚应对姿态之一
+    readiness_to_change: Float          # 改变准备度得分 [0.0, 1.0]
+    distress_vector: Map<String, Float> # 11 大谱系 / 60 项困扰倾向打分 (基于语义嵌入与词表)
+    detected_distortions: List<DistortionType> # 本轮识别出的认知扭曲 (如 PERSONALIZATION)
+    detected_schemas: List<SchemaType>  # 本轮内省器识别出的早期图式 (最大 3 项)
+    deep_yearning: SatirYearning        # 5 大萨提亚底层核心渴望之一 (SAFETY 等)
+    somatic_stabilization_eligible: Boolean # 当 Arousal >= 0.80 时激活自下而上稳定化白名单
+```
+
+### 2.4 临床干预动作骨架模型 (`ActionSkeleton`)
+```
+Type ActionSkeleton:
+    method_id: MethodKey                # 方法唯一枚举标识 (如 "01_cbt_thought_record")
+    safety_grade: SafetyGrade           # GRADE_A (自主微练习) | GRADE_B (科普重塑) | GRADE_C (专业转介)
+    clinical_rationale: String          # 选定该方法的机制依据
+    core_action_steps: List<String>     # 规范化的 2-3 个核心微动作步骤
+    duration_minutes: Integer           # 预估耗时 (2-5 分钟)
+    stealth_workplace_compatible: Boolean # 是否支持工位无痕隐形执行
+    contraindications: List<String>     # 禁忌症清单 (如: 心脏病、神经性厌食症心动过缓禁做冷水浸没)
+```
+
+### 2.5 属地化与全球危机援助资源卡片模型 (`ResourceCard`)
+```
+Type ResourceCard:
+    generated_at: DateTime              # 卡片生成时间戳 (UTC-aware)
+    region_used: String                 # 本次卡片生效的区域代码 (如 "CN-110100", "US", "ZZ")
+    user_timezone: String               # 用户当前生效 IANA 时区
+    ordering_mode: OrderingMode         # CRISIS (危机强时效优先) | BROWSING (综合排序)
+    lines: List<ResolvedLine>           # 已解析与重排序的热线与急救服务条目 (含拨打号、营业状态、属地标签)
+    directory_version: String           # 热线资源库版本号
+    directory_stale: Boolean            # 是否超过 180 天防呆更新周期
+    directory_published_at: Date        # 资源库官方发布日期
+    signature_verified: Boolean         # 资源包 Ed25519 签名合规性验证标识
+```
+
+---
+
+## 3. 子系统 I：M.I.Y.I. 认知感知与透明记忆引擎 (M.I.Y.I. Perception & Memory Engine)
+
+### 3.1 中文上下文多任务心理感知网络与 8 头联合损失函数
+感知网络采用双向子词/卷积特征编码，重点针对中文否定前缀进行句法注意力加权（准确区分“我不想活了”与“我不想死了”）。在共享表征 $\mathbf{h} \in \mathbb{R}^{128}$ 之上并发优化 8 头联合损失函数：
+
+$$\mathcal{L}_{total}(\Theta) = \sum_{k=1}^8 \lambda_k \mathcal{L}_k(\Theta)$$
+
+1. **连续极性损失 $\mathcal{L}_{val}$**：均方误差损失 (MSE)，预测情感效价 $[-1.0, 1.0]$；
+2. **细粒度情绪损失 $\mathcal{L}_{emo}$**：交叉熵损失 (Cross-Entropy)，16 分类核心情绪；
+3. **归一化唤醒度损失 $\mathcal{L}_{aro}$**：均方误差损失 (MSE)，目标区间 $[0.0, 1.0]$；
+4. **共情策略意图损失 $\mathcal{L}_{intent}$**：交叉熵损失，识别助人策略意向；
+5. **四级危机风险等级损失 $\mathcal{L}_{risk}$**：带类别惩罚的多分类交叉熵 (L0, L1, L2, L3)；
+6. **危机置信度损失 $\mathcal{L}_{crisis}$**：带正样本重惩罚项 ($\gamma_{pos} = 15.0$) 的加权二元交叉熵 (BCE)；
+7. **萨提亚沟通姿态损失 $\mathcal{L}_{stance}$**：交叉熵损失，5 分类应对姿态；
+8. **改变准备度损失 $\mathcal{L}_{readiness}$**：均方误差损失 (MSE)，评估动机就绪度 $[0.0, 1.0]$。
+
+通过 GradNorm 动态平衡多任务梯度震荡，确保端侧前向推断时延满足 $P_{99} \le 45\text{ms}$。
+
+### 3.2 萨提亚冰山内省器与会话内核心信念判定准则
+内省器将用户输入按 6 层冰山模型解耦，提取 5 大核心渴望（`SAFETY`、`ACCEPTANCE`、`AUTONOMY`、`COMPETENCE`、`CONNECTION`）。维护 20 类早期图式的模式识别规则。
+- **CoreBeliefIdentified 会话内判定准则**：
+  为恪守数据最小化与个人隐私保护原则，**系统严禁在未经授权的情况下跨历史会话深挖或拼接用户敏感图式标签**。核心信念的判定严格限制在**本次会话实时上下文**内：
+  1. 用户在阶段二对话中显式认同了某种深层信念或图式模式（例如用户输入：“确实，我总觉得只有必须做到完美才配被爱”）；**或者**
+  2. 在本次会话内部，内省器连续 2 轮对同一图式输出高置信度匹配（置信度 $> 0.70$），且与当前的萨提亚深层渴望形成拓扑印证。
+- **高唤醒抑制**：当唤醒度 $Arousal \ge 0.80$ 时，内省器自动挂起深层图式分析，防止过深的反思加剧用户前额叶认知负荷。
+
+### 3.3 3D 艾宾浩斯记忆检索与本地静态加密协议
+检索历史记忆时执行三维加权函数：
+
+$$\text{RelevanceScore}(e_i, \mathbf{c}_{curr}) = w_{rec} \cdot \exp\left(-\alpha \frac{t_{curr} - t_{e_i}}{\tau}\right) + w_{sim} \cdot \cos(\mathbf{v}_{e_i}, \mathbf{v}_{curr}) + w_{sal} \cdot \mathcal{S}_{sal}(e_i)$$
+
+其中 $\tau = 7 \text{ 天}$。持久化层支持 AES-256-GCM 本地加密存储；当用户触发“一键遗忘”时，安全协议首先销毁本地派生的 AES-256 密钥槽（加密擦除 Crypto-Shredding，使得所有密文即刻在数学上不可逆解密），并同步物理清除/覆盖临时未加密缓存、影子文件、历史快照及历史周记，实现彻底不可逆的数据被遗忘权。
+
+---
+
+## 4. 子系统 II：C.O.L.B.O. 符号状态机与临床协议编排器 (C.O.L.B.O. Symbolic Core & FSM)
+
+### 4.1 语境感知代词镜像重述算法与第三人称冲突消解
+传统机械镜像将“我觉得你根本不在乎我”翻转为“你觉得我根本不在乎你”，在人际叙述中会产生“AI承认不在乎用户”的荒谬冲突。
+改进算法：
+1. **主从从句语法分析**：仅在第一人称主从句（如“我觉得我很失败”）中执行代词翻转；
+2. **语境安全模板插槽**：当检测到句子指向外部第三人称（如“伴侣”、“领导”、“你”）时，优先采用人本主义复述模板：
+   $$\text{"我觉得你根本不在乎我"} \to \text{"听起来在那段关系里，你深深感到对方没有真正在意你的感受……"}$$
+
+### 4.2 七状态门控有限状态自动机代数模型 (含回退、越级与闭环出口)
+$$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
+- 状态集 $Q = \{S_{ready}, S_{explore}, S_{clarify}, S_{empower}, S_{haven}, S_{closing}, S_{crisis}\}$；
+- 初始状态 $q_0 = S_{ready}$（用户启动程序/首轮交互时跃迁入 $S_{explore}$ 或 $S_{haven}$）；
+- 终止状态集 $F = \{S_{ready}\}$；
+
+状态转移矩阵表 $\delta(q, \sigma)$：
+
+| 当前状态 $q$ | 转移触发条件 $\sigma$ | 下一状态 $\delta(q, \sigma)$ | 动作与工程保障 |
+| :--- | :--- | :---: | :--- |
+| **任意非危机状态** | 危机检测复核判定为 L2 或 L3 级别 | **$S_{crisis}$** | **最高安全熔断**：瞬间中断正常流程，由 GEO 模块呈现属地化危机干预与急救卡片 |
+| **任意非危机状态** | 两阶段危机复核通过 且 `social_battery` $\le 0.20$ 且 当前非 $S_{crisis}$ | **$S_{haven}$** | 冻结提问，输出极低字数沉静陪伴，仅做在场确认与安全守候（严禁危机逃逸） |
+| **$S_{explore}$** | 用户显式要求方法 (JTBD 4) 且 通过临床红线硬掩码 | **$S_{empower}$** | 尊重用户自主掌控权，动态跳过理清阶段直达赋能推荐 |
+| **$S_{explore}$** | `stage_turn_count` $\ge 2$ 且 $Arousal < 0.80$ 且 无纯倾听锁 且 `social_battery` $\ge 0.40$ | **$S_{clarify}$** | 推进至理清阶段，探查图式与萨提亚深层渴望 |
+| **$S_{clarify}$** | (`CoreBeliefIdentified` == True OR 用户要求 OR 轮次达5轮) 且 无纯倾听锁 且 非静默人格 且 `social_battery` $\ge 0.40$ | **$S_{empower}$** | 推进至循证赋能阶段，推荐 32 种 A 级微干预动作骨架 |
+| **$S_{empower}$** | 用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或 表达反感 | **$S_{explore}$** | **紧急安全回退**：撤回认知方法，激活稳定化通道在场承接 (生理叹息/感官着陆) |
+| **$S_{empower}$** | 用户完成微练习 或 选择存入锦囊 (`NOT_NOW`) | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
+| **$S_{haven}$** | 用户心力恢复 (`social_battery` $\ge 0.35$) 或 发起新探索议题 | **$S_{explore}$** | 平滑退出避风港模式，恢复常规双向探索对话 |
+| **$S_{closing}$** | 实施意向确认完成 或 会话自然关闭 | **$S_{ready}$** | **结束状态出口**：原子写入会话摘要与经历账本，就绪等待下一次会话 |
+| **$S_{crisis}$** | 用户显式确认安全（`SafetyConfirmEvent`）且之后连续 N 轮处于安全区间 (L2: 2 轮, L3: 3 轮) | **$S_{explore}$** | **危机状态出口**：唯一合法出口，解除危机熔断，恢复温和陪伴，保留关怀标记 |
+
+### 4.3 32 种 A 级微干预编排、禁忌症硬掩码与只陪伴基线 ($m_0$)
+进入 $S_{empower}$ 后，系统求解最优微干预：
+1. **硬掩码过滤与 13 种统一禁忌症枚举**：
+   排除黑名单方法，并严格根据 `ActionSkeleton.contraindications` 与实时检测到的禁忌状态进行位掩码与运算（Bitwise AND）。系统收敛定义 13 种标准禁忌症枚举体系：
+   - `CRISIS_ACTIVE_RISK`（急性危机风险，源自 `CRISIS_DETECTOR`）
+   - `RED_FLAG_PSYCHOSIS`（精神病性症状，源自 `RED_FLAG_DETECTOR / USER_PROFILE`）
+   - `RED_FLAG_MANIA`（双相躁狂期，源自 `SIT-02-04 / USER_PROFILE`）
+   - `RED_FLAG_PTSD_FLASHBACK`（创伤急性闪回，源自 `SIT-06-01 / USER_PROFILE`）
+   - `RED_FLAG_DISSOCIATION`（急性严重解离，源自 `SIT-06-05 / Arousal`）
+   - `RED_FLAG_ANOREXIA`（神经性厌食，源自 `SIT-08-04 / USER_PROFILE`，禁冷水 TIPP）
+   - `RED_FLAG_BPD_NSSI`（边缘情绪伴自伤冲动，源自 `SIT-09-01 / USER_PROFILE`，禁冷水）
+   - `RED_FLAG_SUBSTANCE_WITHDRAWAL`（物质急性戒断，源自 `SIT-10-04 / USER_PROFILE`）
+   - `ACUTE_AROUSAL_OVERLOAD`（交感神经过载 $Arousal \ge 0.85$，阻断认知辨析）
+   - `TOXIC_SHAME_SPIRAL`（毒性羞耻螺旋，源自 `DEFECTIVENESS` 图式，禁内观添麻烦第3问）
+   - `ACUTE_BEREAVEMENT_SHOCK`（急性丧亲剧烈期，源自 `SIT-06-04`，遵从 $m_0$ 陪伴基线）
+   - `CARDIORESPIRATORY_INSTABILITY`（严重心血管/呼吸不稳，源自用户病史，禁剧烈屏气/冷水）
+   - `INTERPERSONAL_SAFETY_HAZARD`（活动性家暴/人身威胁，源自 `CRISIS_DETECTOR`）
+2. **S_explore 稳定化微干预 ID 白名单 (`explore_stabilization_whitelist`)**：
+   当用户处于 $S_{explore}$ 探索阶段且 $Arousal \ge 0.80$ 时，COLBO-02 原则上禁止推荐认知方法，但破例放行自下而上稳定化白名单方法：
+   `["28", "29", "30:grounding", "12:tipp_breathing"]`（生理性叹息、渐进式肌肉放松、5-4-3-2-1 感官着陆、DBT TIPP 节奏呼吸）。
+3. **显式只陪伴基线 ($m_0 = \text{COMPANION\_ONLY}$)**：将“纯粹在场陪伴守候”作为正式候选方法纳入效用评分。面对延长哀伤（`SIT-06-04`）或重大丧失无力时，$m_0$ 获得高基础分，避免盲目推送行动方案。
+4. **谱系映射与 Thompson 采样维度键**：
+   困扰 11 大谱系（两位数字 `"01"` 至 `"11"`）与 11 种英文大写枚举（`ANXIETY_PANIC` 至 `EXISTENTIAL_MEANING`）通过 `distress_category_mapping` 保持 1:1 双向映射。Thompson 采样模型使用两位数字字符串 `"01"` 至 `"11"` 作为困扰维度 $d$ 的标准索引键。
+5. **子动作登记表 (Action Registry) 与禁用标签展开**：
+   系统建立全局 `action_registry`，显式登记所有跨方法拆解的子动作与红线专用动作（如 `12:tipp_breathing`, `12:tipp_cold_water`, `30:grounding`, `SAFE_PLACE_CONTAINER` 等），每项均具名规范其步骤、时长与适用情境；同时通过 `banned_tag_mappings` 将抽象禁用标签（如 `RADICAL_COGNITIVE_DEBATE`, `DEEP_SCHEMA_EXCAVATION`, `HIGH_COGNITIVE_LOAD` 等）展开为具体的方法 ID 列表，使状态机掩码与骨架装配能够确定性完成集合运算。
+6. **子动作与父方法继承规则 (Sub-action & Parent Method Inheritance Rules)**：
+   - **父级禁忌独立性原则 (Parent Contraindication Isolation)**：父方法的 `contraindications` 仅作用于父方法自身的 `core_action_steps`（即以父方法整体形式输出时），子动作严格依据自身在 `action_registry` 中声明的 `contraindications` 进行独立过滤与阻断。例如方法 12 DBT 的父级禁忌不含心脏病/呼吸不稳与厌食症，该类禁忌已下沉归属于子动作 `12:tipp_cold_water`；有心血管病史或厌食史的用户仍可正常使用 STOP 技巧与 `12:tipp_breathing`（节奏呼吸）。
+   - **父级禁用向下穿透与显式白名单豁免 (Parent Ban Penetration with Explicit Whitelist Exemption)**：当红线规则或临床黑名单禁用父方法 ID（如禁用 `"12"`）时，其下属所有子动作默认一并级联禁用；唯一的例外是：若红线病种的 `allowed_actions` 白名单中显式指定了该子动作（如 BPD 红线显式允许 `DBT_TIPP_MODIFIED_BREATHING` / `12:tipp_breathing`），则该子动作破例获得豁免放行。
+7. **动作候选池求解公理与名单优先级公式 (Resolution Priority Formula)**：
+   系统在任何状态（无论是 $S_{explore}$ 还是 $S_{empower}$）求解可用动作集合时，遵循如下确定性集合运算公式：
+   $$\mathcal{A}_{available} = (\mathcal{C}_{candidates} \cap \mathcal{A}_{allowed}) \setminus \mathcal{B}_{banned} \setminus \mathcal{X}_{contraindicated}$$
+   其中：
+   - $\mathcal{C}_{candidates}$：当前状态的准入动作集合（例如在 $S_{explore}$ 高唤醒时为 `explore_stabilization_whitelist`，在 $S_{empower}$ 时为 32 种 A 级动作候选池）；
+   - $\mathcal{A}_{allowed}$：**红线封闭集公理 (Red Flag Closure Axiom)**。若用户触发了临床红线（如双相情感障碍 `SIT-02-04`），$\mathcal{A}_{allowed} = \text{RedFlag.allowed\_actions}$，构成用户实际可用交互的**绝对封闭上限边界**。例如双相用户的 $\mathcal{A}_{allowed}$ 仅为 `[CIRCADIAN_RHYTHM_STABILIZATION, ENVIRONMENT_STIMULUS_REDUCTION, REFERRAL_CARD_PRESENTATION]`，此时即使在 $S_{explore}$ 高唤醒状态，白名单中的 `["28", "29", "30:grounding", "12:tipp_breathing"]` 因交集为空而被完全阻断，绝不违规推送；若用户未触发任何临床红线，$\mathcal{A}_{allowed} = \Omega$（全集）；
+   - $\mathcal{B}_{banned}$：红线或临床规则禁用的方法及标签展开集（通过 `banned_tag_mappings` 展开至具体方法 ID），作为第二道纵深防御；
+   - $\mathcal{X}_{contraindicated}$：当前命中用户禁忌症（如病史、急性生理指标）的方法与子动作集合。
+   - **别名标准归约前置原则 (Alias Canonicalization Pre-processing)**：参与集合运算前，所有动作标识符（包括来自 `allowed_actions`、`banned_methods`、`explore_stabilization_whitelist` 及候选池的 ID 或别名）必须先经 `action_registry` 的别名映射表统一规约为标准 ID。例如 `DBT_TIPP_MODIFIED_BREATHING` 规约为 `12:tipp_breathing`，`GROUNDING_54321` 规约为 `30:grounding`，确保交差集运算准确匹配，杜绝因别名不一致导致假空集。
+   - **空集保底降级与转介联动 (Empty Set Fallback & Referral Binding)**：若四重交差集求解结果为空集（$\mathcal{A}_{available} = \emptyset$），系统确定性降级为 `EMOTIONAL_HOLDING_PRESENCE`（纯在场陪伴基线 $m_0$）；若当前命中临床红线，则并行追加呈现 `REFERRAL_CARD_PRESENTATION`（国家精神心理专科就诊指引卡）。系统严禁抛出异常，也严禁盲目回退到未经验证的其它常规方法。
+   - **动作类型多通道分发协议 (Action Type Multi-Channel Dispatch Protocol)**：当输出为 32 种 A 级父方法整方法骨架时，默认按 `MICRO_EXERCISE`（认知/行为微练习）装配执行；登记于 `action_registry` 的子动作则严格依据声明的 `action_type` 分流装配，严禁将所有动作一律当作微练习指令下发：
+     - `MICRO_EXERCISE`（A 级整方法默认）/ `STABILIZATION`：装配为微练习跟练骨架（带有动作时长与分步跟练提示）；
+     - `COMPANIONSHIP`（如 `EMOTIONAL_HOLDING_PRESENCE` / $m_0$）：输出去自责、去说教的纯温和在场守护语料，不带任何练习要求；
+     - `PSYCHOEDUCATION`（如 `CIRCADIAN_RHYTHM_STABILIZATION`、`WITHDRAWAL_RISK_WARNING`）：渲染为生活作息稳态贴士或戒断风险警示卡；
+     - `REFERRAL`（如 `REFERRAL_CARD_PRESENTATION`）：移交危机与属地卡片模块渲染专科就诊指引与属地援助热线。
+
+### 4.4 C.O.L.B.O. 双翼干预架构 (Bilateral Wing Architecture) 与 SUDS 标尺映射
+C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互补干预机理：
+1. **左翼 (Left Wing / Somatic & Compassion)**：
+   - **机理路径**：自下而上 (Bottom-up) 神经调节。通过呼吸节律、双侧刺激、感官外感受着陆与 Neff 自我关怀，直接作用于脑干与迷走神经复合体（Vagal Brake），降低交感神经激惹，重建本体生理安全感；
+   - **激活条件**：$Arousal \ge 0.80$（对应临床 SUDS $\ge 8/10$）或情绪剧烈过载；在 $S_{explore}$ 状态下激活稳定化在场白名单通道。
+2. **右翼 (Right Wing / Cognitive & Action)**：
+   - **机理路径**：自上而下 (Top-down) 认知重构与行为激活。通过前额叶理性检验（CBT NAT/好友视角）、去灾难化、元认知解离与行为激活 (BA 2分钟微破冰)，打破思维反刍回路并建立现实行动支点；
+   - **激活条件**：$Arousal < 0.80$ 且心力电量 $social\_battery \ge 0.40$，且状态机推进至 $S_{empower}$ 阶段。
+3. **双翼协同 (Bilateral Synergy)**：
+   - 当困扰档案标定为双翼协同（如 `SIT-01-01` GAD、`SIT-11-02` 人生危机）时，系统严格执行“先左后右”序贯原则：在高唤醒期先由左翼稳定化平抑交感过载，待生理指标平稳后无缝桥接右翼认知赋能。
+4. **SUDS 0–10 标尺与系统归一化连续谱映射**：
+   - 困扰档案采用临床通用的主观痛苦量表（SUDS, 0–10 整数标尺，如 `6-8/10`）；系统内部与算法统一采用 $[0.0, 1.0]$ 连续闭区间，二者满足严格线性双向映射：
+     $$Arousal = \frac{\text{SUDS}}{10}$$
+     例如档案中 `2-4/10` 映射 $[0.20, 0.40]$（低唤醒低动力），`6-8/10` 映射 $[0.60, 0.80]$（中高警觉内耗），`8-10/10` 映射 $[0.80, 1.00]$（急性交感神经过载）。
+
+---
+
+## 5. 子系统 III：W.I.L.L.O.W. 温润内省言语与词汇意境重塑引擎 (W.I.L.L.O.W. Language & Metaphor Engine)
+
+### 5.1 去机械化语调塑形与违规说教词表过滤
+语调重塑算子 $\mathcal{T}_{warm}: \mathcal{S} \to \mathcal{S}'$ 扫描并剔除违规说教词表 $\mathcal{V}_{didactic} = \{\text{"你应该"}, \text{"必须"}, \text{"首先"}, \text{"其次"}, \text{"再次"}, \text{"总而言之"}\}$，将祈使句重塑为人本主义邀请语态。
+
+### 5.2 概念隐喻织造算法与萨提亚意境对齐
+映射函数 $\Phi: \mathcal{D}_{distress} \times \mathcal{Y}_{yearning} \to \mathcal{M}_{nature}$：
+- 完美主义内耗 $\to$ 柳枝随风低伏却永不折断；
+- 思维反刍卡点 $\to$ 溪流绕石而不争；
+- 耗竭倦怠 $\to$ 四季草木冬眠蓄力。
+
+### 5.3 沉静呼吸节奏与黄金字数窗口阻尼模型
+系统按不同助人状态与人格光谱实施分层字数窗口阻尼约束：
+1. **常规双向交互阶段 ($S_{explore}, S_{clarify}, S_{empower}$)**：黄金字数区间 $[140, 260]$ 汉字。定义惩罚函数：
+   $$\mathcal{P}_{cadence}(L) = \begin{cases} 
+   \kappa_{under} \cdot (140 - L)^2, & L < 140 \\
+   0, & 140 \le L \le 260 \\
+   \kappa_{over} \cdot (L - 260)^2, & L > 260 
+   \end{cases}$$
+   严格限制单段 $\le 80$ 汉字，段间强制插入呼吸空行；
+2. **避风港模式 ($S_{haven}$)**：字数窗口刚性约束在 $[15, 40]$ 汉字，冻结一切追问，彻底消除阅读与认知压迫感；
+3. **静默树洞型人格 (`SILENT_ANCHOR`)**：字数窗口收缩至 $[10, 30]$ 汉字，仅提供极简情感回声与中立安全在场；
+4. **危机状态 ($S_{crisis}$) 与 Grade C 医疗转介卡片**：**享有刚性字数豁免权**，确保紧急救援电话、心理援助热线、营业时间及转介指引无损完整呈现，绝不因字数上限截断生命防线信息。
+
+---
+
+## 6. 子系统 IV：C.H.A.N.G. 人机协同演化与叙事成长引擎 (C.H.A.N.G. Co-evolving Adaptation Engine)
+
+### 6.1 首访角色契约领域模型与四维人格光谱配置规范
+预置四大基准人格光谱：
+- **`GENTLE_HOLDING` (温和包裹型)**：温暖柔和、多情感抚慰与包裹、高接纳词频；
+- **`ZEN_PHILOSOPHER` (沉静哲思型)**：自然意境、开阔深远、低言语密度、高留白；
+- **`RATIONAL_PEER` (平视战友型)**：平视坦诚、机敏条理、并肩拆解现实挑战；
+- **`SILENT_ANCHOR` (静默树洞型)**：极简回声、零判断、纯倾听、无任何建议要求。
+
+### 6.2 「结构先行，语态后润」双通道网关与本地校验器
+当开启 AI 增强模式时：
+1. 本地 `C.O.L.B.O.` 生成不可篡改的 `ActionSkeleton`；
+2. 大模型接收结构化 Prompt 仅进行语态润色与生活记忆缝合；
+3. **本地校验器 (Local Validator)** 审查大模型输出：
+   - 检查动作步骤核心语义是否被篡改；
+   - 检查是否引入未在 32 种 A 级白名单中的方法；
+   - 检查是否包含病理化医学诊断词汇；
+4. 若校验不通过，网关直接无缝退回本地离线受控模板，降级过程不增加额外等待延迟。
+
+### 6.3 闭环贝叶斯自进化数学模型 (纯 Thompson 采样与探索安全门禁)
+系统彻底采用标准 **Beta-Bernoulli Thompson 采样**进行个性化推荐自进化，完全废除与概率采样相冲突的固化 $\epsilon$-greedy 策略。
+对每个（方法 $m$ $\times$ 困扰谱系 $d$）维护独立的后验分布：
+
+$$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
+
+- **临床证据等级先验映射**：
+  - Level I（跨诊断黄金循证，如 CBT, ACT, MCT）: $\alpha_0 = 4.0, \ \beta_0 = 1.0$；
+  - Level II（良好实证支持，如 BA, CFT, MSC）: $\alpha_0 = 3.0, \ \beta_0 = 1.0$；
+  - Level III（临床探索性支持，如森田、内观）: $\alpha_0 = 2.0, \ \beta_0 = 1.0$；
+- **三档用户反馈信号自适应更新**：
+  - 用户反馈 `HELPFUL`（有帮助）：$\alpha_{m, d} \leftarrow \alpha_{m, d} + 1.0$；
+  - 用户反馈 `NOT_NOW`（存入锦囊）：保持当前参数不变，零负向扣分；
+  - 用户反馈 `UNHELPFUL`（不适用/排斥）：$\beta_{m, d} \leftarrow \beta_{m, d} + 1.0$；采用软性时间衰减降权函数：
+    $$\beta_{eff} = 1.0 + (\beta_{m, d} - 1.0) \cdot \exp\left(-\lambda_{decay} \Delta t\right)$$
+    随时间推移自动衰减恢复探索概率，并在透明档案中供用户查阅与一键解除；
+- **探索安全门禁 (Exploration Safety Gating)**：
+  - 仅在用户生理唤醒度 $Arousal \le 0.60$ 且候选池严格处于 32 种 Grade A 方法时，允许利用后验方差进行探索性采样；
+  - 当 $Arousal > 0.60$ 时，采样方差强制归零，系统强制退化为最高确定性均值策略（Exploit Only）或自下而上躯体稳定化协议。
+
+### 6.4 7 天情绪周记时空数据聚合算法 (基于用户自评数据)
+满 7 天且会话活跃时，周记聚合器提取：
+1. 用户会话前后 0–10 分困扰自评均值与心力电量走势；
+2. 本周高频困扰外化命名；
+3. 产生积极反馈的 A 级微方法复盘；
+4. 若当周触发过 L2/L3 危机，周记自动转为庄重守护口吻，严禁轻浮轻淡散文。
+
+### 6.5 记忆档案原子级写入安全协议
+遵循影子替换协议：
+$$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{Atomic Rename} \to \text{Persistent Ledger}$$
+并保留最近 3 个版本的容灾备份快照，确保数据 100% 具备容错自愈能力。
+
+---
+
+## 7. 多推理模型适配网关与个人信息保护管线 (Inference Gateway & PIPL Pipeline)
+
+- **《个人信息保护法》(PIPL) 合规**：开启 AI 增强前必须单独弹窗征得明示同意；
+- **本地小模型优先**：提供本地量化小模型选项，保障敏感数据不出设备；
+- **服务商留存透明度**：使用云端服务时明确提示数据传输范围与服务商数据留存政策；
+- **流式首字指标 (TTFT)**：推理网关监控首字流式输出时间，确保交互连贯性。
+
+---
+
+## 8. 多级安全防御体系、四级危机响应与能力绝对边界 (Multi-Tiered Safety & Crisis Protocols)
+
+### 8.1 危机前置防御时序模型 (SAFE-09 强制合规)
+```
+用户输入文本 ──► [Stage 1: Aho-Corasick 明确自杀计划/工具/时限线索初筛 (< 0.2ms)] ──► 命中明确高危线索判 L3 熔断
+                        │ (未命中明确线索，或含口癖/歧义词)
+                        ▼
+           [执行 M.I.Y.I. 中文上下文 8 头多任务感知前向推断]
+                        │
+                        ▼
+           [Stage 2: 危机置信度与中文口癖复核 (< 1.0ms)] ──► 识别中文口癖与真正轻生意念
+                        │
+                        ├─► 判定为 L2/L3 危机 ──► 直接触发 S_crisis 熔断输出热线
+                        │
+                        ▼ (判定为 L0/L1 安全)
+           [心力电量检查: social_battery <= 0.20 ?]
+                        │
+                        ├─► 是 ──► 进入 S_haven 避风港模式 (绝不漏检危机)
+                        │
+                        ▼ 否
+           [进入正常 S_explore 倾听阶段]
+```
+
+### 8.2 四级危机分级、取高仲裁与权威热线联动
+统一以 `taxonomy.yaml` 半开区间为准：
+- **L0 (安全 $[0.0, 0.20)$)**：正常流转状态机；
+- **L1 (隐晦疲倦 $[0.20, 0.50)$)**：排除中文口癖，不弹求助卡，停留在 $S_{explore}$ 深度情感包裹；
+- **L2 (明确被动轻生 $[0.50, 0.80)$)**：暂停方法探索，由 GEO 模块呈现属地心理援助热线卡片（大陆呈现 12356 及属地热线，境外呈现当地心理热线）；
+- **L3 (急性自杀危机 $[0.80, 1.00]$)**：最高安全熔断，强制呈现属地心理热线与属地紧急急救/治安电话 (大陆 110/120，北美 911，英国 999 等)；
+- **双头预测最高安全仲裁规则**：
+  $$\text{RiskLevel} = \max(L_{cls}, L_{score})$$
+  若初步定级为 L3 但缺乏明确计划、工具或时限证据 (`HasPlanMeansOrImminentThreat == False`)，安全降级为高危 L2 处理，防止误报 110/911。
+- **危机状态机安全出口闭环准则**：
+  处于 $S_{crisis}$ 状态时，严禁因用户单轮低电量输入（如 `[5%] 好累`）直接绕过安全确认跳转至 $S_{haven}$。退出危机态的唯一合法路径为**双重确认安全机制**：
+  1. 用户明确确认安全（`SafetyConfirmEvent`，如明确表达“我已经联系上朋友了”、“我现在安全了，想聊点别的”）；**并且**
+  2. 确认之后连续 $N$ 轮会话输入经两阶段危机筛查均处于安全区间（$L0/L1$）（依初始危机等级：L2 需连续 2 轮安全，L3 需连续 3 轮安全）。
+  在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。
+
+### 8.3 属地化与全球危机援助资源解析流水线 (GEO-01 ~ GEO-08)
+- **国家级基准线**：全国统一心理援助热线 `12356`（国家卫生健康委统一热线，官方承诺每日服务不少于 18 小时，各地实际服务时段依属地配置不同）；
+- **层级解析路由**：用户城市热线匹配 $\to$ 省级防线兜底 $\to$ 12356 全国统一专线；
+- **Rule R8 境外隔离与属地矩阵**：非大陆地区严格禁止呈现 12356/110/120 大陆号码。香港（`18111` / `2389 2222`，急救 `999`）、澳门（`2852 5222`，急救 `999`）、台湾（`1925` / `1995`，急救 `110/119`）、北美（`988`，急救 `911`）、英国（`116 123` / `111`，急救 `999`）、澳洲（`13 11 14`，急救 `000`）；
+- **Ed25519 签名验真防篡改**：热线数据统一维护在 `olivia/data/resources/hotlines/` 树状目录中，由发布工具生成 Ed25519 签名包 `hotlines.bundle`，客户端利用公钥核签验证，无有效签名拒绝加载。
+
+### 8.4 7 处强制临床转介红线、动作白名单与禁忌症
+系统对以下 7 处高危精神障碍严禁任何认知辨析、行为暴露或探查性微练习，仅允许动作白名单并强制 Grade C 专科转介：
+1. **双相情感障碍 (`SIT-02-04`)**：允许动作 `[CIRCADIAN_RHYTHM_STABILIZATION, ENVIRONMENT_STIMULUS_REDUCTION, REFERRAL_CARD_PRESENTATION]`。严禁 `"03"` (BA 行为激活) 与 `"RADICAL_COGNITIVE_DEBATE"`；
+2. **围产期与产后抑郁困扰 (`SIT-02-06`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, CIRCADIAN_RHYTHM_STABILIZATION, REFERRAL_CARD_PRESENTATION]`。严禁 `"DEEP_SCHEMA_EXCAVATION"`, `"HIGH_COGNITIVE_LOAD"`；
+3. **急性应激障碍与 PTSD (`SIT-06-01`)**：允许动作 `[GROUNDING_54321, SAFE_PLACE_CONTAINER, REFERRAL_CARD_PRESENTATION]`。严禁 `"04"` (ERP), `"05"` (系统脱敏), `"26"` (NET), `"27"` (TF-CBT), `"65"` (表达性书写), `"66"` (IRT 梦魇重演)；
+4. **解离状态与人格解体 (`SIT-06-05`)**：允许动作 `[GROUNDING_54321, ENVIRONMENT_PHYSICAL_ANCHOR, REFERRAL_CARD_PRESENTATION]`。严禁 `"ABSTRACT_EXISTENTIAL_INQUIRY"`, `"01"` (CBT 认知重构)；
+5. **神经性厌食症 (`SIT-08-04`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, REFERRAL_CARD_PRESENTATION]`。严禁 `"12:tipp_cold_water"`, `"13"` (RO-DBT), `"DIET_WEIGHT_MANAGEMENT"`；
+6. **边缘型情绪失调伴自伤倾向 (`SIT-09-01`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, DBT_TIPP_MODIFIED_BREATHING, REFERRAL_CARD_PRESENTATION]`。严禁 `"12:tipp_cold_water"`, `"TRAUMA_DETAIL_EXPLORATION"`；
+7. **成瘾物质依赖 (`SIT-10-04`)**：允许动作 `[WITHDRAWAL_RISK_WARNING, REFERRAL_CARD_PRESENTATION]`。严禁 `"SELF_DETOX_GUIDANCE"`, `"10"` (HRT 习惯逆转)。
+
+> [!NOTE]
+> 允许动作的规范步骤与时长由 `taxonomy.yaml` 的 `action_registry` 统一定义，由骨架装配器直接查询加载；所有宏观禁用标签由 `banned_tag_mappings` 展开为具体方法 ID 集合，红线掩码层据此实行无死角阻断。
+
+> [!IMPORTANT]
+> **红线封闭集与名单优先级规则**：
+> 1. 对命中临床红线的用户而言，`allowed_actions` 构成了其实际允许交互的**绝对封闭上限边界**（Closed Upper Bound），而 `banned_methods` 仅作为第二道纵深防御保险；
+> 2. 状态机动作求解遵循统一交差集公式 $\mathcal{A}_{available} = (\mathcal{C}_{candidates} \cap \mathcal{A}_{allowed}) \setminus \mathcal{B}_{banned} \setminus \mathcal{X}_{contraindicated}$。当红线生效时，即使在 $S_{explore}$ 触发高唤醒（$Arousal \ge 0.80$），若常规白名单中的动作（如生理性叹息 28、渐进式肌肉放松 29）不在该红线病种的 `allowed_actions` 中，求交集后结果直接为空，绝不会越界推送给红线用户；
+> 3. **别名预先归约与空集兜底**：集合运算前必须经 `action_registry` 统一归约别名（如 `DBT_TIPP_MODIFIED_BREATHING` $\to$ `12:tipp_breathing`、`GROUNDING_54321` $\to$ `30:grounding`）。若交差集结果为空集，系统一律降级为 `EMOTIONAL_HOLDING_PRESENCE`（纯在场守护 $m_0$）并附带 `REFERRAL_CARD_PRESENTATION`（专科转介卡），绝不报错且不旁路回退；
+> 4. **动作类型分通道处理**：当输出为 32 种 A 级整方法时默认按 `MICRO_EXERCISE` 处理，子动作依声明的 `action_type` 分流处理（练习类装配骨架、在场类纯语态守护、科普类作息贴士、转介类卡片渲染），严禁将转介卡或科普当成微练习下发。
+
+---
+
+## 9. 离线感知模型训练与蒸馏工程流水线 (Training & Distillation Pipeline)
+
+- **中文真实语料驱动**：清洗对齐 PsyQA 中文心理支持语料，结合 60 份困扰档案第四节“典型内心独白”作为种子样本；
+- **对抗样本增强**：针对否定句（“我不想死”与“我想死”）构建专项对比数据集；
+- **轻量静态参数导出**：权重矩阵序列化为纯静态数组，无外部深度学习框架依赖。
+
+---
+
+## 10. 系统可靠性、性能预算与可观测性工程 (Reliability, Latency Budget & Observability)
+
+### 10.1 毫秒级时延预算分配表 (单核 CPU 离线基线)
+| 执行阶段 | 核心操作 | $P_{50}$ | $P_{99}$ 上限 | 容灾降级策略 |
+| :--- | :--- | :---: | :---: | :--- |
+| **Step 1** 输入规范化与危机初筛 | 正则扫描与哈希比对 | $0.2\text{ms}$ | $0.5\text{ms}$ | 纯内存扫描，绝不超时 |
+| **Step 2** M.I.Y.I. 中文多任务推断 | 特征稠密映射与矩阵前向 | $25.0\text{ms}$ | $45.0\text{ms}$ | 保留开头 128 字符与末尾 256 字符（双端保全防丢危机线索） |
+| **Step 3** M.I.Y.I. 3D记忆检索 | AST 遍历与三维算分 | $0.8\text{ms}$ | $2.0\text{ms}$ | 仅检索最近 10 条经历记录 |
+| **Step 4** C.O.L.B.O. 状态机与镜像翻转 | 代词语境分析与 FSM 门控 | $0.5\text{ms}$ | $1.5\text{ms}$ | 降级为默认安全探索态 |
+| **Step 5** C.O.L.B.O. 协议求解与骨架生成 | Thompson 采样与动作骨架装配 | $1.0\text{ms}$ | $3.0\text{ms}$ | 降级为纯在场陪伴回复 (m0)，不输出任何干预动作卡 |
+| **Step 6** C.H.A.N.G. & W.I.L.L.O.W. 生成 | 离线模板组装与留白塑形 | $0.5\text{ms}$ | $2.0\text{ms}$ | 纯静态插槽填充 |
+| **汇总** | **离线控制回路端到端总时延** | **$28.0\text{ms}$** | **$55.0\text{ms}$** | **单核 CPU 极致流畅可信** |
+
+### 10.2 内部可观测性遥测面板规范
+```
+╔════════════════════════════════════════════════════════════════════════════════════════╗
+║                          O.L.I.V.I.A. 内部认知与控制遥测面板                          ║
+╠════════════════════════════════════════════════════════════════════════════════════════╣
+║ [会话轮次] Global #5, Stage #2  [助人状态] S_empower (循证赋能)   [硬锁] Inactive      ║
+║ [人格光谱] GENTLE_HOLDING (温和包裹)  [心力电量] 0.70  [运行模式] AI_ENHANCED (已激活) ║
+║ [情感极性] -0.60 (负向)  [生理唤醒度] 0.58 (中等唤醒)  [细粒度情绪] 焦虑心慌 (anxiety)  ║
+║ [11大谱系] 01_焦虑与惊恐 (SIT-01-01 GAD): 0.82 | 04_完美主义苛责: 0.70                 ║
+║ [萨提亚冰山] 姿态: 超理智型  ==>  核心渴望: 安全感与秩序感 (SAFETY)                     ║
+║ [临床动作骨架] 01_cbt_decatastrophizing (A级微动作, 步骤: 3步, 禁忌症校验通过)        ║
+║ [本地校验器] Method ID & Steps 未改动, 无诊断标签, 校验通过 (TTFT: 820ms)             ║
+║ [安全红线] 风险等级: L0 (安全) | 危机置信度: 0.01 (安全)                               ║
+╚════════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 11. 逻辑架构与工程模块组件映射索引 (Modular Implementation Mapping)
+
+为了实现系统设计与工程代码实现的无缝对接，本设计规范各章节在逻辑实现层严格映射至核心模块接口规范：
+
+| 设计规范章节 | 领域逻辑职责 | 核心代码实现模块路径 | 核心导出接口与类型契约 |
+| :--- | :--- | :--- | :--- |
+| **§ 2 通用领域模型** | 全局类型与画像持久化 | `olivia/core/chang/profile.py` | `UserRegion`, `ProfileStore`, `effective_region` |
+| **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` | `load_taxonomy() -> Taxonomy`, `t.threshold(...)`, `t.values(...)` |
+| **§ 3.3 存储与数据根基** | 应用级持久化目录管理 | `olivia/core/storage.py` | `app_data_dir() -> Path` |
+| **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/engine.py` [待实现 / In Progress] | `advance_stage(state: SessionState, event: Event) -> HelpStage` |
+| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/engine.py` [待实现 / In Progress] | `filter_and_solve_skeleton(candidates, red_flags) -> ActionSkeleton` |
+| **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / In Progress] | `validate_ai_response(response, skeleton) -> bool` |
+| **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
+| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py` | `resolve(region, now, mode, store, index, tz, build_date) -> ResourceCard` |
+| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/resources/render.py` | `render_card(card: ResourceCard) -> str` |
+| **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
+| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/hotline_rules.py`| `R8 境外号码硬隔离`, `R31 未知属地处理`, `FALLBACK_IDS` |
+| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/safety/red_flags.py` [待实现 / In Progress] | `apply_red_flag_mask(candidate_pool, active_flags) -> SafePool` |
+
+本系统设计规范全面确立了 **O.L.I.V.I.A.** 四位一体的工程架构标准，具备高工业级鲁棒性与严谨临床心理伦理双重标准。

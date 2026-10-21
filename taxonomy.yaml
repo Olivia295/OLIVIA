@@ -1,0 +1,1807 @@
+# ==============================================================================
+# O.L.I.V.I.A. 统一认知与临床分类标准 (Canonical Taxonomy & Enums)
+# ==============================================================================
+# 该文件为整个系统的唯一真相来源 (Single Source of Truth, SSOT)。
+# 所有设计文档、知识库标注、感知模型预测头、状态机门控及推荐算法均强制继承本规范。
+# 代码包内分类配置 (src/olivia/data/taxonomy.yaml) 由本文件自动同步派生。
+# ==============================================================================
+
+version: "3.2.0"
+last_updated: "2026-10-21"
+status: "CANONICAL_SINGLE_SOURCE_OF_TRUTH"
+
+# ------------------------------------------------------------------------------
+# 1. 生理唤醒度归一化定义 (Physiological Arousal Scale: [0.0, 1.0])
+# ------------------------------------------------------------------------------
+arousal:
+  range: [0.0, 1.0]           # [正式键 Canonical] 归一化连续唤醒度闭区间
+  scale: [0.0, 1.0]           # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 旧版命名别名，同 range
+  bands:
+    low: [0.0, 0.35]          # [0.0, 0.35) 迟钝、麻木、耗竭、能量极低
+    moderate: [0.35, 0.65]    # [0.35, 0.65) 平静至轻度警觉，适宜开展认知重构与内省
+    elevated: [0.65, 0.80]    # [0.65, 0.80) 紧张、担忧、情绪波动，需结合躯体稳定化
+    acute: [0.80, 1.00]       # [0.80, 1.00] 急性高唤醒、惊恐、暴怒、交感神经过载，前额叶功能受阻
+  thresholds:
+    somatic_priority: 0.80     # [正式键 Canonical] >= 0.80 优先推荐自下而上 (Bottom-Up) 躯体/呼吸稳定化
+    cognitive_block: 0.85      # [正式键 Canonical] >= 0.85 禁止推行高认知负荷深度重构方法 (如责任饼图)
+    exploration_allow: 0.60    # [正式键 Canonical] 只有 <= 0.60 且在 Grade A 方法池中，才允许 Thompson 采样探索方差
+    block_high_load: 0.80      # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期代码别名，同 somatic_priority / 限制高负荷卡片
+    somatic_only: 0.90         # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期实验性参数 (文档未出现，保留防止旧代码 KeyError)
+    explore_eligible_max: 0.60 # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期代码别名，同 exploration_allow
+  suds_mapping:
+    description: "临床主观困扰量表 (SUDS 0-10) 与系统归一化唤醒度 ([0.0, 1.0]) 严格线性对齐 (Normalized = SUDS / 10)"
+    scale_factor: 0.10
+    examples:
+      "2-4/10": [0.20, 0.40]
+      "6-8/10": [0.60, 0.80]
+      "8-10/10": [0.80, 1.00]
+
+# ------------------------------------------------------------------------------
+# 2. 心力电量区间与交互策略 (Heart/Social Battery Bands: [0.0, 1.0])
+# ------------------------------------------------------------------------------
+battery:
+  range: [0.0, 1.0]          # [正式键 Canonical]
+  # --- 顶层阈值键 [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 请优先使用 battery.thresholds 下的标准键 ---
+  haven_enter: 0.20          # [兼容键] <= 0.20 触发 S_haven 避风港
+  haven_exit: 0.35           # [兼容键] >= 0.35 允许退出 S_haven 恢复双向探索
+  empower_min: 0.40          # [兼容键] >= 0.40 且处于 S_clarify 时才允许推进至 S_empower
+  bands:
+    critical_low: [0.0, 0.20]  # [0.0, 0.20) 触发 S_haven 避风港庇护态，单向低载陪伴，禁止高认知介入与提问
+    low: [0.20, 0.40]          # [0.20, 0.40) 降载倾听态，低字数回复、单字承接，减少追问
+    medium: [0.40, 0.70]       # [0.40, 0.70) 探索接纳态 (S_explore)，标准双向共情交互
+    full: [0.70, 1.00]         # [0.70, 1.00] 赋能转化态 (S_empower)，可进行结构化微练习与反思
+  thresholds:
+    # --- [正式键 Canonical] 标准阈值定义 ---
+    haven_enter: 0.20          # [正式键 Canonical] <= 0.20 触发 S_haven
+    haven_exit: 0.35           # [正式键 Canonical] >= 0.35 允许退出 S_haven 恢复常规双向探索
+    empower_min: 0.40          # [正式键 Canonical] >= 0.40 且处于 S_clarify 时才允许推进至 S_empower 进行微练习
+
+# ------------------------------------------------------------------------------
+# 2.1 C.O.L.B.O. 双翼干预架构 (Bilateral Intervention Architecture / Wings)
+# ------------------------------------------------------------------------------
+colbo:
+  bilateral_strategy:
+    description: "C.O.L.B.O. 循证微干预双翼协同架构 (Bilateral Strategy: Left/Right Wings)"
+    left_wing:
+      name: "左翼 (Left Wing / Somatic & Compassion)"
+      focus: "自下而上 (Bottom-up) 躯体稳定化、生理性叹息、感官着陆、Neff 自我关怀与情绪容纳"
+      activation_condition: "Arousal >= 0.80 或情绪剧烈过载"
+      target_systems: "脑干、杏仁核与副交感/迷走神经调节，优先重建神经生理安全感"
+    right_wing:
+      name: "右翼 (Right Wing / Cognitive & Action)"
+      focus: "自上而下 (Top-down) 认知重构 (CBT/MCT)、好友视角转换、行为激活 (BA 2分钟微破冰) 与现实问题解决"
+      activation_condition: "Arousal < 0.80 且 Battery >= 0.40"
+      target_systems: "前额叶皮层执行功能、理性检验与动机激活"
+    bilateral_synergy:
+      name: "双翼协同 (Bilateral Synergy)"
+      focus: "当高唤醒伴随深层内耗时，先由左翼稳定化平抑交感神经过载，待唤醒度降至安全区间后，无缝桥接右翼认知重构与微行为破冰"
+  explore_stabilization_whitelist:
+    description: "S_explore 状态下高唤醒 (Arousal >= 0.80) 豁免放行的自下而上稳定化微干预 ID 白名单"
+    method_ids:
+      - "28"              # 生理性叹息 (Physiological Sigh)
+      - "29"              # 渐进式肌肉放松 (PMR)
+      - "30:grounding"    # 5-4-3-2-1 感官着陆 (Sensory Grounding)
+      - "12:tipp_breathing" # DBT TIPP 节奏呼吸 (Paced Breathing)
+
+# ------------------------------------------------------------------------------
+# 3. 细粒度情绪标签体系 (Fine-Grained Emotions - 16 Core Classes + Aliases)
+# ------------------------------------------------------------------------------
+emotions:
+  - id: "anxiety"
+    name: "焦虑心慌"
+    valence_range: [-0.9, -0.3]
+    default_arousal: 0.75
+  - id: "sadness"
+    name: "悲伤失落"
+    valence_range: [-1.0, -0.4]
+    default_arousal: 0.35
+  - id: "anger"
+    name: "愤怒激惹"
+    valence_range: [-0.8, -0.4]
+    default_arousal: 0.8
+  - id: "shame"
+    name: "羞耻惭愧"
+    valence_range: [-0.9, -0.4]
+    default_arousal: 0.65
+  - id: "guilt"
+    name: "内疚自责"
+    valence_range: [-0.8, -0.3]
+    default_arousal: 0.6
+  - id: "loneliness"
+    name: "孤独疏离"
+    valence_range: [-0.8, -0.4]
+    default_arousal: 0.3
+  - id: "hopelessness"
+    name: "绝望无力"
+    valence_range: [-1.0, -0.6]
+    default_arousal: 0.25
+  - id: "grief"
+    name: "哀伤丧失"
+    valence_range: [-1.0, -0.5]
+    default_arousal: 0.4
+  - id: "fear"
+    name: "恐惧害怕"
+    valence_range: [-0.9, -0.5]
+    default_arousal: 0.85
+  - id: "panic"
+    name: "急性惊恐"
+    valence_range: [-1.0, -0.7]
+    default_arousal: 0.95
+  - id: "overwhelm"
+    name: "情绪过载"
+    valence_range: [-0.9, -0.5]
+    default_arousal: 0.85
+  - id: "numbness"
+    name: "情感麻木"
+    valence_range: [-0.8, -0.2]
+    default_arousal: 0.15
+  - id: "envy"
+    name: "嫉妒酸楚"
+    valence_range: [-0.7, -0.3]
+    default_arousal: 0.65
+  - id: "disappointment"
+    name: "失望挫败"
+    valence_range: [-0.8, -0.3]
+    default_arousal: 0.45
+  - id: "confusion"
+    name: "迷茫困惑"
+    valence_range: [-0.6, -0.1]
+    default_arousal: 0.5
+  - id: "calm"
+    name: "平静安详"
+    valence_range: [0.4, 0.8]
+    default_arousal: 0.25
+
+# 临床说明：以下别名中，procrastination（拖延）、self_criticism（自我苛责）、insomnia（失眠）、rumination（反刍）
+# 在精神病理学中属于应对行为或心身症状，为向下兼容困扰档案早期标注，在此映射至其底层核心情绪（如拖延背后为情绪过载，失眠背后为高唤醒焦虑）。
+emotion_aliases:
+  rumination: "anxiety"
+  procrastination: "overwhelm"
+  self_criticism: "shame"
+  insomnia: "anxiety"
+  emptiness: "numbness"
+  irritability: "anger"
+
+# ------------------------------------------------------------------------------
+# 4. 认知扭曲枚举体系 (Cognitive Distortions - 8 Core Beck & Burns + Aliases)
+# ------------------------------------------------------------------------------
+cognitive_distortions:
+  - id: "ALL_OR_NOTHING"
+    name: "非黑即白思维 / 全或无"
+    description: "将事物二元对立，非完美即彻底失败。"
+  - id: "CATASTROPHIZING"
+    name: "灾难化思维 / 放大风险"
+    description: "无依据地预期最坏结局，放大微小负面信号。"
+  - id: "OVERGENERALIZATION"
+    name: "过度概括"
+    description: "将单次挫败视为恒定不可逆的绝对规律。"
+  - id: "MIND_READING"
+    name: "猜心术 / 妄测他人看法"
+    description: "笃信他人对自己有负面评判，不进行现实检验。"
+  - id: "FORTUNE_TELLING"
+    name: "算命式预言"
+    description: "武断认定未来必然走向失败与灾难。"
+  - id: "MENTAL_FILTER"
+    name: "心理过滤 / 消极选择性注意"
+    description: "只盯住局部瑕疵，忽略客观存在的积极事实。"
+  - id: "EMOTIONAL_REASONING"
+    name: "情绪化推理"
+    description: "因为我感觉很糟，所以客观现实一定很坏。"
+  - id: "SHOULD_STATEMENTS"
+    name: "应该句式 / 强加法则"
+    description: "对自己或他人使用无弹性的强制命令句式。"
+  - id: "PERSONALIZATION"
+    name: "个人化 / 妄自归咎"
+    description: "将外部客观事件或他人的负面反应错误归因于自己，背负无端自责。"
+
+distortion_aliases:
+  DISQUALIFYING_POSITIVE: "MENTAL_FILTER"
+  JUMPING_TO_CONCLUSIONS: "MIND_READING"
+  MAGNIFICATION: "CATASTROPHIZING"
+  LABELING: "ALL_OR_NOTHING"
+
+# ------------------------------------------------------------------------------
+# 5. 早期适应不良图式体系 (Early Maladaptive Schemas - 20 Clinical Classes)
+# ------------------------------------------------------------------------------
+schemas:
+  - id: "DEFECTIVENESS"
+    name: "缺陷与耻感 (本质上不够好)"
+  - id: "UNRELENTING_STANDARDS"
+    name: "严苛标准与完美主义苛责"
+  - id: "FEAR_OF_ABANDONMENT"
+    name: "被抛弃恐惧与不稳定依恋"
+  - id: "MISTRUST_ABUSE"
+    name: "不信任与预期被伤害"
+  - id: "EMOTIONAL_DEPRIVATION"
+    name: "情感剥夺与未被看见"
+  - id: "SOCIAL_ISOLATION"
+    name: "社会孤立与异化感"
+  - id: "DEPENDENCE_INCOMPETENCE"
+    name: "依赖与无能感"
+  - id: "VULNERABILITY_TO_HARM"
+    name: "对伤害或疾病的易感性"
+  - id: "ENMESHMENT"
+    name: "未分化自我与人际缠结"
+  - id: "SUBJUGATION"
+    name: "顺从与压抑自我需求"
+  - id: "SELF_SACRIFICE"
+    name: "自我牺牲与过度承担"
+  - id: "APPROVAL_SEEKING"
+    name: "寻求认可与讨好耗竭"
+  - id: "NEGATIVITY_PESSIMISM"
+    name: "消极悲观与痛苦反刍"
+  - id: "EMOTIONAL_INHIBITION"
+    name: "情感抑制与过度防御"
+  - id: "PUNITIVENESS"
+    name: "惩罚倾向与严苛自责"
+  - id: "ENTITLEMENT_GRANDIOSITY"
+    name: "特权感与自大代偿"
+  - id: "INSUFFICIENT_SELF_CONTROL"
+    name: "自律不足与冲动耐受差"
+  - id: "CONDITIONAL_WORTH"
+    name: "条件化自我价值 (要够好才配被爱)"
+  - id: "REST_GUILT"
+    name: "休息愧疚感 (停下就是罪恶)"
+  - id: "FAILURE"
+    name: "失败图式 (注定比同辈落后)"
+
+schema_aliases:
+  PERFECTIONISM: "UNRELENTING_STANDARDS"
+  ENTITLEMENT: "ENTITLEMENT_GRANDIOSITY"
+
+# ------------------------------------------------------------------------------
+# 6. 萨提亚冰山底层核心渴望体系 (Satir Iceberg Core Yearnings - 5 Classes)
+# ------------------------------------------------------------------------------
+satir_yearnings:
+  - id: "SAFETY"
+    name: "安全感与秩序确定性"
+    description: "确信世界具备基本稳定性，自身具备承受波动的基石。"
+  - id: "ACCEPTANCE"
+    name: "被无条件接纳与包容"
+    description: "允许自己以本来的样子存在，不需通过过度证明换取许可。"
+  - id: "AUTONOMY"
+    name: "自主权、掌控感与呼吸空间"
+    description: "渴望由自己做主，拥有设立人际边界与停下喘息的合法权利。"
+  - id: "COMPETENCE"
+    name: "胜任感、自我价值与效能感"
+    description: "确认生命具备内在胜任力与价值，并非完全依附于外在考核。"
+  - id: "CONNECTION"
+    name: "真实深层的人际联结与被看见"
+    description: "渴望卸下面具后依然被温柔注视、深深理解与接纳。"
+
+yearning_aliases:
+  SAFETY_ORDER: "SAFETY"
+  COMPETENCE_VALUE: "COMPETENCE"
+  DEEP_CONNECTION: "CONNECTION"
+
+# ------------------------------------------------------------------------------
+# 7. 萨提亚沟通应对姿态 (Satir Coping Stances)
+# ------------------------------------------------------------------------------
+communication_stances:
+  - id: "PLACATING"
+    name: "讨好型"
+    description: "忽略自我价值，迎合他人，对人际冲突极度敏感恐惧。"
+  - id: "BLAMING"
+    name: "指责型"
+    description: "忽略他人感受，居高临下，用攻击防御脆弱自尊。"
+  - id: "SUPER_REASONABLE"
+    name: "超理智型"
+    description: "脱离情绪与躯体感知，仅依赖抽象逻辑与教条作为自卫盔甲。"
+  - id: "IRRELEVANT"
+    name: "打岔型"
+    description: "通过回避话题、开玩笑或频繁转移注意力逃避内在痛苦。"
+  - id: "CONGRUENT"
+    name: "一致型 (整合目标)"
+    description: "兼顾自我、他人与情境，真实坦诚、脚踏实地地表达内在需求。"
+
+# ------------------------------------------------------------------------------
+# 8. 60 份困扰档案与 11 大分类谱系 (11 Spectra & 60 Situations - Auto-Extracted)
+# ------------------------------------------------------------------------------
+distress_spectra:
+  - id: "01"
+    name_zh: "焦虑与惊恐谱系"
+    name_en: "Anxiety, Panic & Phobic Spectrum"
+    count: 7
+    items:
+      - id: "01_01"
+        code: "SIT-01-01"
+        name_zh: "广泛性焦虑障碍与慢性游离焦虑"
+        name_en: "Generalized Anxiety Disorder & Chronic Free-Floating Anxiety"
+        file: "01_01_GAD.md"
+      - id: "01_02"
+        code: "SIT-01-02"
+        name_zh: "惊恐发作与惊恐障碍"
+        name_en: "Panic Attack & Panic Disorder"
+        file: "01_02_Panic_Disorder.md"
+      - id: "01_03"
+        code: "SIT-01-03"
+        name_zh: "社交焦虑障碍与被审视恐惧"
+        name_en: "Social Anxiety Disorder / Social Phobia"
+        file: "01_03_Social_Anxiety.md"
+      - id: "01_04"
+        code: "SIT-01-04"
+        name_zh: "疾病焦虑与疑病困扰"
+        name_en: "Illness Anxiety / Health Anxiety & Cyberchondria"
+        file: "01_04_Illness_Anxiety.md"
+      - id: "01_05"
+        code: "SIT-01-05"
+        name_zh: "场所恐惧症与特定恐惧症"
+        name_en: "Agoraphobia & Specific Phobias"
+        file: "01_05_Agoraphobia_Specific_Phobia.md"
+      - id: "01_06"
+        code: "SIT-01-06"
+        name_zh: "成人分离焦虑与预期性灾难焦虑"
+        name_en: "Adult Separation Anxiety & Anticipatory Anxiety"
+        file: "01_06_Separation_Anticipatory_Anxiety.md"
+      - id: "01_07"
+        code: "SIT-01-07"
+        name_zh: "错失恐惧症与数字信息过载焦虑"
+        name_en: "FOMO & Doomscrolling / Digital Overload Anxiety"
+        file: "01_07_FOMO_Digital_Anxiety.md"
+  - id: "02"
+    name_zh: "抑郁与心境低落谱系"
+    name_en: "Depressive & Mood Spectrum"
+    count: 6
+    items:
+      - id: "02_01"
+        code: "SIT-02-01"
+        name_zh: "重性抑郁发作与深度情绪低落"
+        name_en: "Major Depressive Episode & Clinical Depression"
+        file: "02_01_MDD.md"
+      - id: "02_02"
+        code: "SIT-02-02"
+        name_zh: "持续性抑郁障碍（恶劣心境）与高功能“微笑型抑郁”"
+        name_en: "Persistent Depressive Disorder & High-Functioning / Smiling Depression"
+        file: "02_02_PDD_Smiling_Depression.md"
+      - id: "02_03"
+        code: "SIT-02-03"
+        name_zh: "快感缺失与情感麻木/解离性冷漠"
+        name_en: "Anhedonia & Emotional Blunting"
+        file: "02_03_Anhedonia_Emotional_Blunting.md"
+      - id: "02_04"
+        code: "SIT-02-04"
+        name_zh: "双相情感障碍与环性心境波动"
+        name_en: "Bipolar Spectrum & Cyclothymic Mood Swings"
+        file: "02_04_Bipolar_Cyclothymia.md"
+      - id: "02_05"
+        code: "SIT-02-05"
+        name_zh: "季节性情感障碍与节假日后心理落差"
+        name_en: "Seasonal Affective Disorder & Post-Event Blues"
+        file: "02_05_SAD.md"
+      - id: "02_06"
+        code: "SIT-02-06"
+        name_zh: "围产期与产后抑郁/焦虑困扰"
+        name_en: "Perinatal & Postpartum Mood and Anxiety Distress"
+        file: "02_06_Perinatal_Depression.md"
+  - id: "03"
+    name_zh: "强迫思维与反刍谱系"
+    name_en: "OCD & Rumination Spectrum"
+    count: 6
+    items:
+      - id: "03_01"
+        code: "SIT-03-01"
+        name_zh: "消极思维反刍与慢性精神内耗"
+        name_en: "Depressive/Anxious Rumination & Mental Friction"
+        file: "03_01_Rumination_Mental_Friction.md"
+      - id: "03_02"
+        code: "SIT-03-02"
+        name_zh: "强迫症与侵入性思维困扰"
+        name_en: "Obsessive-Compulsive Disorder & Intrusive Thoughts"
+        file: "03_02_OCD.md"
+      - id: "03_03"
+        code: "SIT-03-03"
+        name_zh: "关系强迫症与伴侣反复确认困扰"
+        name_en: "Relationship OCD / ROCD"
+        file: "03_03_ROCD.md"
+      - id: "03_04"
+        code: "SIT-03-04"
+        name_zh: "躯体变形障碍与重度容貌焦虑"
+        name_en: "Body Dysmorphic Disorder & Appearance Anxiety"
+        file: "03_04_BDD_Appearance_Anxiety.md"
+      - id: "03_05"
+        code: "SIT-03-05"
+        name_zh: "决策疲劳、选择瘫痪与过度分析"
+        name_en: "Decision Fatigue, Overthinking & Analysis Paralysis"
+        file: "03_05_Analysis_Paralysis.md"
+      - id: "03_06"
+        code: "SIT-03-06"
+        name_zh: "囤积障碍与控制型安全感依恋"
+        name_en: "Hoarding Disorder & Material/Digital Attachment"
+        file: "03_06_Hoarding_Distress.md"
+  - id: "04"
+    name_zh: "完美主义与自我苛责谱系"
+    name_en: "Perfectionism & Self-Criticism Spectrum"
+    count: 6
+    items:
+      - id: "04_01"
+        code: "SIT-04-01"
+        name_zh: "适应不良完美主义与全或无自我苛责"
+        name_en: "Clinical/Maladaptive Perfectionism & Unrelenting Standards"
+        file: "04_01_Maladaptive_Perfectionism.md"
+      - id: "04_02"
+        code: "SIT-04-02"
+        name_zh: "冒充者综合征与配得感缺失"
+        name_en: "Impostor Phenomenon & Unworthiness"
+        file: "04_02_Impostor_Syndrome.md"
+      - id: "04_03"
+        code: "SIT-04-03"
+        name_zh: "条件化自我价值（要够好才配被爱）与讨好型耗竭"
+        name_en: "Conditional Self-Worth & People-Pleasing / Fawning"
+        file: "04_03_Conditional_Worth_Fawning.md"
+      - id: "04_04"
+        code: "SIT-04-04"
+        name_zh: "休息羞耻感与“毒性效率”焦虑"
+        name_en: "Rest Guilt & Toxic Productivity"
+        file: "04_04_Rest_Guilt_Toxic_Productivity.md"
+      - id: "04_05"
+        code: "SIT-04-05"
+        name_zh: "毒性羞耻感与严苛内在父母批判"
+        name_en: "Toxic Shame & Punitive Inner Critic"
+        file: "04_05_Toxic_Shame_Inner_Critic.md"
+      - id: "04_06"
+        code: "SIT-04-06"
+        name_zh: "同辈压力、上行社会比较与年龄/里程碑焦虑"
+        name_en: "Upward Social Comparison & Milestone/Age Anxiety"
+        file: "04_06_Peer_Comparison_Envy.md"
+  - id: "05"
+    name_zh: "执行功能与倦怠耗竭谱系"
+    name_en: "Executive Dysfunction & Burnout Spectrum"
+    count: 5
+    items:
+      - id: "05_01"
+        code: "SIT-05-01"
+        name_zh: "情绪性拖延、任务启动冻结与习得性无助"
+        name_en: "Aversive Procrastination, Task Paralysis & Learned Helplessness"
+        file: "05_01_Emotional_Procrastination.md"
+      - id: "05_02"
+        code: "SIT-05-02"
+        name_zh: "职业倦怠与学业空心化耗竭"
+        name_en: "Occupational & Academic Burnout Syndrome"
+        file: "05_02_Burnout_Syndrome.md"
+      - id: "05_03"
+        code: "SIT-05-03"
+        name_zh: "报复性睡前拖延与自主权补偿"
+        name_en: "Revenge Bedtime Procrastination"
+        file: "05_03_Revenge_Bedtime_Procrastination.md"
+      - id: "05_04"
+        code: "SIT-05-04"
+        name_zh: "成人注意缺陷多动困扰与执行功能过载"
+        name_en: "Adult ADHD Spectrum & Executive Dysfunction"
+        file: "05_04_Adult_ADHD_Executive_Dysfunction.md"
+      - id: "05_05"
+        code: "SIT-05-05"
+        name_zh: "共情疲劳与长期照料者心理耗竭"
+        name_en: "Compassion Fatigue & Caregiver Burnout"
+        file: "05_05_Compassion_Fatigue_Caregiver_Burnout.md"
+  - id: "06"
+    name_zh: "创伤、应激与哀伤谱系"
+    name_en: "Trauma, Stress & Bereavement Spectrum"
+    count: 6
+    items:
+      - id: "06_01"
+        code: "SIT-06-01"
+        name_zh: "急性应激障碍与创伤后应激障碍"
+        name_en: "Acute Stress Disorder & PTSD"
+        file: "06_01_ASD_PTSD.md"
+      - id: "06_02"
+        code: "SIT-06-02"
+        name_zh: "复杂性创伤后应激障碍与童年情绪忽视"
+        name_en: "Complex PTSD & Childhood Emotional Neglect / CEN"
+        file: "06_02_CPTSD_Childhood_Trauma.md"
+      - id: "06_03"
+        code: "SIT-06-03"
+        name_zh: "适应障碍与人生转折失衡（失业/搬迁/毕业/分手）"
+        name_en: "Adjustment Disorder & Life Transition Crisis"
+        file: "06_03_Adjustment_Disorder.md"
+      - id: "06_04"
+        code: "SIT-06-04"
+        name_zh: "延长哀伤障碍与未完成丧失悲恸"
+        name_en: "Prolonged Grief Disorder & Bereavement"
+        file: "06_04_Prolonged_Grief_Disorder.md"
+      - id: "06_05"
+        code: "SIT-06-05"
+        name_zh: "解离状态与人格解体-现实解体障碍"
+        name_en: "Dissociative States & Depersonalization/Derealization Disorder"
+        file: "06_05_Dissociation_DPDR.md"
+      - id: "06_06"
+        code: "SIT-06-06"
+        name_zh: "替代性创伤与道德伤害困扰"
+        name_en: "Vicarious Traumatization & Moral Injury"
+        file: "06_06_Vicarious_Moral_Injury.md"
+  - id: "07"
+    name_zh: "依恋与亲密关系谱系"
+    name_en: "Attachment & Interpersonal Spectrum"
+    count: 6
+    items:
+      - id: "07_01"
+        code: "SIT-07-01"
+        name_zh: "焦虑迷恋型依恋与被抛弃恐惧图式"
+        name_en: "Anxious-Preoccupied Attachment & Fear of Abandonment"
+        file: "07_01_Anxious_Attachment_Abandonment.md"
+      - id: "07_02"
+        code: "SIT-07-02"
+        name_zh: "疏离回避型依恋与亲密窒息防御"
+        name_en: "Dismissive/Fearful-Avoidant Attachment & Intimacy Fear"
+        file: "07_02_Avoidant_Attachment_Intimacy_Fear.md"
+      - id: "07_03"
+        code: "SIT-07-03"
+        name_zh: "共生依赖（共同依赖）与人际边界丧失"
+        name_en: "Codependency & Enmeshed Boundaries"
+        file: "07_03_Codependency_Boundary_Loss.md"
+      - id: "07_04"
+        code: "SIT-07-04"
+        name_zh: "拒绝敏感性烦躁与人际微表情过度解读"
+        name_en: "Rejection Sensitive Dysphoria & Interpersonal Hypervigilance"
+        file: "07_04_RSD_Rejection_Sensitivity.md"
+      - id: "07_05"
+        code: "SIT-07-05"
+        name_zh: "慢性孤独感、社会联结断裂与都市疏离"
+        name_en: "Chronic Loneliness & Social Disconnection"
+        file: "07_05_Chronic_Loneliness_Isolation.md"
+      - id: "07_06"
+        code: "SIT-07-06"
+        name_zh: "隐性自恋虐待、煤气灯操纵与自我怀疑创伤"
+        name_en: "Gaslighting & Narcissistic Abuse Fallout"
+        file: "07_06_Gaslighting_Relational_Trauma.md"
+  - id: "08"
+    name_zh: "睡眠、躯体化与进食谱系"
+    name_en: "Sleep, Psychosomatic & Eating Spectrum"
+    count: 4
+    items:
+      - id: "08_01"
+        code: "SIT-08-01"
+        name_zh: "慢性失眠障碍与睡前认知-生理高唤醒"
+        name_en: "Chronic Insomnia Disorder & Pre-Sleep Hyperarousal"
+        file: "08_01_Chronic_Insomnia_Hyperarousal.md"
+      - id: "08_02"
+        code: "SIT-08-02"
+        name_zh: "躯体症状障碍与心理压力躯体化（肠易激/紧张性头痛/心因性疼痛）"
+        name_en: "Somatic Symptom Disorder & Psychosomatic Distress"
+        file: "08_02_Somatic_Symptom_Somatization.md"
+      - id: "08_03"
+        code: "SIT-08-03"
+        name_zh: "暴食障碍、情绪性进食与神经性贪食"
+        name_en: "Binge-Eating Disorder, Emotional Eating & Bulimia Nervosa"
+        file: "08_03_Binge_Eating_Bulimia.md"
+      - id: "08_04"
+        code: "SIT-08-04"
+        name_zh: "神经性厌食与过度限制性进食控制"
+        name_en: "Anorexia Nervosa & Orthorexia / Restrictive Control"
+        file: "08_04_Anorexia_Restrictive_Eating.md"
+  - id: "09"
+    name_zh: "情绪失调与人格脆弱谱系"
+    name_en: "Emotion Dysregulation & Personality Vulnerability Spectrum"
+    count: 5
+    items:
+      - id: "09_01"
+        code: "SIT-09-01"
+        name_zh: "边缘型情绪失调、分裂防御与情绪风暴"
+        name_en: "Borderline Emotion Dysregulation & Splitting"
+        file: "09_01_BPD_Emotion_Dysregulation.md"
+      - id: "09_02"
+        code: "SIT-09-02"
+        name_zh: "述情障碍（情感盲）与情绪压抑隔离"
+        name_en: "Alexithymia & Emotional Suppression"
+        file: "09_02_Alexithymia.md"
+      - id: "09_03"
+        code: "SIT-09-03"
+        name_zh: "慢性易激惹、被动攻击与间歇性暴怒障碍"
+        name_en: "Chronic Irritability, Passive-Aggression & Intermittent Explosive Disorder"
+        file: "09_03_Anger_Dysregulation_IED.md"
+      - id: "09_04"
+        code: "SIT-09-04"
+        name_zh: "脆弱型（隐性）自恋与羞耻驱动的自尊崩塌"
+        name_en: "Vulnerable Narcissism & Ego Threat Collapse"
+        file: "09_04_Vulnerable_Narcissism_Fragile_Ego.md"
+      - id: "09_05"
+        code: "SIT-09-05"
+        name_zh: "回避型与依赖型人格适应不良模式"
+        name_en: "Avoidant & Dependent Personality Vulnerability Patterns"
+        file: "09_05_Avoidant_Dependent_Patterns.md"
+  - id: "10"
+    name_zh: "成瘾、冲动控制与多巴胺代偿谱系"
+    name_en: "Addiction, Impulse Control & Dopamine Compensation Spectrum"
+    count: 5
+    items:
+      - id: "10_01"
+        code: "SIT-10-01"
+        name_zh: "短视频/算法信息流成瘾与多巴胺奖赏劫持"
+        name_en: "Algorithmic Feed Addiction & Dopamine Dysregulation"
+        file: "10_01_Digital_Short_Video_Addiction.md"
+      - id: "10_02"
+        code: "SIT-10-02"
+        name_zh: "游戏障碍与虚拟成就代偿性逃避"
+        name_en: "Internet Gaming Disorder & Compensatory Escapism"
+        file: "10_02_Gaming_Disorder_Escapism.md"
+      - id: "10_03"
+        code: "SIT-10-03"
+        name_zh: "强迫性购物与冲动消费情绪安抚"
+        name_en: "Compulsive Buying Behavior / Retail Therapy Addiction"
+        file: "10_03_Compulsive_Buying_Oniomania.md"
+      - id: "10_04"
+        code: "SIT-10-04"
+        name_zh: "酒精与成瘾物质依赖（“自我药疗”假说）"
+        name_en: "Substance Use Disorders & Self-Medication Hypothesis"
+        file: "10_04_Substance_Use_Self_Medication.md"
+      - id: "10_05"
+        code: "SIT-10-05"
+        name_zh: "聚焦于躯体的重复行为障碍（拔毛癖/强迫性抠皮/咬指甲）"
+        name_en: "Body-Focused Repetitive Behaviors: Trichotillomania & Excoriation"
+        file: "10_05_BFRB.md"
+  - id: "11"
+    name_zh: "存在主义与终极意义谱系"
+    name_en: "Existential & Ultimate Meaning Spectrum"
+    count: 4
+    items:
+      - id: "11_01"
+        code: "SIT-11-01"
+        name_zh: "存在性虚无、意义丧失与青年“空心病”"
+        name_en: "Existential Vacuum, Meaninglessness & 'Hollow-Heart Syndrome'"
+        file: "11_01_Existential_Vacuum_Hollow_Disease.md"
+      - id: "11_02"
+        code: "SIT-11-02"
+        name_zh: "青年四分之一人生危机与中年存在危机"
+        name_en: "Quarter-Life Crisis & Midlife Identity Transition"
+        file: "11_02_Quarter_Midlife_Crisis.md"
+      - id: "11_03"
+        code: "SIT-11-03"
+        name_zh: "死亡焦虑、时间流逝恐慌与存在性孤独"
+        name_en: "Death Anxiety / Thanatophobia & Existential Isolation"
+        file: "11_03_Death_Anxiety_Thanatophobia.md"
+      - id: "11_04"
+        code: "SIT-11-04"
+        name_zh: "宏观社会不确定性焦虑与未来失控感"
+        name_en: "Macro-Uncertainty Anxiety, Financial Insecurity & Eco-Anxiety"
+        file: "11_04_Eco_Macro_Uncertainty_Anxiety.md"
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# 8.1 临床禁忌症统一枚举体系 (Standardized Clinical Contraindications: 13 Enums)
+# ------------------------------------------------------------------------------
+contraindication_enums:
+  - id: "CRISIS_ACTIVE_RISK"
+    name: "急性自伤自杀危机风险"
+    detection_source: "CRISIS_DETECTOR"
+    description: "处于 L2 明确被动轻生或 L3 急性高危期，强制中断认知干预与自主微练习，优先安全调度与心理热线承接。"
+  - id: "RED_FLAG_PSYCHOSIS"
+    name: "精神病性症状与现实检验力丧失"
+    detection_source: "RED_FLAG_DETECTOR / USER_PROFILE_DISCLOSURE"
+    description: "存在活动性幻觉、妄想或现实解构，严禁进行可能加重思维松散的深度重构或自由联想。"
+  - id: "RED_FLAG_MANIA"
+    name: "双相情感障碍躁狂/轻躁狂期"
+    detection_source: "RED_FLAG_DETECTOR (SIT-02-04) / USER_PROFILE_DISCLOSURE"
+    description: "处于双相转躁或高激惹期，严禁行为激活 (BA) 与高刺激任务推进，优先作息生物节律稳态。"
+  - id: "RED_FLAG_PTSD_FLASHBACK"
+    name: "创伤后应激急性闪回与再创伤风险"
+    detection_source: "RED_FLAG_DETECTOR (SIT-06-01) / USER_PROFILE_DISCLOSURE"
+    description: "处于侵入性闪回或高反应惊恐期，严禁无督导的暴露练习、梦魇预演 (IRT) 或创伤叙事书写。"
+  - id: "RED_FLAG_DISSOCIATION"
+    name: "急性严重解离与人格解体"
+    detection_source: "RED_FLAG_DETECTOR (SIT-06-05) / PERCEPTION_AROUSAL"
+    description: "前额叶情绪刹车死锁或背侧迷走冻结，严禁抽象反思，仅放行轻柔感官外感受着陆。"
+  - id: "RED_FLAG_ANOREXIA"
+    name: "神经性厌食与重度限制性进食"
+    detection_source: "RED_FLAG_DETECTOR (SIT-08-04) / USER_PROFILE_DISCLOSURE"
+    description: "全因死亡率最高病种，严禁自主过度控制训练 (RO-DBT)，严禁冷水浸面 TIPP，优先医疗转介。"
+  - id: "RED_FLAG_BPD_NSSI"
+    name: "边缘型情绪失调伴活动性自伤冲动"
+    detection_source: "RED_FLAG_DETECTOR (SIT-09-01) / USER_PROFILE_DISCLOSURE"
+    description: "伴随高频冲动性自伤自毁风险，禁用冷水刺激，仅提供节奏呼吸与安全在场承接。"
+  - id: "RED_FLAG_SUBSTANCE_WITHDRAWAL"
+    name: "成瘾物质急性戒断风险"
+    detection_source: "RED_FLAG_DETECTOR (SIT-10-04) / USER_PROFILE_DISCLOSURE"
+    description: "涉及中枢神经生理依赖与震颤谵妄等致命风险，严禁自行断药/断酒，强制转介成瘾医学科。"
+  - id: "ACUTE_AROUSAL_OVERLOAD"
+    name: "急性交感神经过载与惊恐风暴"
+    detection_source: "PERCEPTION_AROUSAL (Arousal >= 0.85)"
+    description: "生理过度唤醒或过度通气，前额叶认知加工功能死锁，阻断复杂认知辨析，仅放行呼吸/躯体稳定化。"
+  - id: "TOXIC_SHAME_SPIRAL"
+    name: "毒性羞耻螺旋与严苛自我攻击"
+    detection_source: "PERCEPTION_SCHEMA (DEFECTIVENESS + 强烈自责)"
+    description: "深陷缺陷与自贬螺旋，严禁强推自省三问 (内观添麻烦第3问) 或积极心理强行赋能，改用自我关怀或纯倾听。"
+  - id: "ACUTE_BEREAVEMENT_SHOCK"
+    name: "急性丧亲与丧失剧烈震荡期"
+    detection_source: "DISTRESS_TRACKER (SIT-06-04 丧亲初期)"
+    description: "处于丧失初期剧烈悲恸期，遵从 COLBO-06 纯陪伴守护基线 (m0)，严禁主动推送哀伤重构练习。"
+  - id: "CARDIORESPIRATORY_INSTABILITY"
+    name: "严重心血管/呼吸系统不稳定性"
+    detection_source: "USER_PROFILE_DISCLOSURE (用户自述病史)"
+    description: "严重哮喘、严重心律失常或心脏起搏器不稳定，需避免剧烈屏气呼吸或冷水迷走神经刺激。"
+  - id: "INTERPERSONAL_SAFETY_HAZARD"
+    name: "活动性家庭暴力或人身安全险境"
+    detection_source: "CRISIS_DETECTOR / USER_PROFILE_DISCLOSURE"
+    description: "处于暴力或虐待现实威胁中，严禁进行单方面人际去威胁肯定或包容练习，优先人身安全救助。"
+
+# 9. 75 种临床干预方法的三级安全分类 (Clinical Methods Safety Tiers: 32 / 26 / 17)
+# ------------------------------------------------------------------------------
+method_safety_tiers:
+  grade_A:
+    definition: "可由用户在无督导下进行自主微练习 (Self-Help Micro-Practices)"
+    action_type: "AUTONOMOUS_PRACTICE"
+    count: 32
+    methods:
+      - id: "01"
+        name_zh: "传统认知行为疗法"
+        name_en: "Cognitive Behavioral Therapy, CBT"
+        file: "01_CBT_Cognitive_Behavioral_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "识别并检验负性自动化思维，重建现实平衡认知。"
+        core_action_steps:
+          - "捕捉当下引发负性情绪的自动化想法 (NAT)"
+          - "列举支持与反对该想法的客观事实依据"
+          - "形成兼顾事实的替代性理性认知陈述"
+        contraindications:
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "02"
+        name_zh: "理性情绪行为疗法"
+        name_en: "Rational Emotive Behavior Therapy, REBT"
+        file: "02_REBT_Rational_Emotive_Behavior_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "辨析绝对化要求等非理性信念，建立弹性愿望信念。"
+        core_action_steps:
+          - "锁定诱发挫败事件 (A) 与核心非理性信念 (B，如‘必须/应该’)"
+          - "辨析绝对化要求的逻辑荒谬性与有害后果 (C)"
+          - "将‘我必须做到’重塑为‘我希望做到，但即便没做到也不代表我彻底失败’ (D)"
+        contraindications:
+          - "RED_FLAG_MANIA"
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "03"
+        name_zh: "行为激活疗法"
+        name_en: "Behavioral Activation, BA"
+        file: "03_BA_Behavioral_Activation.md"
+        evidence_level: "Level II"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "打破回避与抑郁恶性循环，通过微小奖赏行为激活多巴胺回路。"
+        core_action_steps:
+          - "拆解一项 2 分钟内可完成且具胜任感的微小行动 (如擦拭工位/接一杯温水)"
+          - "设定即刻执行触发点，带着阻抗直接启动行动"
+          - "行动后记录 0-10 分胜任感与微小积极感受"
+        contraindications:
+          - "RED_FLAG_MANIA"
+          - "RED_FLAG_ANOREXIA"
+      - id: "06"
+        name_zh: "失眠认知行为疗法"
+        name_en: "Cognitive Behavioral Therapy for Insomnia, CBT-I"
+        file: "06_CBT_I_Insomnia_Cognitive_Behavioral_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "重塑床与睡眠的强刺激控制联结，消除睡前焦虑与代偿性补觉。"
+        core_action_steps:
+          - "建立刺激控制规则：在床上清醒超过 20 分钟即温和离开床面"
+          - "睡前半小时执行无屏幕刺激隔离与昏暗光线过渡"
+          - "实行日间‘担忧倾泻本’，切断睡前反刍回路"
+        contraindications:
+          - "RED_FLAG_MANIA"
+      - id: "07"
+        name_zh: "问题解决疗法"
+        name_en: "Problem-Solving Therapy, PST"
+        file: "07_PST_Problem_Solving_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "将弥散失控感转化为结构化聚焦问题，提升自我效能感。"
+        core_action_steps:
+          - "将模糊情绪化抱怨改写为 1 句具体可界定的现实问题"
+          - "列出 3 个不受评判的微小可行应对方案"
+          - "选定阻力最小方案并锁定未来 1 小时内的第一步"
+        contraindications:
+          - "ACUTE_AROUSAL_OVERLOAD"
+      - id: "08"
+        name_zh: "情绪障碍跨诊断统一方案"
+        name_en: "Unified Protocol for Transdiagnostic Treatment of Emotional Disorders, UP"
+        file: "08_UP_Unified_Protocol_Transdiagnostic.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "觉察负性情绪躯体反应，耐受不适并纠正情绪驱动行为。"
+        core_action_steps:
+          - "觉察当前情绪引发的心跳、呼吸与肌肉线索"
+          - "识别下意识的情绪驱动回避行为 (EDB)"
+          - "反向实践：采取与冲动相反的微小开放举动"
+        contraindications:
+          - "RED_FLAG_DISSOCIATION"
+      - id: "10"
+        name_zh: "习惯逆转训练与权变管理"
+        name_en: "Habit Reversal Training & Contingency Management, HRT / CM"
+        file: "10_HRT_Habit_Reversal_and_Contingency_Management.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "增强冲动前驱躯体感知，以物理竞争反应阻断强迫性习惯循环。"
+        core_action_steps:
+          - "捕捉无意识习惯动作（咬指甲/刷手机/拔发）触发前的躯体微冲动"
+          - "立刻启动持续 1 分钟的物理竞争动作（如紧攥拳头或双手平贴大腿）"
+          - "成功阻断后给自己一次积极确认"
+        contraindications:
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "11"
+        name_zh: "接纳承诺疗法"
+        name_en: "Acceptance and Commitment Therapy, ACT"
+        file: "11_ACT_Acceptance_and_Commitment_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "通过认知解离与接纳打破思维纠缠，投身价值承诺行动。"
+        core_action_steps:
+          - "认知解离：在负性想法前加上‘我注意到我正在产生……的念头’"
+          - "躯体接纳：为胸口或胃部的不适张力呼吸腾出容许空间"
+          - "价值锚定：问自己‘即使难受，当下什么对我真正重要’并走出一小步"
+        contraindications:
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "12"
+        name_zh: "辩证行为疗法"
+        name_en: "Dialectical Behavior Therapy, DBT"
+        file: "12_DBT_Dialectical_Behavior_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "痛苦耐受与情绪调节，通过生理重置与技巧化止损缓解危机。"
+        sub_actions:
+          - "12:tipp_breathing"
+          - "12:tipp_cold_water"
+        core_action_steps:
+          - "使用 STOP 技巧：停住行动、退后一步、客观观察、明智前行"
+          - "启动呼气显著长于吸气的节奏呼吸重置交感神经"
+          - "寻找当前可投入的感官自我安抚线索"
+        contraindications: []
+      - id: "13"
+        name_zh: "彻底开放辩证行为疗法"
+        name_en: "Radically Open Dialectical Behavior Therapy, RO-DBT"
+        file: "13_RO_DBT_Radically_Open_DBT.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "针对过度控制与完美紧绷人格，培育社交联结与自我探问。"
+        core_action_steps:
+          - "觉察身体防御姿势，做一次半微笑与肩膀下沉敞开"
+          - "启动边缘探问：‘这件事上有什么是我不知道或可能犯错的？’"
+          - "尝试向外界发送一个友善接纳的微小社交信号"
+        contraindications:
+          - "RED_FLAG_ANOREXIA"
+          - "RED_FLAG_BPD_NSSI"
+      - id: "14"
+        name_zh: "正念认知疗法"
+        name_en: "Mindfulness-Based Cognitive Therapy, MBCT"
+        file: "14_MBCT_Mindfulness_Based_Cognitive_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "三分钟呼吸空间技术，阻断抑郁反刍自动导航模式。"
+        core_action_steps:
+          - "第一分钟：觉知当下身心感受与念头，允许其存在"
+          - "第二分钟：将全部注意力收敛于腹部呼吸的起伏接触感"
+          - "第三分钟：将注意觉知扩展至整个身体轮廓与所处空间"
+        contraindications:
+          - "RED_FLAG_PTSD_FLASHBACK"
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "15"
+        name_zh: "正念减压疗法"
+        name_en: "Mindfulness-Based Stress Reduction, MBSR"
+        file: "15_MBSR_Mindfulness_Based_Stress_Reduction.md"
+        evidence_level: "Level I"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "微型身体扫描与感官锚定，脱离应对压力的战斗或逃跑循环。"
+        core_action_steps:
+          - "将注意力引导至双脚踩在地面或臀部接触椅面的重力实感"
+          - "由下至上快速扫描紧绷区域（下颌、肩膀、手心），不作评判"
+          - "跟随一次长呼吸，在呼气时观想紧绷随浊气消散"
+        contraindications:
+          - "RED_FLAG_PTSD_FLASHBACK"
+      - id: "16"
+        name_zh: "元认知疗法"
+        name_en: "Metacognitive Therapy, MCT"
+        file: "16_MCT_Metacognitive_Therapy.md"
+        evidence_level: "Level I"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "超然注意阻断认知注意综合征 (CAS)，修正对担忧与反刍的信念。"
+        core_action_steps:
+          - "超然注意 (Detached Mindfulness)：把担忧念头当成脑海中漂浮的云朵"
+          - "停止与担忧思维辩论、分析或强行压抑"
+          - "启动担忧推迟：将该议题移入设定的日常担忧时段处理"
+        contraindications:
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "17"
+        name_zh: "慈悲聚焦疗法"
+        name_en: "Compassion-Focused Therapy, CFT"
+        file: "17_CFT_Compassion_Focused_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "激活副交感舒缓抚慰系统，化解自我批评与内部威胁感。"
+        core_action_steps:
+          - "右手温和轻覆于左侧心口，感受体温的传导与起伏"
+          - "配合平缓节律呼吸，吸入包容，呼出苛责"
+          - "对内向自己传递一句完全理解脆弱的慈悲回应"
+        contraindications:
+          - "TOXIC_SHAME_SPIRAL"
+      - id: "18"
+        name_zh: "正念自我关怀疗法"
+        name_en: "Mindful Self-Compassion, MSC"
+        file: "18_MSC_Mindful_Self_Compassion.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "通过正念、共通人性与自我友善三核心化解耻感与孤立感。"
+        core_action_steps:
+          - "正念觉察：“这是一个艰难痛苦的时刻”"
+          - "共通人性：“痛苦挣扎是人生中共通的经历，我并非异常或孤独一人”"
+          - "自我友善：“愿在此刻我能像对待挚友一样对自己温柔以待”"
+        contraindications:
+          - "TOXIC_SHAME_SPIRAL"
+      - id: "28"
+        name_zh: "生理性叹息与自主神经躯体调节法"
+        name_en: "Physiological Sigh & Autonomic Somatic Regulation"
+        file: "28_Polyvagal_and_Autonomic_Somatic_Regulation.md"
+        evidence_level: "Level III"
+        duration_minutes: 2
+        stealth_workplace_compatible: true
+        clinical_rationale: "利用双吸一长呼生理性叹息重胀肺泡并快速刺激迷走神经降唤醒。"
+        core_action_steps:
+          - "两次连续深鼻吸气（一次大吸气加一次快速补吸至肺部完全充盈）"
+          - "通过微张的嘴部极其缓慢、悠长、彻底地呼尽所有气体"
+          - "连续重复 2-3 次，配合视线缓慢环视周围确认现实安全"
+        contraindications:
+          - "CARDIORESPIRATORY_INSTABILITY"
+          - "ACUTE_AROUSAL_OVERLOAD"
+      - id: "29"
+        name_zh: "渐进性肌肉放松与自律训练法"
+        name_en: "Progressive Muscle Relaxation & Autogenic Training, PMR / AT"
+        file: "29_PMR_and_Autogenic_Training.md"
+        evidence_level: "Level II"
+        duration_minutes: 4
+        stealth_workplace_compatible: false
+        clinical_rationale: "利用肌纤维先主动收紧后骤然释放的神经反馈诱导深层躯体松弛。"
+        core_action_steps:
+          - "全力收紧双拳并耸肩持续 5-7 秒，清晰体验躯体紧绷张力"
+          - "突然彻底卸力释放，全神贯注体验 15 秒肌肉松弛下沉发热感"
+          - "默念自律导语：“我的双肩沉重下沉，周身宁静安详”"
+        contraindications:
+          - "CARDIORESPIRATORY_INSTABILITY"
+      - id: "30"
+        name_zh: "心理急救与自我安全自检模型"
+        name_en: "Psychological First Aid & Self-Care Assessment, PFA"
+        file: "30_PFA_Psychological_First_Aid_and_Crisis_Intervention.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "危机后首要保障生理安全感与尊严，盘点即时需求并建立现实锚点。"
+        sub_actions:
+          - "30:grounding"
+        core_action_steps:
+          - "环视确认所处物理空间当下安全无急性现实威胁"
+          - "盘点即时身心基线：是否需要喝水、进食、添衣或暂离高压环境"
+          - "定位 1 位可信任亲友或社会支持号码备用"
+        contraindications:
+          - "CRISIS_ACTIVE_RISK"
+      - id: "42"
+        name_zh: "意义疗法"
+        name_en: "Logotherapy"
+        file: "42_Logotherapy_Viktor_Frankl.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "在受苦中追寻内在意义与态度自由，化解存在性虚无。"
+        core_action_steps:
+          - "扭转追问：从“生活对我做了什么”转为“当下情境需要我展现何种态度”"
+          - "寻找微光：在这段艰难经历中，哪怕最小的一点值得守护的人事物是什么"
+          - "确立当下能完全由自主选择的态度自由"
+        contraindications:
+          - "ACUTE_BEREAVEMENT_SHOCK"
+          - "CRISIS_ACTIVE_RISK"
+      - id: "44"
+        name_zh: "聚焦取向心理治疗"
+        name_en: "Focusing-Oriented Psychotherapy, FOT"
+        file: "44_Focusing_Oriented_Psychotherapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "倾听边缘躯体感应 (Felt Sense)，引导身心体验的自然转变。"
+        core_action_steps:
+          - "清理内在空间：将注意力移入胸腔与腹部，感知对这件事的整体躯体感受"
+          - "寻找把手词 (Handle)：为该模糊感受匹配一个词汇、意象或姿态"
+          - "核对检验并等待身体产生的轻微释怀与微小松动感 (Felt Shift)"
+        contraindications:
+          - "RED_FLAG_DISSOCIATION"
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "46"
+        name_zh: "动机式访谈与自我决策平衡"
+        name_en: "Motivational Interviewing & Self-Decisional Balance, MI"
+        file: "46_MI_Motivational_Interviewing.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "探索矛盾心态，通过自我决策平衡激发内部改变动机。"
+        core_action_steps:
+          - "列举维持当前习惯/状态的即时好处与潜在代价"
+          - "列举做出改变可能带来的核心价值获益与面临的阻力"
+          - "基于两方权衡，提炼出一句发自内心的自主改变渴望"
+        contraindications:
+          - "RED_FLAG_MANIA"
+      - id: "55"
+        name_zh: "焦点解决短程治疗"
+        name_en: "Solution-Focused Brief Therapy, SFBT"
+        file: "55_SFBT_Solution_Focused_Brief_Therapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "聚焦例外情境与微小成功，唤醒用户固有的应对资源与解决力。"
+        core_action_steps:
+          - "奇迹微信号想象：若今夜问题被解决，明天醒来最初的微小不同是什么"
+          - "寻找例外经验：过去什么时候类似困扰曾稍微轻一点，当时做了什么"
+          - "将那个曾经起效的微小举措立刻复制到今天"
+        contraindications:
+          - "RED_FLAG_PTSD_FLASHBACK"
+      - id: "57"
+        name_zh: "积极心理治疗与幸福感疗法"
+        name_en: "Positive Psychotherapy & Well-Being Therapy, PPT / WBT"
+        file: "57_PPT_Positive_Psychotherapy_and_Well_Being_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "盘点积极体验与品格优势，构建抵御逆境的心理缓冲资本。"
+        core_action_steps:
+          - "记录过去 24 小时内发生的 3 件微小具体好事"
+          - "回溯每件好事背后自己的微小付出或外界的善意互动"
+          - "沉浸回味当下由衷升起的充盈与感恩感受"
+        contraindications:
+          - "CRISIS_ACTIVE_RISK"
+          - "TOXIC_SHAME_SPIRAL"
+      - id: "61"
+        name_zh: "森田疗法"
+        name_en: "Morita Therapy"
+        file: "61_Morita_Therapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "顺应自然接纳情绪波动，为所当为投身当下现实生活任务。"
+        core_action_steps:
+          - "顺应自然：对升起的不安、杂念或情绪不抗拒、不辩解，任其流淌"
+          - "聚焦目标：明确此时此刻自己原本计划进行的生活/工作事项"
+          - "为所当为：带着未消除的不适感，立刻着手推进手头现实事务"
+        contraindications:
+          - "ACUTE_AROUSAL_OVERLOAD"
+      - id: "62"
+        name_zh: "内观疗法"
+        name_en: "Naikan Therapy"
+        file: "62_Naikan_Therapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "检视具体人际互动，打破自我中心偏见，培育深层感激。"
+        core_action_steps:
+          - "选定一位重要关系人，回顾其最近为自己提供的实质照料与帮助"
+          - "检视自己为其所做的回馈与支持"
+          - "客观审视自己给对方增添的麻烦与困扰，培育现实检验力"
+        contraindications:
+          - "TOXIC_SHAME_SPIRAL"
+          - "INTERPERSONAL_SAFETY_HAZARD"
+      - id: "65"
+        name_zh: "表达性书写疗法"
+        name_en: "Expressive Writing Paradigm"
+        file: "65_Expressive_Writing_Pennebaker.md"
+        evidence_level: "Level III"
+        duration_minutes: 5
+        stealth_workplace_compatible: false
+        clinical_rationale: "将压抑创伤体验转化为连贯叙事，促进前额叶情绪整合与宣泄。"
+        core_action_steps:
+          - "设定 5 分钟定时，无拘无束倾泻书写当下最触动的情绪体验"
+          - "不修改语法，直接外化命名最深层的恐惧、悲伤或愤怒"
+          - "书写结束后做一次深呼吸，自主选择保留或安全撕碎文字"
+        contraindications:
+          - "RED_FLAG_PTSD_FLASHBACK"
+      - id: "66"
+        name_zh: "意象预演疗法与梦魇改写技术"
+        name_en: "Imagery Rehearsal Therapy, IRT"
+        file: "66_IRT_Imagery_Rehearsal_Therapy_for_Nightmares.md"
+        evidence_level: "Level III"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "在清醒状态下改写创伤性意象或噩梦结局，重获心理控制感。"
+        core_action_steps:
+          - "温和唤起困扰意象的轮廓，注意保持身体安全着陆感"
+          - "自主构思并书写一个充满安全感、掌控感或积极意涵的新结局"
+          - "闭目在脑海中生动预演改写后的新意象 3 次"
+        contraindications:
+          - "RED_FLAG_PTSD_FLASHBACK"
+          - "RED_FLAG_PSYCHOSIS"
+      - id: "69"
+        name_zh: "单次结构化心理微干预与成长型思维赋能"
+        name_en: "Single-Session Interventions, SSI"
+        file: "69_SSI_Single_Session_and_Growth_Mindset_Intervention.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "传递神经可塑性循证知识，瓦解特质固定论，赋予即刻改变希望。"
+        core_action_steps:
+          - "认识到神经可塑性：大脑应对挑战的神经回路如同肌肉，越练越强韧"
+          - "将‘我做不到’改写为‘我暂时还没有掌握应对该情境的方法’"
+          - "设计一个未来 24 小时内检验成长可能性的极简行动实验"
+        contraindications:
+          - "CRISIS_ACTIVE_RISK"
+      - id: "70"
+        name_zh: "生物反馈与心率变异性共振呼吸神经调节疗法"
+        name_en: "Biofeedback & HRV Coherence Training"
+        file: "70_Biofeedback_and_HRV_Neuroregulation_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "通过每分钟 6 次共振频率呼吸恢复自主神经稳态，增加心率变异性。"
+        core_action_steps:
+          - "保持脊柱直立自然放松，采用平稳腹式呼吸"
+          - "吸气持续 4 秒，呼气持续 6 秒（每分钟约 6 次呼吸循环）"
+          - "观想气体如同潮汐穿透心脏区域，带动周身平稳共振"
+        contraindications:
+          - "CARDIORESPIRATORY_INSTABILITY"
+      - id: "72"
+        name_zh: "意义重构哀伤疗法"
+        name_en: "Meaning Reconstruction in Bereavement"
+        file: "72_Meaning_Reconstruction_Grief_Therapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 4
+        stealth_workplace_compatible: true
+        clinical_rationale: "与逝者或丧失客体建立持续性内在纽带，在生活中重塑意义。"
+        core_action_steps:
+          - "辨识所丧失的人事物在自己身上留下的独特积极品质与精神印记"
+          - "在心底或纸上向其传递一封温和未竟之愿的简短寄语"
+          - "确立将这份爱与记忆转化为现实生活向光力量的仪式化方式"
+        contraindications:
+          - "ACUTE_BEREAVEMENT_SHOCK"
+      - id: "74"
+        name_zh: "亲子互动去威胁肯定疗法"
+        name_en: "Parent-Child Interaction Affirmation Skills, PCIT"
+        file: "74_PCIT_Parent_Child_Interaction_Therapy.md"
+        evidence_level: "Level III"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "运用 PRIDE 去威胁肯定技术，建立温暖依恋连接与正向沟通模式。"
+        core_action_steps:
+          - "练习赞美 (Praise)：对重要他人或自我具体正面行为进行无条件确认"
+          - "练习重述 (Reflect)：以温和语调原样镜像复述对方表达的情绪与话语"
+          - "练习描述 (Describe)：客观描述互动细节，不带评价、指责与要求"
+        contraindications:
+          - "INTERPERSONAL_SAFETY_HAZARD"
+      - id: "75"
+        name_zh: "情绪调节疗法"
+        name_en: "Emotion Regulation Therapy, ERT"
+        file: "75_ERT_Emotion_Regulation_Therapy.md"
+        evidence_level: "Level II"
+        duration_minutes: 3
+        stealth_workplace_compatible: true
+        clinical_rationale: "化解对负面情绪的元认知威胁评估，提升注意力弹性与意向性行动。"
+        core_action_steps:
+          - "识别对情绪本身的负面评判（如‘我不该这么焦虑，这是软弱’）"
+          - "带着好奇心与心理留白观察情绪波浪的升起与回落"
+          - "不为消除情绪而战，将注意力转向符合当下价值导向的行动"
+        contraindications:
+          - "RED_FLAG_DISSOCIATION"
+  grade_B:
+    definition: "仅限心理健康科普、认知重塑与陪伴引导 (Psychoeducation & Cognitive Mapping)"
+    action_type: "PSYCHOEDUCATION_ONLY"
+    count: 26
+    methods:
+      - id: "09"
+        name_zh: "认知行为分析系统心理治疗"
+        name_en: "Cognitive Behavioral Analysis System of Psychotherapy, CBASP"
+        file: "09_CBASP_Cognitive_Behavioral_Analysis_System.md"
+      - id: "19"
+        name_zh: "图式疗法"
+        name_en: "Schema Therapy, ST"
+        file: "19_Schema_Therapy.md"
+      - id: "20"
+        name_zh: "功能分析心理治疗"
+        name_en: "Functional Analytic Psychotherapy, FAP"
+        file: "20_FAP_Functional_Analytic_Psychotherapy.md"
+      - id: "33"
+        name_zh: "心智化基础疗法"
+        name_en: "Mentalization-Based Treatment, MBT"
+        file: "33_MBT_Mentalization_Based_Treatment.md"
+      - id: "35"
+        name_zh: "客体关系与依恋取向心理治疗"
+        name_en: "Object Relations & Attachment-Based Psychotherapy"
+        file: "35_Object_Relations_and_Attachment_Based_Therapy.md"
+      - id: "36"
+        name_zh: "自体心理学治疗"
+        name_en: "Self Psychology - Heinz Kohut"
+        file: "36_Self_Psychology_Kohut.md"
+      - id: "37"
+        name_zh: "荣格分析心理学与自性化/积极想象技术"
+        name_en: "Jungian Analytical Psychology & Individuation / Active Imagination"
+        file: "37_Jungian_Analytical_Psychology.md"
+      - id: "38"
+        name_zh: "阿德勒个体心理学疗法"
+        name_en: "Adlerian Therapy / Individual Psychology"
+        file: "38_Adlerian_Individual_Psychology.md"
+      - id: "39"
+        name_zh: "以人为中心疗法 / 来访者中心疗法"
+        name_en: "Person-Centered Therapy, PCT / Client-Centered Therapy"
+        file: "39_PCT_Person_Centered_Therapy.md"
+      - id: "40"
+        name_zh: "情绪聚焦疗法"
+        name_en: "Emotion-Focused Therapy, EFT"
+        file: "40_EFT_Emotion_Focused_Therapy.md"
+      - id: "41"
+        name_zh: "存在主义心理治疗"
+        name_en: "Existential Psychotherapy"
+        file: "41_Existential_Psychotherapy.md"
+      - id: "43"
+        name_zh: "格式塔疗法 / 完形疗法"
+        name_en: "Gestalt Therapy"
+        file: "43_Gestalt_Therapy.md"
+      - id: "45"
+        name_zh: "加速体验动力学心理治疗"
+        name_en: "Accelerated Experiential Dynamic Psychotherapy, AEDP"
+        file: "45_AEDP_Accelerated_Experiential_Dynamic_Psychotherapy.md"
+      - id: "47"
+        name_zh: "内在家庭系统疗法"
+        name_en: "Internal Family Systems, IFS"
+        file: "47_IFS_Internal_Family_Systems.md"
+      - id: "48"
+        name_zh: "萨提亚转化式系统家庭治疗与冰山模型"
+        name_en: "Satir Transformational Systemic Therapy, STST"
+        file: "48_Satir_Transformational_Systemic_Therapy.md"
+      - id: "49"
+        name_zh: "人际心理治疗与人际社会节律疗法"
+        name_en: "Interpersonal Psychotherapy & Interpersonal and Social Rhythm Therapy, IPT / IPSRT"
+        file: "49_IPT_Interpersonal_Psychotherapy.md"
+      - id: "53"
+        name_zh: "戈特曼伴侣治疗法"
+        name_en: "Gottman Method Couples Therapy, GMCT"
+        file: "53_Gottman_Method_Couples_Therapy.md"
+      - id: "54"
+        name_zh: "交互分析疗法 / 沟通分析"
+        name_en: "Transactional Analysis, TA"
+        file: "54_TA_Transactional_Analysis.md"
+      - id: "56"
+        name_zh: "叙事疗法"
+        name_en: "Narrative Therapy"
+        file: "56_Narrative_Therapy.md"
+      - id: "58"
+        name_zh: "复杂性哀伤疗法与双程应对模型"
+        name_en: "Complicated Grief Therapy & Dual Process Model of Coping with Bereavement, CGT / DPM"
+        file: "58_CGT_Complicated_Grief_Therapy.md"
+      - id: "60"
+        name_zh: "一致性疗法与记忆再巩固技术"
+        name_en: "Coherence Therapy & Therapeutic Memory Reconsolidation"
+        file: "60_Coherence_Therapy_and_Memory_Reconsolidation.md"
+      - id: "63"
+        name_zh: "心理剧疗法"
+        name_en: "Psychodrama"
+        file: "63_Psychodrama_Moreno.md"
+      - id: "64"
+        name_zh: "沙盘游戏与表达性艺术治疗"
+        name_en: "Sandplay & Expressive Arts Therapy"
+        file: "64_Sandplay_and_Expressive_Arts_Therapy.md"
+      - id: "67"
+        name_zh: "亚隆人际团体心理治疗与11个疗效因子"
+        name_en: "Yalom's Interpersonal Group Psychotherapy"
+        file: "67_Yalom_Interpersonal_Group_Psychotherapy.md"
+      - id: "68"
+        name_zh: "哈科米正念躯体心理治疗"
+        name_en: "Hakomi Mindful Somatic Psychotherapy"
+        file: "68_Hakomi_Mindful_Somatic_Psychotherapy.md"
+      - id: "73"
+        name_zh: "疾病焦虑与躯体症状认知行为疗法"
+        name_en: "CBT for Health Anxiety & Somatic Symptoms"
+        file: "73_CBT_HA_Health_Anxiety_and_Somatic_Symptoms.md"
+  grade_C:
+    definition: "严禁自助尝试，必须提示专业医疗/心理门诊介入 (Professional Clinical Referral Only)"
+    action_type: "CLINICAL_REFERRAL_ONLY"
+    count: 17
+    methods:
+      - id: "04"
+        name_zh: "暴露与反应阻止疗法"
+        name_en: "Exposure and Response Prevention, ERP"
+        file: "04_ERP_Exposure_and_Response_Prevention.md"
+      - id: "05"
+        name_zh: "系统脱敏与分级暴露疗法"
+        name_en: "Systematic Desensitization, Graded Exposure & Interoceptive Exposure"
+        file: "05_Systematic_Desensitization_and_Exposure.md"
+      - id: "21"
+        name_zh: "眼动脱敏与再加工疗法"
+        name_en: "Eye Movement Desensitization and Reprocessing, EMDR"
+        file: "21_EMDR_Eye_Movement_Desensitization_Reprocessing.md"
+      - id: "22"
+        name_zh: "认知加工疗法"
+        name_en: "Cognitive Processing Therapy, CPT"
+        file: "22_CPT_Cognitive_Processing_Therapy.md"
+      - id: "23"
+        name_zh: "延长暴露疗法"
+        name_en: "Prolonged Exposure Therapy, PE"
+        file: "23_PE_Prolonged_Exposure_Therapy.md"
+      - id: "24"
+        name_zh: "躯体体验疗法"
+        name_en: "Somatic Experiencing, SE"
+        file: "24_SE_Somatic_Experiencing.md"
+      - id: "25"
+        name_zh: "感官运动心理治疗"
+        name_en: "Sensorimotor Psychotherapy, SP"
+        file: "25_SP_Sensorimotor_Psychotherapy.md"
+      - id: "26"
+        name_zh: "叙事暴露疗法"
+        name_en: "Narrative Exposure Therapy, NET"
+        file: "26_NET_Narrative_Exposure_Therapy.md"
+      - id: "27"
+        name_zh: "创伤聚焦认知行为疗法与意象重构"
+        name_en: "Trauma-Focused CBT & Imagery Rescripting, TF-CBT / ImRs"
+        file: "27_TF_CBT_Trauma_Focused_CBT.md"
+      - id: "31"
+        name_zh: "经典精神分析与自由联想/释梦/防御分析"
+        name_en: "Classical Psychoanalysis & Free Association / Dream Interpretation / Defense Analysis"
+        file: "31_Classical_Psychoanalysis_and_Free_Association.md"
+      - id: "32"
+        name_zh: "短程心理动力学心理治疗与时间限定动力治疗"
+        name_en: "Short-Term Psychodynamic Psychotherapy & Time-Limited Dynamic Psychotherapy, STPP / TLDP / ISTDP"
+        file: "32_STPP_Short_Term_Psychodynamic_Psychotherapy.md"
+      - id: "34"
+        name_zh: "移情焦点心理治疗"
+        name_en: "Transference-Focused Psychotherapy, TFP"
+        file: "34_TFP_Transference_Focused_Psychotherapy.md"
+      - id: "50"
+        name_zh: "鲍温家庭系统理论与自我分化治疗"
+        name_en: "Bowen Family Systems Therapy, BFST"
+        file: "50_Bowen_Family_Systems_Therapy.md"
+      - id: "51"
+        name_zh: "结构派与策略派家庭治疗"
+        name_en: "Structural & Strategic Family Therapy"
+        file: "51_Structural_and_Strategic_Family_Therapy.md"
+      - id: "52"
+        name_zh: "米兰系统派家庭治疗与循环提问"
+        name_en: "Milan Systemic Family Therapy & Circular Questioning"
+        file: "52_Milan_Systemic_Family_Therapy.md"
+      - id: "59"
+        name_zh: "进食障碍强化认知行为疗法"
+        name_en: "Enhanced Cognitive Behavior Therapy for Eating Disorders, CBT-E"
+        file: "59_CBT_E_Enhanced_CBT_for_Eating_Disorders.md"
+      - id: "71"
+        name_zh: "依恋取向家庭治疗"
+        name_en: "Attachment-Based Family Therapy, ABFT"
+        file: "71_ABFT_Attachment_Based_Family_Therapy.md"
+
+# ------------------------------------------------------------------------------
+# 9.1 临床子动作与微干预登记表 (Action Registry: Sub-actions & Standalone Practices)
+# ------------------------------------------------------------------------------
+action_registry:
+  - id: "12:tipp_breathing"
+    aliases:
+      - "DBT_TIPP_MODIFIED_BREATHING"
+    name_zh: "DBT TIPP 慢节奏呼吸稳定法"
+    name_en: "DBT TIPP Paced Breathing"
+    parent_method_id: "12"
+    action_type: "STABILIZATION"
+    duration_minutes: 2
+    stealth_workplace_compatible: true
+    clinical_rationale: "通过延长呼气时间（呼气长度为吸气 1.5-2 倍）强力刺激副交感迷走神经，迅速平抑前额叶认知过载。"
+    core_action_steps:
+      - "保持身体坐直，双肩自然下沉微垂"
+      - "用鼻子平缓吸气持续 4 秒"
+      - "微张嘴唇像吹灭蜡烛一样极其缓慢呼气持续 6-8 秒，重复 3-5 个循环"
+
+  - id: "12:tipp_cold_water"
+    aliases:
+      - "DBT_TIPP_COLD_WATER"
+    name_zh: "DBT TIPP 哺乳动物潜水反射（冷水浸面）"
+    name_en: "DBT TIPP Cold Water / Mammalian Dive Reflex"
+    parent_method_id: "12"
+    action_type: "STABILIZATION"
+    duration_minutes: 1
+    stealth_workplace_compatible: false
+    clinical_rationale: "利用冷水刺激三叉神经和眼眶周围迷走神经引发潜水反射，迅速骤降过高心率。"
+    core_action_steps:
+      - "在盆中盛放微凉冷水（10-15°C）"
+      - "深吸一口气，将面部上 1/3（尤其是眼周与额头）浸没入水中屏息 15-30 秒"
+      - "抬头用干毛巾擦拭，感知心跳瞬时放缓"
+    contraindications:
+      - "RED_FLAG_ANOREXIA"
+      - "RED_FLAG_BPD_NSSI"
+      - "CARDIORESPIRATORY_INSTABILITY"
+
+  - id: "30:grounding"
+    aliases:
+      - "GROUNDING_54321"
+    name_zh: "5-4-3-2-1 感官外感受着陆法"
+    name_en: "5-4-3-2-1 Sensory Grounding"
+    parent_method_id: "30"
+    action_type: "STABILIZATION"
+    duration_minutes: 2
+    stealth_workplace_compatible: true
+    clinical_rationale: "将认知注意从内部惊恐风暴或解离状态强行锚定到当前物理空间，重建神经生理在场感。"
+    core_action_steps:
+      - "环视周围，在心中默念并确认 5 件能看到的物品"
+      - "触摸身旁 4 种不同质感材质（桌面、衣袖、椅背、指尖）"
+      - "辨别并确认 3 种细微声音，识别 2 种气味，体会舌尖 1 种味道"
+
+  - id: "SAFE_PLACE_CONTAINER"
+    aliases:
+      - "SAFE_PLACE_IMAGERY"
+    name_zh: "安全岛与情绪保险箱意象锚定"
+    name_en: "Safe Place & Emotional Container Imagery"
+    parent_method_id: null
+    action_type: "STABILIZATION"
+    duration_minutes: 3
+    stealth_workplace_compatible: true
+    clinical_rationale: "为无法即刻处理的高侵入性创伤或压力线索建立心智边界容器，保障当下人身安全感。"
+    core_action_steps:
+      - "在心底构想一个绝对安全、宁静、坚不可摧的庇护空间（如海边木屋或安静森林）"
+      - "在空间内设立一个带有牢固密码锁的情绪保险箱"
+      - "将当下无法消化的困扰与刺痛记忆具象化打包放入箱内锁好，约定只有在专业督导下才开启"
+
+  - id: "CIRCADIAN_RHYTHM_STABILIZATION"
+    aliases: []
+    name_zh: "生物节律与昼夜作息稳态锚定"
+    name_en: "Circadian Rhythm & Social Rhythm Stabilization"
+    parent_method_id: null
+    action_type: "PSYCHOEDUCATION"
+    duration_minutes: 2
+    stealth_workplace_compatible: true
+    clinical_rationale: "稳定双相与重度情绪脆弱人群的光照、进食与起居节律，防范昼夜节律紊乱诱发躁狂或抑郁风暴。"
+    core_action_steps:
+      - "固定每日早晨起床与开窗接触自然光线的时刻（正负不超过 30 分钟）"
+      - "固定三餐进食时间，入睡前 2 小时调暗室内所有顶灯与屏幕亮度"
+      - "记录未来 24 小时的睡眠-苏醒基线锚点"
+
+  - id: "ENVIRONMENT_STIMULUS_REDUCTION"
+    aliases: []
+    name_zh: "环境高刺激隔离与感官减载"
+    name_en: "Environmental Stimulus Reduction & Sensory De-escalation"
+    parent_method_id: null
+    action_type: "STABILIZATION"
+    duration_minutes: 2
+    stealth_workplace_compatible: true
+    clinical_rationale: "双相转躁或高激惹期交感神经超敏，通过快速降低声光刺激抑制神经系统过度激越。"
+    core_action_steps:
+      - "佩戴降噪耳机或耳塞，暂时切断周围繁杂交谈与尖锐声响"
+      - "关闭刺眼强光顶灯，拉上遮光窗帘或移至光线柔和昏暗区域"
+      - "将手机置于勿扰模式，暂停一切社交争辩与重大决策讨论"
+
+  - id: "ENVIRONMENT_PHYSICAL_ANCHOR"
+    aliases:
+      - "SOMATIC_GROUNDING_TOUCH"
+    name_zh: "本体感觉与物理接触实体锚定"
+    name_en: "Proprioceptive Physical Body Anchor"
+    parent_method_id: null
+    action_type: "STABILIZATION"
+    duration_minutes: 1
+    stealth_workplace_compatible: true
+    clinical_rationale: "解离与现实解体期本体感觉迟钝，通过肌肉压力与重力感知将意识拉回肉身。"
+    core_action_steps:
+      - "将双脚平放地面，用力向下踩踏感受地板的坚实支撑与反作用力"
+      - "双手用力交叉环抱双臂或紧扣双手持续 5 秒，感受肢体边界"
+      - "用手掌轻抚胸口，感受每一次呼吸时胸膛起伏的起伏触感"
+
+  - id: "EMOTIONAL_HOLDING_PRESENCE"
+    aliases:
+      - "UNCONDITIONAL_PRESENCE"
+      - "GENTLE_PRESENCE"
+      - "DE_BLAME_EMOTIONAL_CONTAINMENT"
+    name_zh: "无评判去自责温暖在场守候"
+    name_en: "Non-Judgmental Emotional Holding & Validating Presence"
+    parent_method_id: null
+    action_type: "COMPANIONSHIP"
+    duration_minutes: 3
+    stealth_workplace_compatible: true
+    clinical_rationale: "在产后情绪波动、厌食低能量或自伤冲动期，阻断说教与追问，提供绝对安全接纳容器。"
+    core_action_steps:
+      - "完全冻结提问、分析、建议与行动要求"
+      - "输出温和去自责确证：“这不是你的错，更不代表你软弱或失败”"
+      - "静默在场守护，配合温和留白，确认此时此刻陪伴一直在线"
+
+  - id: "WITHDRAWAL_RISK_WARNING"
+    aliases: []
+    name_zh: "成瘾物质急性戒断风险安全警示"
+    name_en: "Substance Acute Withdrawal Risk Warning"
+    parent_method_id: null
+    action_type: "PSYCHOEDUCATION"
+    duration_minutes: 1
+    stealth_workplace_compatible: true
+    clinical_rationale: "明确告知酒精与精神活性物质骤停伴随癫痫与谵妄等生命危险，防范自行断药毒副反应。"
+    core_action_steps:
+      - "严肃提示中枢神经依赖药物与酒精自行骤断具有极高生理危险"
+      - "严禁未经医嘱自行停药、换药或暴饮暴戒"
+      - "敦促在亲友陪同下前往正规综合医院或成瘾医学专科门诊评估戒断综合征"
+
+  - id: "REFERRAL_CARD_PRESENTATION"
+    aliases: []
+    name_zh: "国家精神心理专科就医转介卡呈现"
+    name_en: "Specialized Clinical Referral Card Presentation"
+    parent_method_id: null
+    action_type: "REFERRAL"
+    duration_minutes: 1
+    stealth_workplace_compatible: true
+    clinical_rationale: "在触达 7 处临床红线时，向用户呈现不可篡改的专科医疗就诊指引与危机求助通道。"
+    core_action_steps:
+      - "呈现国家三甲精神心理专科医院或综合医院心理科就诊建议卡"
+      - "呈现属地 24 小时心理援助热线与当地紧急急救/治安电话"
+      - "温和建议将当下身心状态同步给身边可信赖的现实亲友"
+
+# ------------------------------------------------------------------------------
+# 9.2 临床红线禁用标签与方法映射矩阵 (Banned Tag to Method ID Mappings)
+# ------------------------------------------------------------------------------
+banned_tag_mappings:
+  RADICAL_COGNITIVE_DEBATE:
+    name: "激进认知辩论与逻辑对决"
+    description: "容易加重双相转躁期思维奔逸或激惹对抗的高强度前额叶辨析方法"
+    banned_method_ids:
+      - "01"
+      - "02"
+  DEEP_SCHEMA_EXCAVATION:
+    name: "深层早期图式挖掘与童年溯源"
+    description: "在围产期或高脆弱状态下容易诱发二次创伤与过度内疚的溯源探索"
+    banned_method_ids:
+      - "19"
+      - "47"
+      - "48"
+  HIGH_COGNITIVE_LOAD:
+    name: "高认知负荷结构化作业"
+    description: "对前额叶执行功能要求极高、易诱发耗竭自责的精细多步表格与分析方法"
+    banned_method_ids:
+      - "01"
+      - "07"
+      - "09"
+      - "16"
+  ABSTRACT_EXISTENTIAL_INQUIRY:
+    name: "抽象存在主义哲学辨析与形而上追问"
+    description: "在解离与现实检验力低谷期容易加剧去现实感、虚无沉溺的哲学反思"
+    banned_method_ids:
+      - "41"
+      - "42"
+  DIET_WEIGHT_MANAGEMENT:
+    name: "饮食热量与体重控制技巧"
+    description: "在神经性厌食与限制性进食状态下严禁强化的进食仪式与行为控制技术"
+    banned_method_ids:
+      - "13"
+      - "59"
+  TRAUMA_DETAIL_EXPLORATION:
+    name: "创伤细节深挖与高刺激暴露"
+    description: "在无现场专业心理师监护下严禁开展的高反应闪回诱发技术"
+    banned_method_ids:
+      - "04"
+      - "05"
+      - "21"
+      - "22"
+      - "23"
+      - "26"
+      - "27"
+      - "65"
+      - "66"
+  SELF_DETOX_GUIDANCE:
+    name: "自行停药/断酒戒断指导"
+    description: "涉及神经生理毒副反应与戒断综合征致命危险的非医疗指导"
+    banned_method_ids:
+      - "10"
+
+# ------------------------------------------------------------------------------
+# 9.3 子动作与父方法继承规则 (Sub-action & Parent Method Inheritance Rules)
+# ------------------------------------------------------------------------------
+inheritance_rules:
+  contraindication_isolation:
+    rule: "父级禁忌独立性原则 (Parent Contraindication Isolation)"
+    description: "父方法的 contraindications 仅作用于父方法自身的 core_action_steps（即以父方法整体形式输出时），子动作严格依据自身在 action_registry 中声明的 contraindications 进行独立过滤与阻断。"
+  parent_ban_penetration:
+    rule: "父级禁用向下穿透与显式白名单豁免 (Parent Ban Penetration with Explicit Whitelist Exemption)"
+    description: "当红线规则或临床黑名单禁用父方法 ID（如禁用 '12'）时，其下属所有子动作默认一并级联禁用；唯一的例外是：若红线病种的 allowed_actions 白名单中显式指定了该子动作（如 BPD 红线显式允许 DBT_TIPP_MODIFIED_BREATHING / 12:tipp_breathing），则该子动作破例获得豁免放行。"
+
+# ------------------------------------------------------------------------------
+# 9.4 动作候选池求解与红线优先公理 (Action Candidate Resolution & Red Flag Priority Axiom)
+# ------------------------------------------------------------------------------
+resolution_priority:
+  formula: "A_available = (C_candidates ∩ A_allowed) \\ B_banned \\ X_contraindicated"
+  description: "当前会话可用动作集合严格由候选池、红线允许白名单、禁用集与禁忌症四重掩码交差集运算求解。"
+  rules:
+    red_flag_closure:
+      rule: "红线封闭集公理 (Red Flag Allowed Actions as Closed Boundary)"
+      description: "对命中临床红线的用户而言，RedFlag.allowed_actions 构成了其实际允许交互的绝对封闭上限范围，banned_methods 仅作为第二道深度防御保险。未列入 allowed_actions 的动作（包括 S_explore 稳定化白名单中的常规方法）对红线用户一律不可见。"
+    alias_canonicalization:
+      rule: "别名标准归约前置原则 (Alias Canonicalization Pre-processing)"
+      description: "参与集合运算前，所有动作标识符（包括来自 allowed_actions、banned_methods、explore_stabilization_whitelist 及候选池的 ID 或别名）必须先经 action_registry 的别名映射表统一规约为标准 ID。例如 DBT_TIPP_MODIFIED_BREATHING 规约为 12:tipp_breathing，GROUNDING_54321 规约为 30:grounding，确保交差集运算准确匹配。"
+    empty_set_fallback:
+      rule: "空集保底降级与转介联动态 (Empty Set Graceful Fallback & Referral Binding)"
+      description: "若四重交差集求解结果为空集（A_available = ∅，如双相红线用户在 S_explore 高唤醒时），系统确定性降级为 EMOTIONAL_HOLDING_PRESENCE（纯陪伴基线 m0）；若当前命中临床红线，则并行追加呈现 REFERRAL_CARD_PRESENTATION（专科医疗就诊指引卡）。严禁报错、抛出异常或盲目回退至常规方法。"
+    action_type_dispatch:
+      rule: "动作类型多通道分发协议 (Action Type Multi-Channel Dispatch Protocol)"
+      description: "求解得到的动作按 action_type 分流处理：当输出为 32 种 A 级父方法整方法骨架时，默认按 MICRO_EXERCISE 处理；登记于 action_registry 的子动作则严格依据其声明的 action_type（STABILIZATION / COMPANIONSHIP / PSYCHOEDUCATION / REFERRAL）分流处理。MICRO_EXERCISE 与 STABILIZATION 装配为微练习跟练骨架；COMPANIONSHIP（纯陪伴 m0）渲染温和在场守护语料；PSYCHOEDUCATION 渲染生活作息稳态科普卡；REFERRAL 移交危机与属地卡片模块渲染专科就诊指引，严禁将转介卡或科普当成微练习指令下发。"
+    non_red_flag_default:
+      rule: "无红线默认全集 (Non-Red Flag Universal Set)"
+      description: "若用户未触发任何临床红线，A_allowed 默认退化为全集 Ω，系统仅受状态机准入白名单 (C_candidates)、通用黑名单 (B_banned) 与自身禁忌症 (X_contraindicated) 约束。"
+
+# ------------------------------------------------------------------------------
+# 10. 临床转诊红旗与能力绝对边界 (7 Mandatory Clinical Referral Red Flags)
+# ------------------------------------------------------------------------------
+clinical_red_flags:
+  mandatory_referral_disorders:
+    - code: "SIT-02-04"
+      name_zh: "双相情感障碍与环性心境波动"
+      file: "02_04_Bipolar_Cyclothymia.md"
+      policy: "仅提供情绪接纳与睡眠作息节律稳定陪伴，严禁任何可能激发转躁的高刺激激活技术，强制提示精神科专业诊疗。"
+      allowed_actions:
+        - "CIRCADIAN_RHYTHM_STABILIZATION"
+        - "ENVIRONMENT_STIMULUS_REDUCTION"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "03"
+        - "RADICAL_COGNITIVE_DEBATE"
+    - code: "SIT-02-06"
+      name_zh: "围产期与产后抑郁/焦虑困扰"
+      file: "02_06_Perinatal_Depression.md"
+      policy: "涉及母婴安全与产后激素骤变，触发温和守护流程，阻断深度探查，强制提示妇幼保健院产后心理专科。"
+      allowed_actions:
+        - "EMOTIONAL_HOLDING_PRESENCE"
+        - "CIRCADIAN_RHYTHM_STABILIZATION"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "DEEP_SCHEMA_EXCAVATION"
+        - "HIGH_COGNITIVE_LOAD"
+    - code: "SIT-06-01"
+      name_zh: "急性应激障碍与创伤后应激障碍 (PTSD)"
+      file: "06_01_ASD_PTSD.md"
+      policy: "严禁非专业监护下的创伤暴露与细节回溯，仅提供感官着陆与安全容器守候，引导创伤专科就诊。"
+      allowed_actions:
+        - "GROUNDING_54321"
+        - "SAFE_PLACE_CONTAINER"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "04"
+        - "05"
+        - "26"
+        - "27"
+        - "65"
+        - "66"
+    - code: "SIT-06-05"
+      name_zh: "解离状态与人格解体-现实解体障碍"
+      file: "06_05_Dissociation_DPDR.md"
+      policy: "解离发生时前额叶情绪刹车死锁，严禁进行抽象反思或认知辨析，仅允许轻柔感官着陆，强力提示精神专科。"
+      allowed_actions:
+        - "GROUNDING_54321"
+        - "ENVIRONMENT_PHYSICAL_ANCHOR"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "ABSTRACT_EXISTENTIAL_INQUIRY"
+        - "01"
+    - code: "SIT-08-04"
+      name_zh: "神经性厌食与过度限制性进食控制"
+      file: "08_04_Anorexia_Restrictive_Eating.md"
+      policy: "精神障碍中全因死亡率最高病种；严禁讨论体重与节食控制技巧，严禁冷水浸面 TIPP（防诱发心律失常），出现显著营养不良与躯体虚弱立即提示综合医院内科与精神科。"
+      allowed_actions:
+        - "EMOTIONAL_HOLDING_PRESENCE"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "12:tipp_cold_water"
+        - "13"
+        - "DIET_WEIGHT_MANAGEMENT"
+    - code: "SIT-09-01"
+      name_zh: "边缘型情绪失调伴非自杀性自伤倾向 (BPD with NSSI)"
+      file: "09_01_BPD_Emotion_Dysregulation.md"
+      policy: "伴随高频冲动性自伤自毁风险；提供无评判安全在场与 DBT TIPP 安全改良变体（仅节奏呼吸与渐进肌肉紧绷释放，显式禁用冷水刺激），绝不探查创伤细节，引导建立三方现实监护网。"
+      allowed_actions:
+        - "EMOTIONAL_HOLDING_PRESENCE"
+        - "DBT_TIPP_MODIFIED_BREATHING"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "12:tipp_cold_water"
+        - "TRAUMA_DETAIL_EXPLORATION"
+    - code: "SIT-10-04"
+      name_zh: "酒精与成瘾物质依赖 (自我药疗)"
+      file: "10_04_Substance_Use_Self_Medication.md"
+      policy: "涉及中枢神经化学依赖与躯体戒断综合征致命风险，严禁任何自行戒断指导，强制转介成瘾医学科。"
+      allowed_actions:
+        - "WITHDRAWAL_RISK_WARNING"
+        - "REFERRAL_CARD_PRESENTATION"
+      banned_methods:
+        - "SELF_DETOX_GUIDANCE"
+        - "10"
+
+# ------------------------------------------------------------------------------
+# 11. 四级危机分级与响应规程 (4-Level Crisis Classification: L0 - L3)
+# ------------------------------------------------------------------------------
+crisis_hierarchy:
+  L0:
+    name: "安全状态 (Safe / Subclinical)"
+    interval_type: "HALF_OPEN"
+    score_range: [0.0, 0.20]  # [0.0, 0.20)
+    description: "无自伤自杀意念，常规日常困扰与情绪波动。"
+    action: "正常流转状态机，提供倾听、共情与 A 级自主微方法。"
+  L1:
+    name: "隐晦厌世 / 存在性疲倦 (Implicit Weariness)"
+    interval_type: "HALF_OPEN"
+    score_range: [0.20, 0.50]  # [0.20, 0.50)
+    trigger_criteria: "提到‘活着好累’、‘毫无意义’、‘想彻底睡过去’等倦怠表述，但无自残自杀意念；排除中文口癖 (如‘累死了’、‘想死的心都有了’)。"
+    action: "严格不弹求助卡 (避免误报伤害用户信任)；状态机停留在 S_explore；提供深度情感包裹与安全基地守候；温和探询身心感受。"
+  L2:
+    name: "明确被动轻生念头 (Explicit Passive Ideation)"
+    interval_type: "HALF_OPEN"
+    score_range: [0.50, 0.80]  # [0.50, 0.80)
+    trigger_criteria: "明确表达想死、想结束生命，但尚未制定具体时间、地点、方式手段或准备工具。"
+    action: "立即暂停所有方法干预；输出温和安全守护卡；由 GEO 解析器呈现属地心理援助热线与支持网络；温柔探询当下安全边界与身边支持。"
+  L3:
+    name: "急性自杀危机 (Imminent Crisis with Plan or Means)"
+    interval_type: "CLOSED"
+    score_range: [0.80, 1.00]  # [0.80, 1.00]
+    trigger_criteria: "具备明确计划、正在准备工具、正在告别或有即刻自残行动迹象。"
+    action: "即刻触发最高安全熔断；跳过所有分析与生成；强制由 GEO 解析器呈现属地心理热线及属地紧急急救与治安求助指令 (如 110/120、911、999 等)；敦促立即联系身边可信赖亲友。"
+
+  arbitration_rule:
+    principle: "SAFETY_FIRST_MAXIMUM"
+    description: "多任务模型四分类等级 L_cls 与连续置信度等级 L_score 冲突时取高 (max(L_cls, L_score))。但定性为 L3 必须硬依赖计划/工具/时限 (PLAN_MEANS_TIME) 证据；若得分 >= 0.80 但无证据，安全降级为高危 L2。"
+
+  exit_rule:
+    principle: "SAFETY_CONFIRM_AND_CONSECUTIVE_SAFE_STREAK"
+    description: "用户明确确认安全 (SafetyConfirmEvent)，且后续连续保持安全轮次 (L2需连续2轮安全，L3需连续3轮安全)，双重条件达成后方可平稳离开 S_crisis 恢复常规探索。"
+    safe_streak_required:
+      L2: 2
+      L3: 3
+
+# ------------------------------------------------------------------------------
+# 12. 权威紧急求助热线标准基线 (Official Crisis Hotlines Baseline)
+# ------------------------------------------------------------------------------
+emergency_hotlines:
+  national_mental_health:
+    code: "12356"
+    name: "全国统一心理援助热线 (国家卫生健康委)"
+    service_hours: "官方承诺每日服务不少于 18 小时，各地实际服务时段依属地配置不同"
+  emergency_services:
+    police: "110"
+    ambulance: "120"
+  youth_protection:
+    code: "12355"
+    name: "全国青少年心理咨询与法律援助热线 (共青团中央)"
+    purpose: "专供未成年人 (18岁以下) 友好转介与权益保护"
+  regional_resources_note: >
+    属地化城市热线 (如北京、上海、广州等) 及港澳台、海外热线统一收录于
+    olivia/data/resources/hotlines/ 目录树中，经 Ed25519 签名打包为 hotlines.bundle 离线分发。
+    解析服务执行 Rule R8：“非大陆地区（HK/MO/TW 及海外）严格禁止呈现 12356/110/120/12355 大陆号码”，
+    且 L3 级别必须绑定所在属地的紧急急救/治安电话 (如北美 911、英国 999、澳洲 000、欧盟 112、香港 999、台湾 110/119)。
+
+# ------------------------------------------------------------------------------
+# 13. 兼容与扩展配置 (Compatibility & Framework Bindings)
+# ------------------------------------------------------------------------------
+risk:
+  levels: [L0, L1, L2, L3]
+  model_thresholds: { L1: 0.20, L2: 0.50, L3: 0.80 }
+  lexicon_scores: { L0: 0.0, L1: 0.40, L2: 0.70, L3: 0.90, HYPERBOLE: 0.10 }
+  ewma_lambda: 0.5
+  ewma_escalate: 0.45
+  ewma_streak: 3
+  l1_clear_streak: 3
+  crisis_exit_safe_turns: { L2: 2, L3: 3 }
+
+distress_categories:
+  - ANXIETY_PANIC
+  - MOOD_DEPRESSION
+  - RUMINATION_OCD
+  - SELF_WORTH
+  - BURNOUT_PROCRASTINATION
+  - TRAUMA_STRESS
+  - ATTACHMENT_RELATIONSHIP
+  - SLEEP_SOMATIC_EATING
+  - EMOTION_DYSREGULATION
+  - ADDICTION_IMPULSE
+  - EXISTENTIAL_MEANING
+
+distress_category_mapping:
+  "01": "ANXIETY_PANIC"
+  "02": "MOOD_DEPRESSION"
+  "03": "RUMINATION_OCD"
+  "04": "SELF_WORTH"
+  "05": "BURNOUT_PROCRASTINATION"
+  "06": "TRAUMA_STRESS"
+  "07": "ATTACHMENT_RELATIONSHIP"
+  "08": "SLEEP_SOMATIC_EATING"
+  "09": "EMOTION_DYSREGULATION"
+  "10": "ADDICTION_IMPULSE"
+  "11": "EXISTENTIAL_MEANING"
+
+thompson_sampling_index:
+  dimension: "d"
+  standard_key: "spectrum_id"  # 两位数字编号 "01" 至 "11"
+  description: "Thompson 采样状态维护使用两位数字谱系编号 '01' 至 '11' 作为困扰维度 d 的标准键，与 distress_category_mapping 保持无损互转。"
+
+late_night:
+  start: "00:00"
+  end: "05:00"

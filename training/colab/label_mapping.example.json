@@ -1,0 +1,78 @@
+{
+  "_comment": "Label mapping for stage 2. Paths are relative to DRIVE_ROOT and must live under raw/. rule: emobank_valence (sentiment only) | identity | value_map (requires value_map). method: direct = human annotation (incl. deterministic transform of human ratings); mapped = derived from a proxy (subreddit, keyword, LLM output...). Missing label keys -> NaN.",
+  "sources": {
+    "emobank": {
+      "lang": "en",
+      "files": [
+        "raw/emobank/emobank.csv"
+      ],
+      "format": "csv",
+      "text_column": "text",
+      "labels": {
+        "sentiment": {
+          "column": "V",
+          "rule": "emobank_valence",
+          "method": "direct"
+        }
+      },
+      "official_split_column": null,
+      "official_split_files": null,
+      "notes": "EmoBank columns: id, split, V, A, D, text. Its 'split' column is NOT treated as an official split for this task."
+    },
+    "dreaddit": {
+      "lang": "en",
+      "files": [
+        "raw/dreaddit/dreaddit-train.csv",
+        "raw/dreaddit/dreaddit-test.csv"
+      ],
+      "format": "csv",
+      "text_column": "text",
+      "labels": {
+        "stress": {
+          "column": "label",
+          "rule": "identity",
+          "method": "direct"
+        }
+      },
+      "official_split_column": null,
+      "official_split_files": {
+        "train": [
+          "raw/dreaddit/dreaddit-train.csv"
+        ],
+        "test": [
+          "raw/dreaddit/dreaddit-test.csv"
+        ]
+      },
+      "notes": "Dreaddit human stress annotation (0/1). Official train/test split is kept."
+    },
+    "zh_example": {
+      "lang": "zh",
+      "files": [
+        "raw/zh_example/zh_data.csv"
+      ],
+      "format": "csv",
+      "text_column": "text",
+      "labels": {
+        "sentiment": {
+          "column": "sentiment",
+          "rule": "identity",
+          "method": "direct"
+        },
+        "stress": {
+          "column": "stress",
+          "rule": "value_map",
+          "value_map": {
+            "1": 1,
+            "0": 0,
+            "是": 1,
+            "否": 0
+          },
+          "method": "direct"
+        }
+      },
+      "official_split_column": null,
+      "official_split_files": null,
+      "notes": "FILL ME IN: placeholder only - no Chinese dataset has been specified. Replace files/columns/rules with a real source; use method 'mapped' for any proxy- or LLM-derived label."
+    }
+  }
+}
