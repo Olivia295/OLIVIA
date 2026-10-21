@@ -68,20 +68,24 @@ def test_snapshot_order_is_stable_when_clock_does_not_advance(tmp_path, monkeypa
 
 def test_snapshot_order_is_numeric_not_lexical(tmp_path):
     p = tmp_path / "ledger.md"
-    snap_dir = tmp_path / ".snapshots"
-    snap_dir.mkdir()
-    (snap_dir / "ledger.md.999").write_text("old", encoding="utf-8")
-    (snap_dir / "ledger.md.1000").write_text("new", encoding="utf-8")
-    assert [s.name for s in snapshot_paths(p)] == ["ledger.md.1000", "ledger.md.999"]
+    snap_dir = tmp_path / ".snapshots" / "ledger.md"
+    snap_dir.mkdir(parents=True)
+    (snap_dir / "999").write_text("old", encoding="utf-8")
+    (snap_dir / "1000").write_text("new", encoding="utf-8")
+    assert [s.name for s in snapshot_paths(p)] == ["1000", "999"]
 
 
 def test_snapshot_paths_ignores_other_files_snapshots(tmp_path):
     p = tmp_path / "a.json"
-    snap_dir = tmp_path / ".snapshots"
-    snap_dir.mkdir()
-    (snap_dir / "a.json.5").write_text("x", encoding="utf-8")
-    (snap_dir / "a.json.bak.7").write_text("y", encoding="utf-8")
-    assert [s.name for s in snapshot_paths(p)] == ["a.json.5"]
+    snap_dir = tmp_path / ".snapshots" / "a.json"
+    snap_dir.mkdir(parents=True)
+    (snap_dir / "5").write_text("x", encoding="utf-8")
+    (snap_dir / "bak.7").write_text("y", encoding="utf-8")
+    (snap_dir / "notes.txt").write_text("z", encoding="utf-8")
+    other = tmp_path / ".snapshots" / "a.json.bak"
+    other.mkdir()
+    (other / "7").write_text("w", encoding="utf-8")
+    assert [s.name for s in snapshot_paths(p)] == ["5"]
     assert snapshot_paths(tmp_path / "none.json") == []
 
 
@@ -97,12 +101,14 @@ def test_crash_before_replace_keeps_old_content(tmp_path, monkeypatch):
         atomic_write_text(p, "new")
     monkeypatch.undo()
     assert read_text_with_recovery(p, lambda s: True) == "old"
+    assert not list(tmp_path.glob("*.tmp"))  # the failed write cleaned up its temp file
 
 
 def test_leftover_tmp_file_is_ignored(tmp_path):
     p = tmp_path / "ledger.md"
     atomic_write_text(p, "good")
-    (tmp_path / "ledger.md.tmp").write_text("half-writ", encoding="utf-8")
+    (tmp_path / ".ledger.md.abc123.tmp").write_text("half-writ", encoding="utf-8")
+    (tmp_path / "ledger.md.tmp").write_text("legacy-half", encoding="utf-8")
     assert read_text_with_recovery(p, lambda s: True) == "good"
     atomic_write_text(p, "better")
     assert read_text_with_recovery(p, lambda s: True) == "better"
@@ -152,3 +158,36 @@ def test_write_creates_parent_directory(tmp_path):
     p: Path = tmp_path / "sub" / "dir" / "f.txt"
     atomic_write_text(p, "hi")
     assert p.read_text(encoding="utf-8") == "hi"
+
+
+def test_files_with_overlapping_names_keep_separate_snapshots(tmp_path):
+    log = tmp_path / "log"
+    log7 = tmp_path / "log.7"
+    for i in range(3):
+        atomic_write_text(log7, f"seven-{i}")
+    before = [s.read_text(encoding="utf-8") for s in snapshot_paths(log7)]
+    assert before == ["seven-1", "seven-0"]
+    for i in range(6):
+        atomic_write_text(log, f"log-{i}")
+    assert [s.read_text(encoding="utf-8") for s in snapshot_paths(log7)] == before
+    assert [s.read_text(encoding="utf-8") for s in snapshot_paths(log)] == [
+        "log-4",
+        "log-3",
+        "log-2",
+    ]
+    log.write_text("corrupt", encoding="utf-8")
+    recovered = read_text_with_recovery(log, lambda s: s.startswith("log-"))
+    assert recovered == "log-4"
+    assert read_text_with_recovery(log7, lambda s: True) == "seven-2"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_main_file_and_snapshots_are_owner_only(tmp_path):
+    p = tmp_path / "ledger.md"
+    for i in range(3):
+        atomic_write_text(p, f"v{i}")
+    assert stat.S_IMODE(p.stat().st_mode) == 0o600
+    snaps = snapshot_paths(p)
+    assert snaps
+    for snap in snaps:
+        assert stat.S_IMODE(snap.stat().st_mode) == 0o600

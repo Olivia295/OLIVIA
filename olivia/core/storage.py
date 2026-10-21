@@ -13,6 +13,7 @@ import contextlib
 import os
 import re
 import shutil
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,8 @@ import platformdirs
 SNAPSHOT_KEEP: Final = 3
 
 _SNAPSHOT_DIR: Final = ".snapshots"
+_PRIVATE_MODE: Final = 0o600  # user data is owner-only on POSIX (ignored on Windows)
+_O_BINARY: Final = getattr(os, "O_BINARY", 0)
 _SNAPSHOT_SUFFIX: Final = re.compile(r"(\d+)(?:\.(\d+))?")
 
 
@@ -42,13 +45,14 @@ def app_data_dir() -> Path:
 
 
 def _snapshot_dir(path: Path) -> Path:
-    return path.parent / _SNAPSHOT_DIR
+    """One private directory per file, so ``log`` and ``log.7`` never share snapshots."""
+    return path.parent / _SNAPSHOT_DIR / path.name
 
 
-def _snapshot_key(path: Path, snapshot: Path) -> tuple[int, int] | None:
-    """Parse ``<name>.<ns>[.<counter>]`` into a sortable key; None if it is not ours."""
-    match = _SNAPSHOT_SUFFIX.fullmatch(snapshot.name.removeprefix(f"{path.name}."))
-    if not snapshot.name.startswith(f"{path.name}.") or match is None:
+def _snapshot_key(snapshot: Path) -> tuple[int, int] | None:
+    """Parse ``<ns>[.<counter>]`` into a sortable key; None if it is not ours."""
+    match = _SNAPSHOT_SUFFIX.fullmatch(snapshot.name)
+    if match is None:
         return None
     return int(match.group(1)), int(match.group(2) or 0)
 
@@ -61,7 +65,7 @@ def snapshot_paths(path: Path) -> list[Path]:
     keyed = [
         (key, entry)
         for entry in directory.iterdir()
-        if entry.is_file() and (key := _snapshot_key(path, entry)) is not None
+        if entry.is_file() and (key := _snapshot_key(entry)) is not None
     ]
     keyed.sort(key=lambda item: item[0], reverse=True)
     return [entry for _, entry in keyed]
@@ -69,26 +73,29 @@ def snapshot_paths(path: Path) -> list[Path]:
 
 def _take_snapshot(path: Path) -> None:
     directory = _snapshot_dir(path)
+    directory.parent.mkdir(mode=0o700, exist_ok=True)
     directory.mkdir(mode=0o700, exist_ok=True)
     stamp = time.time_ns()
     counter = 0
     existing = snapshot_paths(path)
     if existing:
         # Never sort below an existing snapshot, even if the clock stalls or steps back.
-        newest = _snapshot_key(path, existing[0])
+        newest = _snapshot_key(existing[0])
         if newest is not None and newest[0] >= stamp:
             stamp, counter = newest[0], newest[1] + 1
     while True:
         suffix = f"{stamp}" if counter == 0 else f"{stamp}.{counter}"
-        target = directory / f"{path.name}.{suffix}"
+        target = directory / suffix
         try:
-            with open(target, "xb") as dst, open(path, "rb") as src:
-                shutil.copyfileobj(src, dst)
-                dst.flush()
-                os.fsync(dst.fileno())
-            break
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, _PRIVATE_MODE)
         except FileExistsError:
             counter += 1
+            continue
+        with os.fdopen(fd, "wb") as dst, open(path, "rb") as src:
+            shutil.copyfileobj(src, dst)
+            dst.flush()
+            os.fsync(dst.fileno())
+        break
     for stale in snapshot_paths(path)[SNAPSHOT_KEEP:]:
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
@@ -109,9 +116,11 @@ def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         _take_snapshot(path)
-    tmp = path.with_name(path.name + ".tmp")
+    # mkstemp creates the file 0o600 and uniquely named; os.replace carries that mode over.
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(tmp_name)
     try:
-        with open(tmp, "wb") as handle:
+        with os.fdopen(fd, "wb") as handle:
             handle.write(text.encode("utf-8"))
             handle.flush()
             os.fsync(handle.fileno())
