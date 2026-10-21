@@ -39,6 +39,18 @@ def test_negated_self_report_is_ignored(det, text):
     assert det.detect(text) == frozenset()
 
 
+@pytest.mark.parametrize(
+    "text,code",
+    [
+        ("我是不是双相", "SIT-02-04"),
+        ("我是不是有厌食症", "SIT-08-04"),
+        ("我不是没有双相", "SIT-02-04"),
+    ],
+)
+def test_question_and_double_negation_keep_self_report(det, text, code):
+    assert det.detect(text) == frozenset({code})
+
+
 def test_unrelated_text(det):
     assert det.detect("今天被领导批评了，心里很堵") == frozenset()
 

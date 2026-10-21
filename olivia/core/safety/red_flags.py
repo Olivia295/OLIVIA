@@ -47,8 +47,21 @@ class RedFlagDetector:
         return codes
 
     def _negated(self, folded: str, start: int) -> bool:
+        """True when a negation directly precedes the hit and is not neutralised.
+
+        A negation is neutralised (the hit survives) when it follows "是" (the
+        A-not-A question form 是不是) or follows another negation (double negation
+        such as 不是没有). A miss is the costly direction, so both fail toward flagging.
+        """
         before = folded[max(0, start - self._window) : start]
-        return any(before.endswith(negation) for negation in self._negations)
+        for negation in self._negations:
+            if not before.endswith(negation):
+                continue
+            head = folded[: start - len(negation)]
+            if head.endswith("是") or any(head.endswith(other) for other in self._negations):
+                continue
+            return True
+        return False
 
 
 class SessionRedFlags:
