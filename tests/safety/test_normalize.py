@@ -1,11 +1,44 @@
+from collections import defaultdict
+
 import pytest
 
+from olivia.core.safety._trad2simp import TRAD_TO_SIMP
+from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.safety.normalize import (
     PERCEPTION_HEAD,
     PERCEPTION_TAIL,
     clip_for_perception,
     normalize,
 )
+from olivia.core.taxonomy import load_taxonomy
+
+# Lexicon characters written the same way in Traditional Chinese, so the fold table has no
+# entry mapping to them. A lexicon character that is neither here nor a fold-table target
+# fails test_every_lexicon_character_is_classified until someone checks its Traditional form.
+SAME_IN_TRADITIONAL = frozenset(
+    "一三上下不世之乎也事二五些交人什今他代以任但住何作依保信修倒候值做停偷傻像全公再冷凳刀切"
+    "到割力十半去又友反受另可司吞吵命和哪哭啥啦喝噩四囤在地型多大天太失套好如子孕存孩安完定室害"
+    "封少尬就屋己已希年底很得心忍忙快怎怕思急性怪恨想惹意感成我手打找把抑抖拖拿挺掉接搬撞放故整"
+    "方日早明是晚最月有朋望期木束果枯查格次止正死每毒比永江河法洗活浪浴消激灰炭焦然煤照熬爸片物"
+    "狂玻璃瓶生用界畏留疼痛百的盆盒直相盼看眠眼睡知磨社神空突窗站笑等算精累罐聊肉胃胎能脖腕臂自"
+    "草蒸藏血行被西要解言走起跟跳躁身躺送逃通道那部都酒醒量陪隔障需非食高魂"
+)
+
+
+def _lexicon_phrases() -> list[str]:
+    tax = load_taxonomy()
+    lex = load_safety_lexicons(tax)
+    phrases = [p for cue in lex.risk.values() for p in cue.patterns]
+    phrases += [p for cue in lex.red_flags.values() for p in cue.patterns]
+    phrases += list(lex.self_report_negations)
+    return phrases
+
+
+def _traditional_views() -> dict[str, list[str]]:
+    views: dict[str, list[str]] = defaultdict(list)
+    for trad, simp in TRAD_TO_SIMP.items():
+        views[simp].append(trad)
+    return views
 
 
 @pytest.mark.parametrize(
@@ -23,6 +56,73 @@ from olivia.core.safety.normalize import (
 )
 def test_normalize_variants(raw, expected):
     assert normalize(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "想­死",  # soft hyphen (Cf)
+        "想‎死",  # left-to-right mark (Cf)
+        "想️死",  # variation selector 16 (Mn, invisible)
+        "想‮死",  # right-to-left override (Cf)
+        "想⁦死",  # left-to-right isolate (Cf)
+        "想\U000e0001死",  # language tag (Cf, astral plane)
+        "想\U000e0100死",  # variation selector 17 (Mn, astral plane)
+    ],
+)
+def test_invisible_characters_are_dropped(raw):
+    assert normalize(raw) == "想死"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("I don’t want to die", "idon'twanttodie"),
+        ("who says i‘m not suicidal", "whosaysi'mnotsuicidal"),
+    ],
+)
+def test_curly_apostrophes_fold_to_ascii(raw, expected):
+    assert normalize(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("我想自殺", "我想自杀"),
+        ("遺書寫好了", "遗书写好了"),
+        ("安眠藥已經買好了", "安眠药已经买好了"),
+        ("活著好累", "活着好累"),
+        ("雙相情感障礙", "双相情感障碍"),
+        ("我確診了躁鬱症", "我确诊了躁郁症"),
+        ("這個時候為什麼還沒來", "这个时候为什么还没来"),
+        ("爲甚麼説不出口", "为甚么说不出口"),  # Hong Kong variants 爲 / 説
+    ],
+)
+def test_traditional_folds_to_simplified(raw, expected):
+    assert normalize(raw) == expected
+
+
+def test_fold_table_is_well_formed():
+    for trad, simp in TRAD_TO_SIMP.items():
+        assert len(trad) == 1 and len(simp) == 1 and trad != simp, trad
+        # Idempotent: a target is never itself folded again.
+        assert simp not in TRAD_TO_SIMP, trad
+        assert normalize(trad) == simp, trad
+
+
+def test_every_lexicon_character_is_classified():
+    targets = set(TRAD_TO_SIMP.values())
+    chars = {ch for phrase in _lexicon_phrases() for ch in phrase if ord(ch) >= 0x3000}
+    unclassified = sorted(chars - targets - SAME_IN_TRADITIONAL)
+    assert not unclassified, "".join(unclassified)
+
+
+def test_traditional_view_of_every_lexicon_phrase_normalizes_back():
+    views = _traditional_views()
+    for phrase in _lexicon_phrases():
+        for pick in (0, -1):  # first and last Traditional variant of each character
+            trad = "".join(views[ch][pick] if ch in views else ch for ch in phrase)
+            assert normalize(trad) == phrase, (phrase, trad)
 
 
 def test_clip_short_text_unchanged():

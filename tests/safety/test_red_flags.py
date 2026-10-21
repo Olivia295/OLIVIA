@@ -66,3 +66,10 @@ def test_session_accumulates_and_includes_profile(det):
     assert s.active == frozenset({"SIT-02-04"})
     assert s.observe("我有厌食症") == frozenset({"SIT-02-04", "SIT-08-04"})
     assert s.observe("今天还行") == frozenset({"SIT-02-04", "SIT-08-04"})
+
+
+@pytest.mark.parametrize(
+    "text,code", [("雙相情感障礙", "SIT-02-04"), ("我確診了躁鬱症", "SIT-02-04")]
+)
+def test_traditional_chinese_red_flags(det, text, code):
+    assert det.detect(text) == frozenset({code})

@@ -104,3 +104,18 @@ def test_rule_model_predict_matches_screen(tax):
     lexicons = load_safety_lexicons(tax)
     prediction = RuleRiskModel(tax, lexicons).predict("[5%] 不想活了")
     assert prediction == RiskPrediction(L.L2, 0.7, ("L2_NOT_WANT_LIVE",))
+
+
+@pytest.mark.parametrize(
+    "text,level",
+    [
+        ("我想自殺", L.L2),
+        ("遺書寫好了", L.L3),
+        ("安眠藥已經買好了", L.L3),
+        ("我想結束自己的生命", L.L2),
+        ("我已經吃了三十片安眠藥", L.L3),
+        ("活著好累", L.L1),
+    ],
+)
+def test_traditional_chinese_is_screened(screen, text, level):
+    assert screen.assess(text).level is level
