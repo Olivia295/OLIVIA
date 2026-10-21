@@ -100,3 +100,29 @@ def test_battery_prefix_cannot_bypass_crisis(run):
     run("我想死")
     s = run("[5%] 好累")
     assert s.in_crisis and s.awaiting_confirmation
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "我不觉得我现在安全了",
+        "你觉得我现在安全了吗",
+        "我现在没事了才怪",
+        "我现在安全了？",
+        "我没有联系上朋友了",
+    ],
+)
+def test_negated_questioned_or_sarcastic_confirmation_does_not_count(run, phrase):
+    assert run("我想死").in_crisis
+    run(phrase)
+    for _ in range(3):
+        s = run("嗯")
+    assert s.in_crisis and s.awaiting_confirmation and not s.just_exited
+
+
+def test_confirmation_with_topic_change_still_counts(run):
+    run("我想死")
+    s = run("我现在安全了，想聊点别的")
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
+    assert run("嗯").in_crisis
+    assert run("嗯").just_exited

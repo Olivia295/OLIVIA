@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass
+from typing import Final
 
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import CrisisAssessment
@@ -17,6 +18,16 @@ from olivia.core.safety.lexicon import SafetyLexicons
 from olivia.core.safety.matcher import PhraseMatcher
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
+
+# The spec requires the user to *explicitly confirm* safety ("明确确认安全"). A safety_confirm
+# phrase therefore counts only when it is not negated, questioned or sarcastic. Anything
+# ambiguous fails toward staying in crisis, which keeps emergency resources visible.
+# Directly preceding the hit: "我不觉得…", "我哪里…", "我没有…" negate or deflect the phrase.
+_NEGATING_PREFIXES: Final[tuple[str, ...]] = ("不", "没", "没有", "不是", "并非", "哪里")
+# Trailing punctuation ignored before the question check (NFKC already folds "？" to "?").
+_TRAILING_PUNCTUATION: Final = "。.!！~…"
+# A message ending in a question particle asks about safety rather than confirming it.
+_QUESTION_ENDINGS: Final[tuple[str, ...]] = ("吗", "么", "?")
 
 
 @dataclass(frozen=True)
@@ -55,6 +66,9 @@ class CrisisTracker:
             phrase: cue.id for cue in lexicons.cues("safety_confirm") for phrase in cue.patterns
         }
         self._confirm_matcher = PhraseMatcher(phrases)
+        self._veto_matcher = PhraseMatcher(
+            {phrase: cue.id for cue in lexicons.cues("confirm_veto") for phrase in cue.patterns}
+        )
 
         self._ewma: float | None = None
         self._l1_run = 0
@@ -131,7 +145,7 @@ class CrisisTracker:
         if entry is None:  # unreachable: in_crisis always has an entry level
             return False
         if not self._confirmed:
-            if self._confirm_matcher.find_all(normalize(text)):
+            if self._is_explicit_confirmation(normalize(text)):
                 self._confirmed = True
             return False
         self._safe_turns += 1
@@ -143,6 +157,16 @@ class CrisisTracker:
         self._safe_turns = 0
         self._reset_trend()
         return True
+
+    def _is_explicit_confirmation(self, normalized: str) -> bool:
+        hits = self._confirm_matcher.find_all(normalized)
+        if not hits:
+            return False
+        if self._veto_matcher.find_all(normalized):
+            return False
+        if normalized.rstrip(_TRAILING_PUNCTUATION).endswith(_QUESTION_ENDINGS):
+            return False
+        return any(not normalized[: hit.start].endswith(_NEGATING_PREFIXES) for hit in hits)
 
     def _status(
         self, level: CrisisLevel, escalated: bool, just_entered: bool, just_exited: bool

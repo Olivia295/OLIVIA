@@ -35,8 +35,14 @@ def test_sections(tax):
     assert {c.id for c in lex.cues("safety_confirm")} == {
         "CONFIRM_SAFE_NOW",
         "CONFIRM_REACHED_SUPPORT",
-        "CONFIRM_TOPIC_SHIFT",
     }
+
+
+def test_confirm_veto_section_loads(tax):
+    lex = load_safety_lexicons(tax)
+    (veto,) = lex.cues("confirm_veto")
+    assert veto.id == "CONFIRM_VETO" and veto.level is None and veto.score is None
+    assert "才怪" in veto.patterns
 
 
 def _copy(tmp_path, mutate_risk=None, mutate_rf=None):

@@ -22,7 +22,7 @@ from olivia.core.models import CrisisLevel
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
 
-RiskSection = Literal["stage1", "stage2", "hyperbole", "negation", "safety_confirm"]
+RiskSection = Literal["stage1", "stage2", "hyperbole", "negation", "safety_confirm", "confirm_veto"]
 RedFlagTier = Literal["SELF_REPORT", "FEATURE"]
 
 _RISK_FILE: Final = "risk.yaml"
@@ -192,7 +192,7 @@ def _level_and_score(
         return _stage2_level_and_score(tax, item, where)
     if "level" in item or "score" in item:
         raise LexiconError(f"{where}: 'level' and 'score' are only allowed in stage2")
-    if section in ("negation", "safety_confirm"):
+    if section in ("negation", "safety_confirm", "confirm_veto"):
         return None, None
     key = _SCORE_KEY_BY_SECTION[section]
     level = CrisisLevel.L3 if section == "stage1" else CrisisLevel.L0

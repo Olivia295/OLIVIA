@@ -48,5 +48,6 @@ safety_confirm:
     patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事"]
   - id: CONFIRM_REACHED_SUPPORT
     patterns: ["我联系上朋友了", "我已经联系了家人", "我给热线打过电话了", "家人在我身边了"]
-  - id: CONFIRM_TOPIC_SHIFT
-    patterns: ["想聊点别的"]
+confirm_veto:
+  - id: CONFIRM_VETO
+    patterns: ["才怪", "不觉得", "不认为", "怎么可能", "并没有", "还没有", "不是真的"]
