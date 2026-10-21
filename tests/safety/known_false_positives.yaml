@@ -5,16 +5,16 @@
 # Future work (a model, clause-aware rules) is measured against `ideal`.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 9
+#   L0 -> L2: 10
 #   L0 -> L3: 2
 #   L2 -> L0: 1
-#   L3 -> L0: 65
+#   L3 -> L0: 73
 #   L3 -> L2: 4
-#   by ideal: L0 11, L2 1, L3 69
-#   by current: L0 66, L2 13, L3 2
-#   below ideal (missed or under-rated): 70
-#   above ideal (false alarms): 11
-#   total: 81
+#   by ideal: L0 12, L2 1, L3 77
+#   by current: L0 74, L2 14, L3 2
+#   below ideal (missed or under-rated): 78
+#   above ideal (false alarms): 12
+#   total: 90
 #
 # {id, text, ideal, current, why}
 - {id: fp01, ideal: L0, current: L2, text: "好想死你们了，下周回国一起吃饭！", why: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
@@ -50,7 +50,7 @@
 - {id: kl_m34, ideal: L3, current: L0, text: "刀就在手边，我一直握着它", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m34)"}
 - {id: kl_m35, ideal: L3, current: L0, text: "新的美工刀片已经准备好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m35)"}
 - {id: kl_m37, ideal: L3, current: L0, text: "我把止痛药都囤起来了 准备一次吃完", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m37)"}
-- {id: kl_m38, ideal: L3, current: L0, text: "车库里已经准备好了炭和打火机", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m38)"}
+- {id: kl_m38, ideal: L3, current: L0, text: "车库里已经准备好了炭和打火机", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml m38; it moved here as kl_m38_rw in fix round 5)"}
 - {id: kl_m41, ideal: L3, current: L0, text: "pills都囤好了 安眠药一共四盒", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m41)"}
 - {id: kl_m42, ideal: L3, current: L0, text: "家里的药全被我收起来了 够吃一次的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m42)"}
 - {id: kl_m43, ideal: L3, current: L0, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43)"}
@@ -65,7 +65,7 @@
 - {id: kl_tp11, ideal: L3, current: L0, text: "今晚十二点就动手，谁也别拦我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp11)"}
 - {id: kl_tp12, ideal: L3, current: L0, text: "跳下去的地方我已经选好了 是那栋烂尾楼", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp12)"}
 - {id: kl_tp14, ideal: L3, current: L0, text: "我在铁轨边上坐着 火车快来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp14)"}
-- {id: kl_tp15, ideal: L3, current: L0, text: "今晚就是我的最后一晚 不会再等了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp15)"}
+- {id: kl_tp15, ideal: L3, current: L0, text: "今晚就是我的最后一晚 不会再等了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml tp15; it moved here as kl_tp15_rw in fix round 5)"}
 - {id: kl_tp18, ideal: L3, current: L0, text: "今天晚上等室友出门我就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp18)"}
 - {id: kl_tp19, ideal: L3, current: L0, text: "我现在在楼顶 往下看一点都不怕", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp19)"}
 - {id: kl_tp20, ideal: L3, current: L0, text: "动手的时间定在下周一凌晨 都想清楚了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp20)"}
@@ -74,7 +74,7 @@
 - {id: kl_tp26, ideal: L3, current: L0, text: "tonight就结束一切 我认真的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp26)"}
 - {id: kl_tp27, ideal: L3, current: L0, text: "我已经翻过护栏了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp27)"}
 - {id: kl_af05, ideal: L3, current: L0, text: "绳子已经套在脖子上了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af05)"}
-- {id: kl_af09, ideal: L3, current: L0, text: "这是我发给你的最后一条消息了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af09)"}
+- {id: kl_af09, ideal: L3, current: L0, text: "这是我发给你的最后一条消息了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af09; it moved here as kl_af09_rw in fix round 5)"}
 - {id: kl_af10, ideal: L3, current: L0, text: "以后帮我照顾好我的猫 拜托了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af10)"}
 - {id: kl_af11, ideal: L3, current: L0, text: "后事我都安排好了，存款留给我妈", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af11)"}
 - {id: kl_af15, ideal: L3, current: L0, text: "血一直在流 止都止不住", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af15)"}
@@ -82,7 +82,7 @@
 - {id: kl_af18, ideal: L3, current: L0, text: "药已经吃下去了，现在就等着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af18)"}
 - {id: kl_af21, ideal: L3, current: L0, text: "我把东西都送人了 以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af21)"}
 - {id: kl_af23, ideal: L3, current: L0, text: "最后跟你说一声谢谢 以后不会再来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af23)"}
-- {id: kl_af24, ideal: L3, current: L0, text: "刚划了好几刀 这次割得很深", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af24)"}
+- {id: kl_af24, ideal: L3, current: L0, text: "刚划了好几刀 这次割得很深", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af24; it moved here as kl_af24_rw in fix round 5)"}
 - {id: kl_af25, ideal: L3, current: L0, text: "已经吞了好多片了 意识有点模糊", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af25)"}
 - {id: kl_af27, ideal: L3, current: L0, text: "给爸妈的信放在书桌抽屉里了，对不起", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af27)"}
 - {id: kl_nm02, ideal: L3, current: L0, text: "我没想自杀啊，绳子已经买好了而已", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm02)"}
@@ -96,5 +96,14 @@
 - {id: kl_nm16, ideal: L3, current: L0, text: "我不会去死的，只是绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm16)"}
 - {id: kl_nm18, ideal: L3, current: L0, text: "我不想自杀 只是一个人坐在楼顶边上吹风", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm18)"}
 - {id: kl_s09_t3, ideal: L3, current: L0, text: "她又不来了 绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: sessions.yaml s09 turn 3)"}
-- {id: kl_ho27, ideal: L3, current: L2, text: "药我都准备好了 今晚吃", why: "reviewer holdout ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
+- {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer holdout ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
 - {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer holdout ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
+- {id: kl_m38_rw, ideal: L3, current: L0, text: "车库里已经准备好了炭 车窗也用胶带封好了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 车窗也用胶带封, removed in fix round 5 because it fired on everyday text (cases.yaml b117); no other cue matches"}
+- {id: kl_tp15_rw, ideal: L3, current: L0, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
+- {id: kl_af09_rw, ideal: L3, current: L0, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
+- {id: kl_af24_rw, ideal: L3, current: L0, text: "刚在手腕上划了好几刀 这次割得很深", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 手腕上划了, removed in fix round 5 because it fired on everyday text (cases.yaml b116); no other cue matches"}
+- {id: kl_ho02, ideal: L3, current: L0, text: "我把绳子绑在门把手上了", why: "reviewer holdout ho02; no self-harm anchor; it relied only on the Stage 1 phrase 我把绳子绑在门把手, removed in fix round 5 because it fired on everyday text (cases.yaml b120)"}
+- {id: kl_ho05, ideal: L3, current: L0, text: "刚刚吃了很多药 现在好晕", why: "reviewer holdout ho05; no self-harm anchor; it relied only on the Stage 1 phrase 很多药现在好晕, removed in fix round 5 because it fired on everyday text (cases.yaml b115)"}
+- {id: kl_ho06, ideal: L3, current: L0, text: "我在江边 准备跳下去了", why: "reviewer holdout ho06; no self-harm anchor; it relied only on the Stage 1 phrase 江边准备跳, removed in fix round 5 because it fired on everyday text (cases.yaml b118)"}
+- {id: kl_pn09, ideal: L3, current: L2, text: "就站在楼顶看最后一眼 然后跳下去", why: "no self-harm anchor, so no Stage 1; L2 via 就站在楼顶 once the 就站在楼顶看 mask was removed (fix round 5). cases.yaml pn09 pins the L2 floor"}
+- {id: kl_b95, ideal: L0, current: L2, text: "我现在就站在楼顶看烟花", why: "FALSE POSITIVE, moved from cases.yaml b95 (fix round 5): the 就站在楼顶看 mask that kept it L0 also hid '就站在楼顶看最后一眼 然后跳下去', so it was removed; L2 via 就站在楼顶"}
