@@ -247,3 +247,137 @@ def test_integrity_rejects_label_alias_with_unknown_target(tmp_path: Path) -> No
 
     with pytest.raises(TaxonomyError, match="rumination"):
         load_taxonomy(_mutated(tmp_path, m))
+
+
+# -- duplicated safety values must agree (F1) ------------------------------------
+
+
+def test_integrity_rejects_model_threshold_disagreeing_with_crisis_band(tmp_path: Path) -> None:
+    def m(d: dict[str, Any]) -> None:
+        d["risk"]["model_thresholds"]["L2"] = 0.55
+
+    with pytest.raises(TaxonomyError, match=r"risk\.model_thresholds\.L2"):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+def test_integrity_rejects_exit_turns_disagreeing_with_exit_rule(tmp_path: Path) -> None:
+    def m(d: dict[str, Any]) -> None:
+        d["risk"]["crisis_exit_safe_turns"]["L3"] = 4
+
+    with pytest.raises(TaxonomyError, match=r"risk\.crisis_exit_safe_turns\.L3"):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+@pytest.mark.parametrize("key", ["haven_enter", "haven_exit", "empower_min"])
+def test_integrity_rejects_deprecated_battery_key_drift(tmp_path: Path, key: str) -> None:
+    def m(d: dict[str, Any]) -> None:
+        d["battery"][key] = 0.99
+
+    with pytest.raises(TaxonomyError, match=rf"battery\.{key}"):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+@pytest.mark.parametrize(
+    "mutation,path",
+    [
+        (("thresholds", "block_high_load", 0.75), "arousal.thresholds.block_high_load"),
+        (("thresholds", "explore_eligible_max", 0.5), "arousal.thresholds.explore_eligible_max"),
+        (("scale", None, [0.0, 2.0]), "arousal.scale"),
+    ],
+)
+def test_integrity_rejects_deprecated_arousal_key_drift(
+    tmp_path: Path, mutation: tuple[str, str | None, Any], path: str
+) -> None:
+    section, key, value = mutation
+
+    def m(d: dict[str, Any]) -> None:
+        if key is None:
+            d["arousal"][section] = value
+        else:
+            d["arousal"][section][key] = value
+
+    with pytest.raises(TaxonomyError, match=path.replace(".", r"\.")):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+# -- Grade A contraindications are mandatory (F2) --------------------------------
+
+
+def test_grade_a_method_requires_contraindications(tmp_path: Path) -> None:
+    def m(d: dict[str, Any]) -> None:
+        del d["method_safety_tiers"]["grade_A"]["methods"][0]["contraindications"]
+
+    first = yaml.safe_load((ROOT / "taxonomy.yaml").read_text(encoding="utf-8"))
+    mid = first["method_safety_tiers"]["grade_A"]["methods"][0]["id"]
+    with pytest.raises(TaxonomyError, match=rf"method {mid}.*contraindications"):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+# -- construction is always validated and isolated (F3) --------------------------
+
+
+def test_constructing_taxonomy_from_bad_data_raises() -> None:
+    with pytest.raises(TaxonomyError):
+        Taxonomy({})
+    with pytest.raises(TaxonomyError):
+        Taxonomy({"version": "x"})
+
+
+def _data() -> dict[str, Any]:
+    loaded = yaml.safe_load((ROOT / "taxonomy.yaml").read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_taxonomy_constructor_validates_cross_checks() -> None:
+    data = _data()
+    data["risk"]["model_thresholds"]["L1"] = 0.25
+    with pytest.raises(TaxonomyError, match=r"risk\.model_thresholds\.L1"):
+        Taxonomy(data)
+
+
+def test_taxonomy_is_isolated_from_later_mutation_of_input() -> None:
+    data = _data()
+    tax = Taxonomy(data)
+    data["risk"]["ewma_lambda"] = 0.9
+    data["emotion_aliases"]["irritability"] = "joy"
+    data["crisis_hierarchy"]["exit_rule"]["safe_streak_required"]["L2"] = 9
+    assert tax.threshold("risk.ewma_lambda") == 0.5
+    assert tax.canonical_label("emotion", "irritability") == "anger"
+    assert tax.crisis_exit_safe_turns(CrisisLevel.L2) == 2
+
+
+def test_taxonomy_has_no_public_raw_view() -> None:
+    assert not hasattr(Taxonomy(_data()), "raw")
+
+
+# -- load errors are always TaxonomyError (F7) -----------------------------------
+
+
+def test_load_rejects_invalid_utf8(tmp_path: Path) -> None:
+    bad = tmp_path / "t.yaml"
+    bad.write_bytes(b"version: \xff\xfe\n")
+    with pytest.raises(TaxonomyError):
+        load_taxonomy(bad)
+
+
+@pytest.mark.parametrize("target", [["anger"], {"a": "b"}, 3])
+def test_integrity_rejects_non_string_alias_target(tmp_path: Path, target: Any) -> None:
+    def m(d: dict[str, Any]) -> None:
+        d["emotion_aliases"]["rumination"] = target
+
+    with pytest.raises(TaxonomyError, match="rumination"):
+        load_taxonomy(_mutated(tmp_path, m))
+
+
+# -- threshold() never returns non-finite numbers (F8) ---------------------------
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_threshold_rejects_non_finite(tmp_path: Path, value: float) -> None:
+    def m(d: dict[str, Any]) -> None:
+        d["risk"]["ewma_lambda"] = value
+
+    tax = load_taxonomy(_mutated(tmp_path, m))
+    with pytest.raises(TaxonomyError, match=r"risk\.ewma_lambda"):
+        tax.threshold("risk.ewma_lambda")

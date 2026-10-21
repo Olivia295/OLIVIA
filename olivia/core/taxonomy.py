@@ -6,6 +6,7 @@ absent raises :class:`TaxonomyError`; no accessor ever returns a default.
 
 from __future__ import annotations
 
+import copy
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -117,6 +118,8 @@ class _Views:
         self._check_red_flag_references()
         self._check_whitelist()
         self.crisis_bands = self._parse_crisis(data)
+        self.exit_safe_turns = self._parse_exit_turns(data)
+        self._check_duplicated_values(data)
 
     # -- parsing -----------------------------------------------------------------
 
@@ -148,7 +151,7 @@ class _Views:
                     ),
                     clinical_rationale=_opt_str(item, "clinical_rationale", where, strict),
                     core_action_steps=_opt_str_tuple(item, "core_action_steps", where, strict),
-                    contraindications=_opt_str_tuple(item, "contraindications", where, False),
+                    contraindications=_opt_str_tuple(item, "contraindications", where, strict),
                     sub_actions=_opt_str_tuple(item, "sub_actions", where, False),
                 )
         return methods
@@ -260,7 +263,54 @@ class _Views:
             raise TaxonomyError("crisis_hierarchy must end at 1.0")
         return tuple(bands)
 
+    @staticmethod
+    def _parse_exit_turns(data: Mapping[str, Any]) -> dict[CrisisLevel, int]:
+        hierarchy = _mapping(data.get("crisis_hierarchy"), "crisis_hierarchy")
+        exit_rule = _mapping(hierarchy.get("exit_rule"), "crisis_hierarchy.exit_rule")
+        where = "crisis_hierarchy.exit_rule.safe_streak_required"
+        streaks = _mapping(exit_rule.get("safe_streak_required"), where)
+        turns: dict[CrisisLevel, int] = {}
+        for level in (CrisisLevel.L2, CrisisLevel.L3):
+            if level.name not in streaks:
+                raise TaxonomyError(f"safe_streak_required has no entry for {level.name}")
+            value = _int_value(streaks[level.name], level.name, where)
+            if value < 1:
+                raise TaxonomyError(f"{where}.{level.name} must be at least 1")
+            turns[level] = value
+        return turns
+
     # -- integrity checks ----------------------------------------------------------
+
+    def _check_duplicated_values(self, data: Mapping[str, Any]) -> None:
+        """Safety values the YAML states twice must agree (exact equality; literals)."""
+        for band in self.crisis_bands:
+            if band.level is CrisisLevel.L0:
+                continue
+            name = band.level.name
+            _require_equal(
+                data,
+                f"risk.model_thresholds.{name}",
+                (f"crisis_hierarchy.{name}.score_range[0]", band.low),
+            )
+        for level, turns in self.exit_safe_turns.items():
+            _require_equal(
+                data,
+                f"risk.crisis_exit_safe_turns.{level.name}",
+                (f"crisis_hierarchy.exit_rule.safe_streak_required.{level.name}", turns),
+            )
+        for key in ("haven_enter", "haven_exit", "empower_min"):
+            _require_equal(data, f"battery.{key}", _lookup(data, f"battery.thresholds.{key}"))
+        _require_equal(
+            data,
+            "arousal.thresholds.block_high_load",
+            _lookup(data, "arousal.thresholds.somatic_priority"),
+        )
+        _require_equal(
+            data,
+            "arousal.thresholds.explore_eligible_max",
+            _lookup(data, "arousal.thresholds.exploration_allow"),
+        )
+        _require_equal(data, "arousal.scale", _lookup(data, "arousal.range"))
 
     def _check_aliases(self) -> dict[str, str]:
         alias_to_action: dict[str, str] = {}
@@ -326,6 +376,26 @@ class _Views:
 
     def is_action_id(self, raw: str) -> bool:
         return raw in self.methods or raw in self.actions or raw in self.alias_to_action
+
+
+def _lookup(data: Mapping[str, Any], dotted_path: str) -> tuple[str, Any]:
+    """Return ``(dotted_path, value)``; raises if any path segment is absent."""
+    node: Any = data
+    for part in dotted_path.split("."):
+        if not isinstance(node, Mapping) or part not in node:
+            raise TaxonomyError(f"taxonomy key not found: {dotted_path}")
+        node = node[part]
+    return dotted_path, node
+
+
+def _require_equal(data: Mapping[str, Any], path: str, other: tuple[str, Any]) -> None:
+    """Raise unless the value at ``path`` equals ``other`` (a ``(path, value)`` pair)."""
+    _, value = _lookup(data, path)
+    other_path, other_value = other
+    if isinstance(value, bool) != isinstance(other_value, bool) or value != other_value:
+        raise TaxonomyError(
+            f"taxonomy disagrees with itself: {path} = {value!r} but {other_path} = {other_value!r}"
+        )
 
 
 def _mapping(node: Any, where: str) -> Mapping[str, Any]:
@@ -404,16 +474,16 @@ def _opt_str_tuple(
 
 
 class Taxonomy:
-    """Read-only view over the parsed taxonomy mapping."""
+    """Read-only, validated view over the parsed taxonomy mapping.
+
+    Construction deep-copies ``data`` and runs every integrity check, so no
+    ``Taxonomy`` instance can exist unless its data is internally consistent.
+    """
 
     def __init__(self, data: Mapping[str, Any]) -> None:
-        self._data = data
+        self._data: Mapping[str, Any] = copy.deepcopy(dict(data))
         self._cached_views: _Views | None = None
-
-    @property
-    def raw(self) -> Mapping[str, Any]:
-        """The raw parsed mapping (for extension by richer views)."""
-        return self._data
+        self._verify_integrity()
 
     @property
     def version(self) -> str:
@@ -430,6 +500,8 @@ class Taxonomy:
             node = node[part]
         if isinstance(node, bool) or not isinstance(node, int | float):
             raise TaxonomyError(f"taxonomy value at {dotted_path} is not numeric: {node!r}")
+        if not math.isfinite(node):
+            raise TaxonomyError(f"taxonomy value at {dotted_path} is not finite: {node!r}")
         return float(node)
 
     def values(self, name: str) -> tuple[str, ...]:
@@ -504,18 +576,7 @@ class Taxonomy:
     def crisis_exit_safe_turns(self, level: CrisisLevel) -> int:
         if level not in (CrisisLevel.L2, CrisisLevel.L3):
             raise ValueError(f"crisis exit streak is only defined for L2 and L3, got {level.name}")
-        hierarchy = _mapping(self._data.get("crisis_hierarchy"), "crisis_hierarchy")
-        exit_rule = _mapping(hierarchy.get("exit_rule"), "crisis_hierarchy.exit_rule")
-        streaks = _mapping(
-            exit_rule.get("safe_streak_required"), "crisis_hierarchy.exit_rule.safe_streak_required"
-        )
-        if level.name not in streaks:
-            raise TaxonomyError(f"safe_streak_required has no entry for {level.name}")
-        where = "crisis_hierarchy.exit_rule.safe_streak_required"
-        turns = _int_value(streaks[level.name], level.name, where)
-        if turns < 1:
-            raise TaxonomyError(f"{where}.{level.name} must be at least 1")
-        return turns
+        return self._views().exit_safe_turns[level]
 
     def _views(self) -> _Views:
         if self._cached_views is None:
@@ -523,19 +584,17 @@ class Taxonomy:
             self._cached_views = _Views(self._data, ids)
         return self._cached_views
 
-    def verify_integrity(self) -> None:
+    def _verify_integrity(self) -> None:
         """Run every load-time integrity check; raises :class:`TaxonomyError` on failure."""
         self._views()
         for kind, (section, alias_section) in _LABEL_KINDS.items():
             ids = set(self._ids(section))
             aliases = _mapping(self._data.get(alias_section), alias_section)
             for alias, target in aliases.items():
-                if target not in ids:
+                if not isinstance(target, str) or target not in ids:
                     raise TaxonomyError(
                         f"{kind} alias {alias!r} maps to unknown canonical id {target!r}"
                     )
-        self.crisis_exit_safe_turns(CrisisLevel.L2)
-        self.crisis_exit_safe_turns(CrisisLevel.L3)
 
     def _section_list(self, name: str) -> list[Any]:
         section = self._data.get(name)
@@ -559,7 +618,7 @@ def load_taxonomy(path: Path | None = None) -> Taxonomy:
             text = resources.files("olivia").joinpath("data/taxonomy.yaml").read_text("utf-8")
         else:
             text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise TaxonomyError(f"cannot read taxonomy file: {exc}") from exc
     try:
         data = yaml.safe_load(text)
@@ -567,6 +626,4 @@ def load_taxonomy(path: Path | None = None) -> Taxonomy:
         raise TaxonomyError(f"invalid taxonomy YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise TaxonomyError("taxonomy top level must be a mapping")
-    taxonomy = Taxonomy(data)
-    taxonomy.verify_integrity()
-    return taxonomy
+    return Taxonomy(data)
