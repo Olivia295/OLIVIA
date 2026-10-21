@@ -1,3 +1,5 @@
+import sys
+import unicodedata
 from collections import defaultdict
 
 import pytest
@@ -21,7 +23,7 @@ SAME_IN_TRADITIONAL = frozenset(
     "封少尬就屋己已希年底很得心忍忙快怎怕思急性怪恨想惹意感成我手打找把抑抖拖拿挺掉接搬撞放故整"
     "方日早明是晚最月有朋望期木束果枯查格次止正死每毒比永江河法洗活浪浴消激灰炭焦然煤照熬爸片物"
     "狂玻璃瓶生用界畏留疼痛百的盆盒直相盼看眠眼睡知磨社神空突窗站笑等算精累罐聊肉胃胎能脖腕臂自"
-    "草蒸藏血行被西要解言走起跟跳躁身躺送逃通道那部都酒醒量陪隔障需非食高魂毛病"
+    "草蒸藏血行被西要解言走起跟跳躁身躺送逃通道那部都酒醒量陪隔障需非食高魂毛病唯泥海砂磕紫茶路陶"
 )
 
 
@@ -45,13 +47,13 @@ def _traditional_views() -> dict[str, list[str]]:
     "raw,expected",
     [
         ("想 死", "想死"),
-        ("想​死", "想死"),
-        ("想‌‍⁠﻿死", "想死"),
+        ("想\u200b死", "想死"),
+        ("想\u200c\u200d\u2060\ufeff死", "想死"),
         ("ＰＴＳＤ", "ptsd"),
         ("BPD", "bpd"),
         ("［５％］ 不想活了", "[5%]不想活了"),
         ("\t活着\n好累 ", "活着好累"),
-        ("想　死", "想死"),
+        ("想\u3000死", "想死"),
     ],
 )
 def test_normalize_variants(raw, expected):
@@ -61,11 +63,11 @@ def test_normalize_variants(raw, expected):
 @pytest.mark.parametrize(
     "raw",
     [
-        "想­死",  # soft hyphen (Cf)
-        "想‎死",  # left-to-right mark (Cf)
-        "想️死",  # variation selector 16 (Mn, invisible)
-        "想‮死",  # right-to-left override (Cf)
-        "想⁦死",  # left-to-right isolate (Cf)
+        "想\u00ad死",  # soft hyphen (Cf)
+        "想\u200e死",  # left-to-right mark (Cf)
+        "想\ufe0f死",  # variation selector 16 (Mn, invisible)
+        "想\u202e死",  # right-to-left override (Cf)
+        "想\u2066死",  # left-to-right isolate (Cf)
         "想\U000e0001死",  # language tag (Cf, astral plane)
         "想\U000e0100死",  # variation selector 17 (Mn, astral plane)
     ],
@@ -74,11 +76,26 @@ def test_invisible_characters_are_dropped(raw):
     assert normalize(raw) == "想死"
 
 
+def test_every_whitespace_and_invisible_character_is_dropped():
+    # Checked against the running Python's Unicode database, so a newer database that
+    # adds a format character fails here until the static ranges in normalize.py catch up.
+    invisible = [
+        chr(cp)
+        for cp in range(sys.maxunicode + 1)
+        if chr(cp).isspace()
+        or unicodedata.category(chr(cp)) == "Cf"
+        or 0xFE00 <= cp <= 0xFE0F
+        or 0xE0100 <= cp <= 0xE01EF
+    ]
+    kept = [f"U+{ord(ch):04X}" for ch in invisible if normalize(f"想{ch}死") != "想死"]
+    assert not kept
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        ("I don’t want to die", "idon'twanttodie"),
-        ("who says i‘m not suicidal", "whosaysi'mnotsuicidal"),
+        ("I don\u2019t want to die", "idon'twanttodie"),
+        ("who says i\u2018m not suicidal", "whosaysi'mnotsuicidal"),
     ],
 )
 def test_curly_apostrophes_fold_to_ascii(raw, expected):
