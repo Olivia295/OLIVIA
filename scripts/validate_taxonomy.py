@@ -434,7 +434,6 @@ def main():
     # 8. 校验包内 taxonomy 副本与根目录 SSOT 的严格一致性
     possible_pkg_paths = [
         Path("src/olivia/data/taxonomy.yaml"),
-        Path(".worktrees/iteration-1/olivia/data/taxonomy.yaml"),
         Path("olivia/data/taxonomy.yaml")
     ]
     checked_any = False
