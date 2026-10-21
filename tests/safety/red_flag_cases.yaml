@@ -9,6 +9,8 @@
 - {id: rf_bp_04, text: "我是不是双相啊 情绪起伏好大", expect: [SIT-02-04]}
 - {id: rf_bp_05, text: "我不是没有双相，只是一直没跟别人说", expect: [SIT-02-04]}
 - {id: rf_bp_06, text: "连着好几天不用睡觉还特别有劲 花钱也停不下来", expect: [SIT-02-04]}
+- {id: rf_bp_07, text: "我有没有双相啊 最近情绪忽高忽低", expect: [SIT-02-04]}
+- {id: rf_bp_08, text: "我去年確診了雙相情感障礙", expect: [SIT-02-04]}
 
 # --- SIT-02-06 perinatal ---
 - {id: rf_pn_01, text: "生完孩子三个月了，医生说是产后抑郁", expect: [SIT-02-06]}
@@ -33,12 +35,15 @@
 - {id: rf_an_02, text: "我故意不吃饭 想再瘦一点", expect: [SIT-08-04]}
 - {id: rf_an_03, text: "已经好几天没吃饭了 看到食物就想吐", expect: [SIT-08-04]}
 - {id: rf_an_04, text: "是不是神经性厌食啊 体重一直往下掉", expect: [SIT-08-04]}
+- {id: rf_an_05, text: "我有暴食症和厌食 一直没好", expect: [SIT-08-04]}
+- {id: rf_an_06, text: "我从小就有厌食的毛病", expect: [SIT-08-04]}
 
 # --- SIT-09-01 borderline / self-injury ---
 - {id: rf_bd_01, text: "我被诊断了边缘型人格障碍", expect: [SIT-09-01]}
 - {id: rf_bd_02, text: "情绪一上来就划手臂", expect: [SIT-09-01]}
 - {id: rf_bd_03, text: "昨天又自伤手臂了", expect: [SIT-09-01]}
 - {id: rf_bd_04, text: "医生说我有bpd倾向", expect: [SIT-09-01]}
+- {id: rf_bd_05, text: "我是边缘性人格 情绪很难控制", expect: [SIT-09-01]}
 
 # --- SIT-10-04 substance dependence ---
 - {id: rf_sb_01, text: "我有酒精依赖 戒了好几次", expect: [SIT-10-04]}

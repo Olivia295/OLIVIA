@@ -45,6 +45,8 @@ def test_negated_self_report_is_ignored(det, text):
         ("我是不是双相", "SIT-02-04"),
         ("我是不是有厌食症", "SIT-08-04"),
         ("我不是没有双相", "SIT-02-04"),
+        ("我有没有双相啊", "SIT-02-04"),
+        ("我有没有厌食症", "SIT-08-04"),
     ],
 )
 def test_question_and_double_negation_keep_self_report(det, text, code):
@@ -73,3 +75,23 @@ def test_session_accumulates_and_includes_profile(det):
 )
 def test_traditional_chinese_red_flags(det, text, code):
     assert det.detect(text) == frozenset({code})
+
+
+@pytest.mark.parametrize(
+    "text,code",
+    [
+        ("我是边缘性人格", "SIT-09-01"),
+        ("医生说我是边缘性人格障碍", "SIT-09-01"),
+        ("我有暴食症和厌食", "SIT-08-04"),
+        ("我有厌食的毛病", "SIT-08-04"),
+        ("我一直有厌食", "SIT-08-04"),
+        ("去年得了厌食", "SIT-08-04"),
+    ],
+)
+def test_more_self_report_forms(det, text, code):
+    assert det.detect(text) == frozenset({code})
+
+
+@pytest.mark.parametrize("text", ["我没有厌食的毛病", "我不是边缘性人格"])
+def test_new_self_report_forms_respect_negation(det, text):
+    assert det.detect(text) == frozenset()

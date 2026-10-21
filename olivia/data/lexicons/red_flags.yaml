@@ -9,9 +9,9 @@ entries:
   - {id: RF_PTSD_FEAT, code: SIT-06-01, tier: FEATURE, patterns: ["闪回停不下来", "一直闪回", "那天的画面一直闪回", "一闭眼就是那场", "噩梦反复梦到那天"]}
   - {id: RF_DISSOC_SELF, code: SIT-06-05, tier: SELF_REPORT, patterns: ["人格解体", "现实解体", "解离症", "解离障碍"]}
   - {id: RF_DISSOC_FEAT, code: SIT-06-05, tier: FEATURE, patterns: ["感觉自己不真实", "像在看别人的生活", "灵魂出窍", "照镜子的时候觉得那不是我", "照镜子觉得那不是我", "镜子里的人不是我", "像隔着一层玻璃看世界"]}
-  - {id: RF_ANOREXIA_SELF, code: SIT-08-04, tier: SELF_REPORT, patterns: ["厌食症", "神经性厌食"]}
+  - {id: RF_ANOREXIA_SELF, code: SIT-08-04, tier: SELF_REPORT, patterns: ["厌食症", "神经性厌食", "有厌食", "和厌食", "得了厌食", "厌食的毛病"]}
   - {id: RF_ANOREXIA_FEAT, code: SIT-08-04, tier: FEATURE, patterns: ["连续三天没吃东西", "好几天没吃饭", "故意不吃饭", "饿了也忍着不吃", "胃疼也忍着不吃"]}
-  - {id: RF_BPD_SELF, code: SIT-09-01, tier: SELF_REPORT, patterns: ["边缘型人格", "边缘人格", "bpd"]}
+  - {id: RF_BPD_SELF, code: SIT-09-01, tier: SELF_REPORT, patterns: ["边缘型人格", "边缘人格", "边缘性人格", "边缘性人格障碍", "bpd"]}
   - {id: RF_BPD_FEAT, code: SIT-09-01, tier: FEATURE, patterns: ["自伤手臂", "划手臂", "用刀划自己", "用烟头烫自己", "拿刀片划自己", "拿刀片划手"]}
   - {id: RF_SUBSTANCE_SELF, code: SIT-10-04, tier: SELF_REPORT, patterns: ["酒精依赖", "酒瘾", "药物依赖", "毒瘾"]}
   - {id: RF_SUBSTANCE_FEAT, code: SIT-10-04, tier: FEATURE, patterns: ["每天都要喝酒才能睡", "不喝酒手就抖", "一天不喝酒就浑身难受", "我离不开酒", "离不开酒精"]}

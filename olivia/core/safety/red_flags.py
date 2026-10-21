@@ -2,19 +2,25 @@
 
 Detected codes later restrict which self-help actions may be offered, so a miss
 is costlier than a false hit. Self-report hits are voided only by an immediately
-preceding negation ("我没有双相"); feature hits are never negated. Once a code is
-active in a session it is never withdrawn. This module never writes back to the
-profile: persisting a detected flag needs explicit user consent (a later phase).
+preceding negation ("我没有双相", but not the question "我有没有双相"); feature hits
+are never negated. Once a code is active in a session it is never withdrawn. This
+module never writes back to the profile: persisting a detected flag needs explicit
+user consent (a later phase).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Final
 
 from olivia.core.safety.lexicon import SafetyLexicons
 from olivia.core.safety.matcher import PhraseMatcher
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
+
+# A negation right after one of these is the second half of an A-not-A question
+# (是不是双相 / 有没有双相), which asks about the condition rather than denying it.
+_A_NOT_A_HEADS: Final[tuple[str, ...]] = ("是", "有")
 
 
 class UnknownRedFlagError(ValueError):
@@ -49,16 +55,19 @@ class RedFlagDetector:
     def _negated(self, folded: str, start: int) -> bool:
         """True when a negation directly precedes the hit and is not neutralised.
 
-        A negation is neutralised (the hit survives) when it follows "是" (the
-        A-not-A question form 是不是) or follows another negation (double negation
-        such as 不是没有). A miss is the costly direction, so both fail toward flagging.
+        A negation is neutralised (the hit survives) when it follows "是" or "有" (the
+        A-not-A question forms 是不是 and 有没有) or follows another negation (double
+        negation such as 不是没有). A miss is the costly direction, so all fail toward
+        flagging.
         """
         before = folded[max(0, start - self._window) : start]
         for negation in self._negations:
             if not before.endswith(negation):
                 continue
             head = folded[: start - len(negation)]
-            if head.endswith("是") or any(head.endswith(other) for other in self._negations):
+            if head.endswith(_A_NOT_A_HEADS) or any(
+                head.endswith(other) for other in self._negations
+            ):
                 continue
             return True
         return False
