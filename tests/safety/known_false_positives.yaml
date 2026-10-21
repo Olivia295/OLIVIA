@@ -9,12 +9,12 @@
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
 #   L0 -> L2: 14
 #   L0 -> L3: 2
-#   L1 -> L0: 6
-#   L2 -> L0: 10
+#   L1 -> L0: 5
+#   L2 -> L0: 11
 #   L2 -> L1: 2
 #   L3 -> L0: 85
 #   L3 -> L2: 4
-#   by ideal: L0 16, L1 6, L2 12, L3 89
+#   by ideal: L0 16, L1 5, L2 13, L3 89
 #   by current: L0 101, L1 2, L2 18, L3 2
 #   below ideal (missed or under-rated): 107
 #   above ideal (false alarms): 16
@@ -138,7 +138,7 @@
 - {id: kl_fr29, ideal: L2, current: L0, text: "我想了结这一生", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr33, ideal: L1, current: L0, text: "我觉得自己什么都做不好，活着有什么用", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr34, ideal: L1, current: L0, text: "每天醒来都觉得很绝望", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
-- {id: kl_fr35, ideal: L1, current: L0, text: "我好想就这么睡着不再醒来", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr35, ideal: L2, current: L0, text: "我好想就这么睡着不再醒来", why: "final-review fresh-author probe: passive-ideation phrasing (C-SSRS item 1) the lexicon does not contain"}
 - {id: kl_fr36, ideal: L1, current: L0, text: "有时候觉得世界没我会更好", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr37, ideal: L1, current: L0, text: "感觉人生一点意义都没有", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr38, ideal: L1, current: L0, text: "我好累，什么都不想做了", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}

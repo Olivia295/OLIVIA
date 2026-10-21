@@ -22,7 +22,8 @@ def test_loads_packaged_lexicons(tax):
     assert lex.risk["S1_MEANS_PILLS"].score == pytest.approx(0.9)
     assert lex.risk["L2_WANT_DIE"].score == pytest.approx(0.7)
     assert lex.risk["L1_WEARY"].score == pytest.approx(0.4)
-    assert lex.risk["L1_SLEEP_NO_WAKE"].score == pytest.approx(0.48)
+    assert lex.risk["L1_DISAPPEAR"].score == pytest.approx(0.45)
+    assert lex.risk["L2_SLEEP_NO_WAKE"].level is CrisisLevel.L2
     assert lex.risk["HYP_X_TO_DEATH"].level is CrisisLevel.L0
     assert lex.risk["HYP_X_TO_DEATH"].score == pytest.approx(0.1)
     assert lex.risk["NEG_NOT_DIE"].level is None

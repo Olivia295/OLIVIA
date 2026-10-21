@@ -36,7 +36,7 @@ def test_plain_l1_does_not_escalate(run):
 
 
 def test_strong_l1_escalates_on_third_turn(run):
-    s1, s2, s3 = (run("想彻底睡过去") for _ in range(3))
+    s1, s2, s3 = (run("好想人间蒸发") for _ in range(3))
     assert s1.level is L.L1 and s2.level is L.L1
     assert s3.level is L.L2 and s3.escalated and s3.in_crisis and s3.just_entered
 
@@ -51,18 +51,18 @@ def test_valence_must_worsen_when_given(tax, lex):
 
 
 def test_isolated_l0_does_not_break_streak(run):
-    run("想彻底睡过去")
+    run("好想人间蒸发")
     run("今天吃了面")
-    run("想彻底睡过去")
-    assert run("想彻底睡过去").level is L.L2
+    run("好想人间蒸发")
+    assert run("好想人间蒸发").level is L.L2
 
 
 def test_three_l0_turns_clear_streak(run):
-    run("想彻底睡过去")
-    run("想彻底睡过去")
+    run("好想人间蒸发")
+    run("好想人间蒸发")
     for _ in range(3):
         run("今天吃了面")
-    assert run("想彻底睡过去").level is L.L1
+    assert run("好想人间蒸发").level is L.L1
 
 
 def test_l2_exit_needs_confirmation_then_two_safe_turns(run):
