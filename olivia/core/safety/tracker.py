@@ -1,8 +1,10 @@
 """Cross-turn crisis tracking: EWMA escalation, crisis entry and confirmed exit.
 
 Exit from crisis needs an explicit safety confirmation followed by N consecutive
-safe turns, so a single calm message never switches emergency resources off. The
-tracker keeps numbers and flags only; it never stores user text.
+safe turns, so a single calm message never switches emergency resources off. The L1
+escalation trend (EWMA and L1 run) is reset on every turn at L2 or above, crisis entry
+included, and on crisis exit. The tracker keeps numbers and flags only; it never stores
+user text.
 """
 
 from __future__ import annotations
@@ -102,6 +104,9 @@ class CrisisTracker:
                 self._entry_level = max(self._entry_level, level)
             self._confirmed = False
             self._safe_turns = 0
+            # The L1 escalation trend starts afresh after any crisis-level turn, so an L2/L3
+            # score never lifts later L1 turns into a spurious escalation.
+            self._reset_trend()
         elif self._in_crisis:
             just_exited = self._observe_safe_candidate(text)
 

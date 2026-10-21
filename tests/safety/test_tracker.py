@@ -126,3 +126,26 @@ def test_confirmation_with_topic_change_still_counts(run):
     assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
     assert run("嗯").in_crisis
     assert run("嗯").just_exited
+
+
+def test_crisis_entry_resets_the_l1_trend(run):
+    # Reviewer sequence: the L2 score must not leak into the L1 escalation trend.
+    run("活着好累")
+    run("活着好累")
+    assert run("我想死").just_entered
+    assert not run("我现在安全了").awaiting_confirmation
+    s = run("活着好累")
+    assert s.level is L.L1 and not s.escalated
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 1
+
+
+def test_relapse_inside_crisis_also_resets_the_l1_trend(run):
+    assert run("遗书写好了").just_entered  # L3 entry: three safe turns to exit
+    run("我现在安全了")
+    run("活着好累")
+    run("活着好累")
+    s = run("我又想死了")  # relapse inside crisis, not a new entry
+    assert s.level is L.L2 and not s.just_entered and s.awaiting_confirmation
+    run("我现在安全了")
+    s = run("活着好累")
+    assert s.level is L.L1 and not s.escalated and not s.awaiting_confirmation
