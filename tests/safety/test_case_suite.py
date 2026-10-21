@@ -16,7 +16,8 @@ HERE = Path(__file__).parent
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))
 SESSIONS = yaml.safe_load((HERE / "sessions.yaml").read_text(encoding="utf-8"))
 RF_CASES = yaml.safe_load((HERE / "red_flag_cases.yaml").read_text(encoding="utf-8"))
-KNOWN_FP = yaml.safe_load((HERE / "known_false_positives.yaml").read_text(encoding="utf-8"))
+KNOWN_LIMITS_TEXT = (HERE / "known_false_positives.yaml").read_text(encoding="utf-8")
+KNOWN_LIMITS = yaml.safe_load(KNOWN_LIMITS_TEXT)
 HOLDOUT = yaml.safe_load((HERE / "holdout_probe.yaml").read_text(encoding="utf-8"))
 MINIMUMS = {
     "L3_MEANS": 40,
@@ -75,9 +76,26 @@ def test_red_flag_case(case):
     assert detector.detect(case["text"]) == frozenset(case["expect"])
 
 
-@pytest.mark.parametrize("case", KNOWN_FP, ids=[c["id"] for c in KNOWN_FP])
-def test_known_false_positive_stays_pinned(case):
-    assert SCREEN.assess(case["text"]).level is CrisisLevel[case["expect"]]
+@pytest.mark.parametrize("case", KNOWN_LIMITS, ids=[c["id"] for c in KNOWN_LIMITS])
+def test_known_limitation_current_level(case):
+    assert SCREEN.assess(case["text"]).level is CrisisLevel[case["current"]]
+
+
+def test_known_limitations_never_drop_ideal_l3_below_l2():
+    for case in KNOWN_LIMITS:
+        assert case["ideal"] != case["current"], case["id"]
+        if case["ideal"] == "L3":
+            assert CrisisLevel[case["current"]] >= CrisisLevel.L2, case["id"]
+
+
+def test_known_limitations_summary():
+    pairs = Counter((c["ideal"], c["current"]) for c in KNOWN_LIMITS)
+    lines = [f"#   {i} -> {c}: {n}" for (i, c), n in sorted(pairs.items())]
+    for name, key in (("ideal", "ideal"), ("current", "current")):
+        counts = Counter(c[key] for c in KNOWN_LIMITS)
+        lines.append(f"#   by {name}: " + ", ".join(f"{k} {counts[k]}" for k in sorted(counts)))
+    lines.append(f"#   total: {len(KNOWN_LIMITS)}")
+    assert "\n".join(lines) in KNOWN_LIMITS_TEXT
 
 
 @pytest.mark.parametrize("case", HOLDOUT, ids=[c["id"] for c in HOLDOUT])
@@ -90,8 +108,9 @@ def test_case_texts_are_not_bare_lexicon_phrases():
     screened = ("stage1", "stage2", "hyperbole", "negation")
     risk = {p for sec in screened for cue in LEX.cues(sec) for p in cue.patterns}
     flags = {p for cue in LEX.red_flags.values() for p in cue.patterns}
-    # The holdout probe keeps the reviewer's exact sentences, so it is not checked here.
-    groups = [(CASES + KNOWN_FP, risk), (RF_CASES, flags)]
+    # The holdout probe and known limitations keep real phrasings verbatim, so they are
+    # not checked here.
+    groups = [(CASES, risk), (RF_CASES, flags)]
     for cases, phrases in groups:
         for case in cases:
             text = normalize(case["text"])

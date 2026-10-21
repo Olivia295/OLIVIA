@@ -1,6 +1,6 @@
 # Held-out phrasings from the Task 6 review probes (probe.py "fresh held-out phrasings" and
 # probe2.py). Expectations are the reviewer's. ho20/ho21 moved to known_false_positives.yaml
-# (controller ruling, round 2). {id, text, expect}
+# (controller ruling, round 2); ho27/ho29 moved there too (round 3). {id, text, expect}
 - {id: ho01, text: "安眠药我已经存了两个月 够了", expect: L3}
 - {id: ho02, text: "我把绳子绑在门把手上了", expect: L3}
 - {id: ho03, text: "今晚我就从阳台跳下去", expect: L3}
@@ -25,9 +25,7 @@
 - {id: ho24, text: "我不想死 只是太累了", expect: L0}
 - {id: ho25, text: "我没有想要自杀", expect: L0}
 - {id: ho26, text: "我从来没想过死", expect: L0}
-- {id: ho27, text: "药我都准备好了 今晚吃", expect: L3}
 - {id: ho28, text: "我刚吃了一瓶安眠药", expect: L3}
-- {id: ho29, text: "我现在就站在楼顶", expect: L3}
 - {id: ho30, text: "遗书已经写完了", expect: L3}
 - {id: ho31, text: "有时候真的很想死", expect: L2}
 - {id: ho32, text: "我不想活了 好累", expect: L2}

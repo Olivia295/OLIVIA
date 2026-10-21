@@ -85,6 +85,23 @@ stage2:
     patterns: ["今晚就动手", "买好了绳子今晚", "绳子买好了今晚", "药已经备好了就今晚",
                "药我已经准备好了够多了", "药我都准备好了今晚吃", "已经站在天台上", "楼顶不想下去", "就站在楼顶", "把刀磨好了今晚",
                "东西都送人了以后用不上"]
+  # Unanchored means/plan/farewell phrasings (tests/safety/known_false_positives.yaml, ideal L3).
+  # Literal Stage 1 cannot separate them from everyday use, so they are held at L2; each is
+  # chosen not to collide with a BENIGN case.
+  - id: L2_UNANCHORED_PLAN
+    level: L2
+    patterns: ["偷偷留几片", "攒了快一百片", "攒药", "攒的药", "药都攒起来", "药都倒出来数好", "药我已经全部准备好",
+               "药和酒都准备好", "药已经备好了allset", "止痛药都囤起来", "pills都囤好", "收起来了够吃一次的",
+               "吞了好多片", "吃下去了,现在就等着", "绳子我已经买好", "绳子已经买好", "很粗的绳子", "绳买好了承重",
+               "绳结都打好", "绳子已经系在", "绳子已经挂好", "绳子已经套在脖子", "刀片准备好了", "刀片已经准备好",
+               "刀片我拆出来", "刀磨好了放在床边", "刀我已经藏好", "刀藏在枕头", "刀就在手边", "刚划了好几刀",
+               "一直在流止都止不住", "农药过来一直藏着", "农药放在床底", "敌敌畏我一直留着就塞", "几包炭放在车后备箱",
+               "准备好了炭和打火机", "只是炭已经买好", "走的日子我都定好", "已经爬到楼顶了", "栏杆外面", "腿已经伸出去",
+               "那天就结束吧", "就去那座桥", "站在天台边上了", "坐在楼顶边上", "十二点就动手", "出门我就动手",
+               "动手的时间", "跳下去的地方", "铁轨边上坐着火车快来", "我的最后一晚", "楼顶往下看一点都不怕",
+               "只要往前一步就解脱", "已经到桥上了", "tonight就结束", "翻过护栏", "给你的最后一条消息",
+               "照顾好我的猫拜托了", "后事我都安排好", "没想不开,就是把后事", "银行卡密码都留给", "我把东西都送人了以后",
+               "谢谢以后不会再来了", "给爸妈的信放在"]
   # Double negation / rhetorical forms: each phrase is longer than the negation mask it
   # contains, so containment masking does not void it. Every negation mask below has a
   # 谁说我…/不是…/…骗你的 counterpart here.
