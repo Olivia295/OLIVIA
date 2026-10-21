@@ -3,10 +3,15 @@
 Stage 1 looks for explicit plan, means or timing evidence and answers L3 without
 consulting any model. Stage 2 asks a ``RiskModel`` (the rule model by default) for
 a level and score, then arbitrates. Assessments carry cue ids only, never text.
+
+An injected model can only raise the Stage 2 level above the rule model's, never lower
+it, and a model that raises or answers out of contract counts as an L2 prediction
+(``MODEL_FAILURE``): ``assess`` never raises because of the model.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal, Protocol
@@ -18,6 +23,7 @@ from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
 
 _MATCHED_SECTIONS: Final[tuple[RiskSection, ...]] = ("stage1", "stage2", "hyperbole", "negation")
+MODEL_FAILURE: Final = "MODEL_FAILURE"
 
 
 @dataclass(frozen=True)
@@ -133,14 +139,13 @@ class SafetyScreen:
     ) -> None:
         self._tax = tax
         self._index = _CueIndex(lexicons)
-        # The default rule model shares this screen's scan; an injected model gets raw text.
-        self._rule_model: RuleRiskModel | None = None
-        self._model: RiskModel
-        if model is None:
-            self._rule_model = RuleRiskModel(tax, lexicons, _index=self._index)
-            self._model = self._rule_model
-        else:
-            self._model = model
+        # The rule model always shares this screen's scan. With no injected model it is the
+        # Stage 2 model; with one, it is the floor the injected model can only raise.
+        self._rule_model = RuleRiskModel(tax, lexicons, _index=self._index)
+        self._model = model
+        self._model_failure = RiskPrediction(
+            CrisisLevel.L2, tax.threshold("risk.lexicon_scores.L2"), (MODEL_FAILURE,)
+        )
 
     def assess(self, text: str) -> CrisisAssessment:
         normalized = normalize(text)
@@ -152,9 +157,40 @@ class SafetyScreen:
             return CrisisAssessment(
                 CrisisLevel.L3, score, "STAGE1", True, _unique_ids(m.key for m in stage1)
             )
-        if self._rule_model is not None:
-            prediction = self._rule_model.predict_matches(matches)
-        else:
-            prediction = self._model.predict(text)
+        prediction = self._rule_model.predict_matches(matches)
+        if self._model is not None:
+            prediction = _with_floor(prediction, self._predict_safely(self._model, text))
         level = arbitrate(self._tax, prediction.level, prediction.score, has_plan_evidence=False)
         return CrisisAssessment(level, prediction.score, "STAGE2", False, prediction.cue_ids)
+
+    def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:
+        """The injected model's prediction, or the L2 failure prediction when it breaks."""
+        try:
+            prediction = model.predict(text)
+        except Exception:  # any model fault must fail toward safety, never crash the screen
+            return self._model_failure
+        if not _is_valid_prediction(prediction):
+            return self._model_failure
+        return prediction
+
+
+def _is_valid_prediction(prediction: object) -> bool:
+    if not isinstance(prediction, RiskPrediction):
+        return False
+    score: object = prediction.score
+    return (
+        isinstance(prediction.level, CrisisLevel)
+        and isinstance(score, int | float)
+        and not isinstance(score, bool)
+        and math.isfinite(score)
+        and 0.0 <= score <= 1.0
+    )
+
+
+def _with_floor(rule: RiskPrediction, model: RiskPrediction) -> RiskPrediction:
+    """Combine the rule floor with an injected model: the higher level and score win."""
+    return RiskPrediction(
+        max(rule.level, model.level),
+        max(rule.score, model.score),
+        _unique_ids((*rule.cue_ids, *model.cue_ids)),
+    )

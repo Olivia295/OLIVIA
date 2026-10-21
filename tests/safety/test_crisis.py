@@ -119,3 +119,63 @@ def test_rule_model_predict_matches_screen(tax):
 )
 def test_traditional_chinese_is_screened(screen, text, level):
     assert screen.assess(text).level is level
+
+
+class _FixedModel:
+    def __init__(self, level, score):
+        self._prediction = RiskPrediction(level, score, ("FAKE",))
+
+    def predict(self, text):
+        return self._prediction
+
+
+class _RaisingModel:
+    def predict(self, text):
+        raise RuntimeError("model crashed")
+
+
+def _screen_with(tax, model):
+    return SafetyScreen(tax, load_safety_lexicons(tax), model)
+
+
+def test_model_exception_fails_safe_to_l2(tax):
+    a = _screen_with(tax, _RaisingModel()).assess("随便说点什么")
+    assert a.level is L.L2 and a.stage == "STAGE2"
+    assert a.score == pytest.approx(tax.threshold("risk.lexicon_scores.L2"))
+    assert a.cue_ids == ("MODEL_FAILURE",)
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), 1.2, -0.1])
+def test_invalid_model_score_fails_safe_to_l2(tax, score):
+    a = _screen_with(tax, _FixedModel(L.L0, score)).assess("随便说点什么")
+    assert a.level is L.L2 and a.cue_ids == ("MODEL_FAILURE",)
+
+
+@pytest.mark.parametrize("level", [2, "L2", None])
+def test_model_level_not_a_crisis_level_fails_safe_to_l2(tax, level):
+    a = _screen_with(tax, _FixedModel(level, 0.5)).assess("随便说点什么")
+    assert a.level is L.L2 and a.cue_ids == ("MODEL_FAILURE",)
+
+
+def test_model_returning_wrong_type_fails_safe_to_l2(tax):
+    class WrongType:
+        def predict(self, text):
+            return (L.L0, 0.0)
+
+    a = _screen_with(tax, WrongType()).assess("随便说点什么")
+    assert a.level is L.L2 and a.cue_ids == ("MODEL_FAILURE",)
+
+
+def test_rules_stay_a_floor_under_an_injected_model(tax):
+    a = _screen_with(tax, _FixedModel(L.L0, 0.0)).assess("我想死")
+    assert a.level is L.L2 and "L2_WANT_DIE" in a.cue_ids
+
+
+def test_injected_model_can_raise_above_the_rule_floor(tax):
+    a = _screen_with(tax, _FixedModel(L.L2, 0.7)).assess("今天吃了面")
+    assert a.level is L.L2 and a.cue_ids == ("FAKE",)
+
+
+def test_injected_model_failure_keeps_stage1(tax):
+    a = _screen_with(tax, _RaisingModel()).assess("遗书写好了")
+    assert a.level is L.L3 and a.stage == "STAGE1"
