@@ -48,12 +48,12 @@
 
 # --- feature-tier variants (colloquial phrasing) ---
 - {id: rf_ft_01, text: "几天几夜不睡还觉得精力无限 停不下来", expect: [SIT-02-04]}
-- {id: rf_ft_02, text: "生完二胎以后每天以泪洗面", expect: [SIT-02-06]}
+- {id: rf_ft_02, text: "生完二胎以后我每天以泪洗面 老公还说我矫情", expect: [SIT-02-06]}
 - {id: rf_ft_03, text: "一闭眼就是那场事故的画面 怎么都甩不掉", expect: [SIT-06-01]}
-- {id: rf_ft_04, text: "照镜子的时候觉得那不是我", expect: [SIT-06-05]}
+- {id: rf_ft_04, text: "最近照镜子的时候觉得那不是我 好陌生", expect: [SIT-06-05]}
 - {id: rf_ft_05, text: "心情不好就用烟头烫自己", expect: [SIT-09-01]}
 - {id: rf_ft_06, text: "一天不喝酒就浑身难受 睡不着", expect: [SIT-10-04]}
-- {id: rf_ft_07, text: "每天只吃一个苹果 饿了也忍着不吃", expect: [SIT-08-04]}
+- {id: rf_ft_07, text: "这周每天就吃几口东西 饿得胃疼也忍着不吃", expect: [SIT-08-04]}
 
 # --- multiple codes in one message ---
 - {id: rf_multi_01, text: "我有双相，最近还用刀划自己", expect: [SIT-02-04, SIT-09-01]}
@@ -74,3 +74,8 @@
 - {id: rf_neg_12, text: "和朋友喝了两杯啤酒 挺开心的", expect: []}
 - {id: rf_neg_13, text: "宝宝今天会翻身了", expect: []}
 - {id: rf_neg_14, text: "最近有点焦虑 但还能应付", expect: []}
+- {id: rf_neg_15, text: "我觉得那不是我的错", expect: []}
+- {id: rf_neg_16, text: "为了赶项目几天几夜不睡", expect: []}
+- {id: rf_neg_17, text: "我每天只吃一个苹果减肥", expect: []}
+- {id: rf_neg_18, text: "这道菜离不开酒", expect: []}
+- {id: rf_neg_19, text: "拿刀片划开快递箱", expect: []}

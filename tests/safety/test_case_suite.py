@@ -7,6 +7,7 @@ import yaml
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import SafetyScreen
 from olivia.core.safety.lexicon import load_safety_lexicons
+from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector
 from olivia.core.safety.tracker import CrisisTracker
 from olivia.core.taxonomy import load_taxonomy
@@ -15,6 +16,8 @@ HERE = Path(__file__).parent
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))
 SESSIONS = yaml.safe_load((HERE / "sessions.yaml").read_text(encoding="utf-8"))
 RF_CASES = yaml.safe_load((HERE / "red_flag_cases.yaml").read_text(encoding="utf-8"))
+KNOWN_FP = yaml.safe_load((HERE / "known_false_positives.yaml").read_text(encoding="utf-8"))
+HOLDOUT = yaml.safe_load((HERE / "holdout_probe.yaml").read_text(encoding="utf-8"))
 MINIMUMS = {
     "L3_MEANS": 40,
     "L3_TIME_PLACE": 25,
@@ -70,3 +73,28 @@ def test_red_flag_case_coverage():
 def test_red_flag_case(case):
     detector = RedFlagDetector(TAX, LEX)
     assert detector.detect(case["text"]) == frozenset(case["expect"])
+
+
+@pytest.mark.parametrize("case", KNOWN_FP, ids=[c["id"] for c in KNOWN_FP])
+def test_known_false_positive_stays_pinned(case):
+    assert SCREEN.assess(case["text"]).level is CrisisLevel[case["expect"]]
+
+
+@pytest.mark.parametrize("case", HOLDOUT, ids=[c["id"] for c in HOLDOUT])
+def test_holdout_probe(case):
+    assert SCREEN.assess(case["text"]).level is CrisisLevel[case["expect"]]
+
+
+def test_case_texts_are_not_bare_lexicon_phrases():
+    # Screened sections only: confirm/veto words such as 不知道 are ordinary vocabulary.
+    screened = ("stage1", "stage2", "hyperbole", "negation")
+    risk = {p for sec in screened for cue in LEX.cues(sec) for p in cue.patterns}
+    flags = {p for cue in LEX.red_flags.values() for p in cue.patterns}
+    # The holdout probe keeps the reviewer's exact sentences, so it is not checked here.
+    groups = [(CASES + KNOWN_FP, risk), (RF_CASES, flags)]
+    for cases, phrases in groups:
+        for case in cases:
+            text = normalize(case["text"])
+            assert text not in phrases, case["id"]
+            splits = ((text[:i], text[i:]) for i in range(1, len(text)))
+            assert not any(a in phrases and b in phrases for a, b in splits), case["id"]

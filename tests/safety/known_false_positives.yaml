@@ -1,0 +1,14 @@
+# Known false positives: everyday or joking sentences the rule screen rates higher than a
+# human would. They are pinned at the level the screen actually gives, so a lexicon change
+# that silently lowers them gets noticed. Fixing one needs a model, not a phrase list.
+# {id, text, expect, reason}
+- {id: fp01, text: "好想死你们了，下周回国一起吃饭！", expect: L2, reason: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
+- {id: fp02, text: "宝贝我想死你了", expect: L2, reason: "same idiom; masking 想死你 would hide '我想死 你懂吗'"}
+- {id: fp03, text: "我还年轻 不想死得那么早", expect: L2, reason: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
+- {id: fp04, text: "我可不想死在工位上", expect: L2, reason: "不想死在 is kept for place talk (不想死在家里)"}
+- {id: fp05, text: "再加班我就去跳楼", expect: L2, reason: "conditional threat; 就去跳楼 is L2 ideation without time/plan"}
+- {id: fp06, text: "永别了我的青春", expect: L3, reason: "永别了 is an unmaskable farewell phrase"}
+- {id: fp07, text: "下辈子见吧哈哈哈", expect: L3, reason: "下辈子见 farewell phrase, said as a joke"}
+- {id: fp08, text: "你活腻了吧敢这么跟我说话", expect: L2, reason: "活腻了 used as a threat at someone else"}
+- {id: fp09, text: "看到海就想跳下去游泳", expect: L2, reason: "想跳下去 without a death word"}
+- {id: fp10, text: "放心我不会去寻死的", expect: L2, reason: "去寻死 is L2 and the mask is only 不会寻死; fails toward caution"}
