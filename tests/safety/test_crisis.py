@@ -1,8 +1,17 @@
+from fractions import Fraction
+
 import pytest
 
 from olivia.core.models import CrisisLevel as L
-from olivia.core.safety.crisis import RiskPrediction, RuleRiskModel, SafetyScreen, arbitrate
+from olivia.core.safety.crisis import (
+    RiskPrediction,
+    RuleRiskModel,
+    SafetyScreen,
+    _MaskCover,
+    arbitrate,
+)
 from olivia.core.safety.lexicon import load_safety_lexicons
+from olivia.core.safety.matcher import Match
 from olivia.core.taxonomy import load_taxonomy
 
 
@@ -179,3 +188,44 @@ def test_injected_model_can_raise_above_the_rule_floor(tax):
 def test_injected_model_failure_keeps_stage1(tax):
     a = _screen_with(tax, _RaisingModel()).assess("遗书写好了")
     assert a.level is L.L3 and a.stage == "STAGE1"
+
+
+class _CueIdsModel:
+    def __init__(self, cue_ids):
+        self._prediction = RiskPrediction(L.L0, 0.0, cue_ids)
+
+    def predict(self, text):
+        return self._prediction
+
+
+@pytest.mark.parametrize("cue_ids", [None, "FAKE", ([],), (1,), ["FAKE", {}]])
+def test_malformed_model_cue_ids_fail_safe_to_l2(tax, cue_ids):
+    a = _screen_with(tax, _CueIdsModel(cue_ids)).assess("随便说点什么")
+    assert a.level is L.L2 and a.cue_ids == ("MODEL_FAILURE",)
+
+
+def test_model_cue_ids_list_is_accepted_as_a_tuple(tax):
+    a = _screen_with(tax, _CueIdsModel(["FAKE"])).assess("随便说点什么")
+    assert a.cue_ids == ("FAKE",)
+
+
+def test_model_score_of_any_real_number_type_is_accepted(tax):
+    # Stands in for numpy.float32, which is registered as numbers.Real like Fraction.
+    a = _screen_with(tax, _FixedModel(L.L2, Fraction(7, 10))).assess("今天吃了面")
+    assert a.level is L.L2 and a.cue_ids == ("FAKE",)
+    assert type(a.score) is float and a.score == pytest.approx(0.7)
+
+
+def test_numeric_string_score_is_out_of_contract(tax):
+    a = _screen_with(tax, _FixedModel(L.L0, "0.1")).assess("随便说点什么")
+    assert a.cue_ids == ("MODEL_FAILURE",)
+
+
+@pytest.mark.parametrize(
+    ("span", "covered"),
+    [((3, 6), True), ((0, 10), True), ((4, 11), False), ((12, 13), False), ((10, 12), True)],
+)
+def test_mask_cover_uses_the_widest_earlier_mask(span, covered):
+    # A short mask starting after a long one must not shadow the long one's coverage.
+    masks = [Match("A", 0, 10), Match("B", 2, 4), Match("C", 10, 12)]
+    assert _MaskCover(masks).contains(Match("X", *span)) is covered

@@ -12,8 +12,11 @@ it, and a model that raises or answers out of contract counts as an L2 predictio
 from __future__ import annotations
 
 import math
+import numbers
+from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import accumulate
 from typing import Final, Literal, Protocol
 
 from olivia.core.models import CrisisLevel
@@ -87,6 +90,20 @@ def _cue_score(cue: RiskCue) -> float:
     return cue.score
 
 
+class _MaskCover:
+    """Answers "does some mask fully contain this span?" in O(log n) per query."""
+
+    def __init__(self, masks: Iterable[Match]) -> None:
+        ordered = sorted(masks, key=lambda m: m.start)
+        self._starts = [m.start for m in ordered]
+        # _max_ends[i]: the furthest end among the masks starting no later than _starts[i].
+        self._max_ends = list(accumulate((m.end for m in ordered), max))
+
+    def contains(self, span: Match) -> bool:
+        i = bisect_right(self._starts, span.start) - 1
+        return i >= 0 and self._max_ends[i] >= span.end
+
+
 class RuleRiskModel:
     """Lexicon-based Stage 2 model with hyperbole and negation masking."""
 
@@ -117,11 +134,8 @@ class RuleRiskModel:
             elif section == "negation":
                 masks.append(match)
 
-        valid = [
-            m
-            for m in stage2
-            if not any(m.start >= mask.start and m.end <= mask.end for mask in masks)
-        ]
+        covered = _MaskCover(masks)
+        valid = [m for m in stage2 if not covered.contains(m)]
         if valid:
             score = max(_cue_score(cues[m.key]) for m in valid)
             level = self._tax.crisis_level_for_score(score)
@@ -169,22 +183,25 @@ class SafetyScreen:
             prediction = model.predict(text)
         except Exception:  # any model fault must fail toward safety, never crash the screen
             return self._model_failure
-        if not _is_valid_prediction(prediction):
-            return self._model_failure
-        return prediction
+        checked = _checked_prediction(prediction)
+        return self._model_failure if checked is None else checked
 
 
-def _is_valid_prediction(prediction: object) -> bool:
-    if not isinstance(prediction, RiskPrediction):
-        return False
+def _checked_prediction(prediction: object) -> RiskPrediction | None:
+    """The prediction in canonical form (float score, tuple of str ids), or None if it is
+    out of contract. Any ``numbers.Real`` score is accepted, so numpy floats work."""
+    if not isinstance(prediction, RiskPrediction) or not isinstance(prediction.level, CrisisLevel):
+        return None
     score: object = prediction.score
-    return (
-        isinstance(prediction.level, CrisisLevel)
-        and isinstance(score, int | float)
-        and not isinstance(score, bool)
-        and math.isfinite(score)
-        and 0.0 <= score <= 1.0
-    )
+    if not isinstance(score, numbers.Real) or isinstance(score, bool):
+        return None
+    value = float(score)
+    if not (math.isfinite(value) and 0.0 <= value <= 1.0):
+        return None
+    cue_ids: object = prediction.cue_ids
+    if not isinstance(cue_ids, tuple | list) or not all(isinstance(c, str) for c in cue_ids):
+        return None
+    return RiskPrediction(prediction.level, value, tuple(cue_ids))
 
 
 def _with_floor(rule: RiskPrediction, model: RiskPrediction) -> RiskPrediction:
