@@ -147,7 +147,7 @@ def test_rejects_pattern_shared_by_two_red_flag_codes(tax, tmp_path):
 
 def test_rejects_pattern_empty_after_normalization(tax, tmp_path):
     def m(d):
-        d["hyperbole"][0]["patterns"] = [" ​ "]
+        d["hyperbole"][0]["patterns"] = [" \u200b "]
 
     with pytest.raises(LexiconError, match="HYP_DEATH_IDIOM"):
         load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=m))

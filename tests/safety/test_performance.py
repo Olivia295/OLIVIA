@@ -26,3 +26,15 @@ def test_assess_p99_under_one_millisecond():
         samples.sort()
         p99s.append(samples[int(len(samples) * 0.99)])
     assert min(p99s) < 0.001, f"P99 per round (s): {p99s}"
+
+
+def test_long_input_with_many_masked_cues_stays_fast():
+    # Every 想死 sits inside a 不想死 mask: the containment check must not be quadratic.
+    tax = load_taxonomy()
+    screen = SafetyScreen(tax, load_safety_lexicons(tax))
+    text = "不想死，" * 20000
+    t0 = time.perf_counter()
+    assessment = screen.assess(text)
+    elapsed = time.perf_counter() - t0
+    assert assessment.cue_ids == ()
+    assert elapsed < 0.5, f"{elapsed:.3f}s for {len(text)} chars"
