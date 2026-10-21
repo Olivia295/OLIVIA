@@ -1,0 +1,76 @@
+# Red-flag detection cases: {id, text, expect: [codes]}. Synthetic utterances only.
+# SIT-02-04 bipolar, SIT-02-06 perinatal, SIT-06-01 PTSD, SIT-06-05 dissociation,
+# SIT-08-04 anorexia, SIT-09-01 borderline / self-injury, SIT-10-04 substance dependence.
+
+# --- SIT-02-04 bipolar ---
+- {id: rf_bp_01, text: "我去年被诊断成双相情感障碍", expect: [SIT-02-04]}
+- {id: rf_bp_02, text: "医生怀疑我是躁郁症 让我复诊", expect: [SIT-02-04]}
+- {id: rf_bp_03, text: "这几天不睡觉也不困，脑子转得飞快", expect: [SIT-02-04]}
+- {id: rf_bp_04, text: "我是不是双相啊 情绪起伏好大", expect: [SIT-02-04]}
+- {id: rf_bp_05, text: "我不是没有双相，只是一直没跟别人说", expect: [SIT-02-04]}
+- {id: rf_bp_06, text: "连着好几天不用睡觉还特别有劲 花钱也停不下来", expect: [SIT-02-04]}
+
+# --- SIT-02-06 perinatal ---
+- {id: rf_pn_01, text: "生完孩子三个月了，医生说是产后抑郁", expect: [SIT-02-06]}
+- {id: rf_pn_02, text: "怀孕以后一直很低落 是不是孕期抑郁", expect: [SIT-02-06]}
+- {id: rf_pn_03, text: "生完宝宝以后天天哭 控制不住", expect: [SIT-02-06]}
+- {id: rf_pn_04, text: "自从生完孩子后一直哭个不停 老公也不理解", expect: [SIT-02-06]}
+
+# --- SIT-06-01 PTSD ---
+- {id: rf_pt_01, text: "车祸之后被诊断创伤后应激障碍", expect: [SIT-06-01]}
+- {id: rf_pt_02, text: "我有PTSD 听到刹车声就发抖", expect: [SIT-06-01]}
+- {id: rf_pt_03, text: "那天的画面一直闪回 晚上都不敢睡", expect: [SIT-06-01]}
+- {id: rf_pt_04, text: "闪回停不下来，心跳得特别快", expect: [SIT-06-01]}
+
+# --- SIT-06-05 dissociation ---
+- {id: rf_ds_01, text: "最近总有现实解体的感觉", expect: [SIT-06-05]}
+- {id: rf_ds_02, text: "医生说可能是人格解体", expect: [SIT-06-05]}
+- {id: rf_ds_03, text: "感觉自己不真实 像隔着一层玻璃", expect: [SIT-06-05]}
+- {id: rf_ds_04, text: "好像在看别人的生活，不是我自己在动", expect: [SIT-06-05]}
+
+# --- SIT-08-04 anorexia ---
+- {id: rf_an_01, text: "我以前得过厌食症", expect: [SIT-08-04]}
+- {id: rf_an_02, text: "我故意不吃饭 想再瘦一点", expect: [SIT-08-04]}
+- {id: rf_an_03, text: "已经好几天没吃饭了 看到食物就想吐", expect: [SIT-08-04]}
+- {id: rf_an_04, text: "是不是神经性厌食啊 体重一直往下掉", expect: [SIT-08-04]}
+
+# --- SIT-09-01 borderline / self-injury ---
+- {id: rf_bd_01, text: "我被诊断了边缘型人格障碍", expect: [SIT-09-01]}
+- {id: rf_bd_02, text: "情绪一上来就划手臂", expect: [SIT-09-01]}
+- {id: rf_bd_03, text: "昨天又自伤手臂了", expect: [SIT-09-01]}
+- {id: rf_bd_04, text: "医生说我有bpd倾向", expect: [SIT-09-01]}
+
+# --- SIT-10-04 substance dependence ---
+- {id: rf_sb_01, text: "我有酒精依赖 戒了好几次", expect: [SIT-10-04]}
+- {id: rf_sb_02, text: "每天都要喝酒才能睡着", expect: [SIT-10-04]}
+- {id: rf_sb_03, text: "早上起来不喝酒手就抖", expect: [SIT-10-04]}
+- {id: rf_sb_04, text: "我觉得自己可能有酒瘾", expect: [SIT-10-04]}
+
+# --- feature-tier variants (colloquial phrasing) ---
+- {id: rf_ft_01, text: "几天几夜不睡还觉得精力无限 停不下来", expect: [SIT-02-04]}
+- {id: rf_ft_02, text: "生完二胎以后每天以泪洗面", expect: [SIT-02-06]}
+- {id: rf_ft_03, text: "一闭眼就是那场事故的画面 怎么都甩不掉", expect: [SIT-06-01]}
+- {id: rf_ft_04, text: "照镜子的时候觉得那不是我", expect: [SIT-06-05]}
+- {id: rf_ft_05, text: "心情不好就用烟头烫自己", expect: [SIT-09-01]}
+- {id: rf_ft_06, text: "一天不喝酒就浑身难受 睡不着", expect: [SIT-10-04]}
+- {id: rf_ft_07, text: "每天只吃一个苹果 饿了也忍着不吃", expect: [SIT-08-04]}
+
+# --- multiple codes in one message ---
+- {id: rf_multi_01, text: "我有双相，最近还用刀划自己", expect: [SIT-02-04, SIT-09-01]}
+- {id: rf_multi_02, text: "产后抑郁一直没好 现在每天都要喝酒才能睡", expect: [SIT-02-06, SIT-10-04]}
+
+# --- negatives: negated self-reports and unrelated text ---
+- {id: rf_neg_01, text: "我没有双相 只是最近情绪不太好", expect: []}
+- {id: rf_neg_02, text: "医生说我并不是bpd", expect: []}
+- {id: rf_neg_03, text: "我没有酒瘾，偶尔喝一点", expect: []}
+- {id: rf_neg_04, text: "我并没有厌食症 就是最近胃口差", expect: []}
+- {id: rf_neg_05, text: "我没有产后抑郁 只是带娃太累", expect: []}
+- {id: rf_neg_06, text: "放心 我没有ptsd啦", expect: []}
+- {id: rf_neg_07, text: "我不是解离障碍，就是容易走神", expect: []}
+- {id: rf_neg_08, text: "我没有躁郁症 别乱贴标签", expect: []}
+- {id: rf_neg_09, text: "今天天气不错 出去走了走", expect: []}
+- {id: rf_neg_10, text: "最近工作压力大 睡得不太好", expect: []}
+- {id: rf_neg_11, text: "想减肥 晚饭少吃一点", expect: []}
+- {id: rf_neg_12, text: "和朋友喝了两杯啤酒 挺开心的", expect: []}
+- {id: rf_neg_13, text: "宝宝今天会翻身了", expect: []}
+- {id: rf_neg_14, text: "最近有点焦虑 但还能应付", expect: []}

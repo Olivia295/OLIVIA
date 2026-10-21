@@ -1,0 +1,177 @@
+# Multi-turn crisis tracker scenarios. Each turn: {text, expect_level, expect_in_crisis}.
+# expect_level is the tracker's effective level (escalation included), not the raw assessment.
+
+# Strong L1 cues (score 0.45-0.49) three turns in a row: EWMA >= 0.45 escalates to L2.
+- id: s01_strong_l1_escalates_on_third_turn
+  turns:
+    - {text: "最近总想彻底睡过去，什么都不想管", expect_level: L1, expect_in_crisis: false}
+    - {text: "好想消失啊 谁都别来找我", expect_level: L1, expect_in_crisis: false}
+    - {text: "真希望睡着以后就别再醒了", expect_level: L2, expect_in_crisis: true}
+
+# Plain L1 cues (default score 0.4) never reach the EWMA threshold.
+- id: s02_plain_l1_does_not_escalate
+  turns:
+    - {text: "活着好累啊", expect_level: L1, expect_in_crisis: false}
+    - {text: "感觉人生好没意思", expect_level: L1, expect_in_crisis: false}
+    - {text: "每天都像行尸走肉一样", expect_level: L1, expect_in_crisis: false}
+    - {text: "这日子真的熬不下去了", expect_level: L1, expect_in_crisis: false}
+    - {text: "活着真没劲", expect_level: L1, expect_in_crisis: false}
+
+# An isolated L0 turn does not break the L1 run.
+- id: s03_isolated_l0_does_not_break_run
+  turns:
+    - {text: "好想一睡不醒", expect_level: L1, expect_in_crisis: false}
+    - {text: "好想人间蒸发", expect_level: L1, expect_in_crisis: false}
+    - {text: "中午吃了碗牛肉面", expect_level: L0, expect_in_crisis: false}
+    - {text: "每天都不想醒过来", expect_level: L2, expect_in_crisis: true}
+
+# Three consecutive L0 turns clear the L1 run and the EWMA.
+- id: s04_three_l0_turns_clear_run
+  turns:
+    - {text: "想就这么睡过去", expect_level: L1, expect_in_crisis: false}
+    - {text: "有时候真想直接不存在", expect_level: L1, expect_in_crisis: false}
+    - {text: "下午去超市买了点水果", expect_level: L0, expect_in_crisis: false}
+    - {text: "晚上看了部电影", expect_level: L0, expect_in_crisis: false}
+    - {text: "明天要早起开会", expect_level: L0, expect_in_crisis: false}
+    - {text: "又想彻底睡过去了", expect_level: L1, expect_in_crisis: false}
+    - {text: "想消失", expect_level: L1, expect_in_crisis: false}
+
+# L2 entry: confirmation, then two safe turns exit. The confirmation turn does not count.
+- id: s05_l2_exit_after_confirmation_and_two_safe_turns
+  turns:
+    - {text: "我真的不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "嗯 刚才哭了很久", expect_level: L0, expect_in_crisis: true}
+    - {text: "谢谢你 我现在安全了", expect_level: L0, expect_in_crisis: true}
+    - {text: "我去喝点热水", expect_level: L0, expect_in_crisis: true}
+    - {text: "好多了 准备睡觉", expect_level: L0, expect_in_crisis: false}
+
+# L3 entry: confirmation, then three safe turns exit.
+- id: s06_l3_exit_after_confirmation_and_three_safe_turns
+  turns:
+    - {text: "药已经买好了 今晚就吃", expect_level: L3, expect_in_crisis: true}
+    - {text: "我给热线打过电话了，药也交给室友了", expect_level: L0, expect_in_crisis: true}
+    - {text: "室友在陪我看电视", expect_level: L0, expect_in_crisis: true}
+    - {text: "有点困了", expect_level: L0, expect_in_crisis: true}
+    - {text: "晚安", expect_level: L0, expect_in_crisis: false}
+
+# Without an explicit confirmation, safe turns never count toward exit.
+- id: s07_no_confirmation_never_exits
+  turns:
+    - {text: "最近每天都想去死", expect_level: L2, expect_in_crisis: true}
+    - {text: "算了不说这个了", expect_level: L0, expect_in_crisis: true}
+    - {text: "今天天气还行", expect_level: L0, expect_in_crisis: true}
+    - {text: "晚饭吃了饺子", expect_level: L0, expect_in_crisis: true}
+    - {text: "有点困", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯嗯", expect_level: L0, expect_in_crisis: true}
+
+# A confirmation carrying a crisis cue is not a confirmation.
+- id: s08_confirmation_with_crisis_cue_is_ignored
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在安全了 但还是不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+
+# Relapse to L3 while exiting resets the exit and raises the entry level (now needs 3 turns).
+- id: s09_relapse_to_l3_during_exit
+  turns:
+    - {text: "活不下去了", expect_level: L2, expect_in_crisis: true}
+    - {text: "我联系上朋友了", expect_level: L0, expect_in_crisis: true}
+    - {text: "她说马上过来", expect_level: L0, expect_in_crisis: true}
+    - {text: "她又不来了 绳子已经挂好了", expect_level: L3, expect_in_crisis: true}
+    - {text: "好吧 我现在安全了 绳子剪掉了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "还在", expect_level: L0, expect_in_crisis: true}
+    - {text: "好一点了", expect_level: L0, expect_in_crisis: false}
+
+# A "[5%]" low-energy prefix does not bypass the crisis state.
+- id: s10_battery_prefix_does_not_bypass_crisis
+  turns:
+    - {text: "[5%] 不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "[5%] 好累 先这样", expect_level: L0, expect_in_crisis: true}
+    - {text: "[5%] 嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "[5%] 没电了", expect_level: L0, expect_in_crisis: true}
+
+# After a clean exit, a new cue re-enters crisis.
+- id: s11_reenter_after_exit
+  turns:
+    - {text: "好想死", expect_level: L2, expect_in_crisis: true}
+    - {text: "我已经安全了，家人在我身边了", expect_level: L0, expect_in_crisis: true}
+    - {text: "我们在吃饭", expect_level: L0, expect_in_crisis: true}
+    - {text: "吃完了", expect_level: L0, expect_in_crisis: false}
+    - {text: "过了一周 又开始想死了", expect_level: L2, expect_in_crisis: true}
+
+# A long message whose only cue is at the very end still enters crisis.
+- id: s12_long_message_with_cue_at_end
+  turns:
+    - {text: "今天跟你说说我这一周吧", expect_level: L0, expect_in_crisis: false}
+    - {text: "周一早上地铁坏了迟到被扣钱，周二客户临时改需求我们组通宵，周三我妈打电话又说我不结婚让她在亲戚面前抬不起头，周四房东说下个月要涨房租，周五体检报告出来有几项指标不太好，周六本来想好好睡一觉结果楼上装修吵了一天，周日一个人在家对着天花板发呆了一下午，什么都没干，晚上也没吃饭，就一直躺着刷手机，刷着刷着就哭了，我也不知道为什么哭，就是觉得好像什么都不对，所有事情都压在我身上，没有一个人能说话，朋友都各忙各的，我也不想打扰他们，说到底，我想结束自己的生命", expect_level: L2, expect_in_crisis: true}
+
+# Negated, questioned or sarcastic confirmations keep the user in crisis.
+- id: s13_questioned_confirmation_does_not_count
+  turns:
+    - {text: "我想去死", expect_level: L2, expect_in_crisis: true}
+    - {text: "你觉得我现在安全了吗", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+
+- id: s14_negated_and_sarcastic_confirmation_do_not_count
+  turns:
+    - {text: "自杀的念头一直在", expect_level: L2, expect_in_crisis: true}
+    - {text: "我不觉得我现在安全了", expect_level: L0, expect_in_crisis: true}
+    - {text: "我现在没事了才怪", expect_level: L0, expect_in_crisis: true}
+    - {text: "我没有联系上朋友了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+
+# L1 turns after confirmation count as safe turns (spec: safe range is L0/L1).
+- id: s15_l1_turns_count_as_safe_after_confirmation
+  turns:
+    - {text: "不如死了算了", expect_level: L2, expect_in_crisis: true}
+    - {text: "好 我答应你 我不会做傻事", expect_level: L0, expect_in_crisis: true}
+    - {text: "就是活着好累", expect_level: L1, expect_in_crisis: true}
+    - {text: "人生好没意思", expect_level: L1, expect_in_crisis: false}
+
+# Hyperbole during crisis is a safe turn but is not a confirmation; a later Stage 1 cue with
+# hyperbole still enters L3.
+- id: s16_hyperbole_in_crisis_and_hyperbole_with_stage1
+  turns:
+    - {text: "想死想了好几天了", expect_level: L2, expect_in_crisis: true}
+    - {text: "笑死 猫把杯子打翻了", expect_level: L0, expect_in_crisis: true}
+    - {text: "累死了 先睡了", expect_level: L0, expect_in_crisis: true}
+    - {text: "气死我了，遗书写好了也没人看", expect_level: L3, expect_in_crisis: true}
+
+# Mixed L1 strength: one plain cue then two strong cues still crosses EWMA 0.45 on turn 3.
+- id: s17_mixed_l1_strength_escalates_when_ewma_crosses
+  turns:
+    - {text: "活着没意思", expect_level: L1, expect_in_crisis: false}
+    - {text: "睡着了就不要醒来多好", expect_level: L1, expect_in_crisis: false}
+    - {text: "好想一觉不醒", expect_level: L2, expect_in_crisis: true}
+
+# Double negation and method-seeking enter crisis; a double-negated confirmation does not count.
+- id: s18_double_negation_enters_and_negated_confirmation_fails
+  turns:
+    - {text: "说实话 我不是不想死", expect_level: L2, expect_in_crisis: true}
+    - {text: "有没有不疼的死法", expect_level: L2, expect_in_crisis: true}
+    - {text: "我并没有联系上朋友了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+
+# Repeated and multiple Stage 1 cues in one message.
+- id: s19_multiple_stage1_cues_then_exit
+  turns:
+    - {text: "遗书写好了 药买好了 今晚就去跳", expect_level: L3, expect_in_crisis: true}
+    - {text: "我已经联系了家人，他们在路上", expect_level: L0, expect_in_crisis: true}
+    - {text: "他们到了", expect_level: L0, expect_in_crisis: true}
+    - {text: "在跟我妈说话", expect_level: L0, expect_in_crisis: true}
+    - {text: "我会好好的", expect_level: L0, expect_in_crisis: false}
+
+# Strong L1 escalation also enters crisis; a long message with an L1 cue only at the end.
+- id: s20_long_l1_tail_message_counts_toward_escalation
+  turns:
+    - {text: "好想人间蒸发", expect_level: L1, expect_in_crisis: false}
+    - {text: "今天其实还行，早上起来做了早餐，中午跟同事去吃了新开的那家米线，下午开会的时候老板还夸了我一句，晚上回来洗了个澡，按理说应该挺开心的，可是躺在床上的时候还是觉得空荡荡的，好想就这样一直睡下去", expect_level: L1, expect_in_crisis: false}
+    - {text: "想消失", expect_level: L2, expect_in_crisis: true}
