@@ -1,0 +1,52 @@
+version: 1
+stage1:
+  - id: S1_MEANS_PILLS
+    patterns: ["药已经买好", "药买好了", "买好了药", "攒了很多安眠药", "攒够了药", "囤了一瓶安眠药"]
+  - id: S1_MEANS_ROPE_BLADE
+    patterns: ["绳子已经准备好", "准备好了绳子", "刀已经准备好", "准备好了刀片"]
+  - id: S1_NOTE_WRITTEN
+    patterns: ["遗书写好了", "写好了遗书", "已经写好遗书"]
+  - id: S1_TIME_PLACE
+    patterns: ["今晚就去跳", "今晚就结束自己", "明天就去死", "站在楼顶上了", "已经在天台上", "已经在桥边了"]
+  - id: S1_ACT_IN_PROGRESS
+    patterns: ["已经吞了药", "吃了一整瓶药", "已经割了", "正在割腕", "血止不住"]
+  - id: S1_FAREWELL
+    patterns: ["再见了这个世界", "这是我最后一次跟你说话"]
+stage2:
+  - id: L2_WANT_DIE
+    level: L2
+    patterns: ["想死", "想去死", "想自杀"]
+  - id: L2_NOT_WANT_LIVE
+    level: L2
+    patterns: ["不想活了", "活不下去了", "不想再活下去", "死了算了", "不如死了"]
+  - id: L2_END_LIFE
+    level: L2
+    patterns: ["想结束自己的生命", "想离开这个世界"]
+  - id: L1_WEARY
+    level: L1
+    patterns: ["活着好累", "活着没意思", "活着没有意义", "人生没有意义"]
+  - id: L1_SLEEP_NO_WAKE
+    level: L1
+    score: 0.48
+    patterns: ["想彻底睡过去", "睡着了就不要醒来", "不想醒来"]
+  - id: L1_DISAPPEAR
+    level: L1
+    score: 0.45
+    patterns: ["消失就好了", "想消失"]
+hyperbole:
+  - id: HYP_DEATH_IDIOM
+    patterns: ["想死的心都有了", "要死要死"]
+  - id: HYP_X_TO_DEATH
+    patterns: ["累死了", "累死我了", "烦死了", "气死了", "气死我了", "笑死", "困死了", "饿死了", "热死了", "尴尬死了", "社死"]
+negation:
+  - id: NEG_NOT_DIE
+    patterns: ["不想死", "没想死", "没有想死", "不是想死", "不会去死"]
+  - id: NEG_NOT_SUICIDE
+    patterns: ["不会自杀", "不想自杀", "没想过自杀", "绝不想自杀"]
+safety_confirm:
+  - id: CONFIRM_SAFE_NOW
+    patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事"]
+  - id: CONFIRM_REACHED_SUPPORT
+    patterns: ["我联系上朋友了", "我已经联系了家人", "我给热线打过电话了", "家人在我身边了"]
+  - id: CONFIRM_TOPIC_SHIFT
+    patterns: ["想聊点别的"]

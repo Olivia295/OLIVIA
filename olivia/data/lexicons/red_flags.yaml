@@ -1,0 +1,17 @@
+version: 1
+self_report_negations: ["没有", "不是", "并没有", "并非", "没"]
+entries:
+  - {id: RF_BIPOLAR_SELF, code: SIT-02-04, tier: SELF_REPORT, patterns: ["双相", "躁郁症", "躁狂发作"]}
+  - {id: RF_BIPOLAR_FEAT, code: SIT-02-04, tier: FEATURE, patterns: ["几天不睡觉也不困", "好几天不用睡觉"]}
+  - {id: RF_PERINATAL_SELF, code: SIT-02-06, tier: SELF_REPORT, patterns: ["产后抑郁", "围产期抑郁", "孕期抑郁", "产后焦虑"]}
+  - {id: RF_PERINATAL_FEAT, code: SIT-02-06, tier: FEATURE, patterns: ["生完孩子后一直哭", "生完宝宝以后天天哭"]}
+  - {id: RF_PTSD_SELF, code: SIT-06-01, tier: SELF_REPORT, patterns: ["创伤后应激", "ptsd", "急性应激障碍"]}
+  - {id: RF_PTSD_FEAT, code: SIT-06-01, tier: FEATURE, patterns: ["闪回停不下来", "一直闪回", "那天的画面一直闪回"]}
+  - {id: RF_DISSOC_SELF, code: SIT-06-05, tier: SELF_REPORT, patterns: ["人格解体", "现实解体", "解离症", "解离障碍"]}
+  - {id: RF_DISSOC_FEAT, code: SIT-06-05, tier: FEATURE, patterns: ["感觉自己不真实", "像在看别人的生活", "灵魂出窍"]}
+  - {id: RF_ANOREXIA_SELF, code: SIT-08-04, tier: SELF_REPORT, patterns: ["厌食症", "神经性厌食"]}
+  - {id: RF_ANOREXIA_FEAT, code: SIT-08-04, tier: FEATURE, patterns: ["连续三天没吃东西", "好几天没吃饭", "故意不吃饭"]}
+  - {id: RF_BPD_SELF, code: SIT-09-01, tier: SELF_REPORT, patterns: ["边缘型人格", "边缘人格", "bpd"]}
+  - {id: RF_BPD_FEAT, code: SIT-09-01, tier: FEATURE, patterns: ["自伤手臂", "划手臂", "用刀划自己"]}
+  - {id: RF_SUBSTANCE_SELF, code: SIT-10-04, tier: SELF_REPORT, patterns: ["酒精依赖", "酒瘾", "药物依赖", "毒瘾"]}
+  - {id: RF_SUBSTANCE_FEAT, code: SIT-10-04, tier: FEATURE, patterns: ["每天都要喝酒才能睡", "不喝酒手就抖"]}

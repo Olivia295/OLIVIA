@@ -22,7 +22,7 @@ dev = [
 include = ["olivia*"]
 
 [tool.setuptools.package-data]
-olivia = ["py.typed", "data/*.yaml"]
+olivia = ["py.typed", "data/*.yaml", "data/lexicons/*.yaml"]
 
 [tool.ruff]
 line-length = 100
