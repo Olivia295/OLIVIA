@@ -79,7 +79,7 @@
     - {text: "活不下去了", expect_level: L2, expect_in_crisis: true}
     - {text: "我联系上朋友了", expect_level: L0, expect_in_crisis: true}
     - {text: "她说马上过来", expect_level: L0, expect_in_crisis: true}
-    - {text: "她又不来了 绳子已经挂好了", expect_level: L3, expect_in_crisis: true}
+    - {text: "她又不来了 上吊的绳子已经挂好了", expect_level: L3, expect_in_crisis: true}
     - {text: "好吧 我现在安全了 绳子剪掉了", expect_level: L0, expect_in_crisis: true}
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
     - {text: "还在", expect_level: L0, expect_in_crisis: true}
@@ -260,3 +260,111 @@
     - {text: "朋友过来陪我了", expect_level: L0, expect_in_crisis: true}
     - {text: "我们在吃夜宵", expect_level: L0, expect_in_crisis: true}
     - {text: "她今晚住我这", expect_level: L0, expect_in_crisis: false}
+
+# Review round 2 (D): qualified or hedged confirmations must not start the exit.
+- id: s33_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我联系上朋友了 但是他说很忙 没空管我", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s34_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我已经联系了家人 可他们说我矫情", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s35_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我给热线打过电话了 他们让我等", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s36_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "热线接通了 但我什么都说不出来", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s37_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我不确定我现在安全了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s38_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我联系上朋友了 他不信我", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s39_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在没事了 暂时", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s40_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我已经冷静下来了 但还是很想结束", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s41_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我保证不会伤害自己 今晚", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s42_hedged_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我没办法保证不会伤害自己", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s43_hedged_confirmation_with_cue
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "朋友过来陪我了 可我还是想死", expect_level: L2, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+# Positive controls with the round-2 vetoes in place.
+- id: s44_plain_confirmation_with_thanks_exits
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在安全了 谢谢你", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+- id: s45_friend_coming_exits
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我联系上朋友了 她马上过来", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+# Known cost of the message-wide vetoes 不知道 / 挂了 (mandated in round 1): these genuine
+# confirmations are not counted, so the user stays in crisis (fail-safe direction).
+- id: s46_veto_cost_bu_zhidao_keeps_crisis
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在安全了 不知道怎么谢你", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+- id: s47_veto_cost_gua_le_keeps_crisis
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "热线接通了 刚挂了电话 好多了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}

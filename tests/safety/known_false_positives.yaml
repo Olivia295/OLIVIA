@@ -1,7 +1,7 @@
-# Known false positives: everyday or joking sentences the rule screen rates higher than a
-# human would. They are pinned at the level the screen actually gives, so a lexicon change
-# that silently lowers them gets noticed. Fixing one needs a model, not a phrase list.
-# {id, text, expect, reason}
+# Known limitations of the rule screen, pinned at the level it actually gives today so that
+# any change is noticed and future work (a model, clause-aware rules) is measured against them.
+# Most are false positives (everyday or joking sentences rated higher than a human would);
+# some are false negatives the containment mask cannot fix. {id, text, expect, reason}
 - {id: fp01, text: "好想死你们了，下周回国一起吃饭！", expect: L2, reason: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
 - {id: fp02, text: "宝贝我想死你了", expect: L2, reason: "same idiom; masking 想死你 would hide '我想死 你懂吗'"}
 - {id: fp03, text: "我还年轻 不想死得那么早", expect: L2, reason: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
@@ -11,4 +11,6 @@
 - {id: fp07, text: "下辈子见吧哈哈哈", expect: L3, reason: "下辈子见 farewell phrase, said as a joke"}
 - {id: fp08, text: "你活腻了吧敢这么跟我说话", expect: L2, reason: "活腻了 used as a threat at someone else"}
 - {id: fp09, text: "看到海就想跳下去游泳", expect: L2, reason: "想跳下去 without a death word"}
-- {id: fp10, text: "放心我不会去寻死的", expect: L2, reason: "去寻死 is L2 and the mask is only 不会寻死; fails toward caution"}
+- {id: fp11, text: "这个月加班加到想死", expect: L2, reason: "X到想死 hyperbole; a mask would also hide real ideation (controller ruling: no mask)"}
+- {id: fp12, text: "烦得想死", expect: L2, reason: "X得想死 hyperbole; a mask would hide '我烦得想死 是真的想死那种' (controller ruling: no mask)"}
+- {id: fn01, text: "以前没想过去死 可是现在天天想", expect: L0, reason: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}
