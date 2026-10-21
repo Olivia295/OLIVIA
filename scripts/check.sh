@@ -23,4 +23,7 @@ fi
 "$PY" -m ruff format --check olivia tests
 "$PY" -m mypy --strict olivia
 "$PY" -m pytest --cov=olivia --cov-fail-under=85 -q
+# Latency budgets only mean something without line tracing, so the performance tests
+# skipped under coverage run again here on their own.
+"$PY" -m pytest -q tests/safety/test_performance.py
 "$PY" scripts/validate_taxonomy.py

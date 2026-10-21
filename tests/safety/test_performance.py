@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from olivia.core.safety.crisis import SafetyScreen
 from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.taxonomy import load_taxonomy
@@ -8,6 +10,18 @@ ROUNDS = 5
 SAMPLES_PER_ROUND = 2000
 
 
+def _coverage_is_tracing() -> bool:
+    try:
+        import coverage
+    except ImportError:
+        return False
+    return coverage.Coverage.current() is not None
+
+
+# Line tracing roughly multiplies the cost of every Python line, so a latency budget
+# measured under coverage says nothing about the code. scripts/check.sh runs this file
+# again without coverage, where the budget applies.
+@pytest.mark.skipif(_coverage_is_tracing(), reason="latency is not measurable under coverage")
 def test_assess_p99_under_one_millisecond():
     tax = load_taxonomy()
     screen = SafetyScreen(tax, load_safety_lexicons(tax))
