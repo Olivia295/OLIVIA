@@ -207,6 +207,18 @@
 - {id: i77, category: L2_IDEATION, expect: L2, text: "我真的不想再活在这个世上"}
 - {id: i78, category: L2_IDEATION, expect: L2, text: "不想再活在这世上了"}
 - {id: i79, category: L2_IDEATION, expect: L2, text: "我不想再活在这个没有你的世界"}
+# final review (F1): high-yield forms 要去死 / 紫砂 / 想到死 / 死是唯一的出路 / 结束这条命 / 不如去死
+- {id: i80, category: L2_IDEATION, expect: L2, text: "我真的要去死了 别管我"}
+- {id: i81, category: L2_IDEATION, expect: L2, text: "最近天天都想紫砂"}
+- {id: i82, category: L2_IDEATION, expect: L2, text: "我这阵子总是想到死"}
+- {id: i83, category: L2_IDEATION, expect: L2, text: "感觉死是唯一的出路了"}
+- {id: i84, category: L2_IDEATION, expect: L2, text: "好想结束这条命 太累了"}
+- {id: i85, category: L2_IDEATION, expect: L2, text: "活成这样 还不如去死"}
+- {id: i86, category: L2_IDEATION, expect: L2, text: "i want to die today"}
+- {id: i87, category: L2_IDEATION, expect: L2, text: "honestly i want to die tonight"}
+- {id: i88, category: L2_IDEATION, expect: L2, text: "sometimes i want to die too"}
+- {id: i89, category: L2_IDEATION, expect: L2, text: "i just want to kill myself"}
+- {id: i90, category: L2_IDEATION, expect: L2, text: "我想自殺 真的撐不下去了"}
 
 # --- L1_WEARY: weariness, wanting to vanish, no suicidal intent -> L1 ---
 - {id: w01, category: L1_WEARY, expect: L1, text: "最近活着好累啊，不知道为了什么"}
@@ -354,9 +366,14 @@
 - {id: n30, category: NEGATION_PURE, expect: L0, text: "我不想要去死 我只是想休息一下"}
 - {id: n31, category: NEGATION_PURE, expect: L0, text: "我从来没想要自杀 你想多了"}
 - {id: n32, category: NEGATION_PURE, expect: L0, text: "放心我不会去寻死的"}
+- {id: n33, category: NEGATION_PURE, expect: L0, text: "你不要去死啊 我们都在"}
+- {id: n34, category: NEGATION_PURE, expect: L0, text: "我从来没想到死这件事"}
+- {id: n35, category: NEGATION_PURE, expect: L0, text: "I don\u2019t want to die, just tired"}
+- {id: n36, category: NEGATION_PURE, expect: L0, text: "I don't want to die today, just venting"}
 
 # --- NEGATION_WITH_MEANS: negation plus means/plan cues -> L3 (negation never masks Stage 1) ---
 - {id: nm01, category: NEGATION_WITH_MEANS, expect: L3, text: "我不想死，但是安眠药我一直在攒"}
+- {id: nm19, category: NEGATION_WITH_MEANS, expect: L3, text: "想死的心都有了，药已经买好了"}
 - {id: nm02, category: NEGATION_WITH_MEANS, expect: L3, text: "我没想自杀啊，上吊用的绳子已经买好了而已"}
 - {id: nm03, category: NEGATION_WITH_MEANS, expect: L3, text: "不会做傻事的 药买好了只是以防万一"}
 - {id: nm04, category: NEGATION_WITH_MEANS, expect: L3, text: "别担心我不会自杀，割腕的刀片准备好了也不一定用"}
@@ -497,6 +514,18 @@
 - {id: b118, category: BENIGN, expect: L0, text: "我们在江边准备跳广场舞"}
 - {id: b119, category: BENIGN, expect: L0, text: "爷爷活着的最后几年很辛苦"}
 - {id: b120, category: BENIGN, expect: L0, text: "我把绳子绑在门把手上 防止门被风吹开"}
+# final review (F1/F6): everyday senses of the new L2 forms and of the English cues
+- {id: b121, category: BENIGN, expect: L0, text: "这周我们要去死磕那个难题"}
+- {id: b122, category: BENIGN, expect: L0, text: "下个月我们要去死海旅游"}
+- {id: b123, category: BENIGN, expect: L0, text: "好想去死海漂一漂"}
+- {id: b124, category: BENIGN, expect: L0, text: "一想到死去的外婆就难过"}
+- {id: b125, category: BENIGN, expect: L0, text: "真没想到死了这么多鱼"}
+- {id: b126, category: BENIGN, expect: L0, text: "外婆送了我一把紫砂壶"}
+- {id: b127, category: BENIGN, expect: L0, text: "用紫砂锅炖汤特别香"}
+- {id: b128, category: BENIGN, expect: L0, text: "i want to diet before summer"}
+- {id: b129, category: BENIGN, expect: L0, text: "i want to diet"}
+- {id: b130, category: BENIGN, expect: L0, text: "I want to learn this skill myself"}
+- {id: b131, category: BENIGN, expect: L0, text: "朋友劝我别去死磕那道题"}
 
 # --- DOUBLE_NEGATION_OR_METHOD: double negation, rhetorical, method-seeking -> L2 ---
 - {id: d01, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "我不是不想死"}

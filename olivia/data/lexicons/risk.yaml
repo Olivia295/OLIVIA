@@ -57,24 +57,30 @@ stage2:
     level: L2
     patterns: ["想死", "想去死", "想自杀", "想要自杀", "想要去死", "想死掉", "希望自己死掉",
                "想就这样死掉", "让我去死", "我还是去死", "怎么去死", "恨不得现在就死", "恨不得去死",
-               "想自尽", "要自尽", "去自尽", "想上吊", "上吊自杀", "想卧轨", "wanttodie", "killmyself"]
+               "想自尽", "要自尽", "去自尽", "想上吊", "上吊自杀", "想卧轨", "wanttodie", "killmyself",
+               "要去死", "不如去死", "想到死"]
+  # "i want to die today" folds to ...wanttodietoday, which the wanttodiet (diet) mask would
+  # hide; each phrase here is longer than that mask, so containment masking does not void it.
+  - id: L2_WANT_DIE_EN
+    level: L2
+    patterns: ["wanttodietoday", "wanttodietonight", "wanttodietoo", "wanttodietomorrow"]
   - id: L2_NOT_WANT_LIVE
     level: L2
     patterns: ["不想活了", "活不下去了", "不想再活下去", "死了算了", "不如死了",
                "不想再活", "不想活下去", "不想活惹", "不想活啦", "不想再这样活", "不想这样活下去",
                "不想再活在这个世界", "不想再活在这个世上", "不想再活在这世上", "不想再活在这个没有你的世界", "活够了",
                "活腻了", "不如死掉", "我还是死了好", "死了就解脱", "死了就不用", "死了比较好", "死了也挺好",
-               "我死了大家", "如果我死了"]
+               "我死了大家", "如果我死了", "死是唯一的出路"]
   - id: L2_END_LIFE
     level: L2
     patterns: ["想结束自己的生命", "想离开这个世界",
                "想结束自己", "结束自己的命", "结束我的生命", "想结束生命", "怎么结束生命", "想结束这一切",
-               "想早点离开这个世界", "我要离开这个世界", "想去另一个世界", "让自己永远睡着"]
+               "想早点离开这个世界", "我要离开这个世界", "想去另一个世界", "让自己永远睡着", "结束这条命"]
   - id: L2_SUICIDE_TERMS
     level: L2
     patterns: ["自杀的念头", "自杀的想法", "想到自杀", "zisha", "suicidal", "轻生的念头", "想轻生",
                "想寻死", "去寻死", "要寻死", "寻死的念头", "自我了断", "了结自己", "一死了之",
-               "想一了百了", "一了百了算了", "一时想不开", "怕我想不开", "会想不开"]
+               "想一了百了", "一了百了算了", "一时想不开", "怕我想不开", "会想不开", "紫砂"]
   - id: L2_METHOD_IDEATION
     level: L2
     patterns: ["从楼上跳下去", "想跳下去", "从窗户跳", "从桥上跳下去", "想跳楼", "想跳河", "就去跳楼",
@@ -160,7 +166,11 @@ hyperbole:
 negation:
   - id: NEG_NOT_DIE
     patterns: ["不想死", "没想死", "没有想死", "不是想死", "不会去死",
-               "不会想死", "没想过去死", "不想要去死", "don'twanttodie", "dontwanttodie"]
+               "不会想死", "没想过去死", "不想要去死", "don'twanttodie", "dontwanttodie",
+               "不要去死", "别去死", "没想到死",
+               "don'twanttodietoday", "don'twanttodietonight", "don'twanttodietoo",
+               "don'twanttodietomorrow", "dontwanttodietoday", "dontwanttodietonight",
+               "dontwanttodietoo", "dontwanttodietomorrow"]
   - id: NEG_NOT_SUICIDE
     patterns: ["不会自杀", "不想自杀", "没想过自杀", "绝不想自杀",
                "没想自杀", "没有想自杀", "不是想自杀", "没想过要自杀", "没有想过要自杀",
@@ -172,8 +182,12 @@ negation:
                "不想离开这个世界"]
   # Benign-sense masks: the cue words used in an everyday sense ("不想再活在过去",
   # "热得想跳河里游泳", "今晚就动手做蛋糕").
+  # Final review: 死磕 (persist), 死海 (Dead Sea), 想到死去的 (thinking of the dead), 紫砂
+  # (Yixing clay ware), "want to diet", "the skill myself".
   - id: NEG_BENIGN_SENSE
-    patterns: ["不想再活成", "不想再活在", "想跳河里游", "今晚就动手做", "今晚就动手装修"]
+    patterns: ["不想再活成", "不想再活在", "想跳河里游", "今晚就动手做", "今晚就动手装修",
+               "要去死磕", "想去死磕", "要去死海", "想去死海", "不如去死海", "想到死海", "想到死去的",
+               "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "wanttodiet", "skillmyself"]
 safety_confirm:
   - id: CONFIRM_SAFE_NOW
     patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事",
