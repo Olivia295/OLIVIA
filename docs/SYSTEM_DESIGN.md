@@ -542,17 +542,18 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 
 | 设计规范章节 | 领域逻辑职责 | 核心代码实现模块路径 | 核心导出接口与类型契约 |
 | :--- | :--- | :--- | :--- |
-| **§ 2 通用领域模型** | 全局类型与画像持久化 | `olivia/core/chang/profile.py` | `UserRegion`, `ProfileStore`, `effective_region` |
-| **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` | `load_taxonomy() -> Taxonomy`, `t.threshold(...)`, `t.values(...)` |
-| **§ 3.3 存储与数据根基** | 应用级持久化目录管理 | `olivia/core/storage.py` | `app_data_dir() -> Path` |
-| **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/engine.py` [待实现 / In Progress] | `advance_stage(state: SessionState, event: Event) -> HelpStage` |
-| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/engine.py` [待实现 / In Progress] | `filter_and_solve_skeleton(candidates, red_flags) -> ActionSkeleton` |
-| **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / In Progress] | `validate_ai_response(response, skeleton) -> bool` |
-| **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
-| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py` | `resolve(region, now, mode, store, index, tz, build_date) -> ResourceCard` |
-| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/resources/render.py` | `render_card(card: ResourceCard) -> str` |
-| **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
-| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/hotline_rules.py`| `R8 境外号码硬隔离`, `R31 未知属地处理`, `FALLBACK_IDS` |
-| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/safety/red_flags.py` [待实现 / In Progress] | `apply_red_flag_mask(candidate_pool, active_flags) -> SafePool` |
+| **§ 2 通用领域模型** | 全局类型与数据契约 | `olivia/core/models.py` [已实现 / P0] | `PersonaProfile`, `SessionState`, `PerceptionContext`, `ActionSkeleton`, `UserRegion`（枚举：`CrisisLevel`, `HelpStage`, `PersonaSpectrum`, `SafetyGrade`, `ActionType`） |
+| **§ 2.1 画像持久化** | 画像读写与快照恢复 | `olivia/core/chang/profile.py` [已实现 / P0] | `ProfileStore(base_dir: Path \| None = None)`: `.path`, `.load() -> PersonaProfile \| None`, `.save(profile: PersonaProfile) -> None`; `ProfileCorruptError` |
+| **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` [已实现 / P0] | `load_taxonomy(path: Path \| None = None) -> Taxonomy`; `Taxonomy.threshold(dotted_path) -> float`, `.values(name) -> tuple[str, ...]`, `.canonical_label(kind, label) -> str`, `.methods()`, `.grade_a_ids()`, `.action_registry()`, `.canonical_action_id(action_id) -> str`, `.red_flags()`, `.banned_tag_methods(tag)`, `.is_banned_tag(entry)`, `.stabilization_whitelist()`, `.crisis_level_for_score(score) -> CrisisLevel`, `.crisis_exit_safe_turns(level) -> int`; `TaxonomyError`, `UnknownActionError` |
+| **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
+| **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/engine.py` [待实现 / P3] | `advance_stage(state: SessionState, event: Event) -> HelpStage` |
+| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/engine.py` [待实现 / P3] | `filter_and_solve_skeleton(candidates, red_flags) -> ActionSkeleton` |
+| **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7] | `validate_ai_response(response, skeleton) -> bool` |
+| **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` [待实现 / P2] | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
+| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py` [待实现 / P2] | `resolve(region, now, mode, store, index, tz, build_date) -> ResourceCard` |
+| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/resources/render.py` [待实现 / P2] | `render_card(card: ResourceCard) -> str` |
+| **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` [待实现 / P2] | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
+| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/hotline_rules.py` [待实现 / P2] | `R8 境外号码硬隔离`, `R31 未知属地处理`, `FALLBACK_IDS` |
+| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/safety/red_flags.py` [待实现 / P1] | `apply_red_flag_mask(candidate_pool, active_flags) -> SafePool` |
 
 本系统设计规范全面确立了 **O.L.I.V.I.A.** 四位一体的工程架构标准，具备高工业级鲁棒性与严谨临床心理伦理双重标准。
