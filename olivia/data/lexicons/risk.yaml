@@ -58,12 +58,10 @@ stage2:
     patterns: ["想死", "想去死", "想自杀", "想要自杀", "想要去死", "想死掉", "希望自己死掉",
                "想就这样死掉", "让我去死", "我还是去死", "怎么去死", "恨不得现在就死", "恨不得去死",
                "想自尽", "要自尽", "去自尽", "想上吊", "上吊自杀", "想卧轨", "wanttodie", "killmyself",
-               "要去死", "不如去死", "想到死"]
-  # "i want to die today" folds to ...wanttodietoday, which the wanttodiet (diet) mask would
-  # hide; each phrase here is longer than that mask, so containment masking does not void it.
-  - id: L2_WANT_DIE_EN
-    level: L2
-    patterns: ["wanttodietoday", "wanttodietonight", "wanttodietoo", "wanttodietomorrow"]
+               "要去死", "不如去死", "要不要去死",
+               # 想到死 only with a frequency adverb: bare 想到死 also hits 死党 / 死机 / 死亡.
+               "常想到死", "总想到死", "总是想到死", "老想到死", "老是想到死", "一直想到死",
+               "又想到死", "反复想到死", "天天想到死", "整天想到死", "每天都想到死"]
   - id: L2_NOT_WANT_LIVE
     level: L2
     patterns: ["不想活了", "活不下去了", "不想再活下去", "死了算了", "不如死了",
@@ -167,10 +165,7 @@ negation:
   - id: NEG_NOT_DIE
     patterns: ["不想死", "没想死", "没有想死", "不是想死", "不会去死",
                "不会想死", "没想过去死", "不想要去死", "don'twanttodie", "dontwanttodie",
-               "不要去死", "别去死", "没想到死",
-               "don'twanttodietoday", "don'twanttodietonight", "don'twanttodietoo",
-               "don'twanttodietomorrow", "dontwanttodietoday", "dontwanttodietonight",
-               "dontwanttodietoo", "dontwanttodietomorrow"]
+               "不要去死", "别去死", "没想到死"]
   - id: NEG_NOT_SUICIDE
     patterns: ["不会自杀", "不想自杀", "没想过自杀", "绝不想自杀",
                "没想自杀", "没有想自杀", "不是想自杀", "没想过要自杀", "没有想过要自杀",
@@ -182,12 +177,15 @@ negation:
                "不想离开这个世界"]
   # Benign-sense masks: the cue words used in an everyday sense ("不想再活在过去",
   # "热得想跳河里游泳", "今晚就动手做蛋糕").
-  # Final review: 死磕 (persist), 死海 (Dead Sea), 想到死去的 (thinking of the dead), 紫砂
-  # (Yixing clay ware), "want to diet", "the skill myself".
+  # Final review: 死磕 (persist), 死海 (Dead Sea), <adverb>想到死去 (thinking of the dead),
+  # 紫砂 (Yixing clay ware), "the skill myself". No "want to diet" mask: it would also hide
+  # "i want to die tbh / then / to…", so "i want to diet" stays a known false positive.
   - id: NEG_BENIGN_SENSE
     patterns: ["不想再活成", "不想再活在", "想跳河里游", "今晚就动手做", "今晚就动手装修",
-               "要去死磕", "想去死磕", "要去死海", "想去死海", "不如去死海", "想到死海", "想到死去的",
-               "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "wanttodiet", "skillmyself"]
+               "要去死磕", "想去死磕", "要去死海", "想去死海", "不如去死海",
+               "常想到死去", "总想到死去", "总是想到死去", "老想到死去", "老是想到死去", "一直想到死去",
+               "又想到死去", "反复想到死去", "天天想到死去", "整天想到死去", "每天都想到死去",
+               "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "skillmyself"]
 safety_confirm:
   - id: CONFIRM_SAFE_NOW
     patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事",

@@ -7,18 +7,18 @@
 # ones they get right are in tuned_probe.yaml): the honest measure of recall on unseen text.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 12
+#   L0 -> L2: 14
 #   L0 -> L3: 2
 #   L1 -> L0: 6
 #   L2 -> L0: 10
 #   L2 -> L1: 2
 #   L3 -> L0: 85
 #   L3 -> L2: 4
-#   by ideal: L0 14, L1 6, L2 12, L3 89
-#   by current: L0 101, L1 2, L2 16, L3 2
+#   by ideal: L0 16, L1 6, L2 12, L3 89
+#   by current: L0 101, L1 2, L2 18, L3 2
 #   below ideal (missed or under-rated): 107
-#   above ideal (false alarms): 14
-#   total: 121
+#   above ideal (false alarms): 16
+#   total: 123
 #
 # {id, text, ideal, current, why}
 - {id: fp01, ideal: L0, current: L2, text: "好想死你们了，下周回国一起吃饭！", why: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
@@ -32,6 +32,8 @@
 - {id: fp09, ideal: L0, current: L2, text: "看到海就想跳下去游泳", why: "想跳下去 without a death word"}
 - {id: fp11, ideal: L0, current: L2, text: "这个月加班加到想死", why: "X到想死 hyperbole; a mask would also hide real ideation (controller ruling: no mask)"}
 - {id: fp12, ideal: L0, current: L2, text: "烦得想死", why: "X得想死 hyperbole; a mask would hide '我烦得想死 是真的想死那种' (controller ruling: no mask)"}
+- {id: fp13, ideal: L0, current: L2, text: "i want to diet before summer", why: "a wanttodiet mask would also hide 'i want to die tbh / then / to…' (user ruling: no mask)"}
+- {id: fp14, ideal: L0, current: L2, text: "i want to diet", why: "same as fp13"}
 - {id: fn01, ideal: L2, current: L0, text: "以前没想过去死 可是现在天天想", why: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}
 - {id: kl_m02, ideal: L3, current: L0, text: "这半年每次开药都偷偷留几片 现在攒了快一百片了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m02)"}
 - {id: kl_m05, ideal: L3, current: L0, text: "绳子我已经买好了 藏在衣柜里", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m05)"}

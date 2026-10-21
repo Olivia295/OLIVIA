@@ -219,6 +219,12 @@
 - {id: i88, category: L2_IDEATION, expect: L2, text: "sometimes i want to die too"}
 - {id: i89, category: L2_IDEATION, expect: L2, text: "i just want to kill myself"}
 - {id: i90, category: L2_IDEATION, expect: L2, text: "我想自殺 真的撐不下去了"}
+# residual fixes: 要不要去死 outranks the 不要去死 mask; no diet mask hides "want to die …"
+- {id: i91, category: L2_IDEATION, expect: L2, text: "你说我要不要去死"}
+- {id: i92, category: L2_IDEATION, expect: L2, text: "我最近老是想到死 睡不着"}
+- {id: i93, category: L2_IDEATION, expect: L2, text: "i want to die tbh"}
+- {id: i94, category: L2_IDEATION, expect: L2, text: "i want to die then nobody has to deal with me"}
+- {id: i95, category: L2_IDEATION, expect: L2, text: "i want to die to be honest"}
 
 # --- L1_WEARY: weariness, wanting to vanish, no suicidal intent -> L1 ---
 - {id: w01, category: L1_WEARY, expect: L1, text: "最近活着好累啊，不知道为了什么"}
@@ -522,10 +528,12 @@
 - {id: b125, category: BENIGN, expect: L0, text: "真没想到死了这么多鱼"}
 - {id: b126, category: BENIGN, expect: L0, text: "外婆送了我一把紫砂壶"}
 - {id: b127, category: BENIGN, expect: L0, text: "用紫砂锅炖汤特别香"}
-- {id: b128, category: BENIGN, expect: L0, text: "i want to diet before summer"}
-- {id: b129, category: BENIGN, expect: L0, text: "i want to diet"}
+- {id: b128, category: BENIGN, expect: L0, text: "晚上又想到死去的爷爷"}
+- {id: b129, category: BENIGN, expect: L0, text: "一想到死党下个月出国就舍不得"}
 - {id: b130, category: BENIGN, expect: L0, text: "I want to learn this skill myself"}
 - {id: b131, category: BENIGN, expect: L0, text: "朋友劝我别去死磕那道题"}
+- {id: b132, category: BENIGN, expect: L0, text: "想到死机丢掉的文件就头疼"}
+- {id: b133, category: BENIGN, expect: L0, text: "你不要去死磕那个客户了"}
 
 # --- DOUBLE_NEGATION_OR_METHOD: double negation, rhetorical, method-seeking -> L2 ---
 - {id: d01, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "我不是不想死"}
