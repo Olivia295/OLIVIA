@@ -3,18 +3,22 @@
 # never tuned). The test asserts `current` exactly, so this file is a regression floor: any
 # change in either direction is noticed. No lexicon phrase exists only to lift an entry here.
 # Future work (a model, clause-aware rules) is measured against `ideal`.
+# kl_fr* entries are the final-review fresh-author probe sentences the rules get wrong (the
+# ones they get right are in tuned_probe.yaml): the honest measure of recall on unseen text.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 10
+#   L0 -> L2: 12
 #   L0 -> L3: 2
-#   L2 -> L0: 1
-#   L3 -> L0: 73
+#   L1 -> L0: 6
+#   L2 -> L0: 10
+#   L2 -> L1: 2
+#   L3 -> L0: 85
 #   L3 -> L2: 4
-#   by ideal: L0 12, L2 1, L3 77
-#   by current: L0 74, L2 14, L3 2
-#   below ideal (missed or under-rated): 78
-#   above ideal (false alarms): 12
-#   total: 90
+#   by ideal: L0 14, L1 6, L2 12, L3 89
+#   by current: L0 101, L1 2, L2 16, L3 2
+#   below ideal (missed or under-rated): 107
+#   above ideal (false alarms): 14
+#   total: 121
 #
 # {id, text, ideal, current, why}
 - {id: fp01, ideal: L0, current: L2, text: "好想死你们了，下周回国一起吃饭！", why: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
@@ -96,14 +100,45 @@
 - {id: kl_nm16, ideal: L3, current: L0, text: "我不会去死的，只是绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm16)"}
 - {id: kl_nm18, ideal: L3, current: L0, text: "我不想自杀 只是一个人坐在楼顶边上吹风", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm18)"}
 - {id: kl_s09_t3, ideal: L3, current: L0, text: "她又不来了 绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: sessions.yaml s09 turn 3)"}
-- {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer holdout ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
-- {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer holdout ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
+- {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer probe ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
+- {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer probe ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
 - {id: kl_m38_rw, ideal: L3, current: L0, text: "车库里已经准备好了炭 车窗也用胶带封好了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 车窗也用胶带封, removed in fix round 5 because it fired on everyday text (cases.yaml b117); no other cue matches"}
 - {id: kl_tp15_rw, ideal: L3, current: L0, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
 - {id: kl_af09_rw, ideal: L3, current: L0, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
 - {id: kl_af24_rw, ideal: L3, current: L0, text: "刚在手腕上划了好几刀 这次割得很深", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 手腕上划了, removed in fix round 5 because it fired on everyday text (cases.yaml b116); no other cue matches"}
-- {id: kl_ho02, ideal: L3, current: L0, text: "我把绳子绑在门把手上了", why: "reviewer holdout ho02; no self-harm anchor; it relied only on the Stage 1 phrase 我把绳子绑在门把手, removed in fix round 5 because it fired on everyday text (cases.yaml b120)"}
-- {id: kl_ho05, ideal: L3, current: L0, text: "刚刚吃了很多药 现在好晕", why: "reviewer holdout ho05; no self-harm anchor; it relied only on the Stage 1 phrase 很多药现在好晕, removed in fix round 5 because it fired on everyday text (cases.yaml b115)"}
-- {id: kl_ho06, ideal: L3, current: L0, text: "我在江边 准备跳下去了", why: "reviewer holdout ho06; no self-harm anchor; it relied only on the Stage 1 phrase 江边准备跳, removed in fix round 5 because it fired on everyday text (cases.yaml b118)"}
+- {id: kl_ho02, ideal: L3, current: L0, text: "我把绳子绑在门把手上了", why: "reviewer probe ho02; no self-harm anchor; it relied only on the Stage 1 phrase 我把绳子绑在门把手, removed in fix round 5 because it fired on everyday text (cases.yaml b120)"}
+- {id: kl_ho05, ideal: L3, current: L0, text: "刚刚吃了很多药 现在好晕", why: "reviewer probe ho05; no self-harm anchor; it relied only on the Stage 1 phrase 很多药现在好晕, removed in fix round 5 because it fired on everyday text (cases.yaml b115)"}
+- {id: kl_ho06, ideal: L3, current: L0, text: "我在江边 准备跳下去了", why: "reviewer probe ho06; no self-harm anchor; it relied only on the Stage 1 phrase 江边准备跳, removed in fix round 5 because it fired on everyday text (cases.yaml b118)"}
 - {id: kl_pn09, ideal: L3, current: L2, text: "就站在楼顶看最后一眼 然后跳下去", why: "no self-harm anchor, so no Stage 1; L2 via 就站在楼顶 once the 就站在楼顶看 mask was removed (fix round 5). cases.yaml pn09 pins the L2 floor"}
 - {id: kl_b95, ideal: L0, current: L2, text: "我现在就站在楼顶看烟花", why: "FALSE POSITIVE, moved from cases.yaml b95 (fix round 5): the 就站在楼顶看 mask that kept it L0 also hid '就站在楼顶看最后一眼 然后跳下去', so it was removed; L2 via 就站在楼顶"}
+- {id: kl_fr01, ideal: L3, current: L0, text: "我刚把一整板药都吞了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr02, ideal: L3, current: L0, text: "我现在在楼顶边上坐着", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr03, ideal: L3, current: L0, text: "绳子已经挂在门框上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr04, ideal: L3, current: L0, text: "我准备好了，今晚吃药", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr05, ideal: L3, current: L0, text: "我已经在浴缸里放好水拿着刀片", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr06, ideal: L3, current: L0, text: "我买了两瓶安眠药，打算今晚一起吃", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr07, ideal: L3, current: L0, text: "刀已经在手腕上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr08, ideal: L3, current: L0, text: "我站在桥上往下看，准备跳了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr09, ideal: L3, current: L0, text: "我把药都吃了，现在头很晕", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr10, ideal: L3, current: L0, text: "这是最后一条消息了，谢谢你陪我", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr11, ideal: L3, current: L0, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr12, ideal: L3, current: L0, text: "炭已经烧起来了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr13, ideal: L2, current: L0, text: "我真的撑不住了，想一死百了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr16, ideal: L2, current: L0, text: "有时候觉得死了会比较轻松", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr17, ideal: L2, current: L0, text: "我在想要不要结束这一切", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr18, ideal: L2, current: L0, text: "要是我死了是不是就不用这么痛苦了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr19, ideal: L2, current: L0, text: "我脑子里一直有个声音叫我去死", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr20, ideal: L2, current: L1, text: "我想从这个世界上消失，永远的那种，死掉", why: "final-review fresh-author probe: only 世界上消失 (L1_DISAPPEAR) matches; the trailing 死掉 is not a cue on its own"}
+- {id: kl_fr23, ideal: L2, current: L0, text: "我想过很多次怎么死", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr24, ideal: L2, current: L1, text: "活着太痛苦了，我想解脱，去死", why: "final-review fresh-author probe: only 想解脱 (L1_WEARY) matches; a bare 去死 is not a cue on its own"}
+- {id: kl_fr27, ideal: L2, current: L0, text: "我想去陪我去世的妈妈", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr28, ideal: L2, current: L0, text: "想自我毁灭", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr29, ideal: L2, current: L0, text: "我想了结这一生", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr33, ideal: L1, current: L0, text: "我觉得自己什么都做不好，活着有什么用", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr34, ideal: L1, current: L0, text: "每天醒来都觉得很绝望", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr35, ideal: L1, current: L0, text: "我好想就这么睡着不再醒来", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr36, ideal: L1, current: L0, text: "有时候觉得世界没我会更好", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr37, ideal: L1, current: L0, text: "感觉人生一点意义都没有", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr38, ideal: L1, current: L0, text: "我好累，什么都不想做了", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
+- {id: kl_fr47, ideal: L0, current: L2, text: "今晚就动手写论文", why: "FALSE POSITIVE, final-review fresh-author probe: 今晚就动手 (L2_PLAN_NO_ANCHOR) has benign masks only for 做 / 装修"}
+- {id: kl_fr50, ideal: L0, current: L2, text: "我男朋友说他想死我了", why: "FALSE POSITIVE, final-review fresh-author probe: the 想死X了 'miss you' idiom (see fp01, fp02)"}

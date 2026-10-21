@@ -1,0 +1,75 @@
+# Tuned probe: reviewer probe sentences the lexicon was TUNED ON. This is not a held-out set:
+# after each review, phrases were added until these sentences passed, so a pass here says
+# nothing about recall on phrasings nobody has seen. Recall on unseen phrasings is recorded in
+# known_false_positives.yaml (kl_fr* entries) and docs/DEVELOPMENT_PLAN.md. This file is a
+# regression floor only. Expectations are the reviewers'.
+#
+# ho*: Task 6 review probes (probe.py "fresh held-out phrasings" and probe2.py). ho20/ho21
+# moved to known_false_positives.yaml (controller ruling, round 2); ho27/ho29 moved there too
+# (round 3); ho02/ho05/ho06 moved there in fix round 5, when the unanchored Stage 1 phrases
+# they relied on were removed.
+# fr*: final-review fresh-author probe (52 sentences, numbered in probe order: L3 1-12,
+# L2 13-32, L1 33-38, L0 39-52). Only the ones that pass are here; the other 31 are recorded
+# at their measured level in known_false_positives.yaml as kl_fr*. Entries marked inline pass
+# only because a phrase was added for them in the final fix wave.
+# {id, text, expect}
+- {id: ho01, text: "安眠药我已经存了两个月 够了", expect: L3}
+- {id: ho03, text: "今晚我就从阳台跳下去", expect: L3}
+- {id: ho04, text: "我已经吃了三十片安眠药", expect: L3}
+- {id: ho07, text: "这是我的遗书 帮我转给我妈", expect: L3}
+- {id: ho08, text: "我好想去死啊", expect: L2}
+- {id: ho09, text: "真的不想再活了", expect: L2}
+- {id: ho10, text: "活着太痛苦了 不如死掉", expect: L2}
+- {id: ho11, text: "我想结束我的生命", expect: L2}
+- {id: ho12, text: "我想要自杀", expect: L2}
+- {id: ho13, text: "我想要去死", expect: L2}
+- {id: ho14, text: "我想跳河", expect: L2}
+- {id: ho15, text: "我想自尽", expect: L2}
+- {id: ho16, text: "我不想活下去了", expect: L2}
+- {id: ho17, text: "我觉得我活着没有价值", expect: L1}
+- {id: ho18, text: "好想永远消失", expect: L1}
+- {id: ho19, text: "没人在乎我 我是个废物", expect: L1}
+- {id: ho22, text: "饿得要死", expect: L0}
+- {id: ho23, text: "要被老板气死了", expect: L0}
+- {id: ho24, text: "我不想死 只是太累了", expect: L0}
+- {id: ho25, text: "我没有想要自杀", expect: L0}
+- {id: ho26, text: "我从来没想过死", expect: L0}
+- {id: ho28, text: "我刚吃了一瓶安眠药", expect: L3}
+- {id: ho30, text: "遗书已经写完了", expect: L3}
+- {id: ho31, text: "有时候真的很想死", expect: L2}
+- {id: ho32, text: "我不想活了 好累", expect: L2}
+- {id: ho33, text: "我有自杀的想法", expect: L2}
+- {id: ho34, text: "活着没意思 还不如死了", expect: L2}
+- {id: ho35, text: "我想死了算了", expect: L2}
+- {id: ho36, text: "活着好累 每天都不想起床", expect: L1}
+- {id: ho37, text: "真想就这样消失", expect: L1}
+- {id: ho38, text: "觉得自己活着没意义", expect: L1}
+- {id: ho39, text: "累死我了今天", expect: L0}
+- {id: ho40, text: "笑死我了哈哈哈", expect: L0}
+- {id: ho41, text: "我没想过自杀 别担心", expect: L0}
+- {id: ho42, text: "我不想死 我只是很难过", expect: L0}
+- {id: ho43, text: "真的好想自杀", expect: L2}
+- {id: ho44, text: "我觉得我还是死了好", expect: L2}
+- {id: ho45, text: "我割了好几刀 血止不住了", expect: L3}
+- {id: ho46, text: "想去死的念头又来了", expect: L2}
+- {id: fr14, text: "我要去死", expect: L2}  # lexicon form 要去死 added for this probe
+- {id: fr15, text: "我不如去死算了", expect: L2}  # lexicon form 不如去死 added for this probe
+- {id: fr21, text: "好想紫砂", expect: L2}  # lexicon form 紫砂 added for this probe
+- {id: fr22, text: "我最近经常想到死", expect: L2}  # lexicon form 想到死 added for this probe
+- {id: fr25, text: "我不想再醒来了，想死", expect: L2}
+- {id: fr26, text: "我觉得死是唯一的出路", expect: L2}  # lexicon form 死是唯一的出路 added for this probe
+- {id: fr30, text: "我想结束这条命", expect: L2}  # lexicon form 结束这条命 added for this probe
+- {id: fr31, text: "真不想活了啊", expect: L2}
+- {id: fr32, text: "我真的很想离开这个世界", expect: L2}
+- {id: fr39, text: "今天考试考砸了，好难过", expect: L0}
+- {id: fr40, text: "老板太烦了，真想辞职", expect: L0}
+- {id: fr41, text: "我想减肥，想吃沙拉", expect: L0}
+- {id: fr42, text: "这部电影死亡率太高了哈哈", expect: L0}
+- {id: fr43, text: "我奶奶去世了，我很想她", expect: L0}
+- {id: fr44, text: "我们小组项目要死线了", expect: L0}
+- {id: fr45, text: "游戏里我又死了三次", expect: L0}
+- {id: fr46, text: "这道题难死了", expect: L0}
+- {id: fr48, text: "我要去死磕这个bug", expect: L0}  # mask 要去死磕 added with 要去死
+- {id: fr49, text: "救命 快被这个PPT逼疯了", expect: L0}
+- {id: fr51, text: "这天气热得要死", expect: L0}
+- {id: fr52, text: "医生说我爸的病不会致死", expect: L0}

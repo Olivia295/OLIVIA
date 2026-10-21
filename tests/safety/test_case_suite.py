@@ -18,7 +18,7 @@ SESSIONS = yaml.safe_load((HERE / "sessions.yaml").read_text(encoding="utf-8"))
 RF_CASES = yaml.safe_load((HERE / "red_flag_cases.yaml").read_text(encoding="utf-8"))
 KNOWN_LIMITS_TEXT = (HERE / "known_false_positives.yaml").read_text(encoding="utf-8")
 KNOWN_LIMITS = yaml.safe_load(KNOWN_LIMITS_TEXT)
-HOLDOUT = yaml.safe_load((HERE / "holdout_probe.yaml").read_text(encoding="utf-8"))
+TUNED_PROBE = yaml.safe_load((HERE / "tuned_probe.yaml").read_text(encoding="utf-8"))
 MINIMUMS = {
     "L3_MEANS": 40,
     "L3_TIME_PLACE": 25,
@@ -102,8 +102,8 @@ def test_known_limitations_summary():
     assert "\n".join(lines) in KNOWN_LIMITS_TEXT
 
 
-@pytest.mark.parametrize("case", HOLDOUT, ids=[c["id"] for c in HOLDOUT])
-def test_holdout_probe(case):
+@pytest.mark.parametrize("case", TUNED_PROBE, ids=[c["id"] for c in TUNED_PROBE])
+def test_tuned_probe(case):
     assert SCREEN.assess(case["text"]).level is CrisisLevel[case["expect"]]
 
 
@@ -112,7 +112,7 @@ def test_case_texts_are_not_bare_lexicon_phrases():
     screened = ("stage1", "stage2", "hyperbole", "negation")
     risk = {p for sec in screened for cue in LEX.cues(sec) for p in cue.patterns}
     flags = {p for cue in LEX.red_flags.values() for p in cue.patterns}
-    # The holdout probe and known limitations keep real phrasings verbatim, so they are
+    # The tuned probe and known limitations keep real phrasings verbatim, so they are
     # not checked here.
     groups = [(CASES, risk), (RF_CASES, flags)]
     for cases, phrases in groups:
