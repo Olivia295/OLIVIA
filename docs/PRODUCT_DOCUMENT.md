@@ -371,9 +371,13 @@ flowchart TD
 | 危机等级 | 评分区间 | 触发判定准则与语境消除 | 系统响应机制与执行动作 |
 | :--- | :---: | :--- | :--- |
 | **L0 (安全状态)** | $[0.0, 0.20)$ | 无自残、自杀念头，常规日常压力与情绪波动。 | 正常流转状态机，提供倾听、理清与 A 级微动作。 |
-| **L1 (隐晦厌世 / 存在性疲倦)** | $[0.20, 0.50)$ | 表达“活着好累”、“没有意义”、“想彻底睡过去不想醒来”；经感知模型确认为低/中度负向，但无明确自杀意图；排除中文口癖。 | **绝不弹出求助卡** (防止误报伤害信任与同盟)；停留在 $S_{explore}$ 状态；提供深度接纳与安全容器守候；温和探询身体与情绪感受。 |
-| **L2 (明确被动轻生念头，无计划)** | $[0.50, 0.80)$ | 明确表达想死、想结束生命，但尚未制定具体时间、地点、方式手段或准备工具。 | 暂停所有方法探索；进入安全接纳态；输出温和安全守护卡；由 GEO 解析器呈现属地心理援助热线与支持网络（大陆 12356，海外当地专线）；温和探询当下安全边界。 |
+| **L1 (隐晦疲倦 / 存在性内耗)** | $[0.20, 0.50)$ | 表达“活着好累”、“没有意义”、“心力交瘁”、“想躺平什么都不想管”等情绪低落与生理/精神耗竭表述；经感知模型确认为低/中度负向，但**无任何死亡愿望或自杀意念**；严格排除中文修辞口癖（如“累死了”、“想死的心都有了”）。 | **绝不弹出求助卡** (防止误报伤害信任与同盟)；停留在 $S_{explore}$ 状态；提供深度接纳与安全容器守候；温和探询身体与情绪感受。 |
+| **L2 (明确被动轻生念头，无计划)** | $[0.50, 0.80)$ | 明确表达想死、想结束生命（尚未制定具体时间、地点、手段或工具），或**表达死亡愿望与沉睡不醒（如“想彻底睡过去”、“不想醒来”、“睡着了再也不要醒来”等依 C-SSRS 第 1 项明确界定之被动轻生意念，而非单纯情绪低落）**。 | 暂停所有方法探索；进入安全接纳态；输出温和安全守护卡；由 GEO 解析器呈现属地心理援助热线与支持网络（大陆 12356，海外当地专线）；温和探询当下安全边界。 |
 | **L3 (急性自杀危机，有计划/手段)** | $[0.80, 1.00]$ | 具备明确自杀计划、正在准备工具、正在告别或有即刻自残行动迹象。 | **最高安全熔断**；跳过所有分析与生成；强制由 GEO 解析器呈现属地心理热线及属地紧急治安/急救指令 (大陆 110/120，北美 911，英国 999 等)；敦促立即联系身边人。 |
+
+> [!IMPORTANT]
+> **被动自杀意念 (Passive Suicidal Ideation) 临床界定准则**：
+> 依据哥伦比亚自杀严重程度评估量表（C-SSRS，Posner et al., 2011）评定标准，第 1 项“死亡愿望 (Wish to be Dead)”明确包含“希望自己睡过去再也不要醒来 (wish to fall asleep and not wake up)”或“希望自己已经死掉”。在临床精神医学中，此类表述属于**被动自杀意念**，而非日常倦怠或抑郁情绪低落。因此，系统严格将“想彻底睡过去”、“不想醒来”等表述定级为 **L2 (明确被动轻生)**，由 GEO 模块呈现属地心理援助热线卡片并暂停方法干预；严禁划入 L1 导致求助资源漏呈。
 
 - **双头预测仲裁规则 (Safety-First Maximum 取高原则)**：
   多任务模型四分类头预测 $L_{cls}$ 与连续置信度映射等级 $L_{score}$ 冲突时，初步定级取高 $\max(L_{cls}, L_{score})$。
@@ -554,3 +558,4 @@ flowchart TD
 48. **Ebbinghaus, H. (1885/1913).** *Memory: A contribution to experimental psychology*. Teachers College, Columbia University.
 49. **Bowlby, J. (1988).** *A secure base: Parent-child attachment and healthy human development*. Basic Books.
 50. **Huang, Y., Wang, Y., Wang, H., et al. (2019).** Prevalence of mental disorders in China: a cross-sectional epidemiological study. *The Lancet Psychiatry*, 6(3), 211–224.
+51. **Posner, K., Brown, G. K., Stanley, B., et al. (2011).** The Columbia–Suicide Severity Rating Scale: Initial validity and internal consistency findings from three multisite studies with adolescents and adults. *American Journal of Psychiatry*, 168(12), 1266–1277.

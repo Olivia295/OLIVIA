@@ -1711,13 +1711,13 @@ crisis_hierarchy:
     name: "隐晦厌世 / 存在性疲倦 (Implicit Weariness)"
     interval_type: "HALF_OPEN"
     score_range: [0.20, 0.50]  # [0.20, 0.50)
-    trigger_criteria: "提到‘活着好累’、‘毫无意义’、‘想彻底睡过去’等倦怠表述，但无自残自杀意念；排除中文口癖 (如‘累死了’、‘想死的心都有了’)。"
+    trigger_criteria: "提到‘活着好累’、‘毫无意义’、‘心力交瘁’等日常与存在性倦怠耗竭表述，但无死亡愿望与自杀意念；排除中文口癖 (如‘累死了’、‘想死的心都有了’)。"
     action: "严格不弹求助卡 (避免误报伤害用户信任)；状态机停留在 S_explore；提供深度情感包裹与安全基地守候；温和探询身心感受。"
   L2:
     name: "明确被动轻生念头 (Explicit Passive Ideation)"
     interval_type: "HALF_OPEN"
     score_range: [0.50, 0.80]  # [0.50, 0.80)
-    trigger_criteria: "明确表达想死、想结束生命，但尚未制定具体时间、地点、方式手段或准备工具。"
+    trigger_criteria: "明确表达想死、想结束生命（尚未制定具体时间/工具），或表达死亡愿望与沉睡不醒（如‘想彻底睡过去’、‘不想醒来’等依 C-SSRS 第 1 项明确界定之被动轻生意念，而非单纯情绪低落）。"
     action: "立即暂停所有方法干预；输出温和安全守护卡；由 GEO 解析器呈现属地心理援助热线与支持网络；温柔探询当下安全边界与身边支持。"
   L3:
     name: "急性自杀危机 (Imminent Crisis with Plan or Means)"
