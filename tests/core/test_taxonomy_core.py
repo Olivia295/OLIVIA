@@ -42,7 +42,8 @@ def test_threshold_non_numeric_raises(tax: Taxonomy) -> None:
 
 def test_threshold_bool_is_not_numeric(tmp_path: Path) -> None:
     f = tmp_path / "t.yaml"
-    f.write_text("version: '1'\nflag: true\n", encoding="utf-8")
+    packaged = Path(__file__).resolve().parents[2] / "olivia" / "data" / "taxonomy.yaml"
+    f.write_text(packaged.read_text(encoding="utf-8") + "\nflag: true\n", encoding="utf-8")
     with pytest.raises(TaxonomyError, match="flag"):
         load_taxonomy(f).threshold("flag")
 
