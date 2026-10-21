@@ -14,7 +14,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11"]
     env:
-      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONWARNDEFAULTENCODING: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -10,3 +10,5 @@ build/
 *.signing.key
 .worktrees/
 .superpowers/
+.coverage
+.coverage.*

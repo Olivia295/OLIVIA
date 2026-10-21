@@ -265,7 +265,10 @@ def _number_or(data: Mapping[str, object], key: str, default: float) -> float:
     value = data[key]
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{key} must be a number")
-    return float(value)
+    try:
+        return float(value)
+    except OverflowError as exc:  # an int too large for a float
+        raise ValueError(f"{key} is out of range") from exc
 
 
 def _str_tuple(data: Mapping[str, object], key: str) -> tuple[str, ...]:

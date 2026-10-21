@@ -260,3 +260,10 @@ def test_action_skeleton_rejects_bad_values():
     for bad in ({"method_id": ""}, {"duration_minutes": -1}):
         with pytest.raises(ValueError):
             _skeleton(**bad)
+
+
+def test_profile_from_dict_huge_integer_is_a_value_error():
+    data = _profile().to_dict()
+    data["directiveness_preference"] = 10**400
+    with pytest.raises(ValueError):
+        PersonaProfile.from_dict(data)
