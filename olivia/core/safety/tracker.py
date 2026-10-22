@@ -1,7 +1,8 @@
 """Cross-turn crisis tracking: EWMA escalation, crisis entry and confirmed exit.
 
-Exit from crisis needs an explicit safety confirmation followed by N consecutive
-safe turns, so a single calm message never switches emergency resources off. The L1
+Exit from crisis needs an explicit safety confirmation followed by N safe (L0) turns, so
+a single calm message never switches emergency resources off. After confirmation an L1
+turn pauses the count: it neither counts as safe nor resets the turns already counted. The L1
 escalation trend (EWMA and L1 run) is reset on every turn at L2 or above, crisis entry
 included, and on crisis exit. The tracker keeps numbers and flags only; it never stores
 user text.
@@ -108,7 +109,7 @@ class CrisisTracker:
             # score never lifts later L1 turns into a spurious escalation.
             self._reset_trend()
         elif self._in_crisis:
-            just_exited = self._observe_safe_candidate(text)
+            just_exited = self._observe_safe_candidate(level, text)
 
         return self._status(level, escalated, just_entered, just_exited)
 
@@ -144,7 +145,7 @@ class CrisisTracker:
             return _strictly_decreasing(known)
         return True
 
-    def _observe_safe_candidate(self, text: str) -> bool:
+    def _observe_safe_candidate(self, level: CrisisLevel, text: str) -> bool:
         """Handle a turn at effective level <= L1 while in crisis; True when it exits."""
         entry = self._entry_level
         if entry is None:  # unreachable: in_crisis always has an entry level
@@ -152,6 +153,9 @@ class CrisisTracker:
         if not self._confirmed:
             if self._is_explicit_confirmation(normalize(text)):
                 self._confirmed = True
+            return False
+        # Only L0 counts as safe; an L1 turn pauses the count without resetting it.
+        if level is not CrisisLevel.L0:
             return False
         self._safe_turns += 1
         if self._safe_turns < self._tax.crisis_exit_safe_turns(entry):

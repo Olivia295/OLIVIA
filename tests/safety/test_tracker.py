@@ -136,7 +136,18 @@ def test_crisis_entry_resets_the_l1_trend(run):
     assert not run("我现在安全了").awaiting_confirmation
     s = run("活着好累")
     assert s.level is L.L1 and not s.escalated
-    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 1
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
+
+
+def test_l1_after_confirmation_pauses_the_exit_count(run):
+    run("我想死")
+    assert run("我现在安全了").safe_turns_remaining == 2
+    s = run("活着好累")  # L1 is not a safe turn
+    assert s.level is L.L1 and s.in_crisis and s.safe_turns_remaining == 2
+    assert run("今天吃了面").safe_turns_remaining == 1
+    s = run("活着好累")  # nor does it reset the turns already counted
+    assert s.level is L.L1 and s.in_crisis and s.safe_turns_remaining == 1
+    assert run("今天吃了面").just_exited
 
 
 def test_relapse_inside_crisis_also_resets_the_l1_trend(run):
