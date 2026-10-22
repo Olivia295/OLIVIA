@@ -177,7 +177,7 @@ class SessionState:
     global_turn_count: int = 0
     stage_turn_count: int = 0
     pure_listening_locked: bool = False
-    social_battery: float = 1.0
+    social_battery: float = 0.6
     current_risk_level: CrisisLevel = CrisisLevel.L0
     consecutive_l1_count: int = 0
     user_shelved_actions: list[str] = field(default_factory=list)

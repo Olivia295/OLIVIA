@@ -186,7 +186,7 @@ def test_region_validation():
 
 def test_session_state_defaults():
     s = SessionState(session_id=uuid4())
-    assert s.current_stage is HelpStage.S_READY and s.social_battery == 1.0
+    assert s.current_stage is HelpStage.S_READY and s.social_battery == 0.6
     assert s.current_risk_level is CrisisLevel.L0 and s.user_shelved_actions == []
 
 
