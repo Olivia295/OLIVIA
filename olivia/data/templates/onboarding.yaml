@@ -1,0 +1,161 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）
+#
+# 首访「心灵契约共创仪式」文案（PRD ONB-01~05、07、08，SOP 1；规格裁定 22–24）。
+# 由 olivia/core/chang/onboarding.py 读取；步骤顺序与校验逻辑在代码里，这里只放文字。
+#
+# 顺序：免责声明 → 18+ 门禁 → 双向称呼 → 陪伴方式 → 话题雷区 → 常住地区 → 时区 →
+#       健康信息授权（最后一步，可跳过）→ 原子保存。加密开关（ONB-06）属 P5，这里不问。
+#
+# 槽位（只允许下列几个，加载时校验）：
+#   {user_name} {agent_name}      双方称呼（agent_name 提示语与完成语可用）
+#   {max_len} {max_count}         长度与数量上限（只用于 hints）
+#   {consent_sentence}            授权句，原样展示，用户需完整输入
+#   {tokens}                      用户输入中没认出的编号
+#
+# 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
+# 不说教（不用“应该/必须/一定要”）、不用感叹号。健康信息选项的名称来自 taxonomy 的
+# clinical_red_flags，不在本文件里。
+version: 1
+
+consent_sentence: "我同意在这台电脑上记录我选择的健康信息"
+
+prompts:
+  disclaimer: |-
+    你好，欢迎来到这里。开始之前，有几句很重要的话想先和你说清楚。
+
+    我是一个在你电脑上离线运行的陪伴程序，不是医生，也不是心理咨询师。我能做的，是安静地听你说话，陪你整理感受，偶尔分享一些简单的自我照顾小练习。我不会给出医学判断，也不能代替专业的心理或医疗帮助。
+
+    如果你正处在危险之中，或者有伤害自己的念头，请马上联系当地的紧急电话，或者告诉身边信任的人。
+
+    你在这里说的话只保存在这台电脑上。读完之后，如果愿意继续，请选择「我已阅读并同意」。
+  age_gate: |-
+    谢谢你。还有一件事想先确认：这里的陪伴只为年满 18 周岁的成年人设计。
+
+    请问你已经年满 18 周岁了吗？
+  user_name: |-
+    接下来，我们互相认识一下。你希望我怎么称呼你？昵称就很好，1 到 12 个字。
+
+    直接按回车的话，我会叫你「朋友」。
+  agent_name: |-
+    好的，{user_name}。那你想怎么称呼我呢？同样是 1 到 12 个字。
+
+    直接按回车的话，我就还叫「Olivia」。
+  persona: |-
+    现在，我会用这样一种方式陪伴你：说话温暖柔和，多一些接纳和抚慰，不催你，也不评判你。
+
+    其他几种陪伴方式会在之后的版本里慢慢加入。按回车继续就好。
+  taboo: |-
+    有没有哪些话题，是你不希望我主动提起的？比如考试、前任、体重。
+
+    可以写几个，用逗号或顿号隔开；没有的话，直接按回车就好。这些话题我会记在心里，不会主动去碰。
+  region: |-
+    在你需要的时候，我希望给出的是你所在的地方真正打得通的求助电话。所以想问问，你平时主要在哪里生活？
+
+    选一个序号就可以。不想说也完全没关系。
+  timezone_choice: |-
+    这个地方有好几个时区。你那里用的是哪一个？
+
+    选一个序号，或者直接输入时区名称，例如 America/New_York。
+  timezone_free: |-
+    再确认一下时区，这样我能知道你那边大概是白天还是深夜。
+
+    可以输入时区名称，例如 Europe/Paris 或 Asia/Singapore；直接按回车的话，我就先用 UTC。
+  clinical_consent: |-
+    还有最后一个问题，完全可以跳过。
+
+    如果你曾经被专业人士评估过某些身心方面的情况，告诉我的话，我可以避开一些可能不适合你的练习。这属于敏感的个人健康信息：它只保存在这台电脑上，不会上传，只用来帮我避开不合适的练习，之后你也可以随时删除。
+
+    如果愿意记录，请完整输入下面这句话：
+    {consent_sentence}
+
+    不想记录的话，输入「跳过」或直接按回车。
+  clinical_history: |-
+    谢谢你的信任。下面这些里，有和你情况相符的吗？
+
+    输入序号或编号，多个用逗号隔开；都不相符的话，直接按回车。
+
+choices:
+  disclaimer:
+    accept: {label: "我已阅读并同意", aliases: ["同意", "我同意", "接受", "已阅读并同意"]}
+    decline: {label: "我不同意", aliases: ["不同意", "拒绝", "不接受"]}
+  age_gate:
+    accept: {label: "是，我已年满 18 周岁", aliases: ["是", "是的", "已满", "满了", "已成年", "成年"]}
+    decline: {label: "不，我还未满 18 周岁", aliases: ["否", "不是", "未满", "没满", "没有", "未成年"]}
+
+persona_label: "温和包裹：温暖柔和，多一些接纳与抚慰"
+
+region_labels:
+  CN: "中国大陆"
+  HK: "中国香港"
+  MO: "中国澳门"
+  TW: "中国台湾"
+  US: "美国"
+  CA: "加拿大"
+  GB: "英国"
+  AU: "澳大利亚"
+  ZZ: "其他地区，或不想说"
+
+region_aliases:
+  CN: ["大陆", "内地", "中国内地"]
+  HK: ["香港"]
+  MO: ["澳门"]
+  TW: ["台湾"]
+  GB: ["UK", "英國"]
+  AU: ["澳洲"]
+  ZZ: ["其他", "其他地区", "不想说", "不说"]
+
+timezone_labels:
+  America/New_York: "美国东部（纽约）"
+  America/Chicago: "美国中部（芝加哥）"
+  America/Denver: "美国山地（丹佛）"
+  America/Phoenix: "美国亚利桑那（凤凰城）"
+  America/Los_Angeles: "美国西部（洛杉矶）"
+  America/Anchorage: "阿拉斯加（安克雷奇）"
+  Pacific/Honolulu: "夏威夷（檀香山）"
+  America/St_Johns: "纽芬兰（圣约翰斯）"
+  America/Halifax: "加拿大大西洋（哈利法克斯）"
+  America/Toronto: "加拿大东部（多伦多）"
+  America/Winnipeg: "加拿大中部（温尼伯）"
+  America/Regina: "萨斯喀彻温（里贾纳）"
+  America/Edmonton: "加拿大山地（埃德蒙顿）"
+  America/Vancouver: "加拿大太平洋（温哥华）"
+  Australia/Sydney: "新南威尔士（悉尼）"
+  Australia/Melbourne: "维多利亚（墨尔本）"
+  Australia/Brisbane: "昆士兰（布里斯班）"
+  Australia/Adelaide: "南澳（阿德莱德）"
+  Australia/Darwin: "北领地（达尔文）"
+  Australia/Perth: "西澳（珀斯）"
+  Australia/Hobart: "塔斯马尼亚（霍巴特）"
+  UTC: "UTC（协调世界时）"
+
+skip_words: ["跳过", "无", "没有", "不用", "没", "不想说"]
+
+hints:
+  unrecognized: "我没太看懂这个回答，可以选一个序号再告诉我一次吗？"
+  name_length: "这个称呼有点长了，换一个 1 到 {max_len} 个字的好吗？"
+  name_unprintable: "这个称呼里有我没法显示的字符，换一个好吗？"
+  persona_only: "现在只有这一种陪伴方式，按回车继续就好。"
+  taboo_limits: "每个话题请控制在 {max_len} 个字以内，最多 {max_count} 个，可以再调整一下吗？"
+  timezone_invalid: "我没有认出这个时区。可以选一个序号，或者按「大洲/城市」的格式再输入一次吗？例如 Asia/Singapore。"
+  consent_unrecognized: "如果愿意记录，请完整输入那句话；不想记录的话，输入「跳过」就好。"
+  clinical_unknown: "我没有在列表里找到「{tokens}」。可以从上面选序号或编号吗？"
+
+outcomes:
+  completed: |-
+    好了，{user_name}，我们的约定已经保存在这台电脑上了。之后无论什么时候想聊聊，{agent_name}都在。
+
+    今天想从哪里说起都可以，哪怕只是一句「有点累」。
+  disclaimer_declined: |-
+    没关系，谢谢你认真读完。没有你的同意，我不会保存任何内容。
+
+    哪天你改变了想法，随时可以再打开我。如果你此刻有危险，请联系当地的紧急电话。
+  under_18: |-
+    谢谢你愿意诚实地告诉我。这里的陪伴只为成年人设计，所以这一次我没办法陪你继续聊下去了，这并不是你做错了什么。
+
+    你的感受很重要，值得被认真对待。可以找一位信任的大人聊一聊，比如家人、老师或学校的心理老师。
+
+    如果你在中国大陆，可以拨打 12355 青少年服务台（这个号码只在中国大陆可用）。如果你在其他地方，可以在这两个目录里找到当地的青少年或情绪支持热线：
+    Find A Helpline：https://findahelpline.com/
+    Befrienders Worldwide：https://befrienders.org/find-support-now/
+
+    如果你此刻有危险，或者有伤害自己的念头，请马上拨打当地的紧急电话，或者告诉身边的大人。

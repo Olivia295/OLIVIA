@@ -86,6 +86,62 @@ def test_profile_requires_adult_confirmation():
         PersonaProfile(age_confirmed_18_plus=False, created_at=NOW, updated_at=NOW)
 
 
+def _refusal(**kw):
+    return PersonaProfile(
+        age_confirmed_18_plus=False, created_at=NOW, updated_at=NOW, age_gate_refused_at=NOW, **kw
+    )
+
+
+def test_age_gate_refusal_record_round_trips():
+    import json
+
+    p = _refusal()
+    assert p.is_age_gate_refusal and not _profile().is_age_gate_refusal
+    data = json.loads(json.dumps(p.to_dict()))
+    assert data["age_gate_refused_at"] == NOW.isoformat()
+    assert data["age_confirmed_18_plus"] is False
+    assert PersonaProfile.from_dict(data) == p
+    assert _profile().to_dict()["age_gate_refused_at"] is None
+
+
+def test_profile_without_refusal_key_still_loads():
+    data = dict(_profile().to_dict())
+    del data["age_gate_refused_at"]
+    assert PersonaProfile.from_dict(data) == _profile()
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"region": UserRegion(country_code="CN", timezone="Asia/Shanghai")},
+        {"taboo_topics": ("考试",)},
+        {"clinical_history": ("SIT-02-04",)},
+    ],
+)
+def test_age_gate_refusal_record_holds_no_user_data(kw):
+    with pytest.raises(ValueError):
+        _refusal(**kw)
+
+
+def test_age_gate_refusal_record_cannot_confirm_adult_and_must_be_aware():
+    with pytest.raises(ValueError):
+        PersonaProfile(
+            age_confirmed_18_plus=True, created_at=NOW, updated_at=NOW, age_gate_refused_at=NOW
+        )
+    with pytest.raises(ValueError):
+        PersonaProfile(
+            age_confirmed_18_plus=False,
+            created_at=NOW,
+            updated_at=NOW,
+            age_gate_refused_at=datetime(2026, 10, 22),
+        )
+    data = _refusal().to_dict() | {"age_gate_refused_at": "2026-10-22T00:00:00"}
+    with pytest.raises(ValueError):
+        PersonaProfile.from_dict(data)
+    with pytest.raises(ValueError):
+        PersonaProfile.from_dict(_refusal().to_dict() | {"age_gate_refused_at": 5})
+
+
 def test_profile_rejects_naive_datetime():
     with pytest.raises(ValueError):
         PersonaProfile(age_confirmed_18_plus=True, created_at=datetime(2026, 1, 1), updated_at=NOW)
