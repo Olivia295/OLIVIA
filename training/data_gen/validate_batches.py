@@ -5,7 +5,7 @@ Each batch is a JSONL file of records matching label_schema.json, plus a `meta` 
 {"batch", "slot"} naming the quota slot it fills (e.g. "L0_hyperbole"). The script:
 
 1. validates every record against the schema (cross-head constraints included);
-2. checks the batch's slot counts against quota.yaml;
+2. checks the batch's slot counts against the quota file (quota.yaml unless --quota);
 3. drops exact and near duplicates (character-bigram Jaccard >= 0.8) within the round;
 4. drops any record that equals or nearly equals a test sentence, so the evaluation sets
    (the fresh-author probe, the interim set and, once written, the owner's set) are never
@@ -17,6 +17,7 @@ project's runtime):
 
     python training/data_gen/validate_batches.py BATCH_DIR --out merged.jsonl \
         --test-csv build/colab_data/olivia_cases.csv --test-csv build/eval/interim_fresh.csv
+        [--quota training/data_gen/quota_round2.yaml]
 """
 
 from __future__ import annotations
@@ -60,11 +61,13 @@ def main() -> None:
     parser.add_argument("batch_dir", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--test-csv", type=Path, action="append", default=[])
+    parser.add_argument("--quota", type=Path, default=HERE / "quota.yaml",
+                        help="quota file whose risk_mix the batches should match")
     args = parser.parse_args()
 
     schema = json.loads((HERE / "label_schema.json").read_text(encoding="utf-8"))
     validator = Draft202012Validator(schema)
-    quota = yaml.safe_load((HERE / "quota.yaml").read_text(encoding="utf-8"))
+    quota = yaml.safe_load(args.quota.read_text(encoding="utf-8"))
     test_grams = [bigrams(t) for t in load_test_texts(args.test_csv)]
 
     kept: list[dict] = []

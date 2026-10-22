@@ -1,0 +1,22 @@
+# P6-2 round 2: 6 batches x 200 messages = 1,200 synthetic, labelled user messages.
+# Round 1's teacher OOF showed false alarms concentrated on denials (NEGATION_PURE 25/36)
+# and everyday talk (BENIGN 38/132), so this round is mostly L0 hard negatives. Each batch
+# also carries crisis messages phrased with negation, so the model does not learn that a
+# negation word means "safe".
+round: 2
+batch_size: 200
+risk_mix:                      # per batch; sums to batch_size
+  L0_denial: 45                # 明确否认轻生或自伤，只是累、心情差、吐槽或怕别人担心
+  L0_clarify_joke: 15          # 解释之前说的“想死/不想活”是玩笑、气话或误会
+  L0_resolved_past: 15         # 过去有过不好的念头，现在已走出来，平静地谈恢复
+  L0_hyperbole: 40             # “X 死了/要命/疯了”等夸张，对象是小事
+  L0_death_everyday: 35        # 小说、影视、游戏、新闻、历史、宠物、写作里的死亡
+  L2_negation_shaped: 30       # 用否定句式表达的意念：不想活了、不想再醒来、撑不下去了
+  L3_after_denial: 20          # 先说“没事/别担心”，随后透露计划、工具、时间或正在实施；不写方法细节
+batches:                       # vary who is talking and where, so phrasing does not repeat
+  - {id: r2b01, speakers: "大学生、考研党", focus_emotions: [anxiety, sadness]}
+  - {id: r2b02, speakers: "上班族、程序员、销售", focus_emotions: [anger, overwhelm]}
+  - {id: r2b03, speakers: "中学生（高中）、留学生", focus_emotions: [loneliness, shame]}
+  - {id: r2b04, speakers: "新手父母、照护者", focus_emotions: [guilt, numbness]}
+  - {id: r2b05, speakers: "自由职业者、创作者、游戏玩家", focus_emotions: [disappointment, calm]}
+  - {id: r2b06, speakers: "中年人、退休人员、异地打工者", focus_emotions: [grief, fear]}

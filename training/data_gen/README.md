@@ -2,6 +2,8 @@
 
 产品模型只用自产数据训练（研究用数据集没有商用许可，只作对照）。数据由 Claude Code 子代理按配额生成并标注，再由另一组子代理交叉复核。
 
+第二轮（`quota_round2.yaml`）针对第一轮教师模型在交叉验证中暴露的弱点：明确否认、澄清玩笑、日常夸张等普通句的误报。每批另含用否定句式表达的危机句，避免模型把否定词当成“安全”。校验时加 `--quota training/data_gen/quota_round2.yaml`。
+
 ## 流程
 
 1. **生成**：每个批次一个子代理，按 `quota.yaml` 的风险配比和该批次的谱系、情绪重点写 200 条用户消息，并按 `docs/eval/perception-annotation-guide.md` 标注八个头和 `dominant_spectrum`。输出 JSONL，每行一条符合 `label_schema.json` 的记录，外加 `meta: {batch, slot}`。
