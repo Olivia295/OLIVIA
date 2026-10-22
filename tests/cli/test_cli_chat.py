@@ -136,7 +136,7 @@ def test_inspect_panel_never_shows_user_text_or_city(run_cli, data_home):
 
 def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法", L3_SENTENCE])
+    run = run_cli(["chat", "--inspect", "--model"], ["最近压力很大，给我一个方法", L3_SENTENCE])
     card_turn, crisis_turn = run.results
     first, second = run.out.split("┌ inspect")[1:]
     data = card_turn.inspect
@@ -159,9 +159,9 @@ def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     assert crisis_turn.inspect["hotline_reason"] == "no override"
 
 
-def test_rules_only_flag_keeps_the_model_out_and_says_so(run_cli, data_home):
+def test_rules_only_by_default_and_says_so(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect", "--rules-only"], ["最近压力很大，给我一个方法"])
+    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法"])
     (result,) = run.results
     assert result.inspect["risk_model"] == "rules-only"
     assert result.inspect["risk_model_reason"] is None

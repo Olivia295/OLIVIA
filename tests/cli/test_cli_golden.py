@@ -21,9 +21,9 @@ from olivia.core.session import ReplyKind
 BOTH_MODES = pytest.mark.parametrize(
     "mode_flags",
     [
-        pytest.param(["--rules-only"], id="rules"),
+        pytest.param([], id="rules"),
         pytest.param(
-            [],
+            ["--model"],
             id="model",
             marks=pytest.mark.xfail(
                 strict=True, reason="model false alarm: the student raises an ordinary turn to L2"

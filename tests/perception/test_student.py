@@ -314,15 +314,15 @@ def test_screen_with_the_student_never_lowers_and_stays_capped(student: StudentM
 
 
 def test_choose_risk_model(monkeypatch: pytest.MonkeyPatch, student: StudentModel) -> None:
-    chosen = choose_risk_model()
+    chosen = choose_risk_model(student=True)
     assert chosen.label == f"student:{student.fingerprint}" and chosen.reason is None
-    assert choose_risk_model(rules_only=True).label == "rules-only"
+    assert choose_risk_model().label == "rules-only"  # rules only by default
     with pytest.raises(ValueError):
-        choose_risk_model(StudentRiskModel(student), rules_only=True)
+        choose_risk_model(StudentRiskModel(student), student=True)
     monkeypatch.setattr(
         student_module, "default_student", lambda: StudentLoad(None, "hash_mismatch:x")
     )
-    fallback = choose_risk_model()
+    fallback = choose_risk_model(student=True)
     assert (fallback.label, fallback.reason, fallback.model) == (
         "rules-only",
         "hash_mismatch:x",

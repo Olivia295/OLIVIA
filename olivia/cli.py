@@ -1,11 +1,11 @@
 """The ``olivia`` command line (roadmap P2-4, P4-4).
 
-``olivia chat [--inspect] [--rules-only]``
+``olivia chat [--inspect] [--model]``
     First visit runs onboarding (``chang/onboarding.py``); then each line goes to
     ``Session.turn`` and the reply is printed exactly as returned, crisis cards included.
-    The crisis screen also consults the packaged perception student unless
-    ``--rules-only`` is given (or the student fails to load); the student can only raise
-    the rule level and is capped at L2.
+    The crisis screen uses the rules alone; ``--model`` (experimental, off by default
+    until a student passes the release gate) also consults the packaged perception
+    student, which can only raise the rule level and is capped at L2.
     ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
     feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
     as are natural-language replies to a card ("今天先不做了"): the session's perception
@@ -261,7 +261,7 @@ def _chat(
     clock: Clock,
     rng: random.Random | None,
     *,
-    rules_only: bool = False,
+    student: bool = False,
 ) -> int:
     tax = _taxonomy()
     try:
@@ -276,7 +276,7 @@ def _chat(
         profile,
         rng=rng if rng is not None else random.Random(),
         now=_local_clock(clock, profile),
-        rules_only=rules_only,
+        student=student,
     )
     console.say(CHAT_HINT)
     while True:
@@ -445,7 +445,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True, metavar="命令")
     chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")
-    chat.add_argument("--rules-only", action="store_true", help="危机筛查只用规则，不用感知模型")
+    chat.add_argument(
+        "--model", action="store_true", help="试验：危机筛查同时参考感知模型（默认只用规则）"
+    )
     commands.add_parser("resources", help="查看所在地区的求助电话")
     region = commands.add_parser("region", help="查看或修改所在的国家/地区")
     region.add_argument("code", nargs="?", help="两位国家/地区代码，例如 CN、HK、US、GB")
@@ -482,7 +484,7 @@ def main(
     now = clock if clock is not None else _system_clock
     try:
         if args.command == "chat":
-            return _chat(console, args.inspect, now, rng, rules_only=args.rules_only)
+            return _chat(console, args.inspect, now, rng, student=args.model)
         if args.command == "resources":
             return _resources(console, now)
         return _region(console, args.code, args.timezone, args.clear, now)

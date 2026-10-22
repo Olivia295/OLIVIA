@@ -11,7 +11,7 @@ must not be in ``actions_never`` either. Many cases never ask for a method in wo
 rule stub recognises, so without the probe their action check would pass without any
 action ever being offered. The probe is a runner addition; the case data is unchanged.
 
-Two modes. ``rules`` opens every session with ``rules_only=True`` (the R1 rule screen);
+Two modes. ``rules`` opens every session with the rule screen alone (the default);
 ``model`` opens it the product way, with the packaged perception student in the crisis
 screen (P6-6a: it can only raise the rule level and is capped at L2).
 
@@ -101,9 +101,7 @@ def run_case(
 ) -> list[TurnResult]:
     """The case's turns (plus ``PROBE`` when asked) in a fresh session of ``mode``."""
     rng = random.Random(f"{case['id']}/{seed}")
-    session = Session.open(
-        TAX, _profile(case), rng=rng, now=lambda: NOW, rules_only=mode == "rules"
-    )
+    session = Session.open(TAX, _profile(case), rng=rng, now=lambda: NOW, student=mode == "model")
     turns = [*case["turns"], PROBE] if probe else case["turns"]
     return [session.turn(text) for text in turns]
 

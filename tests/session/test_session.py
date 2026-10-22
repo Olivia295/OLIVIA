@@ -32,9 +32,13 @@ def _profile(**overrides: object) -> PersonaProfile:
     return replace(base, **overrides)
 
 
-def _open(seed: int = 7, *, rules_only: bool = False, **overrides: object) -> Session:
+def _open(seed: int = 7, *, rules_only: bool = True, **overrides: object) -> Session:
     return Session.open(
-        TAX, _profile(**overrides), rng=random.Random(seed), now=lambda: NOW, rules_only=rules_only
+        TAX,
+        _profile(**overrides),
+        rng=random.Random(seed),
+        now=lambda: NOW,
+        student=not rules_only,
     )
 
 

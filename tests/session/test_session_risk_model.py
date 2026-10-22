@@ -34,7 +34,10 @@ def _profile() -> PersonaProfile:
     )
 
 
-def _open(**kwargs: object) -> Session:
+def _open(*, rules_only: bool = False, **kwargs: object) -> Session:
+    # These tests are about the student, so it is on unless a test asks for rules only.
+    if "model" not in kwargs:
+        kwargs["student"] = not rules_only
     return Session.open(TAX, _profile(), rng=random.Random(5), now=lambda: NOW, **kwargs)  # type: ignore[arg-type]
 
 
@@ -127,4 +130,4 @@ def test_model_and_rules_only_are_exclusive():
             return RiskPrediction(CrisisLevel.L0, 0.0, ())
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        _open(model=Quiet(), rules_only=True)
+        _open(model=Quiet(), student=True)

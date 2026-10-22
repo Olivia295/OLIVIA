@@ -286,7 +286,7 @@ class Session:
         self._profile = profile
         self._shared = shared
         self._screen = screen
-        self._risk = risk if risk is not None else choose_risk_model(rules_only=True)
+        self._risk = risk if risk is not None else choose_risk_model()
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
@@ -310,14 +310,15 @@ class Session:
         rng: random.Random,
         now: Callable[[], datetime],
         model: RiskModel | None = None,
-        rules_only: bool = False,
+        student: bool = False,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
 
-        The crisis screen's Stage 2 uses ``model`` when given, else the packaged perception
-        student (``perception/student.py``), which can only raise the rule level and stays
-        capped at L2; ``rules_only=True``, or a student that fails to load, leaves the rule
-        model alone. ``inspect`` reports which one ran.
+        The crisis screen's Stage 2 uses ``model`` when given; ``student=True`` uses the
+        packaged perception student (``perception/student.py``); otherwise, or when the
+        student fails to load, the rule model runs alone. An injected model or the student
+        can only raise the rule level and stays capped at L2. ``inspect`` reports which one
+        ran.
 
         Raises :class:`AgeGateRefusedError` for a refusal record or any profile that does
         not confirm 18+, and lets every data-loading error through.
@@ -328,7 +329,7 @@ class Session:
         if moment.tzinfo is None or moment.utcoffset() is None:
             raise ValueError("now() must return a timezone-aware datetime")
         shared = _shared(tax, moment.date().isoformat())
-        risk = choose_risk_model(model, rules_only=rules_only)
+        risk = choose_risk_model(model, student=student)
         screen = (
             shared.screen
             if risk.model is None

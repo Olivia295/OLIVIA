@@ -509,20 +509,22 @@ class RiskChoice:
         return last.level.name, float(last.score)
 
 
-def choose_risk_model(model: RiskModel | None = None, *, rules_only: bool = False) -> RiskChoice:
-    """The session's Stage 2 model: an injected one, else the packaged student.
+def choose_risk_model(model: RiskModel | None = None, *, student: bool = False) -> RiskChoice:
+    """The session's Stage 2 model: an injected one, the packaged student, or rules only.
 
-    ``rules_only`` keeps the rule model alone. A student that fails to load falls back to
-    rules only, with its reason.
+    Rules only is the default until a student passes the release gate (P6-6a: the round-1
+    student raised 39 of 109 non-crisis red-team cases to a crisis). ``student=True`` asks
+    for the packaged student; one that fails to load falls back to rules only, with its
+    reason.
     """
-    if model is not None and rules_only:
-        raise ValueError("an injected risk model and rules_only are mutually exclusive")
-    if rules_only:
-        return RiskChoice(RULES_ONLY, None, None)
+    if model is not None and student:
+        raise ValueError("an injected risk model and student are mutually exclusive")
     if model is not None:
         return RiskChoice(f"custom:{type(model).__name__}", None, _Observed(model))
+    if not student:
+        return RiskChoice(RULES_ONLY, None, None)
     loaded = default_student()
     if loaded.model is None:
         return RiskChoice(RULES_ONLY, loaded.reason, None)
-    student = StudentRiskModel(loaded.model)
-    return RiskChoice(student.name, None, _Observed(student))
+    risk_model = StudentRiskModel(loaded.model)
+    return RiskChoice(risk_model.name, None, _Observed(risk_model))
