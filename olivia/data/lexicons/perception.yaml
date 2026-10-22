@@ -990,6 +990,60 @@ stabilization_cues:
   - 平静下来
   - 稳住我
 
+# Body signs of acute sympathetic overload (red-team rt083, COLBO-02). Any surviving hit
+# floors arousal at arousal.thresholds.cognitive_block (0.85), whichever emotion wins,
+# so no cognitive or high-load method is offered while the body is in alarm; with no
+# emotion cue at all the emotion is panic. Bare mild words (心慌, 胸闷, 头晕) stay in
+# stabilization_cues only: "有点心慌" is elevated, not acute.
+acute_arousal_cues:
+  - 心跳快炸了
+  - 心跳得快炸了
+  - 心脏快炸了
+  - 心脏要炸了
+  - 心跳好快
+  - 心跳特别快
+  - 心跳得好快
+  - 心跳得厉害
+  - 心跳加速
+  - 心脏狂跳
+  - 心狂跳
+  - 心脏要跳出来
+  - 心慌得要命
+  - 心慌得厉害
+  - 心慌得不行
+  - 心慌到
+  - 手一直在抖
+  - 手一直抖
+  - 手在抖
+  - 手抖得厉害
+  - 手抖个不停
+  - 手止不住地抖
+  - 浑身发抖
+  - 全身发抖
+  - 在发抖
+  - 抖个不停
+  - 喘不上气
+  - 喘不过气
+  - 透不过气
+  - 上不来气
+  - 呼吸困难
+  - 呼吸急促
+  - 头皮发麻
+  - 手脚发麻
+  - 四肢发麻
+  - 胸口发紧
+  - 胸口像被压住
+  - 胸口好闷
+  - 直冒冷汗
+  - 冒冷汗
+  - 要晕过去
+  - 快晕过去
+  - 快晕倒了
+  - 脑子嗡嗡
+  - 脑袋嗡嗡
+  - 腿发软
+  - 惊恐发作
+
 # Negation prefixes that void the hit right after them, and words that end in a
 # negation character without negating anything ("特别焦虑" is not "别焦虑").
 negation:

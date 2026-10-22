@@ -27,7 +27,11 @@ Rules, per field:
   matched), plus ``AROUSAL_STEP`` per ``raise`` modifier hit (at most
   ``MAX_RAISE_STEPS``) and minus one step per ``lower`` hit (at most
   ``MAX_LOWER_STEPS``), clamped to [0, 1]. The bounded swing (+0.15 / -0.10) keeps the
-  value inside the guide's table A window for every emotion.
+  value inside the guide's table A window for every emotion. An ``acute_arousal_cues``
+  hit (body signs of acute overload: 心跳快炸了, 手一直在抖, 喘不上气 ...) then floors it at
+  ``arousal.thresholds.cognitive_block``, whichever emotion won, so a message whose body
+  is in alarm is never read as calm enough for cognitive work (red-team rt083). With
+  such a hit and no emotion cue, the emotion is ``panic`` instead of ``calm``.
 - ``somatic_stabilization_eligible``: arousal >= ``arousal.thresholds.somatic_priority``.
 - ``distress_vector``: spectrum cue hits per TAX spectrum "01".."11", normalized to sum
   to 1 (all eleven keys present); an empty mapping when no spectrum cue matched.
@@ -102,6 +106,8 @@ _SIGNAL: Final = "signal"
 _INFORMATION: Final = "information"
 _REFERRAL: Final = "referral"
 _STABILIZATION: Final = "stabilization"
+_ACUTE: Final = "acute"
+ACUTE_EMOTION: Final = "panic"
 _RAISE: Final = "raise"
 _LOWER: Final = "lower"
 _DIRECT: Final = "direct_request"
@@ -140,8 +146,10 @@ class RuleStub:
         self._valence = {
             e: (p.valence_range[0] + p.valence_range[1]) / 2 for e, p in profiles.items()
         }
-        if FALLBACK_EMOTION not in profiles:
-            raise ValueError(f"taxonomy has no {FALLBACK_EMOTION!r} emotion")
+        for required in (FALLBACK_EMOTION, ACUTE_EMOTION):
+            if required not in profiles:
+                raise ValueError(f"taxonomy has no {required!r} emotion")
+        self._acute_floor = tax.threshold("arousal.thresholds.cognitive_block")
         if DEFAULT_STANCE not in tax.values("communication_stances"):
             raise ValueError(f"taxonomy has no {DEFAULT_STANCE!r} stance")
         self._yearning = tax.values("satir_yearnings")[0]
@@ -174,6 +182,7 @@ class RuleStub:
         add(_INFORMATION, _INFORMATION, lexicon.information_cues)
         add(_REFERRAL, _REFERRAL, lexicon.referral_cues)
         add(_STABILIZATION, _STABILIZATION, lexicon.stabilization_cues)
+        add(_ACUTE, _ACUTE, lexicon.acute_arousal_cues)
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
 
@@ -191,14 +200,20 @@ class RuleStub:
         hits = self._scan(body)
 
         emotion_hits = Counter(label for label, _ in hits.get(_EMOTION, ()))
+        acute = bool(hits.get(_ACUTE))
         if emotion_hits:
             emotion = min(emotion_hits, key=lambda e: (-emotion_hits[e], self._priority[e]))
+            valence = self._valence[emotion]
+        elif acute:
+            emotion = ACUTE_EMOTION
             valence = self._valence[emotion]
         else:
             emotion, valence = FALLBACK_EMOTION, 0.0
         modifiers = Counter(label for label, _ in hits.get(_MODIFIER, ()))
         steps = min(modifiers[_RAISE], MAX_RAISE_STEPS) - min(modifiers[_LOWER], MAX_LOWER_STEPS)
         arousal = round(min(max(self._arousal[emotion] + steps * AROUSAL_STEP, 0.0), 1.0), 4)
+        if acute:
+            arousal = max(arousal, self._acute_floor)
 
         signals = hits.get(_SIGNAL, [])
         labels = {label for label, _ in signals}

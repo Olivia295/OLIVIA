@@ -36,6 +36,7 @@ _PHRASE_SECTIONS: Final = (
     "information_cues",
     "referral_cues",
     "stabilization_cues",
+    "acute_arousal_cues",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -75,6 +76,8 @@ class PerceptionLexicon:
     information_cues: tuple[str, ...]
     referral_cues: tuple[str, ...]
     stabilization_cues: tuple[str, ...]
+    acute_arousal_cues: tuple[str, ...]
+    """Body signs of acute overload; a hit floors arousal at the cognitive-block line."""
     negation_prefixes: tuple[str, ...]
     negation_exceptions: tuple[str, ...]
 
@@ -108,6 +111,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         information_cues=phrases["information_cues"],
         referral_cues=phrases["referral_cues"],
         stabilization_cues=phrases["stabilization_cues"],
+        acute_arousal_cues=phrases["acute_arousal_cues"],
         negation_prefixes=prefixes,
         negation_exceptions=exceptions,
     )

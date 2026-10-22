@@ -297,6 +297,35 @@ def test_arousal_stays_within_the_unit_interval(stub: RuleStub) -> None:
     assert ctx.arousal == 1.0
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我现在心跳快炸了，手一直在抖",
+        "我整个人在发抖，停不下来",
+        "崩溃了崩溃了，心慌到要吐",
+        "头皮发麻，直冒冷汗",
+        "又焦虑又担心又紧张，胸口发紧",  # anxiety wins the vote, the body sets the floor
+    ],
+)
+def test_acute_body_cue_floors_arousal_at_the_cognitive_block_line(
+    stub: RuleStub, tax: Taxonomy, text: str
+) -> None:
+    ctx, _ = stub.perceive(text, _assessment())
+    assert ctx.arousal >= tax.threshold("arousal.thresholds.cognitive_block")
+
+
+def test_acute_body_cue_alone_reads_as_panic(stub: RuleStub) -> None:
+    ctx, _ = stub.perceive("手一直在抖", _assessment())
+    assert ctx.fine_grained_emotion == "panic"
+
+
+def test_negated_or_mild_body_cue_sets_no_floor(stub: RuleStub, tax: Taxonomy) -> None:
+    block = tax.threshold("arousal.thresholds.cognitive_block")
+    for text in ("我没有发抖", "有点心慌"):
+        ctx, _ = stub.perceive(text, _assessment())
+        assert ctx.arousal < block, text
+
+
 def test_somatic_eligibility_follows_the_tax_threshold(stub: RuleStub, tax: Taxonomy) -> None:
     threshold = tax.threshold("arousal.thresholds.somatic_priority")
     for text in ("喘不上气", "我好焦虑", "今天挺好"):
