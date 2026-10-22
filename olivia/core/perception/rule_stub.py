@@ -53,9 +53,11 @@ first TAX ``satir_yearnings`` id (``SAFETY``).
 
 Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None without one);
 ``command`` when the whole folded message is ``/done``, ``/not-now`` or ``/unhelpful``;
-``direct_request``, ``listening_lock_on`` and ``listening_lock_off`` when a non-negated
-phrase of that section matched. If both lock phrases match, the later one in the message
-wins, since a turn cannot both set and release the lock.
+``direct_request``, ``listening_lock_on``, ``listening_lock_off``, ``aversion`` and
+``intent_confirmed`` when a non-negated phrase of that section matched. If both lock
+phrases match, the later one in the message wins, since a turn cannot both set and
+release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
+reads them in different stages (S_empower, S_closing).
 """
 
 from __future__ import annotations
@@ -105,6 +107,8 @@ _LOWER: Final = "lower"
 _DIRECT: Final = "direct_request"
 _LOCK_ON: Final = "lock_on"
 _LOCK_OFF: Final = "lock_off"
+_AVERSION: Final = "aversion"
+_INTENT: Final = "intent_confirmed"
 
 _Tag = tuple[str, str]  # (group, label)
 
@@ -165,6 +169,8 @@ class RuleStub:
         add(_SIGNAL, _DIRECT, lexicon.direct_request)
         add(_SIGNAL, _LOCK_ON, lexicon.lock_on)
         add(_SIGNAL, _LOCK_OFF, lexicon.lock_off)
+        add(_SIGNAL, _AVERSION, lexicon.aversion)
+        add(_SIGNAL, _INTENT, lexicon.intent_confirmed)
         add(_INFORMATION, _INFORMATION, lexicon.information_cues)
         add(_REFERRAL, _REFERRAL, lexicon.referral_cues)
         add(_STABILIZATION, _STABILIZATION, lexicon.stabilization_cues)
@@ -195,7 +201,8 @@ class RuleStub:
         arousal = round(min(max(self._arousal[emotion] + steps * AROUSAL_STEP, 0.0), 1.0), 4)
 
         signals = hits.get(_SIGNAL, [])
-        direct = any(label == _DIRECT for label, _ in signals)
+        labels = {label for label, _ in signals}
+        direct = _DIRECT in labels
         lock_on, lock_off = _lock(signals)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
@@ -228,6 +235,8 @@ class RuleStub:
             direct_request=direct,
             listening_lock_on=lock_on,
             listening_lock_off=lock_off,
+            aversion=_AVERSION in labels,
+            intent_confirmed=_INTENT in labels,
             command=command,
         )
         return context, turn

@@ -28,6 +28,13 @@ class TurnSignals:
     """The user says they only want to talk, not get advice (PRD Q-4)."""
     listening_lock_off: bool = False
     """The user releases the pure-listening lock (PRD Q-4)."""
+    aversion: bool = False
+    """The user rejects the suggested practice (SDD §4.2 S_empower row "表达反感", COLBO-04
+    "强烈排斥"); in S_empower it routes back to S_explore."""
+    intent_confirmed: bool = False
+    """The user commits to when or how they will try the practice (SDD §4.2 S_closing row
+    "实施意向确认完成", the Gollwitzer implementation intention); in S_closing it ends the
+    session (S_ready)."""
     command: Command | None = None
 
     def __post_init__(self) -> None:

@@ -853,6 +853,77 @@ lock_off:
   - 帮我想想办法
   - 那我该怎么做
 
+# The user rejects the suggested practice (SDD §4.2 S_empower "表达反感", PRD COLBO-04
+# "强烈排斥"). Routes S_empower back to S_explore. Phrases name the practice or the
+# suggestion itself, so a bare self-judgement ("我没什么用") is not read as aversion.
+aversion:
+  - 不想做这个
+  - 不想做这种
+  - 不想做练习
+  - 不想练这个
+  - 不想练了
+  - 不想试这个
+  - 不想再试了
+  - 这有什么用
+  - 这能有什么用
+  - 做这个有什么用
+  - 练这个有什么用
+  - 这个方法没用
+  - 这方法没用
+  - 这些都没用
+  - 根本没用
+  - 一点用都没有
+  - 别让我练了
+  - 别让我做了
+  - 别再让我做
+  - 别再让我练
+  - 不要再让我练
+  - 别再推荐了
+  - 别再给我推荐
+  - 不要推荐了
+  - 讨厌这种练习
+  - 讨厌做这个
+  - 好烦这种练习
+  - 这个好蠢
+  - 这个好傻
+  - 太幼稚了
+  - 什么破方法
+  - 什么破练习
+  - 别灌鸡汤
+  - 少来这套
+  - 别来这套
+  - 听着就烦
+
+# The user commits to when or how they will try the practice: the Gollwitzer
+# implementation intention of SDD §4.2 S_closing ("实施意向确认完成"). Routes S_closing to
+# S_ready. Time-led phrases start with 我 so "我不打算明天试试" does not match; verb-led
+# phrases start at the modal so "我不会试试" is caught by the negation check.
+intent_confirmed:
+  - 我明天早上试试
+  - 我明天早上做一次
+  - 我明早试试
+  - 我明天试试
+  - 我明天就试
+  - 我今晚试试
+  - 我今晚就试
+  - 今晚睡前做一次
+  - 我睡前做一次
+  - 我睡前试试
+  - 我周末试试
+  - 我下班后试试
+  - 到时候我就试试
+  - 那我就这么做
+  - 会试试
+  - 会去试试
+  - 会做一次
+  - 会练一下
+  - 会照着做
+  - 就这么定了
+  - 一言为定
+  - 说定了
+  - 我定个闹钟
+  - 设个提醒
+
 # Knowledge questions (guide §4.2 step 4: knowledge, mechanism, method, "is this normal").
 information_cues:
   - 正常吗

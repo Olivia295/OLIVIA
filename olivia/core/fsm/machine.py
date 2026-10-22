@@ -13,7 +13,18 @@ Precedence, highest first:
    session in S_haven from any stage.
 3. Direct request. Asking outright for a method moves any other non-crisis stage to
    S_empower (COLBO-03), for every persona.
-4. The per-stage rows of the transition table.
+4. The per-stage rows of the transition table. In S_empower an arousal spike is judged
+   first, then aversion, then the commands.
+
+Aversion. A turn whose signals carry ``aversion`` ("表达反感", COLBO-04 "强烈排斥") in
+S_empower goes back to S_explore, the same route as ``/unhelpful``. The machine only
+routes: whether the rejected method also gets the ``UNHELPFUL`` soft decay (SDD 6.3) or
+any other bandit feedback is decided by the caller, which sees ``Reason.EMPOWER_AVERSION``.
+
+Implementation intention. A turn whose signals carry ``intent_confirmed`` ("实施意向确认
+完成") in S_closing ends the session in S_ready, like :func:`close_session` but as a user
+turn, so it is counted like any other turn. The caller writes the session summary and
+ledger on that reason exactly as on ``Reason.CLOSING_TO_READY``.
 
 Turn counts follow SDD 4.2: ``stage_turn_count`` counts turns in the current stage, the
 turn that enters a stage is its first turn, and the gates read the count from before the
@@ -45,7 +56,7 @@ class TurnInput:
 
 
 class Reason(StrEnum):
-    """Why a turn landed where it did: one member per SDD 4.2 table row, plus STAY."""
+    """Why a turn landed where it did: one member per SDD 4.2 trigger, plus STAY."""
 
     STAY = "STAY"
     SESSION_START = "SESSION_START"
@@ -62,12 +73,18 @@ class Reason(StrEnum):
     """S_clarify -> S_empower: auto-advance after N clarify turns, no lock, not SILENT_ANCHOR."""
     EMPOWER_AROUSAL_RETREAT = "EMPOWER_AROUSAL_RETREAT"
     """S_empower -> S_explore: ΔArousal or absolute arousal spike (COLBO-04)."""
+    EMPOWER_AVERSION = "EMPOWER_AVERSION"
+    """S_empower -> S_explore: the user expresses aversion to the practice (SDD 4.2, COLBO-04).
+
+    Routed like ``/unhelpful``; the caller decides any bandit feedback for the method."""
     EMPOWER_UNHELPFUL = "EMPOWER_UNHELPFUL"
     """S_empower -> S_explore: ``/unhelpful``; the caller applies the soft decay (SDD 6.3)."""
     EMPOWER_TO_CLOSING = "EMPOWER_TO_CLOSING"
     """S_empower -> S_closing: ``/done`` or ``/not-now``."""
     HAVEN_EXIT = "HAVEN_EXIT"
     """S_haven -> S_explore: battery recovered to haven_exit or above."""
+    CLOSING_INTENT_CONFIRMED = "CLOSING_INTENT_CONFIRMED"
+    """S_closing -> S_ready: the user confirms the implementation intention (SDD 4.2)."""
     CLOSING_TO_READY = "CLOSING_TO_READY"
     """S_closing -> S_ready: the session closes (see :func:`close_session`)."""
     CRISIS_EXIT = "CRISIS_EXIT"
@@ -206,6 +223,8 @@ def _route(
         return HelpStage.S_EMPOWER, Reason.CLARIFY_TO_EMPOWER
     if previous is HelpStage.S_HAVEN and battery >= gates.haven_exit:
         return HelpStage.S_EXPLORE, Reason.HAVEN_EXIT
+    if previous is HelpStage.S_CLOSING and inp.signals.intent_confirmed:
+        return HelpStage.S_READY, Reason.CLOSING_INTENT_CONFIRMED
     return previous, Reason.STAY
 
 
@@ -218,6 +237,8 @@ def _from_empower(gates: _Gates, state: SessionState, inp: TurnInput) -> tuple[H
     )
     if spiked:
         return HelpStage.S_EXPLORE, Reason.EMPOWER_AROUSAL_RETREAT
+    if inp.signals.aversion:
+        return HelpStage.S_EXPLORE, Reason.EMPOWER_AVERSION
     command = inp.signals.command
     if command is Command.UNHELPFUL:
         return HelpStage.S_EXPLORE, Reason.EMPOWER_UNHELPFUL

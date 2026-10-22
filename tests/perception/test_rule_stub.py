@@ -153,6 +153,46 @@ def test_when_both_lock_phrases_occur_the_later_one_wins(stub: RuleStub) -> None
     assert (off_then_on.listening_lock_on, off_then_on.listening_lock_off) == (True, False)
 
 
+# -- aversion and implementation intention (SDD 4.2) ---------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["我不想做这个", "这有什么用啊", "别让我练了，真的", "这个方法没用，听着就烦", "什么破练习"],
+)
+def test_aversion(stub: RuleStub, text: str) -> None:
+    _, signals = stub.perceive(text, _assessment())
+    assert signals.aversion and not signals.intent_confirmed
+
+
+@pytest.mark.parametrize(
+    "text", ["我不是不想做这个，就是有点累", "也不是根本没用", "我并不讨厌做这个"]
+)
+def test_negated_aversion_does_not_trigger(stub: RuleStub, text: str) -> None:
+    _, signals = stub.perceive(text, _assessment())
+    assert not signals.aversion
+
+
+@pytest.mark.parametrize(
+    "text", ["好的，我明天早上试试", "今晚睡前做一次", "我会试试的", "就这么定了，我定个闹钟"]
+)
+def test_intent_confirmed(stub: RuleStub, text: str) -> None:
+    _, signals = stub.perceive(text, _assessment())
+    assert signals.intent_confirmed and not signals.aversion
+
+
+@pytest.mark.parametrize("text", ["我不会试试的", "不用设个提醒", "我不打算明天早上试试"])
+def test_negated_intent_does_not_trigger(stub: RuleStub, text: str) -> None:
+    _, signals = stub.perceive(text, _assessment())
+    assert not signals.intent_confirmed
+
+
+@pytest.mark.parametrize("text", ["今天挺好的", "我觉得自己没什么用", "这个练习是做什么用的"])
+def test_no_aversion_or_intent_without_a_phrase(stub: RuleStub, text: str) -> None:
+    _, signals = stub.perceive(text, _assessment())
+    assert not (signals.aversion or signals.intent_confirmed)
+
+
 # -- emotion -------------------------------------------------------------------------
 
 

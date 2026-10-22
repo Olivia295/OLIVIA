@@ -7,6 +7,13 @@ def test_defaults_mean_no_signal():
     s = TurnSignals()
     assert s.battery is None and s.command is None
     assert not (s.direct_request or s.listening_lock_on or s.listening_lock_off)
+    assert not (s.aversion or s.intent_confirmed)
+
+
+def test_aversion_and_intent_are_independent_flags():
+    # They act in different stages (S_empower / S_closing), so a turn may carry both.
+    s = TurnSignals(aversion=True, intent_confirmed=True)
+    assert s.aversion and s.intent_confirmed
 
 
 @pytest.mark.parametrize("battery", [-0.01, 1.01])

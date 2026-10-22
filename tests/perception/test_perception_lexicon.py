@@ -44,6 +44,7 @@ def test_packaged_lexicon_loads(tax: Taxonomy) -> None:
     assert tuple(lex.spectrum_cues) == tax.spectrum_ids()
     assert all(lex.spectrum_cues.values())
     assert lex.direct_request and lex.lock_on and lex.lock_off
+    assert len(lex.aversion) >= 25 and len(lex.intent_confirmed) >= 20
 
 
 def test_packaged_lexicon_has_enough_cues_per_emotion(tax: Taxonomy) -> None:
@@ -131,6 +132,11 @@ def _delete(path: tuple[Any, ...]) -> Callable[[dict[str, Any]], None]:
         (_set(("lock_off",), "下一步"), "lock_off"),
         (_append(("lock_off",), "只想说说"), "both lock_on and lock_off"),
         (_append(("direct_request",), "只想说说"), "both direct_request and lock_on"),
+        (_delete(("aversion",)), "aversion"),
+        (_set(("intent_confirmed",), []), "intent_confirmed"),
+        (_append(("aversion",), "会试试"), "both aversion and intent_confirmed"),
+        (_append(("aversion",), "别给我建议"), "both lock_on and aversion"),
+        (_append(("intent_confirmed",), "给我个方法"), "both direct_request and intent_confirmed"),
         (_delete(("referral_cues",)), "referral_cues"),
         (_set(("negation", "suffixes"), ["x"]), "unknown keys"),
         (_set(("negation", "exceptions"), []), "negation.exceptions"),

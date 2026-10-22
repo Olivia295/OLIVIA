@@ -14,7 +14,8 @@
 #   emotion       TAX emotion id
 #   spectrum      dominant TAX distress spectrum "01".."11", or "none" (guide §9)
 #   signals       optional; omitted keys mean "no signal":
-#                 battery (0.0-1.0), direct_request, lock_on, lock_off (bool),
+#                 battery (0.0-1.0), direct_request, lock_on, lock_off, aversion,
+#                 intent_confirmed (bool),
 #                 command ("/done" | "/not-now" | "/unhelpful")
 
 version: 1
