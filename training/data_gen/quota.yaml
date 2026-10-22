@@ -1,0 +1,38 @@
+# P6-2 round 1: 20 batches x 200 messages = 4,000 synthetic, labelled user messages.
+# Every batch has the same risk mix; batches differ in the distress spectra and the rare
+# emotions they emphasise, so the whole round covers all 11 spectra and all 16 emotions.
+# The 2026-10-22 feasibility run showed the model's weak spot is false alarms on everyday
+# talk, so L0 is 40% and most of it is hard negatives (hyperbole, negation, death talk).
+round: 1
+batch_size: 200
+risk_mix:                      # per batch; sums to batch_size
+  L0_hyperbole: 20             # 含“死/命/疯”等字的口癖与夸张，对象是小事
+  L0_negation: 15              # 明确否认轻生，只是心情差或在吐槽
+  L0_death_everyday: 13        # 谈论别人、新闻、游戏、影视、疾病中的死亡
+  L0_negative_mood: 20         # 普通负面情绪，不涉及活着的意义
+  L0_neutral_positive: 12      # 中性或正面的日常（标为 calm）
+  L1: 40                       # 疲惫、无意义、自我否定、想逃离，无死亡愿望
+  L2: 44                       # 被动或主动意念、询问方法、双重否定、告别与无望，无计划
+  L3: 36                       # 计划、工具、时间地点、正在或刚刚实施；不写方法细节
+rare_emotions: [guilt, hopelessness, grief, fear, envy, disappointment, confusion, calm]
+batches:                       # spectra the non-L0-neutral messages should mostly draw from
+  - {id: b01, spectra: ["01", "02"], focus_emotions: [guilt, fear]}
+  - {id: b02, spectra: ["03", "04"], focus_emotions: [hopelessness, envy]}
+  - {id: b03, spectra: ["05", "06"], focus_emotions: [grief, disappointment]}
+  - {id: b04, spectra: ["07", "08"], focus_emotions: [confusion, fear]}
+  - {id: b05, spectra: ["09", "10"], focus_emotions: [guilt, envy]}
+  - {id: b06, spectra: ["11", "01"], focus_emotions: [hopelessness, confusion]}
+  - {id: b07, spectra: ["02", "03"], focus_emotions: [grief, guilt]}
+  - {id: b08, spectra: ["04", "05"], focus_emotions: [disappointment, fear]}
+  - {id: b09, spectra: ["06", "07"], focus_emotions: [envy, hopelessness]}
+  - {id: b10, spectra: ["08", "09"], focus_emotions: [confusion, grief]}
+  - {id: b11, spectra: ["10", "11"], focus_emotions: [guilt, disappointment]}
+  - {id: b12, spectra: ["01", "06"], focus_emotions: [fear, hopelessness]}
+  - {id: b13, spectra: ["02", "07"], focus_emotions: [envy, confusion]}
+  - {id: b14, spectra: ["03", "08"], focus_emotions: [grief, guilt]}
+  - {id: b15, spectra: ["04", "09"], focus_emotions: [disappointment, fear]}
+  - {id: b16, spectra: ["05", "10"], focus_emotions: [hopelessness, envy]}
+  - {id: b17, spectra: ["06", "11"], focus_emotions: [confusion, grief]}
+  - {id: b18, spectra: ["07", "02"], focus_emotions: [guilt, disappointment]}
+  - {id: b19, spectra: ["08", "03"], focus_emotions: [fear, hopelessness]}
+  - {id: b20, spectra: ["09", "05"], focus_emotions: [envy, confusion]}
