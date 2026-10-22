@@ -1,8 +1,11 @@
 """The ``olivia`` command line (roadmap P2-4, P4-4).
 
-``olivia chat [--inspect]``
+``olivia chat [--inspect] [--rules-only]``
     First visit runs onboarding (``chang/onboarding.py``); then each line goes to
     ``Session.turn`` and the reply is printed exactly as returned, crisis cards included.
+    The crisis screen also consults the packaged perception student unless
+    ``--rules-only`` is given (or the student fails to load); the student can only raise
+    the rule level and is capped at L2.
     ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
     feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
     as are natural-language replies to a card ("今天先不做了"): the session's perception
@@ -239,13 +242,27 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else ""),
     ]
+    model_reason = data.get("risk_model_reason")
+    lines.append(
+        f"│ 风险模型 {_fmt(data.get('risk_model'))}"
+        + (f"（{model_reason}）" if model_reason else "")
+        + f" · 模型判断 {_fmt(data.get('model_level'))}"
+        + f" · 模型分数 {_fmt(data.get('model_score'))}"
+    )
     source = _fmt(data.get("hotline_source"))
     reason = data.get("hotline_reason")
     lines.append(f"└ 热线数据 {source}" + (f"（{reason}）" if reason else ""))
     return lines
 
 
-def _chat(console: _Console, inspect: bool, clock: Clock, rng: random.Random | None) -> int:
+def _chat(
+    console: _Console,
+    inspect: bool,
+    clock: Clock,
+    rng: random.Random | None,
+    *,
+    rules_only: bool = False,
+) -> int:
     tax = _taxonomy()
     try:
         profile = _onboard(console, tax, ProfileStore(), clock())
@@ -259,6 +276,7 @@ def _chat(console: _Console, inspect: bool, clock: Clock, rng: random.Random | N
         profile,
         rng=rng if rng is not None else random.Random(),
         now=_local_clock(clock, profile),
+        rules_only=rules_only,
     )
     console.say(CHAT_HINT)
     while True:
@@ -427,6 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True, metavar="命令")
     chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")
+    chat.add_argument("--rules-only", action="store_true", help="危机筛查只用规则，不用感知模型")
     commands.add_parser("resources", help="查看所在地区的求助电话")
     region = commands.add_parser("region", help="查看或修改所在的国家/地区")
     region.add_argument("code", nargs="?", help="两位国家/地区代码，例如 CN、HK、US、GB")
@@ -463,7 +482,7 @@ def main(
     now = clock if clock is not None else _system_clock
     try:
         if args.command == "chat":
-            return _chat(console, args.inspect, now, rng)
+            return _chat(console, args.inspect, now, rng, rules_only=args.rules_only)
         if args.command == "resources":
             return _resources(console, now)
         return _region(console, args.code, args.timezone, args.clear, now)

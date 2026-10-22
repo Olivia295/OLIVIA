@@ -139,16 +139,35 @@ def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法", L3_SENTENCE])
     card_turn, crisis_turn = run.results
     first, second = run.out.split("┌ inspect")[1:]
-    assert f"风险 {card_turn.inspect['level']}" in first
-    assert f"→ {HelpStage.S_EMPOWER.value}" in first
-    assert f"唤醒 {card_turn.inspect['arousal']:.2f}" in first
-    assert f"电量 {card_turn.inspect['battery']:.2f}" in first
-    assert "可用动作 " + ",".join(card_turn.inspect["candidates"]) in first  # type: ignore[arg-type]
-    assert f"选中 {card_turn.action_id}" in first
+    data = card_turn.inspect
+    assert f"风险 {data['level']}" in first
+    # P6-6a: the student raises this request to L2 today (a false alarm), so the stage is
+    # read from the result instead of being S_empower.
+    assert f"→ {card_turn.stage.value}" in first
+    assert f"唤醒 {data['arousal']:.2f}" in first
+    assert f"电量 {data['battery']:.2f}" in first
+    assert f"可用动作 {cli._fmt(data['candidates'])}" in first
+    assert f"选中 {cli._fmt(data['chosen'])}" in first
+    assert f"风险模型 {data['risk_model']}" in first
+    assert str(data["risk_model"]).startswith("student:")
+    assert f"模型判断 {data['model_level']} · 模型分数 {data['model_score']:.2f}" in first
     assert "风险 L3" in second and "线索 S1_NOTE_WRITTEN" in second
     assert "资源卡 CN L3" in second
+    # Stage 1 answered L3 on its own, so the model did not run on that turn.
+    assert "模型判断 - · 模型分数 -" in second
     assert "热线数据 builtin（no override）" in second
     assert crisis_turn.inspect["hotline_reason"] == "no override"
+
+
+def test_rules_only_flag_keeps_the_model_out_and_says_so(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect", "--rules-only"], ["最近压力很大，给我一个方法"])
+    (result,) = run.results
+    assert result.inspect["risk_model"] == "rules-only"
+    assert result.inspect["risk_model_reason"] is None
+    assert result.inspect["model_level"] is None and result.inspect["model_score"] is None
+    assert "风险模型 rules-only · 模型判断 - · 模型分数 -" in run.out
+    assert result.stage is HelpStage.S_EMPOWER and result.reply_kind is ReplyKind.CARD
 
 
 def test_no_panel_without_inspect(run_cli, data_home):
