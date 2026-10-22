@@ -3,7 +3,8 @@
 The stub builds one phrase matcher over every section, so anything ambiguous is
 rejected here: unknown sections, emotion or spectrum ids that the taxonomy does not
 define, empty lists, and a phrase listed twice within one section group (two emotions,
-two spectra, or two of the direct-request / lock-on / lock-off signals). The same phrase
+two spectra, or two of the direct-request / lock-on / lock-off / aversion /
+intent-confirmed signals). The same phrase
 may appear in different groups, for example as an emotion cue and a spectrum cue.
 
 Emotion keys may be TAX emotion aliases; they are folded into the canonical id, and the
@@ -30,6 +31,8 @@ _PHRASE_SECTIONS: Final = (
     "direct_request",
     "lock_on",
     "lock_off",
+    "aversion",
+    "intent_confirmed",
     "information_cues",
     "referral_cues",
     "stabilization_cues",
@@ -45,8 +48,9 @@ _SECTIONS: Final = frozenset(
     }
 )
 # Sections whose phrases must be distinct from each other: one phrase cannot both set
-# and release the listening lock, or both ask for a method and set the lock.
-_SIGNAL_GROUP: Final = ("direct_request", "lock_on", "lock_off")
+# and release the listening lock, both ask for a method and set the lock, or both reject
+# a practice and commit to it.
+_SIGNAL_GROUP: Final = ("direct_request", "lock_on", "lock_off", "aversion", "intent_confirmed")
 
 
 class PerceptionLexiconError(Exception):
@@ -64,6 +68,10 @@ class PerceptionLexicon:
     direct_request: tuple[str, ...]
     lock_on: tuple[str, ...]
     lock_off: tuple[str, ...]
+    aversion: tuple[str, ...]
+    """The user rejects the suggested practice (SDD §4.2 S_empower "表达反感")."""
+    intent_confirmed: tuple[str, ...]
+    """The user commits to when or how to try it (SDD §4.2 S_closing "实施意向确认完成")."""
     information_cues: tuple[str, ...]
     referral_cues: tuple[str, ...]
     stabilization_cues: tuple[str, ...]
@@ -95,6 +103,8 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         direct_request=phrases["direct_request"],
         lock_on=phrases["lock_on"],
         lock_off=phrases["lock_off"],
+        aversion=phrases["aversion"],
+        intent_confirmed=phrases["intent_confirmed"],
         information_cues=phrases["information_cues"],
         referral_cues=phrases["referral_cues"],
         stabilization_cues=phrases["stabilization_cues"],

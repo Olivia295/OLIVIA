@@ -31,7 +31,15 @@ FLOORS: dict[str, dict[str, float]] = {
     "tuned": {"emotion": 0.80, "arousal_band": 0.60, "spectrum": 0.80, "signals": 1.00},
     "heldout": {"emotion": 0.45, "arousal_band": 0.55, "spectrum": 0.40, "signals": 0.95},
 }
-SIGNAL_KEYS = {"battery", "direct_request", "lock_on", "lock_off", "command"}
+SIGNAL_KEYS = {
+    "battery",
+    "direct_request",
+    "lock_on",
+    "lock_off",
+    "aversion",
+    "intent_confirmed",
+    "command",
+}
 
 
 def _cases() -> list[dict[str, Any]]:
@@ -71,6 +79,8 @@ def _expected_signals(case: dict[str, Any]) -> tuple[object, ...]:
         s.get("direct_request", False),
         s.get("lock_on", False),
         s.get("lock_off", False),
+        s.get("aversion", False),
+        s.get("intent_confirmed", False),
         s.get("command"),
     )
 
@@ -87,6 +97,8 @@ def _accuracy(tax: Taxonomy, split: str) -> dict[str, float]:
             signals.direct_request,
             signals.listening_lock_on,
             signals.listening_lock_off,
+            signals.aversion,
+            signals.intent_confirmed,
             None if signals.command is None else signals.command.value,
         )
         correct["emotion"] += ctx.fine_grained_emotion == case["emotion"]

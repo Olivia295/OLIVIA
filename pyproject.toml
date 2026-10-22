@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "olivia"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["PyYAML>=6.0", "platformdirs>=4.0"]
+dependencies = ["PyYAML>=6.0", "platformdirs>=4.0", "cryptography>=42"]
 
 [project.optional-dependencies]
 dev = [
@@ -22,7 +22,16 @@ dev = [
 include = ["olivia*"]
 
 [tool.setuptools.package-data]
-olivia = ["py.typed", "data/*.yaml", "data/lexicons/*.yaml"]
+olivia = [
+    "py.typed",
+    "data/*.yaml",
+    "data/lexicons/*.yaml",
+    "data/resources/*.yaml",
+    "data/resources/*.sig",
+    "data/cards/*.yaml",
+    "data/language/*.yaml",
+    "data/templates/*.yaml",
+]
 
 [tool.ruff]
 line-length = 100
