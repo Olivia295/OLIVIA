@@ -563,7 +563,10 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7] | `validate_ai_response(response, skeleton) -> bool` |
 | **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` [待实现 / P2] | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
 | **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` | `resolve(store, region, level, *, mode, today, is_minor=False) -> ResourceCard` |
-| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/resources/render.py` [待实现 / P2] | `render_card(card: ResourceCard) -> str` |
+| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/language/engine.py` | `LanguageEngine.render_crisis(card: ResourceCard, slots) -> str`（急救号码在前；被网关拦截时仍保留卡上全部号码） |
+| **§ 5.1–5.3 语言引擎** | 模板组合、隐喻、字数窗口 | `olivia/core/language/engine.py`、`data.py` | `LanguageEngine.compose(stage, slots)`、`render_card(skeleton)`、`render_info(method_id)`、`render_referral(flags)` |
+| **§ 4.1 代词镜像** | 代词安全镜像重述 | `olivia/core/language/mirror.py` | `mirror(user_text) -> str` |
+| **§ 5.1 WILLOW 过滤与输出审查网关** | 说教改写、去病理化、诊断词拦截、号码与越级方法名拦截 | `olivia/core/language/filters.py`、`gate.py` | `apply_willow(text, kind)`、`OutputGate.check(text, *, kind, stage, allowed_numbers)` |
 | **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` [待实现 / P2] | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
 | **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/resolver.py` | R8：非大陆地区不显示大陆条目（按地区判断，澳门、台湾的 110 是当地号码）；未知或不支持的地区回落到 ZZ（求助目录 + 112） |
 | **§ 8.4 转介红线识别** | 7 处强制转介红线的文本识别与会话累积 | `olivia/core/safety/red_flags.py` [已实现 / P1] | `RedFlagDetector(tax: Taxonomy, lexicons: SafetyLexicons)`: `.detect(text: str) -> frozenset[str]`, `.profile_flags(clinical_history: Iterable[str]) -> frozenset[str]`; `SessionRedFlags(detector: RedFlagDetector, clinical_history: Iterable[str] = ())`: `.active -> frozenset[str]`, `.observe(text: str) -> frozenset[str]`; `UnknownRedFlagError` |

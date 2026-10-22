@@ -361,8 +361,8 @@ protected_terms:
 #   - word_window：SDD §5.3 第 4 条，危机卡与 Grade C 转介卡豁免字数阻尼（WILLOW-03）。
 #   - metaphor_weaving：危机与转介信息以清晰为唯一准则，不织入隐喻。
 exemptions:
-  didactic_rewrites: [CRISIS, REFERRAL, GRADE_C_INFO]
-  depathologize: [CRISIS, REFERRAL, GRADE_C_INFO]
+  didactic_rewrites: [CRISIS, REFERRAL, GRADE_B_INFO, GRADE_C_INFO]   # B/C 科普原文送 G-0 审核，过滤器不得改写
+  depathologize: [CRISIS, REFERRAL, GRADE_B_INFO, GRADE_C_INFO]
   diagnosis_terms: []
   word_window: [CRISIS, REFERRAL]
   metaphor_weaving: [CRISIS, REFERRAL, GRADE_C_INFO]

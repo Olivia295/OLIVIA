@@ -18,7 +18,7 @@ DRAFT_HEADER = (
     "# 草稿：待 G-0 两名注册心理师审核"
     "（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）"
 )
-EXEMPT_KINDS = {"CRISIS", "REFERRAL", "GRADE_C_INFO"}
+EXEMPT_KINDS = {"CRISIS", "REFERRAL", "GRADE_C_INFO", "GRADE_B_INFO"}
 FILTERS = {
     "didactic_rewrites",
     "depathologize",
