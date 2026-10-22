@@ -15,10 +15,14 @@ from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
 from olivia.core.session import ReplyKind
 
-# SOP 2 and SOP 4 run in both modes. The packaged perception student raises one of their
-# ordinary turns to L2 today (a false alarm), so the model-mode run is a strict xfail and a
-# better student fails the suite until the mark is removed (P6-6a).
+# SOP 2 and SOP 4 run in both modes. The packaged perception student (round 4) passes SOP 2
+# in model mode but still raises SOP 4's opening method request ("最近拖延很严重，给我一个
+# 方法") to L2 (a false alarm), so that model-mode run is a strict xfail and a better
+# student fails the suite until the mark is removed (P6-6a).
 BOTH_MODES = pytest.mark.parametrize(
+    "mode_flags", [pytest.param([], id="rules"), pytest.param(["--model"], id="model")]
+)
+BOTH_MODES_FALSE_ALARM = pytest.mark.parametrize(
     "mode_flags",
     [
         pytest.param([], id="rules"),
@@ -123,7 +127,7 @@ METHOD_REQUEST = "最近拖延很严重，给我一个方法"
 HESITATION = "我今天真的提不起劲做这个"
 
 
-@BOTH_MODES
+@BOTH_MODES_FALSE_ALARM
 def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home, mode_flags):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect", *mode_flags], [METHOD_REQUEST, HESITATION, "/exit"])
