@@ -127,13 +127,14 @@
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
 
-# L1 turns after confirmation count as safe turns (spec: safe range is L0/L1).
-- id: s15_l1_turns_count_as_safe_after_confirmation
+# L1 turns after confirmation pause the exit count (decision Q5): they are not safe turns,
+# so the user stays in crisis however many L1 turns follow.
+- id: s15_l1_turns_pause_exit_after_confirmation
   turns:
     - {text: "不如死了算了", expect_level: L2, expect_in_crisis: true}
     - {text: "好 我答应你 我不会做傻事", expect_level: L0, expect_in_crisis: true}
     - {text: "就是活着好累", expect_level: L1, expect_in_crisis: true}
-    - {text: "人生好没意思", expect_level: L1, expect_in_crisis: false}
+    - {text: "人生好没意思", expect_level: L1, expect_in_crisis: true}
 
 # Hyperbole during crisis is a safe turn but is not a confirmation; a later Stage 1 cue with
 # hyperbole still enters L3.
@@ -375,3 +376,19 @@
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
     - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+# L1 pauses the exit count without resetting it (decision Q5): L2 still needs two L0 turns.
+- id: s48_l1_before_safe_turns_pauses_exit
+  turns:
+    - {text: "我真的不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在安全了 谢谢你", expect_level: L0, expect_in_crisis: true}
+    - {text: "就是活着好累", expect_level: L1, expect_in_crisis: true}
+    - {text: "我去喝点热水", expect_level: L0, expect_in_crisis: true}
+    - {text: "好多了 准备睡觉", expect_level: L0, expect_in_crisis: false}
+# An L1 confirmation still counts; an L1 turn between two L0 turns keeps the first one counted.
+- id: s49_l1_between_safe_turns_keeps_count
+  turns:
+    - {text: "活不下去了", expect_level: L2, expect_in_crisis: true}
+    - {text: "我现在安全了 只是活着好累", expect_level: L1, expect_in_crisis: true}
+    - {text: "洗完澡了", expect_level: L0, expect_in_crisis: true}
+    - {text: "人生好没意思", expect_level: L1, expect_in_crisis: true}
+    - {text: "去刷牙了", expect_level: L0, expect_in_crisis: false}
