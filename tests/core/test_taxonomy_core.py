@@ -23,6 +23,10 @@ def test_version(tax: Taxonomy) -> None:
         ("battery.thresholds.haven_enter", 0.20),
         ("battery.thresholds.haven_exit", 0.35),
         ("battery.thresholds.empower_min", 0.40),
+        ("battery.thresholds.clarify_min", 0.40),
+        ("arousal.thresholds.empower_retreat_delta", 0.25),
+        ("colbo.fsm.clarify_min_stage_turns", 2),
+        ("colbo.fsm.empower_auto_advance_stage_turns", 5),
         ("risk.ewma_lambda", 0.5),
         ("thompson_sampling_index.lambda_decay_per_day", 0.1),
         # SDD section 6.3 evidence-level priors Beta(alpha_0, beta_0).
