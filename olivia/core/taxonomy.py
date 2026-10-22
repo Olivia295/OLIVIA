@@ -526,6 +526,11 @@ class Taxonomy:
             return str(aliases[label])
         raise TaxonomyError(f"unknown {kind} label: {label}")
 
+    def spectrum_ids(self) -> tuple[str, ...]:
+        """Two-digit spectrum ids ("01".."11"), the keys of ``distress_category_mapping``."""
+        section = _mapping(self._data.get("distress_category_mapping"), "distress_category_mapping")
+        return tuple(str(key) for key in section)
+
     # -- clinical views ------------------------------------------------------------
 
     def methods(self) -> Mapping[str, MethodEntry]:

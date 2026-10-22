@@ -25,10 +25,30 @@ def test_version(tax: Taxonomy) -> None:
         ("battery.thresholds.empower_min", 0.40),
         ("risk.ewma_lambda", 0.5),
         ("thompson_sampling_index.lambda_decay_per_day", 0.1),
+        # SDD section 6.3 evidence-level priors Beta(alpha_0, beta_0).
+        ("thompson_sampling_index.evidence_level_priors.Level I.alpha", 4.0),
+        ("thompson_sampling_index.evidence_level_priors.Level I.beta", 1.0),
+        ("thompson_sampling_index.evidence_level_priors.Level II.alpha", 3.0),
+        ("thompson_sampling_index.evidence_level_priors.Level II.beta", 1.0),
+        ("thompson_sampling_index.evidence_level_priors.Level III.alpha", 2.0),
+        ("thompson_sampling_index.evidence_level_priors.Level III.beta", 1.0),
     ],
 )
 def test_threshold_values(tax: Taxonomy, path: str, expected: float) -> None:
     assert tax.threshold(path) == pytest.approx(expected)
+
+
+def test_every_method_evidence_level_has_a_prior(tax: Taxonomy) -> None:
+    levels = {m.evidence_level for m in tax.methods().values() if m.evidence_level is not None}
+    assert levels == {"Level I", "Level II", "Level III"}
+    for level in levels:
+        base = f"thompson_sampling_index.evidence_level_priors.{level}"
+        assert tax.threshold(f"{base}.alpha") > 0
+        assert tax.threshold(f"{base}.beta") > 0
+
+
+def test_spectrum_ids(tax: Taxonomy) -> None:
+    assert tax.spectrum_ids() == tuple(f"{i:02d}" for i in range(1, 12))
 
 
 def test_threshold_missing_key_raises(tax: Taxonomy) -> None:
