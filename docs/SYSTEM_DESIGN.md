@@ -484,6 +484,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 - **层级解析路由**：用户城市热线匹配 $\to$ 省级防线兜底 $\to$ 12356 全国统一专线；
 - **Rule R8 境外隔离与属地矩阵**：非大陆地区严格禁止呈现 12356/110/120 大陆号码。香港（`18111` / `2389 2222`，急救 `999`）、澳门（`2852 5222`，急救 `999`）、台湾（`1925` / `1995`，急救 `110/119`）、北美（`988`，急救 `911`）、英国（`116 123` / `111`，急救 `999`）、澳洲（`13 11 14`，急救 `000`）；
 - **Ed25519 签名验真防篡改**：热线数据统一维护在 `olivia/data/resources/hotlines/` 树状目录中，由发布工具生成 Ed25519 签名包 `hotlines.bundle`，客户端利用公钥核签验证，无有效签名拒绝加载。
+  - *GEO-08 实现说明（P2）*：当前采用分离式签名，而非打包的 `hotlines.bundle`。数据文件为 `olivia/data/resources/hotlines.yaml`，签名文件 `hotlines.yaml.sig` 存放对该文件**原始字节**的 Ed25519 签名（base64）；公钥（32 字节原始公钥的 base64）提交在 `olivia/core/resources/keys.py` 的 `HOTLINE_PUBLIC_KEY_B64`。私钥只保存在发布机仓库之外的 `~/.config/olivia/signing/hotlines.ed25519.signing.key`（PEM，文件 0600、目录 0700），从不打印、不入库（`.gitignore` 另有 `*.signing.key` 兜底）；每次修改数据后须运行 `python scripts/sign_hotlines.py` 重新签名，换钥用 `--rotate` 并同步更新 `keys.py`。`olivia/core/resources/bundle.py` 加载时：用户数据目录中的覆盖包仅在签名有效且 `compiled_on` 晚于内置数据（且不晚于当天）时启用，否则退回内置数据并给出原因供 `--inspect` 显示；内置数据签名校验失败则抛出 `BundleIntegrityError`，不显示未验真号码。`.gitattributes` 对这两个文件关闭换行转换，保证各平台检出的字节与签名一致。
 
 ### 8.4 7 处强制临床转介红线、动作白名单与禁忌症
 系统对以下 7 处高危精神障碍严禁任何认知辨析、行为暴露或探查性微练习，仅允许动作白名单并强制 Grade C 专科转介：

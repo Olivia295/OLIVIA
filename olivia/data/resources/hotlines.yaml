@@ -4,6 +4,8 @@
 # not be confirmed are NOT here; see docs/resources/hotline-sources.md ("未核验 / 未收录").
 # Rule R8 / GEO-03: 12356 / 120 / 12355 appear only under CN. "110" also appears under MO and TW,
 # where it is the local police/emergency number (see hotline-sources.md, PRD/SDD differences).
+# GEO-08: this file is signed (hotlines.yaml.sig, Ed25519 over the exact bytes). Any edit,
+# even whitespace, must be followed by `python scripts/sign_hotlines.py`, or loading fails.
 version: 1
 compiled_on: "2026-10-22"
 regions:

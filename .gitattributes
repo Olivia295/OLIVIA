@@ -1,0 +1,4 @@
+# GEO-08: signed data must reach every checkout byte-for-byte (no CRLF conversion on
+# Windows), or its Ed25519 signature stops verifying.
+olivia/data/resources/*.yaml -text
+olivia/data/resources/*.sig -text
