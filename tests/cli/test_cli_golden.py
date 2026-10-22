@@ -7,12 +7,30 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from cli_support import NOW, ONBOARD_CN, save_profile
 
 from olivia import cli
 from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
 from olivia.core.session import ReplyKind
+
+# SOP 2 and SOP 4 run in both modes. The packaged perception student raises one of their
+# ordinary turns to L2 today (a false alarm), so the model-mode run is a strict xfail and a
+# better student fails the suite until the mark is removed (P6-6a).
+BOTH_MODES = pytest.mark.parametrize(
+    "mode_flags",
+    [
+        pytest.param([], id="rules"),
+        pytest.param(
+            ["--model"],
+            id="model",
+            marks=pytest.mark.xfail(
+                strict=True, reason="model false alarm: the student raises an ordinary turn to L2"
+            ),
+        ),
+    ],
+)
 
 # -- SOP 1: first-visit covenant (age gate first, ruling 22) ---------------------------------
 
@@ -69,11 +87,12 @@ def test_sop1_minor_is_refused_now_and_on_every_later_launch(run_cli, data_home)
 # -- SOP 2: 5% battery haven -----------------------------------------------------------------
 
 
-def test_sop2_low_battery_late_at_night_gets_the_haven(run_cli, data_home):
+@BOTH_MODES
+def test_sop2_low_battery_late_at_night_gets_the_haven(run_cli, data_home, mode_flags):
     save_profile(data_home)
     assert NOW.hour == 23 and NOW.minute == 30
     run = run_cli(
-        ["chat", "--inspect"],
+        ["chat", "--inspect", *mode_flags],
         ["[5%] 好累，今天不想动脑，只想躺着", "嗯", "[60%] 好一点了", "/exit"],
     )
     haven, still, back = run.results
@@ -104,9 +123,10 @@ METHOD_REQUEST = "最近拖延很严重，给我一个方法"
 HESITATION = "我今天真的提不起劲做这个"
 
 
-def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home):
+@BOTH_MODES
+def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home, mode_flags):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], [METHOD_REQUEST, HESITATION, "/exit"])
+    run = run_cli(["chat", "--inspect", *mode_flags], [METHOD_REQUEST, HESITATION, "/exit"])
     card, shelved = run.results
     (session,) = run.sessions
     assert card.stage is HelpStage.S_EMPOWER and card.reply_kind is ReplyKind.CARD

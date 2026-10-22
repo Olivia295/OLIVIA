@@ -126,6 +126,7 @@ from olivia.core.models import (
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub, dominant_spectrum
 from olivia.core.perception.signals import Answer, Command, TurnSignals
+from olivia.core.perception.student import RiskChoice, choose_risk_model
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve
@@ -279,11 +280,13 @@ class Session:
         *,
         rng: random.Random,
         now: Callable[[], datetime],
+        risk: RiskChoice | None = None,
     ) -> None:
         self._tax = tax
         self._profile = profile
         self._shared = shared
         self._screen = screen
+        self._risk = risk if risk is not None else choose_risk_model()
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
@@ -307,8 +310,15 @@ class Session:
         rng: random.Random,
         now: Callable[[], datetime],
         model: RiskModel | None = None,
+        student: bool = False,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
+
+        The crisis screen's Stage 2 uses ``model`` when given; ``student=True`` uses the
+        packaged perception student (``perception/student.py``); otherwise, or when the
+        student fails to load, the rule model runs alone. An injected model or the student
+        can only raise the rule level and stays capped at L2. ``inspect`` reports which one
+        ran.
 
         Raises :class:`AgeGateRefusedError` for a refusal record or any profile that does
         not confirm 18+, and lets every data-loading error through.
@@ -319,8 +329,13 @@ class Session:
         if moment.tzinfo is None or moment.utcoffset() is None:
             raise ValueError("now() must return a timezone-aware datetime")
         shared = _shared(tax, moment.date().isoformat())
-        screen = shared.screen if model is None else SafetyScreen(tax, shared.lexicons, model)
-        return cls(tax, profile, shared, screen, rng=rng, now=now)
+        risk = choose_risk_model(model, student=student)
+        screen = (
+            shared.screen
+            if risk.model is None
+            else SafetyScreen(tax, shared.lexicons, risk.model, model_plan_evidence=False)
+        )
+        return cls(tax, profile, shared, screen, rng=rng, now=now, risk=risk)
 
     @property
     def state(self) -> SessionState:
@@ -331,6 +346,7 @@ class Session:
         self._gate_notes = []
 
         assessment = self._screen.assess(text)
+        model_level, model_score = self._risk.take_turn()
         perception, signals = self._shared.stub.perceive(text, assessment)
         status = self._tracker.observe(assessment, text, perception.valence)
         self._last_status = status
@@ -433,6 +449,10 @@ class Session:
             "gate": list(dict.fromkeys(self._gate_notes)),
             "hotline_source": self._shared.hotline_source,
             "hotline_reason": self._shared.hotline_reason,
+            "risk_model": self._risk.label,
+            "risk_model_reason": self._risk.reason,
+            "model_level": model_level,
+            "model_score": model_score,
         }
         return TurnResult(
             reply=rendered.reply,

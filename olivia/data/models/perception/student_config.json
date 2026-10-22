@@ -1,0 +1,210 @@
+{
+  "format_version": 1,
+  "student_fingerprint": "7c55bac03959fb09",
+  "teacher_fingerprint": "62168be3a1546a87",
+  "preprocess": "html.unescape → NBSP 换为空格 → 连续空白合并为一个空格 → 去掉首尾空白；按字（Unicode 码位）切分，不在字表中的字记为 UNK",
+  "max_len": 160,
+  "head_chars": 48,
+  "min_len": 5,
+  "truncation": "超过 max_len 时保留开头 head_chars 个字和结尾 max_len - head_chars 个字；不足 min_len 时右侧补 PAD",
+  "embed_dim": 64,
+  "kernels": [
+    2,
+    3,
+    4,
+    5
+  ],
+  "filters": 96,
+  "hidden": 128,
+  "forward": "embedding → 每个 k：conv{k}（valid 卷积）→ ReLU → 全局最大池化；按 kernels 顺序拼接 → dense → ReLU → heads",
+  "heads": [
+    {
+      "name": "valence",
+      "kind": "tanh",
+      "offset": 0,
+      "size": 1,
+      "labels": null,
+      "activation": "tanh"
+    },
+    {
+      "name": "emotion",
+      "kind": "class",
+      "offset": 1,
+      "size": 16,
+      "labels": [
+        "anxiety",
+        "sadness",
+        "anger",
+        "shame",
+        "guilt",
+        "loneliness",
+        "hopelessness",
+        "grief",
+        "fear",
+        "panic",
+        "overwhelm",
+        "numbness",
+        "envy",
+        "disappointment",
+        "confusion",
+        "calm"
+      ],
+      "activation": "softmax(z / temperature)"
+    },
+    {
+      "name": "arousal",
+      "kind": "sigmoid",
+      "offset": 17,
+      "size": 1,
+      "labels": null,
+      "activation": "sigmoid"
+    },
+    {
+      "name": "intent",
+      "kind": "class",
+      "offset": 18,
+      "size": 6,
+      "labels": [
+        "VALIDATION",
+        "EXPLORATION",
+        "REFLECTION",
+        "INFORMATION",
+        "STABILIZATION",
+        "REFERRAL"
+      ],
+      "activation": "softmax(z / temperature)"
+    },
+    {
+      "name": "risk",
+      "kind": "class",
+      "offset": 24,
+      "size": 4,
+      "labels": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "activation": "softmax(z / temperature)"
+    },
+    {
+      "name": "crisis_confidence",
+      "kind": "bce",
+      "offset": 28,
+      "size": 1,
+      "labels": null,
+      "activation": "sigmoid"
+    },
+    {
+      "name": "stance",
+      "kind": "class",
+      "offset": 29,
+      "size": 5,
+      "labels": [
+        "PLACATING",
+        "BLAMING",
+        "SUPER_REASONABLE",
+        "IRRELEVANT",
+        "CONGRUENT"
+      ],
+      "activation": "softmax(z / temperature)"
+    },
+    {
+      "name": "readiness",
+      "kind": "sigmoid",
+      "offset": 34,
+      "size": 1,
+      "labels": null,
+      "activation": "sigmoid"
+    },
+    {
+      "name": "dominant_spectrum",
+      "kind": "class",
+      "offset": 35,
+      "size": 12,
+      "labels": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "none"
+      ],
+      "activation": "softmax(z / temperature)"
+    }
+  ],
+  "temperatures": {
+    "emotion": 1.0051393501192876,
+    "intent": 1.1529111914993693,
+    "risk": 1.1762186326191264,
+    "stance": 1.041957246913411,
+    "dominant_spectrum": 0.9558576342495366
+  },
+  "risk": {
+    "threshold_ge2": 0.17429602146148682,
+    "threshold_l3": 0.3119147717952728,
+    "rule": "level = argmax P；P(L2)+P(L3) ≥ threshold_ge2 时至少 L2；P(L3) ≥ threshold_l3 时为 L3",
+    "threshold_l3_used_only_with_model_plan_evidence": true,
+    "target_recall_ge2": 0.98,
+    "target_recall_l3": 0.95
+  },
+  "arrays": {
+    "embedding": [
+      1740,
+      64
+    ],
+    "conv2_weight": [
+      96,
+      64,
+      2
+    ],
+    "conv2_bias": [
+      96
+    ],
+    "conv3_weight": [
+      96,
+      64,
+      3
+    ],
+    "conv3_bias": [
+      96
+    ],
+    "conv4_weight": [
+      96,
+      64,
+      4
+    ],
+    "conv4_bias": [
+      96
+    ],
+    "conv5_weight": [
+      96,
+      64,
+      5
+    ],
+    "conv5_bias": [
+      96
+    ],
+    "dense_weight": [
+      128,
+      384
+    ],
+    "dense_bias": [
+      128
+    ],
+    "heads_weight": [
+      47,
+      128
+    ],
+    "heads_bias": [
+      47
+    ]
+  },
+  "npz_bytes": 509526
+}
