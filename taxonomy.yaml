@@ -28,6 +28,7 @@ arousal:
     block_high_load: 0.80      # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期代码别名，同 somatic_priority / 限制高负荷卡片
     somatic_only: 0.90         # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期实验性参数 (文档未出现，保留防止旧代码 KeyError)
     explore_eligible_max: 0.60 # [兼容键 Deprecated in v3.3 - 迭代1兼容保留] 早期代码别名，同 exploration_allow
+    empower_retreat_delta: 0.25 # [正式键 Canonical] S_empower 中 Arousal 较进入本阶段时升高 >= 0.25 即安全回退至 S_explore (SDD §4.2 / COLBO-04)；绝对值回退线复用 cognitive_block (>= 0.85)
   suds_mapping:
     description: "临床主观困扰量表 (SUDS 0-10) 与系统归一化唤醒度 ([0.0, 1.0]) 严格线性对齐 (Normalized = SUDS / 10)"
     scale_factor: 0.10
@@ -55,6 +56,7 @@ battery:
     haven_enter: 0.20          # [正式键 Canonical] <= 0.20 触发 S_haven
     haven_exit: 0.35           # [正式键 Canonical] >= 0.35 允许退出 S_haven 恢复常规双向探索
     empower_min: 0.40          # [正式键 Canonical] >= 0.40 且处于 S_clarify 时才允许推进至 S_empower 进行微练习
+    clarify_min: 0.40          # [正式键 Canonical] >= 0.40 且处于 S_explore 时才允许推进至 S_clarify (SDD §4.2)
 
 # ------------------------------------------------------------------------------
 # 2.1 C.O.L.B.O. 双翼干预架构 (Bilateral Intervention Architecture / Wings)
@@ -82,6 +84,10 @@ colbo:
       - "29"              # 渐进式肌肉放松 (PMR)
       - "30:grounding"    # 5-4-3-2-1 感官着陆 (Sensory Grounding)
       - "12:tipp_breathing" # DBT TIPP 节奏呼吸 (Paced Breathing)
+  fsm:
+    description: "七状态机按阶段内轮次推进的门控 (SDD §4.2)；轮次指当前阶段内的轮次，进入新阶段时重新计数。"
+    clarify_min_stage_turns: 2           # S_explore 内已满 >= 2 轮 (且 Arousal < 0.80、无纯倾听锁、电量 >= 0.40) 才推进至 S_clarify
+    empower_auto_advance_stage_turns: 5  # S_clarify 内已满 5 轮即自动推进至 S_empower (仍需无纯倾听锁、非静默人格、电量 >= 0.40)
 
 # ------------------------------------------------------------------------------
 # 3. 细粒度情绪标签体系 (Fine-Grained Emotions - 16 Core Classes + Aliases)

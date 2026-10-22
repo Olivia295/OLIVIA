@@ -181,6 +181,8 @@ class SessionState:
     current_risk_level: CrisisLevel = CrisisLevel.L0
     consecutive_l1_count: int = 0
     user_shelved_actions: list[str] = field(default_factory=list)
+    stage_entry_arousal: float | None = None
+    """Arousal on the turn that entered the current stage: the ΔArousal baseline (SDD 4.2)."""
 
 
 @dataclass(frozen=True)
