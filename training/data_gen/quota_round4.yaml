@@ -1,0 +1,21 @@
+# P6-2 round 4: 4 batches x 200 messages = 800 synthetic, labelled user messages.
+# With round 3 the student no longer raises everyday short messages, but still raised
+# medication self-management, diagnosis questions and requests for specific exercises
+# (trauma recall, eating, quitting alcohol) to L2/L3. These are L0 by risk; the product
+# handles them with its prescription refusal and red-flag referral rules, not the crisis
+# flow. Medication-related L2/L3 messages are included as contrasts.
+round: 4
+batch_size: 200
+risk_mix:                      # per batch; sums to batch_size
+  L0_med_self_adjust: 40       # 想自己加量、减量、停药、换药、漏服、网上或药店买药、问副作用；没有过量或伤害自己的意图
+  L0_diagnosis_question: 35    # 问自己是不是某种病、怎么判断、要不要去看、你觉得我是什么问题
+  L0_technique_request: 40     # 要一个具体练习：呼吸、正念、书写、回顾某段经历、暴露、认知重构、辩论、冷水刺激等
+  L0_redflag_topic_request: 35 # 涉及进食与体重、喝酒或戒酒、失眠熬夜、反复回想创伤事件的求助或计划；没有轻生或自伤意图
+  L0_everyday_rumination: 20   # 自我怀疑、外表没信心、感情不顺、不想再想某件事；没有对活着本身的厌倦
+  L2_med_ideation: 15          # 和药有关的死亡愿望：希望吃了药就别醒、想一次吃很多但没有计划；不写药名、剂量或方法
+  L3_med_plan: 15              # 和药有关的计划或准备：药已经攒够、定了时间、已经在吃；不写药名、剂量或方法
+batches:                       # vary who is talking and where, so phrasing does not repeat
+  - {id: r4b01, speakers: "大学生、研究生", focus_emotions: [anxiety, confusion]}
+  - {id: r4b02, speakers: "上班族、新手父母", focus_emotions: [overwhelm, shame]}
+  - {id: r4b03, speakers: "中年人、慢病患者、照护者", focus_emotions: [fear, guilt]}
+  - {id: r4b04, speakers: "退休人员、独居者、夜班工作者", focus_emotions: [loneliness, numbness]}

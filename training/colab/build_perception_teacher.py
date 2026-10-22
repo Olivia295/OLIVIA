@@ -65,7 +65,7 @@ md(r"""
 
 ## 风险等级怎么从概率得到
 
-- 取 `risk` 头概率最大的等级；`P(L2)+P(L3)` 过 **ge2 阈值**时至少为 L2（阈值定在 OOF 上 L2+L3 召回 98%）；`P(L3)` 过 **L3 阈值**时为 L3（OOF 上 L3 召回 95%）。
+- 取 `risk` 头概率最大的等级；`P(L2)+P(L3)` 过 **ge2 阈值**时至少为 L2（教师的阈值定在 OOF 上 L2+L3 召回 98%，学生的定在留出集上召回 95%）；`P(L3)` 过 **L3 阈值**时为 L3（OOF 上 L3 召回 95%）。
 - 与规则合并按 `crisis.py` 现行仲裁：规则 Stage 1 的 L3 保持；否则取规则与模型的较高者，最高 L2。
   所以 L3 阈值只有在产品打开 `model_plan_evidence` 开关后才起作用；表里“L3 开关打开”一栏只作参考，用来判断能否打开开关。
 
@@ -169,6 +169,9 @@ GAMMA_POS = 15.0      # SDD §3.1：crisis_confidence 头对 risk ≥ L2 的行�
 
 TARGET_RECALL_GE2 = 0.98  # OOF 上 L2+L3 判为 ≥L2 的召回目标（G-2 危机召回 ≥ 98%）
 TARGET_RECALL_L3 = 0.95   # OOF 上 L3 判为 L3 的召回目标（只在产品打开 model_plan_evidence 时使用）
+# 学生模型在留出集上的召回目标。学生比教师弱，按 98% 定出的门槛只有约 0.08，日常短句和问药也会被升到 L2；
+# 改为 95%（你的决定，2026-10-23），规则底线不变。
+STUDENT_TARGET_RECALL_GE2 = 0.95
 FP_CATEGORIES = ("HYPERBOLE", "BENIGN", "NEGATION_PURE", "NEGATION_WITH_MEANS", "DOUBLE_NEGATION_OR_METHOD")
 
 # ---- 学生模型（字符级 CNN） ----
@@ -505,7 +508,7 @@ def threshold_for_recall(scores, positives, target):
     return float(pos[allowed_misses])
 
 
-def calibrate(raw, frame):
+def calibrate(raw, frame, target_ge2=TARGET_RECALL_GE2):
     # 每个分类头一个温度；风险头再定 ge2 与 L3 两个阈值。raw 必须是模型训练时没见过的行的输出
     temperatures, nll = {}, {}
     for name in CLASS_HEADS:
@@ -521,9 +524,9 @@ def calibrate(raw, frame):
     p = softmax(raw[has][:, HEAD_SLICES["risk"]] / temperatures["risk"])
     return {
         "temperatures": temperatures, "nll_before_after": nll,
-        "threshold_ge2": threshold_for_recall(p[:, 2] + p[:, 3], y[has] >= 2, TARGET_RECALL_GE2),
+        "threshold_ge2": threshold_for_recall(p[:, 2] + p[:, 3], y[has] >= 2, target_ge2),
         "threshold_l3": threshold_for_recall(p[:, 3], y[has] == 3, TARGET_RECALL_L3),
-        "target_recall_ge2": TARGET_RECALL_GE2, "target_recall_l3": TARGET_RECALL_L3,
+        "target_recall_ge2": target_ge2, "target_recall_l3": TARGET_RECALL_L3,
         "calibration_rows": int(has.sum()),
     }
 
@@ -1023,7 +1026,7 @@ md("## 10. 学生校准（留出集）、导出、NumPy 一致性与时延")
 
 code(r"""
 holdout_raw = student_raw(student, student_holdout["text"])
-STUDENT_CAL = {"student_fingerprint": STUDENT_FINGERPRINT, **calibrate(holdout_raw, student_holdout)}
+STUDENT_CAL = {"student_fingerprint": STUDENT_FINGERPRINT, **calibrate(holdout_raw, student_holdout, STUDENT_TARGET_RECALL_GE2)}
 holdout_out = outputs_from_raw(holdout_raw, STUDENT_CAL["temperatures"])
 student_lines, student_json = metrics_report("学生模型：留出集（学生训练时没见过；教师训练时见过）", student_holdout,
                                              holdout_out, STUDENT_CAL, pool_groups(student_holdout))
@@ -1059,7 +1062,7 @@ EXPORT_CONFIG = {
     "risk": {"threshold_ge2": STUDENT_CAL["threshold_ge2"], "threshold_l3": STUDENT_CAL["threshold_l3"],
              "rule": "level = argmax P；P(L2)+P(L3) ≥ threshold_ge2 时至少 L2；P(L3) ≥ threshold_l3 时为 L3",
              "threshold_l3_used_only_with_model_plan_evidence": True,
-             "target_recall_ge2": TARGET_RECALL_GE2, "target_recall_l3": TARGET_RECALL_L3},
+             "target_recall_ge2": STUDENT_TARGET_RECALL_GE2, "target_recall_l3": TARGET_RECALL_L3},
     "arrays": {k: list(v.shape) for k, v in arrays.items()}, "npz_bytes": npz_bytes,
 }
 with open(PATHS["student_config"], "w", encoding="utf-8") as f:
