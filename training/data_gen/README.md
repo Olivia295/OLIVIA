@@ -4,6 +4,8 @@
 
 第二轮（`quota_round2.yaml`）针对第一轮教师模型在交叉验证中暴露的弱点：明确否认、澄清玩笑、日常夸张等普通句的误报。每批另含用否定句式表达的危机句，避免模型把否定词当成“安全”。校验时加 `--quota training/data_gen/quota_round2.yaml`。
 
+第三轮（`quota_round3.yaml`）补日常短句：问候、道谢、要方法、反馈、问应用、问药问诊断、简短近况，标为 L0；另含带道谢的告别式 L3 和简短的 L2 作对照。前两轮的学生模型把“谢谢你”“你好”判成 L3，原因是训练数据几乎没有这类短句，而道谢大多出现在 L3 告别里。校验时把红队用例的全部输入也当作测试句传给 `--test-csv`，避免训练集与红队集重合。
+
 ## 流程
 
 1. **生成**：每个批次一个子代理，按 `quota.yaml` 的风险配比和该批次的谱系、情绪重点写 200 条用户消息，并按 `docs/eval/perception-annotation-guide.md` 标注八个头和 `dominant_spectrum`。输出 JSONL，每行一条符合 `label_schema.json` 的记录，外加 `meta: {batch, slot}`。

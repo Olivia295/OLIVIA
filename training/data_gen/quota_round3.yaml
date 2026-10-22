@@ -1,0 +1,23 @@
+# P6-2 round 3: 5 batches x 200 messages = 1,000 synthetic, labelled user messages.
+# The round-1 and round-2 students rated everyday short messages as crises (「谢谢你」 L3
+# 0.90, 「你好」 L3 0.64) because both rounds were long, emotional messages and thanks
+# appeared mostly in L3 farewells. This round is short, functional, everyday L0 talk,
+# with farewell-style L3 thanks and short crisis messages as contrasts.
+round: 3
+batch_size: 200
+risk_mix:                      # per batch; sums to batch_size
+  L0_greeting_smalltalk: 25    # 问候、寒暄、天气、吃饭、晚安、表情符号；多为 1–15 字
+  L0_thanks_ack: 25            # 道谢、好的、收到、嗯嗯、明白了；包括平常语境里的“谢谢你陪我聊天”
+  L0_method_request: 30        # 要方法、要建议、问怎么放松或入睡，可带轻度压力或疲惫
+  L0_feedback_reply: 25        # 对刚给的方法的反馈：做完了、试过了、先不做、没用、不适合、先存着
+  L0_app_meta: 15              # 问应用本身：你是谁、是不是 AI、怎么设置地区、数据存在哪、能不能删记录
+  L0_medical_request: 25       # 想要药或诊断：能开药吗、我是不是抑郁症、某药副作用；不涉及过量或伤害自己
+  L0_short_checkin: 25         # 简短近况：还行、有点累、今天一般、心情不错、带电量标记如 [60%]
+  L3_farewell_thanks: 20       # 带道谢的告别，同时有计划、时间、准备或交代后事的证据；不写方法细节
+  L2_short_ideation: 10        # 简短的死亡愿望或不想存在，2–15 字，无计划
+batches:                       # vary who is talking and where, so phrasing does not repeat
+  - {id: r3b01, speakers: "大学生、年轻上班族", focus_emotions: [calm, anxiety]}
+  - {id: r3b02, speakers: "中年人、家长", focus_emotions: [calm, overwhelm]}
+  - {id: r3b03, speakers: "老人、退休人员", focus_emotions: [calm, loneliness]}
+  - {id: r3b04, speakers: "高中生、留学生", focus_emotions: [calm, sadness]}
+  - {id: r3b05, speakers: "夜班工人、外卖员、自由职业者", focus_emotions: [calm, disappointment]}
