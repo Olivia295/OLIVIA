@@ -229,3 +229,79 @@ def test_mask_cover_uses_the_widest_earlier_mask(span, covered):
     # A short mask starting after a long one must not shadow the long one's coverage.
     masks = [Match("A", 0, 10), Match("B", 2, 4), Match("C", 10, 12)]
     assert _MaskCover(masks).contains(Match("X", *span)) is covered
+
+
+def _evidence_screen(tax, model=None, *, model_plan_evidence=True):
+    return SafetyScreen(
+        tax, load_safety_lexicons(tax), model, model_plan_evidence=model_plan_evidence
+    )
+
+
+def test_model_plan_evidence_is_off_by_default(tax):
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.95), model_plan_evidence=False).assess(
+        "随便说点什么"
+    )
+    assert a.level is L.L2 and a.stage == "STAGE2" and not a.has_plan_evidence
+
+
+def test_model_plan_evidence_lets_model_l3_stay_l3(tax):
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.95)).assess("随便说点什么")
+    assert (a.level, a.stage, a.has_plan_evidence) == (L.L3, "STAGE2", True)
+    assert a.score == pytest.approx(0.95) and a.cue_ids == ("FAKE",)
+
+
+def test_model_plan_evidence_keeps_the_rule_floor_cues(tax):
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.9)).assess("我真的想死")
+    assert a.level is L.L3 and a.has_plan_evidence
+    assert a.cue_ids == ("L2_WANT_DIE", "FAKE")
+
+
+def test_model_plan_evidence_model_exception_stays_l2(tax):
+    a = _evidence_screen(tax, _RaisingModel()).assess("随便说点什么")
+    assert a.level is L.L2 and not a.has_plan_evidence
+    assert a.cue_ids == ("MODEL_FAILURE",)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        _FixedModel(L.L3, float("nan")),
+        _FixedModel(L.L3, 1.2),
+        _FixedModel("L3", 0.95),
+        _CueIdsModel(None),
+    ],
+)
+def test_model_plan_evidence_invalid_prediction_stays_l2(tax, model):
+    a = _evidence_screen(tax, model).assess("随便说点什么")
+    assert a.level is L.L2 and not a.has_plan_evidence
+    assert a.cue_ids == ("MODEL_FAILURE",)
+
+
+@pytest.mark.parametrize("score", [0.7, 0.95])
+def test_model_plan_evidence_model_l2_stays_l2(tax, score):
+    # Even a score in the L3 band is not plan evidence when the model's level is L2.
+    a = _evidence_screen(tax, _FixedModel(L.L2, score)).assess("我真的想死")
+    assert a.level is L.L2 and a.stage == "STAGE2" and not a.has_plan_evidence
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "今天开会好累，想早点下班",
+        "活着好累，每天都一样",
+        "我真的想死",
+        "想死的心都有了",
+        "遗书写好了",
+    ],
+)
+def test_model_plan_evidence_without_a_model_changes_nothing(tax, screen, text):
+    assert _evidence_screen(tax).assess(text) == screen.assess(text)
+
+
+@pytest.mark.parametrize(
+    "model", [_FixedModel(L.L0, 0.0), _FixedModel(L.L3, 0.95), _RaisingModel()]
+)
+def test_model_plan_evidence_leaves_stage1_unchanged(tax, screen, model):
+    a = _evidence_screen(tax, model).assess("药已经买好了，今晚")
+    assert a == screen.assess("药已经买好了，今晚")
+    assert (a.level, a.stage, a.has_plan_evidence) == (L.L3, "STAGE1", True)
