@@ -258,9 +258,7 @@ def test_crisis_sentence_is_never_feedback(text: str, first: str) -> None:
     assert snap["user_shelved_actions"] == [] and snap["bandit"] == {"spectra": {}}
 
 
-@pytest.mark.parametrize(
-    "text", ["这个不适合我，我想消失，再也不醒来", "先存着吧，我想消失，再也不醒来"]
-)
+@pytest.mark.parametrize("text", ["这个不适合我，我想消失", "先存着吧，我想就这样消失"])
 def test_l1_screened_phrase_is_not_feedback(text: str) -> None:
     # The rules rate these L1; the distress may be under-rated, so the feedback phrase
     # inside is not read and nothing is recorded against the method.
@@ -275,7 +273,8 @@ def test_l1_screened_phrase_is_not_feedback(text: str) -> None:
 def test_l1_screened_reply_does_not_answer_the_clarification() -> None:
     session, _ = _with_card()
     session.turn("唉")
-    result = session.turn("好，我想消失，再也不醒来")
+    result = session.turn("好，我想消失")
+    assert result.inspect["assessed_level"] == "L1"
     assert result.inspect["feedback"] is None
     assert session.snapshot()["user_shelved_actions"] == []
 
