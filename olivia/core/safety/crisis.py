@@ -7,6 +7,11 @@ a level and score, then arbitrates. Assessments carry cue ids only, never text.
 An injected model can only raise the Stage 2 level above the rule model's, never lower
 it, and a model that raises or answers out of contract counts as an L2 prediction
 (``MODEL_FAILURE``): ``assess`` never raises because of the model.
+
+With ``model_plan_evidence=True`` (off by default, enabled only after the injected model
+passes an independent evaluation), an injected model's own in-contract L3 prediction
+counts as plan evidence, so Stage 2 can answer L3. The rule model's prediction and a
+model failure never count as plan evidence.
 """
 
 from __future__ import annotations
@@ -146,10 +151,19 @@ class RuleRiskModel:
 
 
 class SafetyScreen:
-    """Stage 1 plan-evidence check followed by Stage 2 model prediction and arbitration."""
+    """Stage 1 plan-evidence check followed by Stage 2 model prediction and arbitration.
+
+    ``model_plan_evidence`` lets an injected model's own L3 prediction supply the plan
+    evidence Stage 2 arbitration needs for L3; it has no effect without an injected model.
+    """
 
     def __init__(
-        self, tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel | None = None
+        self,
+        tax: Taxonomy,
+        lexicons: SafetyLexicons,
+        model: RiskModel | None = None,
+        *,
+        model_plan_evidence: bool = False,
     ) -> None:
         self._tax = tax
         self._index = _CueIndex(lexicons)
@@ -157,6 +171,7 @@ class SafetyScreen:
         # Stage 2 model; with one, it is the floor the injected model can only raise.
         self._rule_model = RuleRiskModel(tax, lexicons, _index=self._index)
         self._model = model
+        self._model_plan_evidence = model_plan_evidence
         self._model_failure = RiskPrediction(
             CrisisLevel.L2, tax.threshold("risk.lexicon_scores.L2"), (MODEL_FAILURE,)
         )
@@ -172,10 +187,20 @@ class SafetyScreen:
                 CrisisLevel.L3, score, "STAGE1", True, _unique_ids(m.key for m in stage1)
             )
         prediction = self._rule_model.predict_matches(matches)
+        has_plan_evidence = False
         if self._model is not None:
-            prediction = _with_floor(prediction, self._predict_safely(self._model, text))
-        level = arbitrate(self._tax, prediction.level, prediction.score, has_plan_evidence=False)
-        return CrisisAssessment(level, prediction.score, "STAGE2", False, prediction.cue_ids)
+            model_prediction = self._predict_safely(self._model, text)
+            # Only the injected model's own L3 counts; the failure prediction is L2, never L3.
+            has_plan_evidence = (
+                self._model_plan_evidence
+                and model_prediction is not self._model_failure
+                and model_prediction.level is CrisisLevel.L3
+            )
+            prediction = _with_floor(prediction, model_prediction)
+        level = arbitrate(self._tax, prediction.level, prediction.score, has_plan_evidence)
+        return CrisisAssessment(
+            level, prediction.score, "STAGE2", has_plan_evidence, prediction.cue_ids
+        )
 
     def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:
         """The injected model's prediction, or the L2 failure prediction when it breaks."""
