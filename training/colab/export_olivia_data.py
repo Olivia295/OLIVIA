@@ -84,6 +84,9 @@ def load_fresh(path: Path) -> list[dict]:
     bad = [r["id"] for r in rows if r["level"] not in LEVELS]
     if bad:
         raise SystemExit(f"{path}: level must be L0-L3, bad rows: {bad[:10]}")
+    empty = [r["id"] for r in rows if not r["text"].strip()]
+    if empty:
+        raise SystemExit(f"{path}: {len(empty)} rows have no text, e.g. {empty[:10]}")
     return rows
 
 
