@@ -194,6 +194,13 @@ def test_row_empower_unhelpful_to_explore():
     assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.EMPOWER_UNHELPFUL
 
 
+def test_row_empower_aversion_to_explore():
+    # SDD 4.2 "表达反感" (COLBO-04 "强烈排斥"): routed like /unhelpful.
+    t = run(state(S.S_EMPOWER, entry=0.5), turn(aversion=True))
+    assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.EMPOWER_AVERSION
+    assert t.state.stage_turn_count == 1
+
+
 @pytest.mark.parametrize("command", [Command.DONE, Command.NOT_NOW])
 def test_row_empower_done_or_not_now_to_closing(command):
     t = run(state(S.S_EMPOWER, entry=0.5), turn(command=command))
@@ -214,6 +221,16 @@ def test_row_closing_to_ready():
     assert t.state.stage_turn_count == 0 and t.state.stage_entry_arousal is None
     assert t.state.global_turn_count == before.global_turn_count
     assert before.current_stage is S.S_CLOSING
+
+
+def test_row_closing_intent_confirmed_to_ready():
+    # SDD 4.2 "实施意向确认完成": a user turn, so it is counted.
+    before = state(S.S_CLOSING, turns=2, entry=0.4)
+    t = run(before, turn(intent_confirmed=True))
+    assert t.state.current_stage is S.S_READY and t.reason is Reason.CLOSING_INTENT_CONFIRMED
+    assert t.state.global_turn_count == before.global_turn_count + 1
+    # The next turn opens a new session through the ordinary q0 row.
+    assert run(t.state, turn()).reason is Reason.SESSION_START
 
 
 def test_row_crisis_exit_to_explore():
@@ -305,6 +322,56 @@ def test_arousal_spike_beats_done_command():
     assert t.reason is Reason.EMPOWER_AROUSAL_RETREAT
 
 
+def test_arousal_spike_beats_aversion():
+    t = run(state(S.S_EMPOWER, entry=0.3), turn(0.9, aversion=True))
+    assert t.reason is Reason.EMPOWER_AROUSAL_RETREAT
+
+
+def test_aversion_beats_done_command():
+    t = run(state(S.S_EMPOWER, entry=0.5), turn(aversion=True, command=Command.DONE))
+    assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.EMPOWER_AVERSION
+
+
+def test_aversion_with_direct_request_in_empower_still_retreats():
+    # Direct request never fires inside S_empower, so the aversion row decides.
+    t = run(state(S.S_EMPOWER, entry=0.5), turn(aversion=True, direct_request=True))
+    assert t.reason is Reason.EMPOWER_AVERSION
+
+
+@pytest.mark.parametrize(
+    "kwargs,stage,reason",
+    [
+        ({"status": crisis(in_crisis=True)}, S.S_CRISIS, Reason.CRISIS_ENTER),
+        ({"battery": 0.20}, S.S_HAVEN, Reason.HAVEN_ENTER),
+        ({"direct_request": True}, S.S_EMPOWER, Reason.DIRECT_REQUEST),
+    ],
+)
+def test_crisis_haven_and_direct_request_beat_new_rows(kwargs, stage, reason):
+    empower = run(state(S.S_EMPOWER, entry=0.5), turn(aversion=True, **kwargs))
+    closing = run(state(S.S_CLOSING), turn(intent_confirmed=True, **kwargs))
+    if stage is not S.S_EMPOWER:  # direct request does not fire inside S_empower
+        assert (empower.state.current_stage, empower.reason) == (stage, reason)
+    assert (closing.state.current_stage, closing.reason) == (stage, reason)
+
+
+@pytest.mark.parametrize("stage", [s for s in NON_CRISIS if s is not S.S_EMPOWER])
+def test_aversion_outside_empower_is_ignored(stage):
+    battery = 0.1 if stage is S.S_HAVEN else 0.6
+    t = run(state(stage, battery=battery), turn(aversion=True))
+    assert t.reason is not Reason.EMPOWER_AVERSION
+    if stage is not S.S_READY:
+        assert t.state.current_stage is stage and t.reason is Reason.STAY
+
+
+@pytest.mark.parametrize("stage", [s for s in NON_CRISIS if s is not S.S_CLOSING])
+def test_intent_confirmed_outside_closing_is_ignored(stage):
+    battery = 0.1 if stage is S.S_HAVEN else 0.6
+    t = run(state(stage, battery=battery, entry=0.5), turn(intent_confirmed=True))
+    assert t.reason is not Reason.CLOSING_INTENT_CONFIRMED
+    if stage is not S.S_READY:
+        assert t.state.current_stage is stage and t.reason is Reason.STAY
+
+
 @pytest.mark.parametrize("stage", [S.S_EXPLORE, S.S_CLARIFY, S.S_HAVEN, S.S_CLOSING])
 def test_commands_outside_empower_are_ignored(stage):
     battery = 0.1 if stage is S.S_HAVEN else 0.6
@@ -367,8 +434,19 @@ def test_full_session_walkthrough():
     assert t.state.current_stage is S.S_READY and t.state.global_turn_count == 10
 
 
+def test_walkthrough_with_aversion_and_intent():
+    st_ = run(state(S.S_CLARIFY, turns=1, entry=0.4), turn(0.4, direct_request=True)).state
+    st_ = run(st_, turn(0.45, aversion=True)).state
+    assert st_.current_stage is S.S_EXPLORE
+    st_ = run(st_, turn(0.4, direct_request=True)).state
+    st_ = run(st_, turn(0.4, command=Command.DONE)).state
+    assert st_.current_stage is S.S_CLOSING
+    t = run(st_, turn(0.3, intent_confirmed=True))
+    assert t.state.current_stage is S.S_READY and t.reason is Reason.CLOSING_INTENT_CONFIRMED
+
+
 def test_reason_has_one_member_per_row_plus_stay():
-    assert len(Reason) == 13 and Reason.STAY in Reason
+    assert len(Reason) == 15 and Reason.STAY in Reason
 
 
 def test_turn_thresholds_must_be_whole_numbers():
@@ -416,6 +494,8 @@ def inputs(draw):
             direct_request=draw(st.booleans()),
             listening_lock_on=lock == "on",
             listening_lock_off=lock == "off",
+            aversion=draw(st.booleans()),
+            intent_confirmed=draw(st.booleans()),
             command=draw(st.none() | st.sampled_from(Command)),
         ),
         persona=draw(st.sampled_from(PersonaSpectrum)),
@@ -460,3 +540,18 @@ def test_property_stage_counter_resets_or_increments(st_, inp):
         assert t.state.stage_turn_count == st_.stage_turn_count + 1
     else:
         assert t.reason is not Reason.STAY and t.state.stage_turn_count == 1
+
+
+@given(states(), inputs())
+def test_property_aversion_never_keeps_empower(st_, inp):
+    t = run(st_, inp)
+    if t.previous is S.S_EMPOWER and inp.signals.aversion:
+        assert t.state.current_stage is not S.S_EMPOWER
+
+
+@given(states(), inputs())
+def test_property_s_ready_is_reached_by_a_turn_only_from_closing_with_intent(st_, inp):
+    t = run(st_, inp)
+    if t.state.current_stage is S.S_READY:
+        assert t.previous is S.S_CLOSING and inp.signals.intent_confirmed
+        assert t.reason is Reason.CLOSING_INTENT_CONFIRMED
