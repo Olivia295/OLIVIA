@@ -42,14 +42,19 @@ def _open(seed: int = 7, *, rules_only: bool = True, **overrides: object) -> Ses
     )
 
 
-# Session flows that the packaged perception student breaks today: it raises one of the
-# flow's ordinary turns to L2 (a false alarm), so the session enters S_crisis instead. Each
-# runs in both modes; model mode is a strict xfail, so a better student fails the suite
-# until the mark is removed (P6-6a; same rule as tests/redteam/known_gaps_model.yaml).
+# Session flows that also run with the packaged perception student (P6-6a). BOTH_MODES
+# flows pass in both modes. BOTH_MODES_MODEL_FALSE_ALARM flows are ones the round-3
+# student still breaks: it raises one of the flow's ordinary turns to L2 (a false alarm),
+# so the session enters S_crisis instead. Their model-mode run is a strict xfail, so a
+# better student fails the suite until the flow moves to BOTH_MODES (same rule as
+# tests/redteam/known_gaps_model.yaml).
 MODEL_FALSE_ALARM = pytest.mark.xfail(
     strict=True, reason="model false alarm: the student raises an ordinary turn to L2"
 )
 BOTH_MODES = pytest.mark.parametrize(
+    "rules_only", [pytest.param(True, id="rules"), pytest.param(False, id="model")]
+)
+BOTH_MODES_MODEL_FALSE_ALARM = pytest.mark.parametrize(
     "rules_only",
     [pytest.param(True, id="rules"), pytest.param(False, id="model", marks=MODEL_FALSE_ALARM)],
 )
@@ -127,7 +132,7 @@ def test_l3_card_keeps_emergency_numbers_for_the_whole_crisis():
     assert "110" in later.reply and "12356" in later.reply
 
 
-@BOTH_MODES
+@BOTH_MODES_MODEL_FALSE_ALARM
 def test_crisis_exit_needs_confirmation_then_safe_turns(rules_only):
     session = _open(rules_only=rules_only)
     assert session.turn("我不想活了").stage is HelpStage.S_CRISIS
@@ -181,7 +186,7 @@ def test_sop2_explore_then_haven_by_battery_then_back(rules_only):
 # -- empower, cards and feedback (SOP 4) ----------------------------------------------------
 
 
-@BOTH_MODES
+@BOTH_MODES_MODEL_FALSE_ALARM
 def test_direct_request_shows_a_card_from_the_available_set(rules_only):
     result = _open(rules_only=rules_only).turn("最近压力很大，给我一个方法")
     assert result.stage is HelpStage.S_EMPOWER
@@ -219,7 +224,7 @@ def test_red_flag_with_empty_set_gets_companionship_and_referral():
     assert result.inspect["candidates"] == []
 
 
-@BOTH_MODES
+@BOTH_MODES_MODEL_FALSE_ALARM
 def test_not_now_shelves_without_penalty_and_closes(rules_only):
     session = _open(rules_only=rules_only)
     card = session.turn("给我一个方法")
@@ -239,7 +244,7 @@ def test_not_now_shelves_without_penalty_and_closes(rules_only):
         assert again.action_id != shown
 
 
-@BOTH_MODES
+@BOTH_MODES_MODEL_FALSE_ALARM
 def test_done_and_unhelpful_update_the_shown_action(rules_only):
     session = _open(rules_only=rules_only)
     shown = session.turn("给我一个方法").action_id
@@ -268,7 +273,7 @@ def test_commands_outside_empower_give_no_feedback():
     assert "/done" not in result.reply.split("\n\n")[0]  # commands are not mirrored
 
 
-@BOTH_MODES
+@BOTH_MODES_MODEL_FALSE_ALARM
 def test_card_waiting_for_feedback_gets_the_prompt_not_a_new_card(rules_only):
     session = _open(rules_only=rules_only)
     shown = session.turn("给我一个方法").action_id

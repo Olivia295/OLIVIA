@@ -1,7 +1,7 @@
 {
   "format_version": 1,
-  "student_fingerprint": "7c55bac03959fb09",
-  "teacher_fingerprint": "62168be3a1546a87",
+  "student_fingerprint": "9432bc89cd5afe58",
+  "teacher_fingerprint": "3415bf5ecd891cdc",
   "preprocess": "html.unescape → NBSP 换为空格 → 连续空白合并为一个空格 → 去掉首尾空白；按字（Unicode 码位）切分，不在字表中的字记为 UNK",
   "max_len": 160,
   "head_chars": 48,
@@ -140,15 +140,15 @@
     }
   ],
   "temperatures": {
-    "emotion": 1.0051393501192876,
-    "intent": 1.1529111914993693,
-    "risk": 1.1762186326191264,
-    "stance": 1.041957246913411,
-    "dominant_spectrum": 0.9558576342495366
+    "emotion": 0.9970004778219698,
+    "intent": 1.063820506758908,
+    "risk": 1.0781890390402917,
+    "stance": 1.0742213040469195,
+    "dominant_spectrum": 0.9762382492892422
   },
   "risk": {
-    "threshold_ge2": 0.17429602146148682,
-    "threshold_l3": 0.3119147717952728,
+    "threshold_ge2": 0.08008033037185669,
+    "threshold_l3": 0.1365228295326233,
     "rule": "level = argmax P；P(L2)+P(L3) ≥ threshold_ge2 时至少 L2；P(L3) ≥ threshold_l3 时为 L3",
     "threshold_l3_used_only_with_model_plan_evidence": true,
     "target_recall_ge2": 0.98,
@@ -156,7 +156,7 @@
   },
   "arrays": {
     "embedding": [
-      1740,
+      1958,
       64
     ],
     "conv2_weight": [
@@ -206,5 +206,5 @@
       47
     ]
   },
-  "npz_bytes": 509526
+  "npz_bytes": 537430
 }

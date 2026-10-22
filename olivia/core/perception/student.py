@@ -512,8 +512,9 @@ class RiskChoice:
 def choose_risk_model(model: RiskModel | None = None, *, student: bool = False) -> RiskChoice:
     """The session's Stage 2 model: an injected one, the packaged student, or rules only.
 
-    Rules only is the default until a student passes the release gate (P6-6a: the round-1
-    student raised 39 of 109 non-crisis red-team cases to a crisis). ``student=True`` asks
+    Rules only is the default until a student passes the release gate (P6-6a: the packaged
+    round-3 student still sends 37 of 109 non-crisis red-team cases into the crisis flow;
+    round 1 sent 39). ``student=True`` asks
     for the packaged student; one that fails to load falls back to rules only, with its
     reason.
     """
