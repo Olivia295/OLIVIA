@@ -49,6 +49,9 @@ _PART_NAMES: Final = {
     HelpStage.S_CLARIFY: ("reflect", "need", "invite"),
     HelpStage.S_EMPOWER: ("bridge", "card_intro"),
 }
+# Short follow-up lines (roadmap R-7b); the session fills only the two name slots.
+_FOLLOWUPS: Final = ("clarify_feedback", "kit_empty", "closing_declined")
+_PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
 # Slots a part must carry in every variant (the template file's own contract).
 _REQUIRED_SLOTS: Final = {
     (HelpStage.S_EXPLORE, "reflect"): frozenset({"mirror", "emotion"}),
@@ -122,6 +125,12 @@ class Templates:
     closing: tuple[str, ...]
     greeting: tuple[str, ...]
     returning_after_crisis: tuple[str, ...]
+    clarify_feedback: tuple[str, ...]
+    """One question after an unclear reply to a waiting card: shelve it? (roadmap R-7b)"""
+    kit_empty: tuple[str, ...]
+    """The kit has nothing to show again."""
+    closing_declined: tuple[str, ...]
+    """S_closing: the user says no to choosing when to come back to the practice."""
 
 
 @dataclass(frozen=True)
@@ -371,7 +380,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
 
 def _parse_templates(data: Mapping[str, Any]) -> Templates:
     where = "gentle_holding.yaml"
-    _keys(data, {"persona", "window", "stages"}, where)
+    _keys(data, {"persona", "window", "stages", "followups"}, where)
     persona = _enum(PersonaSpectrum, data["persona"], f"{where} persona")
     window = _map(data["window"], f"{where} window")
     _keys(window, {"normal", "paragraph_max", "haven"}, f"{where} window")
@@ -412,6 +421,18 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
     _keys(ready, {"greeting", "returning_after_crisis"}, f"{where} S_ready")
     if not any(not slots_of(t) for t in singles[HelpStage.S_HAVEN]):
         raise LanguageDataError(f"{where} S_haven needs a slot-free variant for the gate fallback")
+    followups = _map(data["followups"], f"{where} followups")
+    _keys(followups, set(_FOLLOWUPS), f"{where} followups")
+    lines: dict[str, tuple[str, ...]] = {}
+    for name in _FOLLOWUPS:
+        lines[name] = _templates(followups[name], f"{where} followups.{name}")
+        for text in lines[name]:
+            if slots_of(text) - _PLAIN_SLOTS:
+                raise LanguageDataError(
+                    f"{where} followups.{name}: only name slots are filled here: {text!r}"
+                )
+        if not any(not slots_of(t) for t in lines[name]):
+            raise LanguageDataError(f"{where} followups.{name} needs a slot-free variant")
     return Templates(
         persona=persona,
         normal_window=_int_pair(window["normal"], f"{where} window.normal"),
@@ -426,6 +447,9 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         returning_after_crisis=_templates(
             ready["returning_after_crisis"], f"{where} S_ready.returning_after_crisis"
         ),
+        clarify_feedback=lines["clarify_feedback"],
+        kit_empty=lines["kit_empty"],
+        closing_declined=lines["closing_declined"],
     )
 
 

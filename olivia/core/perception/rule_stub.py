@@ -61,7 +61,23 @@ Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None witho
 ``intent_confirmed`` when a non-negated phrase of that section matched. If both lock
 phrases match, the later one in the message wins, since a turn cannot both set and
 release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
-reads them in different stages (S_empower, S_closing).
+reads them in different stages (S_empower, S_closing). ``kit_recall`` when a non-negated
+kit-recall phrase matched.
+
+Natural-language feedback (roadmap R-7b), only on a turn that is not a slash command:
+
+- ``feedback``: the message with punctuation and symbols removed (``strip_marks``) is
+  scanned for the ``feedback`` phrases, the aversion phrases (read as unhelpful) and the
+  kit-recall phrases (so "收进锦囊的那个" is a recall, not "收进锦囊"); a hit inside a
+  longer hit is dropped and a negated hit is void, as above. Unhelpful wins over the
+  other classes; done together with not_now is unclear; one class is that command.
+- ``feedback_unclear``: done and not_now together, or the whole marks-free message is a
+  ``feedback.unclear`` entry ("唉", "再说吧") and no feedback phrase matched.
+- ``answer``: the whole marks-free message is an ``answers.affirm`` or
+  ``answers.decline`` entry.
+
+The stub reads every turn on its own and knows nothing of the session: whether a card
+waits for feedback, or a question waits for an answer, is the session's call.
 """
 
 from __future__ import annotations
@@ -71,11 +87,11 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypeVar
 
 from olivia.core.models import CrisisLevel, PerceptionContext
-from olivia.core.perception.lexicon import PerceptionLexicon
-from olivia.core.perception.signals import Command, TurnSignals
+from olivia.core.perception.lexicon import PerceptionLexicon, strip_marks
+from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.safety.crisis import CrisisAssessment
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import clip_for_perception, normalize
@@ -115,8 +131,13 @@ _LOCK_ON: Final = "lock_on"
 _LOCK_OFF: Final = "lock_off"
 _AVERSION: Final = "aversion"
 _INTENT: Final = "intent_confirmed"
+_RECALL: Final = "kit_recall"
+# Labels of the feedback matcher: a command, or a kit recall (matched only to win
+# containment over a feedback phrase inside it).
+_FeedbackLabel = Command | str
 
 _Tag = tuple[str, str]  # (group, label)
+_L = TypeVar("_L", bound=str)
 
 
 class EmpathyIntent(StrEnum):
@@ -179,12 +200,31 @@ class RuleStub:
         add(_SIGNAL, _LOCK_OFF, lexicon.lock_off)
         add(_SIGNAL, _AVERSION, lexicon.aversion)
         add(_SIGNAL, _INTENT, lexicon.intent_confirmed)
+        add(_SIGNAL, _RECALL, lexicon.kit_recall)
         add(_INFORMATION, _INFORMATION, lexicon.information_cues)
         add(_REFERRAL, _REFERRAL, lexicon.referral_cues)
         add(_STABILIZATION, _STABILIZATION, lexicon.stabilization_cues)
         add(_ACUTE, _ACUTE, lexicon.acute_arousal_cues)
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
+
+        feedback: dict[str, _FeedbackLabel] = {}
+        for label, phrases in (
+            (Command.DONE, lexicon.feedback_done),
+            (Command.NOT_NOW, lexicon.feedback_not_now),
+            (Command.UNHELPFUL, lexicon.feedback_unhelpful),
+            (Command.UNHELPFUL, lexicon.aversion),
+            (_RECALL, lexicon.kit_recall),
+        ):
+            for phrase in phrases:
+                feedback[strip_marks(phrase)] = label
+        self._feedback_labels = feedback
+        self._feedback_matcher = PhraseMatcher({phrase: phrase for phrase in feedback})
+        self._unclear = frozenset(lexicon.feedback_unclear)
+        self._answers = {
+            **dict.fromkeys(lexicon.answer_affirm, Answer.AFFIRM),
+            **dict.fromkeys(lexicon.answer_decline, Answer.DECLINE),
+        }
 
     def perceive(
         self, text: str, assessment: CrisisAssessment
@@ -198,6 +238,14 @@ class RuleStub:
             folded = folded[prefix.end() :]
         body = clip_for_perception(folded)
         hits = self._scan(body)
+        feedback: Command | None = None
+        unclear = False
+        answer: Answer | None = None
+        if command is None:
+            feedback, unclear = self._feedback(strip_marks(body))
+            reply = strip_marks(folded)
+            unclear = unclear or (feedback is None and reply in self._unclear)
+            answer = self._answers.get(reply)
 
         emotion_hits = Counter(label for label, _ in hits.get(_EMOTION, ()))
         acute = bool(hits.get(_ACUTE))
@@ -253,6 +301,10 @@ class RuleStub:
             aversion=_AVERSION in labels,
             intent_confirmed=_INTENT in labels,
             command=command,
+            feedback=feedback,
+            feedback_unclear=unclear,
+            answer=answer,
+            kit_recall=_RECALL in labels,
         )
         return context, turn
 
@@ -277,6 +329,20 @@ class RuleStub:
             if kept:
                 result[group] = kept
         return result
+
+    def _feedback(self, text: str) -> tuple[Command | None, bool]:
+        """(feedback, unclear) from the marks-free message; see the module docstring."""
+        found = [(self._feedback_labels[m.key], m) for m in self._feedback_matcher.find_all(text)]
+        classes = {
+            label
+            for label, m in _outermost(found)
+            if isinstance(label, Command) and not self._negated(text, m.start)
+        }
+        if Command.UNHELPFUL in classes:
+            return Command.UNHELPFUL, False
+        if len(classes) == 1:
+            return classes.pop(), False
+        return None, bool(classes)
 
     def _negated(self, text: str, start: int) -> bool:
         if any(text.endswith(word, 0, start) for word in self._exceptions):
@@ -336,10 +402,10 @@ class RuleStub:
         return EmpathyIntent.EXPLORATION
 
 
-def _outermost(items: list[tuple[str, Match]]) -> list[tuple[str, Match]]:
+def _outermost(items: list[tuple[_L, Match]]) -> list[tuple[_L, Match]]:
     """Drop every hit that lies fully inside another hit of the same group."""
     ordered = sorted(items, key=lambda item: (item[1].start, -item[1].end))
-    kept: list[tuple[str, Match]] = []
+    kept: list[tuple[_L, Match]] = []
     furthest = -1
     for label, match in ordered:
         if match.end > furthest:

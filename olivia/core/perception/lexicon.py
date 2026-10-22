@@ -4,8 +4,14 @@ The stub builds one phrase matcher over every section, so anything ambiguous is
 rejected here: unknown sections, emotion or spectrum ids that the taxonomy does not
 define, empty lists, and a phrase listed twice within one section group (two emotions,
 two spectra, or two of the direct-request / lock-on / lock-off / aversion /
-intent-confirmed signals). The same phrase
+intent-confirmed / kit-recall signals). The same phrase
 may appear in different groups, for example as an emotion cue and a spectrum cue.
+
+Feedback and answer phrases (roadmap R-7b) are folded once more with
+:func:`strip_marks`, since the stub matches them on the message without punctuation
+("试过了，没用" reads as "试过了没用"). Within the feedback group (done, not now,
+unhelpful, plus the aversion and kit-recall phrases, which the stub matches there too) and
+within the whole-message group (unclear, affirm, decline) a phrase may appear once.
 
 Emotion keys may be TAX emotion aliases; they are folded into the canonical id, and the
 key order is kept as the tie-break priority between emotions (first key wins).
@@ -13,6 +19,7 @@ key order is kept as the tie-break priority between emotions (first key wins).
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import resources
@@ -37,6 +44,7 @@ _PHRASE_SECTIONS: Final = (
     "referral_cues",
     "stabilization_cues",
     "acute_arousal_cues",
+    "kit_recall",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -45,13 +53,24 @@ _SECTIONS: Final = frozenset(
         "intensity_modifiers",
         "spectrum_cues",
         "negation",
+        "feedback",
+        "answers",
         *_PHRASE_SECTIONS,
     }
 )
 # Sections whose phrases must be distinct from each other: one phrase cannot both set
 # and release the listening lock, both ask for a method and set the lock, or both reject
 # a practice and commit to it.
-_SIGNAL_GROUP: Final = ("direct_request", "lock_on", "lock_off", "aversion", "intent_confirmed")
+_SIGNAL_GROUP: Final = (
+    "direct_request",
+    "lock_on",
+    "lock_off",
+    "aversion",
+    "intent_confirmed",
+    "kit_recall",
+)
+_FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
+_ANSWER_KEYS: Final = ("affirm", "decline")
 
 
 class PerceptionLexiconError(Exception):
@@ -80,6 +99,23 @@ class PerceptionLexicon:
     """Body signs of acute overload; a hit floors arousal at the cognitive-block line."""
     negation_prefixes: tuple[str, ...]
     negation_exceptions: tuple[str, ...]
+    feedback_done: tuple[str, ...]
+    """Natural-language feedback, matched anywhere in the message (marks stripped)."""
+    feedback_not_now: tuple[str, ...]
+    feedback_unhelpful: tuple[str, ...]
+    feedback_unclear: tuple[str, ...]
+    """Whole messages that may be about the card without saying which way ("唉")."""
+    answer_affirm: tuple[str, ...]
+    """Whole-message yes ("好的"), marks stripped."""
+    answer_decline: tuple[str, ...]
+    """Whole-message no ("不用了"), marks stripped."""
+    kit_recall: tuple[str, ...]
+    """The user asks to see a shelved method again ("锦囊里那个再给我看看")."""
+
+
+def strip_marks(text: str) -> str:
+    """Drop punctuation and symbols (Unicode categories P* and S*) from folded text."""
+    return "".join(ch for ch in text if not unicodedata.category(ch).startswith(("P", "S")))
 
 
 def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> PerceptionLexicon:
@@ -98,6 +134,27 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
     phrases = {name: _phrases(doc.get(name), name) for name in _PHRASE_SECTIONS}
     _check_distinct({name: phrases[name] for name in _SIGNAL_GROUP}, "signal sections")
     prefixes, exceptions = _negation(doc.get("negation"))
+    feedback = _marked_section(doc.get("feedback"), "feedback", _FEEDBACK_KEYS)
+    answers = _marked_section(doc.get("answers"), "answers", _ANSWER_KEYS)
+    aversion = tuple(strip_marks(p) for p in phrases["aversion"])
+    _check_distinct(
+        {
+            "feedback.done": feedback["done"],
+            "feedback.not_now": feedback["not_now"],
+            "feedback.unhelpful": feedback["unhelpful"],
+            "aversion": aversion,
+            "kit_recall": tuple(strip_marks(p) for p in phrases["kit_recall"]),
+        },
+        "feedback phrases",
+    )
+    _check_distinct(
+        {
+            "feedback.unclear": feedback["unclear"],
+            "answers.affirm": answers["affirm"],
+            "answers.decline": answers["decline"],
+        },
+        "whole-message replies",
+    )
     return PerceptionLexicon(
         emotion_cues=MappingProxyType(emotions),
         raise_modifiers=raise_mods,
@@ -114,6 +171,13 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         acute_arousal_cues=phrases["acute_arousal_cues"],
         negation_prefixes=prefixes,
         negation_exceptions=exceptions,
+        feedback_done=feedback["done"],
+        feedback_not_now=feedback["not_now"],
+        feedback_unhelpful=feedback["unhelpful"],
+        feedback_unclear=feedback["unclear"],
+        answer_affirm=answers["affirm"],
+        answer_decline=answers["decline"],
+        kit_recall=phrases["kit_recall"],
     )
 
 
@@ -155,6 +219,27 @@ def _phrases(node: Any, where: str) -> tuple[str, ...]:
             raise PerceptionLexiconError(f"{_FILE}: {where}: phrase {folded!r} is repeated")
         out.append(folded)
     return tuple(out)
+
+
+def _marked_section(node: Any, where: str, keys: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """A mapping of ``keys`` to phrase lists, folded and then stripped of marks."""
+    section = _mapping(node, where)
+    extra = sorted(str(key) for key in section if key not in keys)
+    if extra:
+        raise PerceptionLexiconError(f"{_FILE}: {where}: unknown keys {extra}")
+    out: dict[str, tuple[str, ...]] = {}
+    for key in keys:
+        name = f"{where}.{key}"
+        stripped: list[str] = []
+        for phrase in _phrases(section.get(key), name):
+            bare = strip_marks(phrase)
+            if not bare:
+                raise PerceptionLexiconError(f"{_FILE}: {name}: {phrase!r} is only marks")
+            if bare in stripped:
+                raise PerceptionLexiconError(f"{_FILE}: {name}: phrase {bare!r} is repeated")
+            stripped.append(bare)
+        out[key] = tuple(stripped)
+    return out
 
 
 def _check_distinct(sections: Mapping[str, tuple[str, ...]], group: str) -> None:

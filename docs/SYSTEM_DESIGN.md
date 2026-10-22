@@ -277,8 +277,8 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 | **$S_{explore}$** | `stage_turn_count` $\ge 2$ 且 $Arousal < 0.80$ 且 无纯倾听锁 且 `social_battery` $\ge 0.40$ | **$S_{clarify}$** | 推进至理清阶段，探查图式与萨提亚深层渴望 |
 | **$S_{clarify}$** | (`CoreBeliefIdentified` == True OR 用户要求 OR 当前阶段内轮次达5轮) 且 无纯倾听锁 且 非静默人格 且 `social_battery` $\ge 0.40$ | **$S_{empower}$** | 推进至循证赋能阶段，推荐 32 种 A 级微干预动作骨架 |
 | **$S_{empower}$** | 用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或 表达反感 | **$S_{explore}$** | **紧急安全回退**：撤回认知方法，激活稳定化通道在场承接 (生理叹息/感官着陆) |
-| **$S_{empower}$** | 用户发出 `/unhelpful` (`UNHELPFUL`) | **$S_{explore}$** | 记录 `UNHELPFUL`，按 §6.3 对该方法施加软衰减，回到倾听 |
-| **$S_{empower}$** | 用户发出 `/done` (完成微练习) 或 `/not-now` (存入锦囊，`NOT_NOW`) | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
+| **$S_{empower}$** | 用户发出 `/unhelpful` 或明确说方法没帮助（“这个不适合我”）(`UNHELPFUL`) | **$S_{explore}$** | 记录 `UNHELPFUL`，按 §6.3 对该方法施加软衰减，回到倾听 |
+| **$S_{empower}$** | 用户发出 `/done` (完成微练习) 或 `/not-now` (存入锦囊，`NOT_NOW`)，或用日常的话明确说出同样的意思（“做完了”“今天先不做了”） | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
 | **$S_{haven}$** | 用户心力恢复 (`social_battery` $\ge 0.35$) 或 发起新探索议题 | **$S_{explore}$** | 平滑退出避风港模式，恢复常规双向探索对话 |
 | **$S_{closing}$** | 实施意向确认完成 或 会话自然关闭 | **$S_{ready}$** | **结束状态出口**：原子写入会话摘要与经历账本，就绪等待下一次会话 |
 | **$S_{crisis}$** | 用户显式确认安全（`SafetyConfirmEvent`）且之后连续 N 轮处于安全区间 (L2: 2 轮, L3: 3 轮) | **$S_{explore}$** | **危机状态出口**：唯一合法出口，解除危机熔断，恢复温和陪伴，保留关怀标记 |
@@ -287,6 +287,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 - **轮次**：`stage_turn_count` 与“5轮”都指当前阶段内的轮次，进入新阶段时重新计数。
 - **ΔArousal 基线**：$\Delta Arousal$ 以进入当前阶段时的唤醒度为基线计算。
 - **直接索要方法**：任何非危机状态均可触发（$S_{crisis}$ 中不响应）；候选动作仍经红线掩码与唤醒检查；`SILENT_ANCHOR` 人格也可由此进入 $S_{empower}$；掩码后可用集合为空时给 $m_0$（`EMOTIONAL_HOLDING_PRESENCE`）并附转介卡。
+- **日常说法的反馈（路线图 R-7b）**：反馈不只来自斜杠命令。卡片等待反馈时，感知层把明确的日常说法读成对应命令（`TurnSignals.feedback`），会话按命令原路处理，效果与命令完全相同；含糊的回应（`feedback_unclear`）先问一次是否收进锦囊，下一轮的“好/可以”（`answer`）记为 `NOT_NOW`。对自己的贬低从不算 `UNHELPFUL`；斜杠命令优先；筛查为 L2/L3 的一轮从不读反馈。“锦囊里那个再给我看看”（`kit_recall`）按直接索要处理，重新递上本次会话存入锦囊、且当前仍被求解器放行的方法；锦囊为空时温和说明，跨会话锦囊待 P5。$S_{closing}$ 中整句的“好/可以”等同实施意向确认，“不用了”得到一句温和回应并留在 $S_{closing}$。
 
 ### 4.3 32 种 A 级微干预编排、禁忌症硬掩码与只陪伴基线 ($m_0$)
 进入 $S_{empower}$ 后，系统求解最优微干预：

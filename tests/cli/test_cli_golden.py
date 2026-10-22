@@ -104,26 +104,58 @@ METHOD_REQUEST = "最近拖延很严重，给我一个方法"
 HESITATION = "我今天真的提不起劲做这个"
 
 
-def test_sop4_not_now_shelves_without_penalty(run_cli, data_home):
+def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], [METHOD_REQUEST, HESITATION, "/not-now", "/exit"])
-    card, hesitation, shelved = run.results
+    run = run_cli(["chat", "--inspect"], [METHOD_REQUEST, HESITATION, "/exit"])
+    card, shelved = run.results
     (session,) = run.sessions
     assert card.stage is HelpStage.S_EMPOWER and card.reply_kind is ReplyKind.CARD
     shown = card.action_id
-    assert shown is not None and "/not-now" in card.reply
-    # Hesitating keeps the card on the table with the gentle feedback prompt: no new
-    # card, no feedback, nothing recorded against the method.
-    assert hesitation.stage is HelpStage.S_EMPOWER
-    assert hesitation.action_id is None and hesitation.inspect["feedback"] is None
-    assert "/not-now" in hesitation.reply
-    # /not-now: NOT_NOW, shelved into the kit for this session, posterior untouched.
+    assert shown is not None
+    # The hesitation sentence alone records NOT_NOW (roadmap R-7b): shelved into the kit
+    # for this session, posterior untouched, closing ritual next.
     assert shelved.inspect["feedback"] == "NOT_NOW"
+    assert shelved.inspect["feedback_source"] == "phrase"
+    assert shelved.stage is HelpStage.S_CLOSING and shelved.action_id is None
+    snapshot = session.snapshot()
+    assert snapshot["user_shelved_actions"] == [shown]
+    assert snapshot["bandit"] == {"spectra": {}}
+    assert "反馈 NOT_NOW" in run.out and "来源 phrase" in run.out
+    assert HESITATION not in run.out  # the panel never shows the user's words
+
+
+def test_sop4_not_now_command_still_shelves_without_penalty(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect"], [METHOD_REQUEST, "嗯，我看看", "/not-now", "/exit"])
+    card, waiting, shelved = run.results
+    (session,) = run.sessions
+    shown = card.action_id
+    assert shown is not None and "/not-now" in card.reply
+    # A reply that is not feedback keeps the card on the table with the gentle prompt.
+    assert waiting.stage is HelpStage.S_EMPOWER
+    assert waiting.action_id is None and waiting.inspect["feedback"] is None
+    assert "/not-now" in waiting.reply
+    assert shelved.inspect["feedback"] == "NOT_NOW"
+    assert shelved.inspect["feedback_source"] == "command"
     assert shelved.stage is HelpStage.S_CLOSING
     snapshot = session.snapshot()
     assert snapshot["user_shelved_actions"] == [shown]
     assert snapshot["bandit"] == {"spectra": {}}
-    assert "反馈 NOT_NOW" in run.out
+    assert "来源 command" in run.out
+
+
+def test_sop4_kit_recall_shows_the_shelved_card_again(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(
+        ["chat", "--inspect"], [METHOD_REQUEST, HESITATION, "锦囊里那个再给我看看", "/exit"]
+    )
+    card, _shelved, recalled = run.results
+    (session,) = run.sessions
+    assert recalled.stage is HelpStage.S_EMPOWER and recalled.reply_kind is ReplyKind.CARD
+    assert recalled.action_id == card.action_id
+    snapshot = session.snapshot()
+    assert snapshot["pending_action"] == card.action_id
+    assert snapshot["user_shelved_actions"] == []
 
 
 def test_onboarding_answers_cover_the_cn_default(run_cli, data_home):

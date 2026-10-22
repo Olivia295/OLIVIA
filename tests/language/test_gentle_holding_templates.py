@@ -17,8 +17,12 @@ from typing import Any
 import pytest
 import yaml
 
+from olivia.core.language.data import ContentKind, load_language_data
+from olivia.core.language.filters import apply_willow
+from olivia.core.language.gate import OutputGate
 from olivia.core.models import HelpStage, PersonaSpectrum
 from olivia.core.perception.signals import Command
+from olivia.core.taxonomy import load_taxonomy
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "olivia/data/templates/gentle_holding.yaml"
 
@@ -308,3 +312,60 @@ def test_ready_lines_are_single_short_paragraphs() -> None:
     for variant in ready["returning_after_crisis"]:
         assert "安全" in variant, variant
         assert "metaphor" not in SLOT.findall(variant), variant
+
+
+# -- natural-language follow-ups (roadmap R-7b) ---------------------------------------------
+
+FOLLOWUPS: dict[str, list[str]] = DATA["followups"]
+FOLLOWUP_SLOTS = {"user_name", "agent_name"}
+
+
+def test_followup_groups_and_variant_counts() -> None:
+    assert set(FOLLOWUPS) == {"clarify_feedback", "kit_empty", "closing_declined"}
+    for name, variants in FOLLOWUPS.items():
+        assert 2 <= len(variants) <= 5, name
+        assert len(set(variants)) == len(variants), name
+        assert any(not SLOT.findall(v) for v in variants), name
+
+
+def test_followups_are_one_short_paragraph_with_name_slots_only() -> None:
+    for variants in FOLLOWUPS.values():
+        for variant in variants:
+            assert set(SLOT.findall(variant)) <= FOLLOWUP_SLOTS, variant
+            line = _fill(variant, TYPICAL)
+            assert "\n" not in line
+            assert _all_chars(line) <= PARAGRAPH_MAX, line
+            for word in FORBIDDEN:
+                assert word not in variant, f"{word!r} in {variant!r}"
+            assert not EMOJI.search(variant) and "?" not in variant, variant
+
+
+def test_clarification_asks_one_question_about_the_kit() -> None:
+    for variant in FOLLOWUPS["clarify_feedback"]:
+        assert variant.count("？") == 1 and "锦囊" in variant, variant
+
+
+def test_kit_empty_and_closing_declined_ask_nothing() -> None:
+    for name in ("kit_empty", "closing_declined"):
+        for variant in FOLLOWUPS[name]:
+            assert "？" not in variant, variant
+
+
+def test_followups_pass_willow_unchanged_and_the_output_gate() -> None:
+    tax = load_taxonomy()
+    data = load_language_data(tax)
+    gate = OutputGate(tax, data)
+    templates = data.templates
+    loaded = {
+        "clarify_feedback": templates.clarify_feedback,
+        "kit_empty": templates.kit_empty,
+        "closing_declined": templates.closing_declined,
+    }
+    assert {name: list(v) for name, v in loaded.items()} == FOLLOWUPS
+    stages = (HelpStage.S_EXPLORE, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)
+    for variants in loaded.values():
+        for variant in variants:
+            text = _fill(variant, TYPICAL)
+            assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
+            for stage in stages:
+                assert gate.reasons(text, kind=ContentKind.NORMAL, stage=stage) == (), text

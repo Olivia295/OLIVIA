@@ -4,8 +4,9 @@
     First visit runs onboarding (``chang/onboarding.py``); then each line goes to
     ``Session.turn`` and the reply is printed exactly as returned, crisis cards included.
     ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
-    feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here:
-    the session's perception reads them.
+    feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
+    as are natural-language replies to a card ("今天先不做了"): the session's perception
+    reads them.
 ``olivia resources``
     The crisis-resource card for the saved region in BROWSING mode.
 ``olivia region [CODE [--timezone TZ] | --clear]``
@@ -224,6 +225,7 @@ def inspect_panel(result: TurnResult) -> list[str]:
     """
     data = result.inspect
     card = result.resource_card
+    origin = data.get("feedback_source")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
         f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
@@ -233,7 +235,7 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
         f" · 谱系 {_fmt(data.get('spectrum'))} · 红线 {_fmt(data.get('red_flags'))}",
         f"│ 可用动作 {_fmt(data.get('candidates'))} · 选中 {_fmt(data.get('chosen'))}"
-        f" · 反馈 {_fmt(data.get('feedback'))}",
+        f" · 反馈 {_fmt(data.get('feedback'))}" + (f"（来源 {_fmt(origin)}）" if origin else ""),
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else ""),
     ]
