@@ -1,0 +1,615 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://olivia.local/training/data_gen/label_schema.json",
+  "title": "OLIVIA perception label record",
+  "description": "One labelled user message for the 8-head perception model plus the dominant_spectrum auxiliary label. Enums come from olivia/data/taxonomy.yaml v3.2.0. Rules and anchors: docs/eval/perception-annotation-guide.md. Cross-head constraints are encoded in allOf (emotion windows, risk bands, C1-C4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "text",
+    "valence",
+    "emotion",
+    "arousal",
+    "intent",
+    "risk",
+    "crisis_confidence",
+    "stance",
+    "readiness",
+    "dominant_spectrum"
+  ],
+  "properties": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "用户单条消息原文（简体中文），不含电量前缀"
+    },
+    "valence": {
+      "type": "number",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "description": "情感效价，步长 0.05"
+    },
+    "emotion": {
+      "type": "string",
+      "enum": [
+        "anxiety",
+        "sadness",
+        "anger",
+        "shame",
+        "guilt",
+        "loneliness",
+        "hopelessness",
+        "grief",
+        "fear",
+        "panic",
+        "overwhelm",
+        "numbness",
+        "envy",
+        "disappointment",
+        "confusion",
+        "calm"
+      ],
+      "description": "16 类核心情绪 id；别名须先映射为正式 id"
+    },
+    "arousal": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "生理唤醒度，步长 0.05"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "VALIDATION",
+        "EXPLORATION",
+        "REFLECTION",
+        "INFORMATION",
+        "STABILIZATION",
+        "REFERRAL"
+      ],
+      "description": "陪伴者下一步应采用的支持策略"
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "description": "危机等级"
+    },
+    "crisis_confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "危机置信度，须落在 risk 对应的标注带内"
+    },
+    "stance": {
+      "type": "string",
+      "enum": [
+        "PLACATING",
+        "BLAMING",
+        "SUPER_REASONABLE",
+        "IRRELEVANT",
+        "CONGRUENT"
+      ],
+      "description": "萨提亚沟通姿态"
+    },
+    "readiness": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "改变准备度，步长 0.05"
+    },
+    "dominant_spectrum": {
+      "type": "string",
+      "enum": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "none"
+      ],
+      "description": "主导困扰谱系 01-11，无困扰时为 none"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "anxiety"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.1
+          },
+          "arousal": {
+            "minimum": 0.35,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "sadness"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.2
+          },
+          "arousal": {
+            "minimum": 0,
+            "maximum": 0.75
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "anger"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1.0,
+            "maximum": -0.2
+          },
+          "arousal": {
+            "minimum": 0.4,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "shame"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.2
+          },
+          "arousal": {
+            "minimum": 0.25,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "guilt"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1.0,
+            "maximum": -0.1
+          },
+          "arousal": {
+            "minimum": 0.2,
+            "maximum": 1.0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "loneliness"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1.0,
+            "maximum": -0.2
+          },
+          "arousal": {
+            "minimum": 0,
+            "maximum": 0.7
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "hopelessness"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.4
+          },
+          "arousal": {
+            "minimum": 0,
+            "maximum": 0.65
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "grief"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.3
+          },
+          "arousal": {
+            "minimum": 0.0,
+            "maximum": 0.8
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "fear"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.3
+          },
+          "arousal": {
+            "minimum": 0.45,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "panic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.5
+          },
+          "arousal": {
+            "minimum": 0.8,
+            "maximum": 1.0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "overwhelm"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1,
+            "maximum": -0.3
+          },
+          "arousal": {
+            "minimum": 0.45,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "numbness"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1.0,
+            "maximum": 0.0
+          },
+          "arousal": {
+            "minimum": 0,
+            "maximum": 0.55
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "envy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -0.9,
+            "maximum": -0.1
+          },
+          "arousal": {
+            "minimum": 0.25,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "disappointment"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -1.0,
+            "maximum": -0.1
+          },
+          "arousal": {
+            "minimum": 0.05,
+            "maximum": 0.85
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "confusion"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": -0.8,
+            "maximum": 0.1
+          },
+          "arousal": {
+            "minimum": 0.1,
+            "maximum": 0.9
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "emotion": {
+            "const": "calm"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valence": {
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "arousal": {
+            "minimum": 0.0,
+            "maximum": 0.5
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "const": "L0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "crisis_confidence": {
+            "minimum": 0.0,
+            "maximum": 0.1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "const": "L1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "crisis_confidence": {
+            "minimum": 0.2,
+            "maximum": 0.45
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "const": "L2"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "crisis_confidence": {
+            "minimum": 0.55,
+            "maximum": 0.75
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "const": "L3"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "crisis_confidence": {
+            "minimum": 0.85,
+            "maximum": 1.0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "enum": [
+              "L2",
+              "L3"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "intent": {
+            "const": "REFERRAL"
+          },
+          "emotion": {
+            "not": {
+              "const": "calm"
+            }
+          },
+          "valence": {
+            "maximum": -0.4
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "risk": {
+            "enum": [
+              "L0",
+              "L1"
+            ]
+          },
+          "arousal": {
+            "minimum": 0.8
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "intent": {
+            "const": "STABILIZATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "intent": {
+            "const": "INFORMATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "arousal": {
+            "exclusiveMaximum": 0.65
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "dominant_spectrum": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "risk": {
+            "const": "L0"
+          },
+          "valence": {
+            "minimum": -0.2
+          }
+        }
+      }
+    }
+  ]
+}
