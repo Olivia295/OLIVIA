@@ -24,6 +24,7 @@ def test_version(tax: Taxonomy) -> None:
         ("battery.thresholds.haven_exit", 0.35),
         ("battery.thresholds.empower_min", 0.40),
         ("risk.ewma_lambda", 0.5),
+        ("thompson_sampling_index.lambda_decay_per_day", 0.1),
     ],
 )
 def test_threshold_values(tax: Taxonomy, path: str, expected: float) -> None:

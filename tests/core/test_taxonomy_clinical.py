@@ -47,7 +47,7 @@ def test_grade_b_and_c_optional_fields_are_empty(tax: Taxonomy) -> None:
 
 def test_action_registry(tax: Taxonomy) -> None:
     reg = tax.action_registry()
-    assert len(reg) == 10
+    assert len(reg) == 11
     assert reg["REFERRAL_CARD_PRESENTATION"].action_type is ActionType.REFERRAL
     assert reg["12:tipp_cold_water"].contraindications == (
         "RED_FLAG_ANOREXIA",
@@ -56,6 +56,9 @@ def test_action_registry(tax: Taxonomy) -> None:
     )
     assert reg["12:tipp_breathing"].parent_method_id == "12"
     assert reg["12:tipp_breathing"].contraindications == ()
+    assert reg["29:pmr_release"].parent_method_id == "29"
+    assert reg["29:pmr_release"].contraindications == ("CARDIORESPIRATORY_INSTABILITY",)
+    assert tax.methods()["29"].sub_actions == ("29:pmr_release",)
     assert reg["SAFE_PLACE_CONTAINER"].parent_method_id is None
 
 
@@ -93,6 +96,7 @@ def test_red_flags(tax: Taxonomy) -> None:
     assert flags["SIT-09-01"].allowed_actions == (
         "EMOTIONAL_HOLDING_PRESENCE",
         "DBT_TIPP_MODIFIED_BREATHING",
+        "29:pmr_release",
         "REFERRAL_CARD_PRESENTATION",
     )
     assert flags["SIT-02-04"].banned_methods == ("03", "RADICAL_COGNITIVE_DEBATE")

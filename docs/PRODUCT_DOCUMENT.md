@@ -143,7 +143,7 @@ O.L.I.V.I.A. 扎根于研发团队历经数年整理沉淀的专业心理学知�
   1. 默认执行三阶段助人模型：**阶段一倾听接纳（严禁推荐任何认知干预方法，违规率 $0.0\%$）** $\to$ **阶段二理清澄清与渴望照见** $\to$ **阶段三赋能干预（精选 A 级微动作）**；
   2. **用户意愿越级通道 (JTBD 4)**：若用户显式发出“直接给我个方法/别问了直接给方案”，系统无条件服从用户自主意愿，动态直达赋能阶段（但仍必须通过临床红线与禁忌症硬掩码过滤）；
   3. **情绪重载动态回退与稳定化承接**：赋能阶段若检测到用户唤醒度剧增（$\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$）或表达强烈反感，状态机自动安全降级回退至接纳阶段 ($S_{explore}$)，并激活自下而上躯体稳定化在场白名单，由系统提供低认知负荷的生理性叹息与感官着陆温和承接；
-  4. **“只陪伴”基线选项 ($m_0$)**：面对延长哀伤（SIT-06-04）或重大丧失，效用函数显式将“纯粹在场陪伴守候”作为首选，绝不强行推销技巧。
+  4. **“只陪伴”基线选项 ($m_0$ = `EMOTIONAL_HOLDING_PRESENCE`)**：$m_0$ 不参与 Thompson 采样，由固定规则选用：可用集合为空、处于避风港模式，或面对延长哀伤（SIT-06-04）、极度虚无（SIT-11-01）时直接选用，此时享有最高优先级，绝不强行推销技巧。
 - **论文支撑**：Rogers (1957) 人本主义无条件积极关注；Hill (2009) 助人技术三阶段模型；Liu et al. (ACL 2021, ESConv) 阶段门控实证。
 
 ### 特性二：「给有依据的方法」—— 75 种疗法安全三级分级与禁忌症硬掩码
@@ -208,14 +208,14 @@ flowchart TD
     S_explore_Branch -- "是 (急性高唤醒)" --> S_explore_Stab["S_explore [稳定化通道激活]<br>仅提供自下而上生理叹息/感官着陆在场承接"]
     S_explore_Branch -- "否 (正常唤醒)" --> S_explore_Norm["S_explore [标准双向倾听]<br>代词镜像重述 + 罗杰斯人本主义探询"]
     
-    S_explore_Norm --> DirectRequestCheck{"用户显式要求方法 ?<br>(如: '直接给我个方法')"}
+    S_explore_Norm --> DirectRequestCheck{"用户显式要求方法 ?<br>(如: '直接给我个方法'；任意非危机状态均可触发，见 COLBO-03)"}
     DirectRequestCheck -- "是 (JTBD 4 越级通过/经红线掩码)" --> S_empower
-    DirectRequestCheck -- "否" --> Gating_Clarify{"满足 C_1 门控条件 ?<br>stage_turns >= 2 且 Arousal < 0.80 且 无纯倾听锁"}
+    DirectRequestCheck -- "否" --> Gating_Clarify{"满足 C_1 门控条件 ?<br>stage_turns >= 2 且 Arousal < 0.80 且 无纯倾听锁 且 battery >= 0.40<br>(stage_turns 为当前阶段内轮次)"}
     
     Gating_Clarify -- "是" --> S_clarify["S_clarify (聚焦理清阶段)<br>图式追踪 + 萨提亚深层渴望温和照见"]
     Gating_Clarify -- "否" --> S_explore_Norm
     
-    S_clarify --> Gating_Empower{"满足 C_2 门控条件 ?<br>(核心信念识别 OR 用户要求 OR 5轮自动推进)<br>且 无纯倾听锁 且 非静默人格 且 battery >= 0.40"}
+    S_clarify --> Gating_Empower{"满足 C_2 门控条件 ?<br>(核心信念识别 OR 用户要求 OR 当前阶段内满5轮自动推进)<br>且 无纯倾听锁 且 非静默人格 且 battery >= 0.40"}
     Gating_Empower -- "是" --> S_empower["S_empower (循证赋能阶段)<br>红线掩码过滤 + Thompson 采样求解 A 级动作 / 只陪伴 m0"]
     Gating_Empower -- "否" --> S_clarify
     
@@ -273,9 +273,10 @@ flowchart TD
   - *Given* 状态机处于 $S_{explore}$ 且 $Arousal < 0.80$，*When* 生成回复文本，*Then* 严禁包含任何认知重构、问题解决或干预方法指令，违规率严格为 $0.0\%$；
   - *Given* 状态机处于 $S_{explore}$ 且 $Arousal \ge 0.80$，*When* 生成回复文本，*Then* 激活自下而上躯体稳定化在场白名单通道，仅放行生理性叹息与感官着陆在场承接，仍绝对阻断认知分析法。
 - `COLBO-03` **用户意愿越级直达 (JTBD 4)**：
-  - *Given* 用户在 $S_{explore}$ 输入“直接给我方法/别问了”，*When* 识别到直接诉求，*Then* 状态机跃迁至 $S_{empower}$（候选方法仍强制经过临床红线与禁忌症硬掩码过滤）。
+  - *Given* 用户在任意非危机状态输入“直接给我方法/别问了”，*When* 识别到直接诉求，*Then* 状态机跃迁至 $S_{empower}$（候选方法仍强制经过临床红线、禁忌症硬掩码与唤醒检查；`SILENT_ANCHOR` 人格同样适用；掩码后可用集合为空时给 $m_0$ 并附转介卡）；处于 $S_{crisis}$ 时不响应直接索要。
 - `COLBO-04` **情绪激增安全回退**：
-  - *Given* 处于 $S_{empower}$，*When* 检测到用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或表示强烈排斥，*Then* 状态机回退至 $S_{explore}$，撤回认知方法推销并激活稳定化在场通道。
+  - *Given* 处于 $S_{empower}$，*When* 检测到用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或表示强烈排斥，*Then* 状态机回退至 $S_{explore}$，撤回认知方法推销并激活稳定化在场通道。$\Delta Arousal$ 以进入当前阶段时的唤醒度为基线。
+  - *Given* 处于 $S_{empower}$，*When* 用户发出 `/done`（完成）或 `/not-now`（存入锦囊），*Then* 进入 $S_{closing}$；*When* 用户发出 `/unhelpful`，*Then* 记录 `UNHELPFUL`、对该方法施加软衰减并回到 $S_{explore}$。
 - `COLBO-05` **32 种 A 级微方法动作骨架求解与掩码优先级**：
   - *Given* 赋能阶段求解干预，*When* 传入情境向量，*Then* 仅从 32 种 A 级方法中装配 `ActionSkeleton`，并严格执行临床红线白名单与禁忌症硬掩码；
   - **动作候选池四重交差集求解公式**：系统求解可用动作集合严格遵循 $\mathcal{A}_{available} = (\mathcal{C}_{candidates} \cap \mathcal{A}_{allowed}) \setminus \mathcal{B}_{banned} \setminus \mathcal{X}_{contraindicated}$。对红线用户而言，`allowed_actions` 构成其实际可用动作的**绝对封闭上限边界**（未列入的动作含常规稳定化白名单一律阻断），`banned_methods` 作为第二道纵深防御；
@@ -286,7 +287,8 @@ flowchart TD
     1. **父级禁忌独立性原则**：父方法的禁忌仅作用于父方法整体输出，子动作严格依据自身在 `action_registry` 中声明的禁忌独立过滤（如冷水禁忌从 DBT 方法 12 解耦下沉至 `12:tipp_cold_water`，心血管病史或厌食史用户仍可安全使用 STOP 技巧与节奏呼吸 `12:tipp_breathing`）；
     2. **父级禁用向下穿透与显式白名单豁免**：禁用父方法 ID 时，子动作级联禁用，除非红线病种 `allowed_actions` 显式豁免放行。
 - `COLBO-06` **只陪伴基线 ($m_0$) 兜底**：
-  - *Given* 识别为延长哀伤（SIT-06-04）或极度虚无，*When* 评估方法效用，*Then* $m_0 = \text{COMPANION\_ONLY}$ 赋予最高优先级。
+  - $m_0$（`EMOTIONAL_HOLDING_PRESENCE`）不参与 Thompson 采样，由固定规则选用：可用集合为空、处于避风港模式，或识别为延长哀伤（SIT-06-04）、极度虚无（SIT-11-01）。
+  - *Given* 识别为延长哀伤（SIT-06-04）或极度虚无（SIT-11-01），*When* 求解动作，*Then* 直接选用 $m_0$ 并赋予最高优先级。
 - `COLBO-07` **C.O.L.B.O. 双翼干预架构与 SUDS 标尺映射**：
   - **双翼策略解构**：
     - **左翼 (Left Wing / Somatic & Compassion)**：自下而上 (Bottom-up) 躯体稳定化与情绪容纳（生理性叹息、3-2-1感官着陆、Neff 自我关怀）。当 $Arousal \ge 0.80$（对应临床 SUDS $\ge 8/10$）或情绪剧烈过载时触发，优先恢复神经生理安全感；
@@ -309,9 +311,9 @@ flowchart TD
 - `CHANG-01` **双通道网关与本地校验器**：
   - *Given* 开启 AI 增强，*When* 大模型返回润色文本，*Then* 本地校验器核对方法 ID 与步骤无篡改且无新方法后方可放行；校验失败瞬间无感退回离线模板。
 - `CHANG-02` **心力电量避风港模式自适应**：
-  - *Given* 用户输入带有 `[5%]` 前缀，*When* 危机筛查确认通过且当前非 $S_{crisis}$，*Then* 状态机锁定 $S_{haven}$（心力电量 $\le 0.20$），单向输出温暖陪伴，不进行任何提问。
+  - *Given* 用户输入带有 `[5%]` 前缀，*When* 危机筛查确认通过且当前非 $S_{crisis}$，*Then* 状态机锁定 $S_{haven}$（心力电量 $\le 0.20$），单向输出温暖陪伴，不进行任何提问。电量前缀跨轮保留，直到下一次前缀或会话结束；会话中从未给出前缀时电量默认 0.6。
 - `CHANG-03` **Beta-Bernoulli Thompson 采样自进化**：
-  - *Given* 用户完成练习反馈 `HELPFUL`，*When* 更新后验，*Then* $\alpha \leftarrow \alpha + 1$；若反馈 `UNHELPFUL` 则 $\beta \leftarrow \beta + 1$ 且施加软性时间衰减；若反馈 `NOT_NOW` 不予扣分。
+  - *Given* 用户完成练习反馈 `HELPFUL`，*When* 更新后验，*Then* $\alpha \leftarrow \alpha + 1$；若反馈 `UNHELPFUL` 则 $\beta \leftarrow \beta + 1$ 且施加软性时间衰减（$\lambda_{decay} = 0.1$/天）；若反馈 `NOT_NOW` 不予扣分。每次只更新主导谱系（`distress_vector` 最大项所属谱系）的后验。
   - *Given* 探索决策，*When* $Arousal > 0.60$，*Then* 强制仅允许最高确定性推荐（Exploit Only），严禁探索方差。
 - `CHANG-04` **7 天情绪周记年鉴聚合**：
   - *Given* 上次周记满 7 天且活跃，*When* 以被动角标温和提示并征询用户同意，*Then* 基于电量走势与自评数据生成散文 Markdown 周记卡片；若当周触发过 L2/L3 则转为庄重守护语态。
@@ -398,7 +400,7 @@ flowchart TD
 3. **急性应激障碍与 PTSD (`SIT-06-01`)**：严禁非专业监护下的创伤暴露与细节回溯（方法 04/05/26/27/65/66），仅允许 5-4-3-2-1 感官着陆（`GROUNDING_54321`）与安全岛意象锚定（`SAFE_PLACE_CONTAINER`），引导创伤专科就诊；
 4. **解离状态与人格解体 (`SIT-06-05`)**：解离发生时前额叶情绪刹车死锁，严禁进行抽象反思或认知辨析（`ABSTRACT_EXISTENTIAL_INQUIRY` 与方法 01），仅允许轻柔本体感觉着陆（`GROUNDING_54321` 与 `ENVIRONMENT_PHYSICAL_ANCHOR`），强力提示精神专科；
 5. **神经性厌食症 (`SIT-08-04`)**：精神障碍中全因死亡率最高病种；严禁讨论体重与节食技巧（`DIET_WEIGHT_MANAGEMENT`），**严禁冷水浸面 TIPP（`12:tipp_cold_water`，防诱发心律失常）**与过度控制（方法 13），仅做无条件情感在场守候（`EMOTIONAL_HOLDING_PRESENCE`），提示综合医院营养科与精神专科联合诊疗；
-6. **边缘型情绪失调伴自伤倾向 (`SIT-09-01`)**：伴随高频冲动性自伤自毁风险；提供无评判安全在场（`EMOTIONAL_HOLDING_PRESENCE`）与 DBT TIPP 安全改良变体（`DBT_TIPP_MODIFIED_BREATHING`，慢节奏呼吸与肌肉紧绷释放，**显式禁用冷水面部浸没刺激 `12:tipp_cold_water`**），绝不探查创伤细节（`TRAUMA_DETAIL_EXPLORATION`），引导建立三方现实监护网；
+6. **边缘型情绪失调伴自伤倾向 (`SIT-09-01`)**：伴随高频冲动性自伤自毁风险；提供无评判安全在场（`EMOTIONAL_HOLDING_PRESENCE`）与 DBT TIPP 安全改良变体（慢节奏呼吸 `DBT_TIPP_MODIFIED_BREATHING` 与渐进肌肉紧绷释放 `29:pmr_release`，**显式禁用冷水面部浸没刺激 `12:tipp_cold_water`**），绝不探查创伤细节（`TRAUMA_DETAIL_EXPLORATION`），引导建立三方现实监护网；
 7. **成瘾物质依赖 (`SIT-10-04`)**：涉及中枢神经化学依赖与躯体戒断综合征致命风险，严禁任何自行戒断指导（`SELF_DETOX_GUIDANCE` 与方法 10），仅提示戒断风险警示（`WITHDRAWAL_RISK_WARNING`）并强制转介成瘾医学科。
 
 > [!NOTE]
@@ -436,9 +438,9 @@ flowchart TD
 1. **触发场景**：下午 15:00，用户在工位面对死线紧绷：“被领导催进度，心慌得要命，但周围都是同事没办法做大动作”；
 2. **系统流转**：
    - `M.I.Y.I.` 测定高唤醒（$0.82$），检索到用户曾记录过整理桌面带来掌控感；
-   - `C.O.L.B.O.` 判定在 $S_{explore}$ 状态下唤醒度达到 0.82 $\ge 0.80$，激活躯体稳定化在场白名单通道；锁定生理性叹息与触觉沉降（均为工位隐形兼容方法）；
+   - `C.O.L.B.O.` 判定在 $S_{explore}$ 状态下唤醒度达到 0.82 $\ge 0.80$，激活躯体稳定化在场白名单通道；锁定 5-4-3-2-1 感官着陆（方法 30 的子动作 `30:grounding`，工位隐形兼容）；
    - `C.H.A.N.G.` 激活 AI 增强模式，将动作与工位物理情境缝合；
-   - `W.I.L.L.O.W.` 交付隐形指令：“*在工位上不用站起来，也不会被任何人注意到：我们试着把双脚稳稳踩在地上，感受鞋底接触地面的承托力；然后悄悄用鼻子深吸两次、再从嘴角极缓慢吐出长气。我们花 60 秒给大脑降个温，这一步谁也看不出来。*”
+   - `W.I.L.L.O.W.` 交付隐形指令：“*在工位上不用站起来，也不会被任何人注意到：我们试着把双脚稳稳踩在地上，感受鞋底接触地面的承托力；然后悄悄看一看身边的 5 样东西，再用指尖摸一摸桌面和衣袖。我们花 60 秒给大脑降个温，这一步谁也看不出来。*”
 
 ### SOP 4：微步承诺与无负罪感锦囊 SOP (Zero-Guilt Shelving)
 1. **触发场景**：第三阶段系统推荐了 5 分钟启动法，用户犹豫：“我今天真的提不起劲做这个”；
@@ -498,7 +500,7 @@ flowchart TD
 | **Q-1** | 离线小模型端侧量化方案选型 (ONNX Runtime vs GGUF)。 | 推荐优先选用 ONNX Runtime INT8 量化，兼容 macOS 与 Linux CPU 推理。 | ADR-004 (待建) |
 | **Q-2** | 城市危机热线更新频率与离线签名下发机制。 | 统一由 `olivia/data/resources/hotlines/` 分层目录管理，由发布工具生成 Ed25519 签名包 `hotlines.bundle`（每季度人工核验并重新签发，客户端防呆期 180 天）。 | ADR-007 / H-07 |
 | **Q-3** | 7 天情绪周记的推送交互：主动弹出 vs 被动角标提示。 | 推荐被动角标提示（“这周的记忆已打包好，准备好时随时翻看”），杜绝压迫感。 | ADR-008 (待建) |
-| **Q-4** | 纯倾听锁定状态（Pure Listening Lock）的解除交互规范。 | 用户输入“我想听听你的建议/我们下一步该怎么做”时，自动平滑解除。 | COLBO-02 |
+| **Q-4** | 纯倾听锁定状态（Pure Listening Lock）的解除交互规范。 | 开启：用户明确说“只想说说/不要建议”一类话时开启；解除：用户输入“我想听听你的建议/我们下一步该怎么做”时，自动平滑解除。 | COLBO-02 |
 | **Q-5** | 是否在后续版本试点 16–17 岁青少年监护人知情同意流程。 | 当前版本严格维持 18+ (NG-3)，待获得国家法务与伦理审查专项批复后再评估。 | NG-3 |
 | **Q-6** | 情绪周记散文风格与四维人格光谱的深度对齐矩阵。 | 周记叙事风格严格继承 PersonaProfile 中的人格特征参数。 | WILLOW-02 |
 | **Q-7** | 长期历史记忆的遗忘衰减时间常数设定。 | 基础时间常数设为 $\tau = 7 \text{ 天}$（实际半衰期约为 $4.85\text{ 天}$），带显著性标记的闪光事件设为永久保护。 | MIYI-04 |

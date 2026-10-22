@@ -164,8 +164,8 @@ Type SessionState:
     current_stage: HelpStage            # S_ready | S_explore | S_clarify | S_empower | S_haven | S_closing | S_crisis
     global_turn_count: Integer          # 会话全局轮次累计计数器
     stage_turn_count: Integer           # 当前阶段内连续轮次计数器
-    pure_listening_locked: Boolean      # 纯倾听硬锁标识 (True 则阻断向后跃迁)
-    social_battery: Float               # 本次会话的心力电量 [0.0, 1.0] (默认 1.0)
+    pure_listening_locked: Boolean      # 纯倾听硬锁标识 (True 则阻断向后跃迁；用户明确说“只想说说/不要建议”一类话时开启)
+    social_battery: Float               # 本次会话的心力电量 [0.0, 1.0] (电量前缀跨轮保留，直到下一次前缀或会话结束；从未给出时默认 0.6)
     current_risk_level: CrisisLevel     # L0 | L1 | L2 | L3
     consecutive_l1_count: Integer       # 连续 L1 风险轮次计数
     user_shelved_actions: List<MethodKey> # 本次会话用户置入锦囊待执行的方法
@@ -192,7 +192,7 @@ Type PerceptionContext:
 ### 2.4 临床干预动作骨架模型 (`ActionSkeleton`)
 ```
 Type ActionSkeleton:
-    method_id: MethodKey                # 方法唯一枚举标识 (如 "01_cbt_thought_record")
+    method_id: MethodKey                # 方法唯一枚举标识，沿用 taxonomy 形式 (方法如 "01"，子动作如 "12:tipp_breathing")
     safety_grade: SafetyGrade           # GRADE_A (自主微练习) | GRADE_B (科普重塑) | GRADE_C (专业转介)
     clinical_rationale: String          # 选定该方法的机制依据
     core_action_steps: List<String>     # 规范化的 2-3 个核心微动作步骤
@@ -273,14 +273,20 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 | :--- | :--- | :---: | :--- |
 | **任意非危机状态** | 危机检测复核判定为 L2 或 L3 级别 | **$S_{crisis}$** | **最高安全熔断**：瞬间中断正常流程，由 GEO 模块呈现属地化危机干预与急救卡片 |
 | **任意非危机状态** | 两阶段危机复核通过 且 `social_battery` $\le 0.20$ 且 当前非 $S_{crisis}$ | **$S_{haven}$** | 冻结提问，输出极低字数沉静陪伴，仅做在场确认与安全守候（严禁危机逃逸） |
-| **$S_{explore}$** | 用户显式要求方法 (JTBD 4) 且 通过临床红线硬掩码 | **$S_{empower}$** | 尊重用户自主掌控权，动态跳过理清阶段直达赋能推荐 |
+| **任意非危机状态** | 用户显式要求方法 (JTBD 4) | **$S_{empower}$** | 尊重用户自主掌控权，动态跳过理清阶段直达赋能推荐；候选仍经红线掩码与唤醒检查，`SILENT_ANCHOR` 人格同样适用；掩码后可用集合为空时给 $m_0$ + 转介卡 |
 | **$S_{explore}$** | `stage_turn_count` $\ge 2$ 且 $Arousal < 0.80$ 且 无纯倾听锁 且 `social_battery` $\ge 0.40$ | **$S_{clarify}$** | 推进至理清阶段，探查图式与萨提亚深层渴望 |
-| **$S_{clarify}$** | (`CoreBeliefIdentified` == True OR 用户要求 OR 轮次达5轮) 且 无纯倾听锁 且 非静默人格 且 `social_battery` $\ge 0.40$ | **$S_{empower}$** | 推进至循证赋能阶段，推荐 32 种 A 级微干预动作骨架 |
+| **$S_{clarify}$** | (`CoreBeliefIdentified` == True OR 用户要求 OR 当前阶段内轮次达5轮) 且 无纯倾听锁 且 非静默人格 且 `social_battery` $\ge 0.40$ | **$S_{empower}$** | 推进至循证赋能阶段，推荐 32 种 A 级微干预动作骨架 |
 | **$S_{empower}$** | 用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或 表达反感 | **$S_{explore}$** | **紧急安全回退**：撤回认知方法，激活稳定化通道在场承接 (生理叹息/感官着陆) |
-| **$S_{empower}$** | 用户完成微练习 或 选择存入锦囊 (`NOT_NOW`) | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
+| **$S_{empower}$** | 用户发出 `/unhelpful` (`UNHELPFUL`) | **$S_{explore}$** | 记录 `UNHELPFUL`，按 §6.3 对该方法施加软衰减，回到倾听 |
+| **$S_{empower}$** | 用户发出 `/done` (完成微练习) 或 `/not-now` (存入锦囊，`NOT_NOW`) | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
 | **$S_{haven}$** | 用户心力恢复 (`social_battery` $\ge 0.35$) 或 发起新探索议题 | **$S_{explore}$** | 平滑退出避风港模式，恢复常规双向探索对话 |
 | **$S_{closing}$** | 实施意向确认完成 或 会话自然关闭 | **$S_{ready}$** | **结束状态出口**：原子写入会话摘要与经历账本，就绪等待下一次会话 |
 | **$S_{crisis}$** | 用户显式确认安全（`SafetyConfirmEvent`）且之后连续 N 轮处于安全区间 (L2: 2 轮, L3: 3 轮) | **$S_{explore}$** | **危机状态出口**：唯一合法出口，解除危机熔断，恢复温和陪伴，保留关怀标记 |
+
+补充说明：
+- **轮次**：`stage_turn_count` 与“5轮”都指当前阶段内的轮次，进入新阶段时重新计数。
+- **ΔArousal 基线**：$\Delta Arousal$ 以进入当前阶段时的唤醒度为基线计算。
+- **直接索要方法**：任何非危机状态均可触发（$S_{crisis}$ 中不响应）；候选动作仍经红线掩码与唤醒检查；`SILENT_ANCHOR` 人格也可由此进入 $S_{empower}$；掩码后可用集合为空时给 $m_0$（`EMOTIONAL_HOLDING_PRESENCE`）并附转介卡。
 
 ### 4.3 32 种 A 级微干预编排、禁忌症硬掩码与只陪伴基线 ($m_0$)
 进入 $S_{empower}$ 后，系统求解最优微干预：
@@ -302,7 +308,8 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 2. **S_explore 稳定化微干预 ID 白名单 (`explore_stabilization_whitelist`)**：
    当用户处于 $S_{explore}$ 探索阶段且 $Arousal \ge 0.80$ 时，COLBO-02 原则上禁止推荐认知方法，但破例放行自下而上稳定化白名单方法：
    `["28", "29", "30:grounding", "12:tipp_breathing"]`（生理性叹息、渐进式肌肉放松、5-4-3-2-1 感官着陆、DBT TIPP 节奏呼吸）。
-3. **显式只陪伴基线 ($m_0 = \text{COMPANION\_ONLY}$)**：将“纯粹在场陪伴守候”作为正式候选方法纳入效用评分。面对延长哀伤（`SIT-06-04`）或重大丧失无力时，$m_0$ 获得高基础分，避免盲目推送行动方案。
+   $Arousal \ge 0.85$ 时，方法 28 因自身禁忌 `ACUTE_AROUSAL_OVERLOAD` 被排除，仍放行 `29`、`30:grounding` 与 `12:tipp_breathing`。
+3. **显式只陪伴基线 ($m_0$ = `EMOTIONAL_HOLDING_PRESENCE`)**：$m_0$ 不参与 Thompson 采样，由固定规则选用：可用集合为空、处于避风港模式，或识别为延长哀伤（`SIT-06-04`）、极度虚无（`SIT-11-01`）时直接选用，此时享有最高优先级，避免盲目推送行动方案。
 4. **谱系映射与 Thompson 采样维度键**：
    困扰 11 大谱系（两位数字 `"01"` 至 `"11"`）与 11 种英文大写枚举（`ANXIETY_PANIC` 至 `EXISTENTIAL_MEANING`）通过 `distress_category_mapping` 保持 1:1 双向映射。Thompson 采样模型使用两位数字字符串 `"01"` 至 `"11"` 作为困扰维度 $d$ 的标准索引键。
 5. **子动作登记表 (Action Registry) 与禁用标签展开**：
@@ -394,6 +401,8 @@ C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互
 
 $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 
+每次反馈只更新主导谱系 $d$ 的后验，即 `distress_vector` 中得分最高的一项所属的谱系。
+
 - **临床证据等级先验映射**：
   - Level I（跨诊断黄金循证，如 CBT, ACT, MCT）: $\alpha_0 = 4.0, \ \beta_0 = 1.0$；
   - Level II（良好实证支持，如 BA, CFT, MSC）: $\alpha_0 = 3.0, \ \beta_0 = 1.0$；
@@ -403,7 +412,7 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
   - 用户反馈 `NOT_NOW`（存入锦囊）：保持当前参数不变，零负向扣分；
   - 用户反馈 `UNHELPFUL`（不适用/排斥）：$\beta_{m, d} \leftarrow \beta_{m, d} + 1.0$；采用软性时间衰减降权函数：
     $$\beta_{eff} = 1.0 + (\beta_{m, d} - 1.0) \cdot \exp\left(-\lambda_{decay} \Delta t\right)$$
-    随时间推移自动衰减恢复探索概率，并在透明档案中供用户查阅与一键解除；
+    其中 $\lambda_{decay} = 0.1$/天（`taxonomy.yaml` 的 `thompson_sampling_index.lambda_decay_per_day`），$\Delta t$ 以天计；随时间推移自动衰减恢复探索概率，并在透明档案中供用户查阅与一键解除；
 - **探索安全门禁 (Exploration Safety Gating)**：
   - 仅在用户生理唤醒度 $Arousal \le 0.60$ 且候选池严格处于 32 种 Grade A 方法时，允许利用后验方差进行探索性采样；
   - 当 $Arousal > 0.60$ 时，采样方差强制归零，系统强制退化为最高确定性均值策略（Exploit Only）或自下而上躯体稳定化协议。
@@ -463,11 +472,12 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 - **双头预测最高安全仲裁规则**：
   $$\text{RiskLevel} = \max(L_{cls}, L_{score})$$
   若初步定级为 L3 但缺乏明确计划、工具或时限证据 (`HasPlanMeansOrImminentThreat == False`)，安全降级为高危 L2 处理，防止误报 110/911。
+  计划证据默认只来自 Stage 1 线索。`SafetyScreen(..., model_plan_evidence=False)` 是唯一开关：只有设为 `True` 时，注入的感知模型才可提供计划证据；该开关出厂关闭，待独立评估集通过后再打开。
 - **危机状态机安全出口闭环准则**：
   处于 $S_{crisis}$ 状态时，严禁因用户单轮低电量输入（如 `[5%] 好累`）直接绕过安全确认跳转至 $S_{haven}$。退出危机态的唯一合法路径为**双重确认安全机制**：
   1. 用户明确确认安全（`SafetyConfirmEvent`，如明确表达“我已经联系上朋友了”、“我现在安全了，想聊点别的”）；**并且**
-  2. 确认之后连续 $N$ 轮会话输入经两阶段危机筛查均处于安全区间（$L0/L1$）（依初始危机等级：L2 需连续 2 轮安全，L3 需连续 3 轮安全）。
-  在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。
+  2. 确认之后连续 $N$ 轮会话输入经两阶段危机筛查均为安全轮（依初始危机等级：L2 需连续 2 轮安全，L3 需连续 3 轮安全）。确认之后只有 L0 轮计为安全轮；L1 轮暂停计数（既不计入，也不清零）；L2/L3 轮清零，并需要用户重新确认安全。
+  在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。危机态中每轮回复都重复呈现危机卡的精简版；跨会话的“关怀标记”存入用户画像，供下次会话启动时做轻度安全问候。
 
 ### 8.3 属地化与全球危机援助资源解析流水线 (GEO-01 ~ GEO-08)
 - **国家级基准线**：全国统一心理援助热线 `12356`（国家卫生健康委统一热线，官方承诺每日服务不少于 18 小时，各地实际服务时段依属地配置不同）；
@@ -482,7 +492,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 3. **急性应激障碍与 PTSD (`SIT-06-01`)**：允许动作 `[GROUNDING_54321, SAFE_PLACE_CONTAINER, REFERRAL_CARD_PRESENTATION]`。严禁 `"04"` (ERP), `"05"` (系统脱敏), `"26"` (NET), `"27"` (TF-CBT), `"65"` (表达性书写), `"66"` (IRT 梦魇重演)；
 4. **解离状态与人格解体 (`SIT-06-05`)**：允许动作 `[GROUNDING_54321, ENVIRONMENT_PHYSICAL_ANCHOR, REFERRAL_CARD_PRESENTATION]`。严禁 `"ABSTRACT_EXISTENTIAL_INQUIRY"`, `"01"` (CBT 认知重构)；
 5. **神经性厌食症 (`SIT-08-04`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, REFERRAL_CARD_PRESENTATION]`。严禁 `"12:tipp_cold_water"`, `"13"` (RO-DBT), `"DIET_WEIGHT_MANAGEMENT"`；
-6. **边缘型情绪失调伴自伤倾向 (`SIT-09-01`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, DBT_TIPP_MODIFIED_BREATHING, REFERRAL_CARD_PRESENTATION]`。严禁 `"12:tipp_cold_water"`, `"TRAUMA_DETAIL_EXPLORATION"`；
+6. **边缘型情绪失调伴自伤倾向 (`SIT-09-01`)**：允许动作 `[EMOTIONAL_HOLDING_PRESENCE, DBT_TIPP_MODIFIED_BREATHING, 29:pmr_release, REFERRAL_CARD_PRESENTATION]`。严禁 `"12:tipp_cold_water"`, `"TRAUMA_DETAIL_EXPLORATION"`；
 7. **成瘾物质依赖 (`SIT-10-04`)**：允许动作 `[WITHDRAWAL_RISK_WARNING, REFERRAL_CARD_PRESENTATION]`。严禁 `"SELF_DETOX_GUIDANCE"`, `"10"` (HRT 习惯逆转)。
 
 > [!NOTE]
@@ -528,7 +538,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 ║ [情感极性] -0.60 (负向)  [生理唤醒度] 0.58 (中等唤醒)  [细粒度情绪] 焦虑心慌 (anxiety)  ║
 ║ [11大谱系] 01_焦虑与惊恐 (SIT-01-01 GAD): 0.82 | 04_完美主义苛责: 0.70                 ║
 ║ [萨提亚冰山] 姿态: 超理智型  ==>  核心渴望: 安全感与秩序感 (SAFETY)                     ║
-║ [临床动作骨架] 01_cbt_decatastrophizing (A级微动作, 步骤: 3步, 禁忌症校验通过)        ║
+║ [临床动作骨架] 01 (CBT 认知行为疗法) (A级微动作, 步骤: 3步, 禁忌症校验通过)           ║
 ║ [本地校验器] Method ID & Steps 未改动, 无诊断标签, 校验通过 (TTFT: 820ms)             ║
 ║ [安全红线] 风险等级: L0 (安全) | 危机置信度: 0.01 (安全)                               ║
 ╚════════════════════════════════════════════════════════════════════════════════════════╝
@@ -547,7 +557,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` [已实现 / P0] | `load_taxonomy(path: Path \| None = None) -> Taxonomy`; `Taxonomy.threshold(dotted_path) -> float`, `.values(name) -> tuple[str, ...]`, `.canonical_label(kind, label) -> str`, `.methods()`, `.grade_a_ids()`, `.action_registry()`, `.canonical_action_id(action_id) -> str`, `.red_flags()`, `.banned_tag_methods(tag)`, `.is_banned_tag(entry)`, `.stabilization_whitelist()`, `.crisis_level_for_score(score) -> CrisisLevel`, `.crisis_exit_safe_turns(level) -> int`; `TaxonomyError`, `UnknownActionError` |
 | **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
 | **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/engine.py` [待实现 / P3] | `advance_stage(state: SessionState, event: Event) -> HelpStage` |
-| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/engine.py` [待实现 / P3] | `filter_and_solve_skeleton(candidates, red_flags) -> ActionSkeleton` |
+| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [待实现 / P3] | `solve(candidates, active_flags, contraindications) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 可选转介卡）；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
 | **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7] | `validate_ai_response(response, skeleton) -> bool` |
 | **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` [待实现 / P2] | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
 | **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py` [待实现 / P2] | `resolve(region, now, mode, store, index, tz, build_date) -> ResourceCard` |
@@ -555,11 +565,11 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` [待实现 / P2] | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
 | **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/hotline_rules.py` [待实现 / P2] | `R8 境外号码硬隔离`, `R31 未知属地处理`, `FALLBACK_IDS` |
 | **§ 8.4 转介红线识别** | 7 处强制转介红线的文本识别与会话累积 | `olivia/core/safety/red_flags.py` [已实现 / P1] | `RedFlagDetector(tax: Taxonomy, lexicons: SafetyLexicons)`: `.detect(text: str) -> frozenset[str]`, `.profile_flags(clinical_history: Iterable[str]) -> frozenset[str]`; `SessionRedFlags(detector: RedFlagDetector, clinical_history: Iterable[str] = ())`: `.active -> frozenset[str]`, `.observe(text: str) -> frozenset[str]`; `UnknownRedFlagError` |
-| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/safety/red_flags.py` [待实现 / P3] | `apply_red_flag_mask(candidate_pool, active_flags) -> SafePool` |
+| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/methods/solver.py` [待实现 / P3] | `apply_red_flag_mask(candidate_pool, active_flags) -> frozenset[str]`（由 `solve` 调用） |
 | **§ 8.1 输入归一化与感知截断** | 风险匹配前的文本折叠（NFKC、大小写、繁体转简体、弯引号转直引号、去除空白与不可见字符）与感知窗口截取 | `olivia/core/safety/normalize.py` [已实现 / P1] | `normalize(text: str) -> str`, `clip_for_perception(text: str) -> str`, `PERCEPTION_HEAD = 128`, `PERCEPTION_TAIL = 256` |
 | **§ 8.1 多模式短语匹配** | 单遍扫描的 Aho-Corasick 短语匹配 | `olivia/core/safety/matcher.py` [已实现 / P1] | `PhraseMatcher(phrases: Mapping[str, str])`: `.find_all(text: str) -> list[Match]`; `Match(key: str, start: int, end: int)` |
 | **§ 8.1 安全词表加载** | 危机与红线词表的加载与校验 | `olivia/core/safety/lexicon.py` [已实现 / P1] | `load_safety_lexicons(tax: Taxonomy, directory: Path \| None = None) -> SafetyLexicons`; `SafetyLexicons.cues(section: RiskSection) -> tuple[RiskCue, ...]`; `RiskCue`, `RedFlagCue`, `LexiconError` |
-| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None)`: `.assess(text: str) -> CrisisAssessment`; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
+| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None, model_plan_evidence: bool = False)`: `.assess(text: str) -> CrisisAssessment`（`model_plan_evidence` 见 §8.2，出厂关闭）; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
 | **§ 8.2 危机态进出追踪** | 会话级危机进入、升级与退出判定 | `olivia/core/safety/tracker.py` [已实现 / P1] | `CrisisTracker(tax: Taxonomy, lexicons: SafetyLexicons)`: `.observe(assessment: CrisisAssessment, text: str, valence: float \| None = None) -> CrisisStatus`; `CrisisStatus` |
 
 本系统设计规范全面确立了 **O.L.I.V.I.A.** 四位一体的工程架构标准，具备高工业级鲁棒性与严谨临床心理伦理双重标准。

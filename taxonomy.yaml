@@ -76,7 +76,7 @@ colbo:
       name: "双翼协同 (Bilateral Synergy)"
       focus: "当高唤醒伴随深层内耗时，先由左翼稳定化平抑交感神经过载，待唤醒度降至安全区间后，无缝桥接右翼认知重构与微行为破冰"
   explore_stabilization_whitelist:
-    description: "S_explore 状态下高唤醒 (Arousal >= 0.80) 豁免放行的自下而上稳定化微干预 ID 白名单"
+    description: "S_explore 状态下高唤醒 (Arousal >= 0.80) 豁免放行的自下而上稳定化微干预 ID 白名单。Arousal >= 0.85 时，方法 28 因自身禁忌 ACUTE_AROUSAL_OVERLOAD 被排除，仍放行 29、30:grounding 与 12:tipp_breathing。"
     method_ids:
       - "28"              # 生理性叹息 (Physiological Sigh)
       - "29"              # 渐进式肌肉放松 (PMR)
@@ -163,7 +163,7 @@ emotion_aliases:
   irritability: "anger"
 
 # ------------------------------------------------------------------------------
-# 4. 认知扭曲枚举体系 (Cognitive Distortions - 8 Core Beck & Burns + Aliases)
+# 4. 认知扭曲枚举体系 (Cognitive Distortions - 9 Core Beck & Burns + Aliases)
 # ------------------------------------------------------------------------------
 cognitive_distortions:
   - id: "ALL_OR_NOTHING"
@@ -717,7 +717,7 @@ contraindication_enums:
 method_safety_tiers:
   grade_A:
     definition: "可由用户在无督导下进行自主微练习 (Self-Help Micro-Practices)"
-    action_type: "AUTONOMOUS_PRACTICE"
+    action_type: "MICRO_EXERCISE"
     count: 32
     methods:
       - id: "01"
@@ -959,6 +959,8 @@ method_safety_tiers:
         duration_minutes: 4
         stealth_workplace_compatible: false
         clinical_rationale: "利用肌纤维先主动收紧后骤然释放的神经反馈诱导深层躯体松弛。"
+        sub_actions:
+          - "29:pmr_release"
         core_action_steps:
           - "全力收紧双拳并耸肩持续 5-7 秒，清晰体验躯体紧绷张力"
           - "突然彻底卸力释放，全神贯注体验 15 秒肌肉松弛下沉发热感"
@@ -1403,6 +1405,21 @@ action_registry:
       - "RED_FLAG_BPD_NSSI"
       - "CARDIORESPIRATORY_INSTABILITY"
 
+  - id: "29:pmr_release"
+    aliases: []
+    name_zh: "渐进肌肉紧绷释放"
+    name_en: "Progressive Muscle Relaxation Tension Release"
+    parent_method_id: "29"
+    action_type: "STABILIZATION"
+    duration_minutes: 4
+    stealth_workplace_compatible: false
+    clinical_rationale: "利用肌纤维先主动收紧后骤然释放的神经反馈诱导深层躯体松弛。"
+    core_action_steps:
+      - "全力收紧双拳并耸肩持续 5-7 秒，清晰体验躯体紧绷张力"
+      - "突然彻底卸力释放，全神贯注体验 15 秒肌肉松弛下沉发热感"
+    contraindications:
+      - "CARDIORESPIRATORY_INSTABILITY"
+
   - id: "30:grounding"
     aliases:
       - "GROUNDING_54321"
@@ -1682,6 +1699,7 @@ clinical_red_flags:
       allowed_actions:
         - "EMOTIONAL_HOLDING_PRESENCE"
         - "DBT_TIPP_MODIFIED_BREATHING"
+        - "29:pmr_release"
         - "REFERRAL_CARD_PRESENTATION"
       banned_methods:
         - "12:tipp_cold_water"
@@ -1800,6 +1818,7 @@ distress_category_mapping:
 thompson_sampling_index:
   dimension: "d"
   standard_key: "spectrum_id"  # 两位数字编号 "01" 至 "11"
+  lambda_decay_per_day: 0.1    # UNHELPFUL 软衰减速率 λ_decay (每天)：β_eff = 1 + (β - 1) · exp(-λ_decay · Δt)，Δt 以天计
   description: "Thompson 采样状态维护使用两位数字谱系编号 '01' 至 '11' 作为困扰维度 d 的标准键，与 distress_category_mapping 保持无损互转。"
 
 late_night:
