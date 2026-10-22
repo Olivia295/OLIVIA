@@ -1,0 +1,368 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）
+#
+# W.I.L.L.O.W. 言语重塑词表（PRD §7.4 WILLOW-01/04、§9.3；SDD §5.1–5.3）。
+# 所有条目都是字面子串，不是正则。约定的匹配语义（tests/language/test_willow_data.py 中有参考实现）：
+#   - 从左到右扫描，同一位置取最长匹配，替换后不重叠、不回扫（替换结果不再参与匹配）；
+#   - 运行顺序：diagnosis_terms 门禁 → depathologize → didactic_rewrites；
+#   - protected_terms 中的子串在替换前整体遮蔽，任何替换都不能改动它们（测试同时保证即便不遮蔽也不会改动）。
+version: 1
+
+# WILLOW-01：说教/命令语气 → 温和邀请。
+# 标注“守卫”的条目把“应该/必须”的推测或否定用法先行接住，避免被后面的短模式误改。
+didactic_rewrites:
+  # 守卫：推测语气的“你应该……”（“你应该很累吧”）不是命令
+  - {pattern: "你应该已经", rewrite: "你可能已经"}
+  - {pattern: "你应该是", rewrite: "你可能是"}
+  - {pattern: "你应该很", rewrite: "你可能很"}
+  - {pattern: "你应该挺", rewrite: "你可能挺"}
+  - {pattern: "你应该会", rewrite: "你可能会"}
+  # 命令语气
+  - {pattern: "你应该学会", rewrite: "或许可以慢慢学着"}
+  - {pattern: "你应该要", rewrite: "或许可以试着"}
+  - {pattern: "你就应该", rewrite: "或许可以"}
+  - {pattern: "你应该", rewrite: "或许可以试试"}
+  - {pattern: "你应当", rewrite: "或许可以试试"}
+  - {pattern: "你不应该", rewrite: "或许不必"}
+  - {pattern: "你不该", rewrite: "或许不必"}
+  # 守卫：否定的“必须”
+  - {pattern: "不是必须的", rewrite: "并不强求"}
+  - {pattern: "不是必须要", rewrite: "不一定要"}
+  - {pattern: "不是必须", rewrite: "不一定要"}
+  - {pattern: "并非必须", rewrite: "不一定要"}
+  - {pattern: "是必须的", rewrite: "很重要"}
+  - {pattern: "你必须要", rewrite: "如果愿意，你可以"}
+  - {pattern: "你必须", rewrite: "如果愿意，你可以"}
+  - {pattern: "我们必须", rewrite: "我们可以"}
+  - {pattern: "必须要", rewrite: "可以试着"}
+  - {pattern: "必须得", rewrite: "可以试着"}
+  - {pattern: "必须", rewrite: "可以试着"}
+  - {pattern: "你一定要", rewrite: "如果可以，不妨"}
+  - {pattern: "你一定得", rewrite: "如果可以，不妨"}
+  - {pattern: "你得先", rewrite: "或许可以先"}
+  - {pattern: "千万不要", rewrite: "可以试着不"}
+  - {pattern: "千万别", rewrite: "可以试着不"}
+  - {pattern: "不要再", rewrite: "可以试着不再"}
+  - {pattern: "不许", rewrite: "先不急着"}
+  - {pattern: "请务必", rewrite: "如果可以，请"}
+  - {pattern: "务必要", rewrite: "尽量"}
+  - {pattern: "务必", rewrite: "尽量"}
+  - {pattern: "赶紧", rewrite: "可以慢慢"}
+  - {pattern: "你最好还是", rewrite: "或许可以"}
+  - {pattern: "你最好先", rewrite: "或许可以先"}
+  - {pattern: "你早该", rewrite: "现在也来得及"}
+  - {pattern: "你怎么还", rewrite: "你还"}
+  - {pattern: "你只需要", rewrite: "可以先试着"}
+  - {pattern: "你需要学会", rewrite: "或许可以慢慢学着"}
+  - {pattern: "你要学会", rewrite: "或许可以慢慢学着"}
+  - {pattern: "你要明白", rewrite: "也许可以留意到"}
+  - {pattern: "你要知道", rewrite: "想和你说"}
+  - {pattern: "你要记住", rewrite: "希望你记得"}
+  - {pattern: "你要做的是", rewrite: "可以试试的是"}
+  - {pattern: "正确的做法是", rewrite: "一个可以试试的方式是"}
+  - {pattern: "我建议你", rewrite: "也许可以试试"}
+  - {pattern: "我劝你", rewrite: "如果愿意，可以"}
+  - {pattern: "让我告诉你", rewrite: "想和你分享"}
+  - {pattern: "听我的，", rewrite: "我有个小想法，"}
+  # 劝诫式安慰 → 允许感受
+  - {pattern: "你要坚强点", rewrite: "累了也可以歇一歇"}
+  - {pattern: "你要坚强", rewrite: "你不用一直坚强"}
+  - {pattern: "要坚强", rewrite: "不用一直坚强"}
+  - {pattern: "坚强一点", rewrite: "累了也可以歇一歇"}
+  - {pattern: "坚强点", rewrite: "累了也可以歇一歇"}
+  - {pattern: "你要振作起来", rewrite: "慢慢缓过来就好"}
+  - {pattern: "振作起来", rewrite: "慢慢缓过来就好"}
+  - {pattern: "想开一点", rewrite: "给自己一点时间"}
+  - {pattern: "想开点", rewrite: "给自己一点时间"}
+  - {pattern: "别想太多了", rewrite: "想得多也没关系"}
+  - {pattern: "别想太多", rewrite: "想得多也没关系"}
+  - {pattern: "别难过", rewrite: "难过也没关系"}
+  - {pattern: "别哭了", rewrite: "想哭就哭吧"}
+  - {pattern: "别哭", rewrite: "想哭就哭吧"}
+  - {pattern: "不要哭", rewrite: "想哭就哭吧"}
+  # 公文排比（SDD §5.1 V_didactic）；只收带逗号的序数用法，裸“首先/其次”留给生成侧避免
+  - {pattern: "首先要做的是", rewrite: "可以先试着"}
+  - {pattern: "首先你要", rewrite: "你可以先"}
+  - {pattern: "首先我们", rewrite: "我们可以先"}
+  - {pattern: "首先要", rewrite: "可以先"}
+  - {pattern: "首先，", rewrite: "如果愿意，可以先"}
+  - {pattern: "其次，", rewrite: "之后，也可以"}
+  - {pattern: "再次，", rewrite: "再往后，也可以"}
+  - {pattern: "总而言之，", rewrite: "回头看看，"}
+  - {pattern: "综上所述，", rewrite: "回头看看，"}
+  - {pattern: "总的来说，", rewrite: "回头看看，"}
+  - {pattern: "总之，", rewrite: "回头看看，"}
+  - {pattern: "毫无疑问，", rewrite: "我隐约觉得，"}
+  - {pattern: "显而易见，", rewrite: "也许，"}
+
+# §9.3 / 诊断边界：陪伴者绝不对用户说出的诊断标签与诊断语句。命中即整句拦截重写（不做替换）。
+# 匹配前对文本做 casefold，英文条目按小写比较。刻意不收裸词“抑郁/焦虑/障碍/诊断”：
+# 它们是日常说法或出现在方法名中（如“情绪障碍跨诊断统一方案”），测试保证本表不命中任何 protected_terms。
+diagnosis_terms:
+  # 诊断语句
+  - "你患有"
+  - "你患了"
+  - "患有"
+  - "患上了"
+  - "确诊"
+  - "诊断为"
+  - "被诊断"
+  - "诊断结果"
+  - "你有病"
+  - "你这是病"
+  - "病情"
+  - "病史"
+  # 焦虑谱系
+  - "焦虑症"
+  - "焦虑障碍"
+  - "广泛性焦虑"
+  - "惊恐障碍"
+  - "恐惧症"
+  - "社交焦虑障碍"
+  - "疑病症"
+  # 抑郁与双相
+  - "抑郁症"
+  - "重度抑郁"
+  - "重性抑郁"
+  - "抑郁发作"
+  - "抑郁倾向"
+  - "恶劣心境"
+  - "微笑型抑郁"
+  - "产后抑郁"
+  - "围产期抑郁"
+  - "双相"
+  - "躁郁"
+  - "躁狂"
+  - "环性心境"
+  # 强迫与相关
+  - "强迫症"
+  - "强迫障碍"
+  - "躯体变形障碍"
+  - "囤积障碍"
+  # 创伤与解离
+  - "创伤后应激"
+  - "急性应激障碍"
+  - "适应障碍"
+  - "延长哀伤障碍"
+  - "解离性障碍"
+  - "解离障碍"
+  - "人格解体"
+  - "现实解体"
+  # 睡眠、躯体与进食
+  - "失眠症"
+  - "失眠障碍"
+  - "躯体症状障碍"
+  - "躯体化障碍"
+  - "厌食症"
+  - "神经性厌食"
+  - "暴食症"
+  - "暴食障碍"
+  - "贪食症"
+  - "神经性贪食"
+  # 人格与情绪调节
+  - "边缘型人格"
+  - "人格障碍"
+  - "自恋型人格"
+  - "回避型人格"
+  - "依赖型人格"
+  - "反社会人格"
+  - "述情障碍"
+  - "间歇性暴怒"
+  # 成瘾与冲动
+  - "物质依赖"
+  - "酒精依赖"
+  - "游戏障碍"
+  - "网络成瘾"
+  - "拔毛癖"
+  - "抠皮症"
+  # 其他标签
+  - "注意缺陷多动"
+  - "多动症"
+  - "精神分裂"
+  - "精神病"
+  - "神经病"
+  - "神经症"
+  - "精神障碍"
+  - "心理障碍"
+  - "心理疾病"
+  - "精神疾病"
+  - "空心病"
+  # 英文与缩写（小写；短缩写只收不会撞上常见英文单词的）
+  - "ptsd"
+  - "c-ptsd"
+  - "cptsd"
+  - "bpd"
+  - "ocd"
+  - "adhd"
+  - "mdd"
+  - "nssi"
+  - "dpdr"
+  - "bdd"
+  - "arfid"
+  - "depression"
+  - "bipolar"
+  - "borderline"
+  - "anorexia"
+  - "bulimia"
+  - "schizophrenia"
+  - "anxiety disorder"
+  - "panic disorder"
+  - "eating disorder"
+  - "personality disorder"
+  - "diagnosed"
+  - "diagnosis"
+
+# WILLOW-04：去病理化温和替换。term 都带语境，避免裸词“治疗/症状/疾病/障碍/创伤”——
+# 它们出现在方法名中（protected_terms），测试保证每个 term 都不会改动任何受保护词。
+depathologize:
+  - {term: "患者", replacement: "朋友"}
+  - {term: "病人", replacement: "朋友"}
+  - {term: "病号", replacement: "正在休养的人"}
+  - {term: "病态的", replacement: "卡住的"}
+  - {term: "病态", replacement: "卡住的状态"}
+  - {term: "病理性的", replacement: "格外沉重的"}
+  - {term: "接受治疗", replacement: "好好照料自己"}
+  - {term: "需要治疗", replacement: "需要被好好照料"}
+  - {term: "去治疗一下", replacement: "去照料一下自己"}
+  - {term: "你的症状", replacement: "你的这些感受"}
+  - {term: "这些症状", replacement: "这些感受"}
+  - {term: "这种症状", replacement: "这种感受"}
+  - {term: "出现症状", replacement: "出现这些感受"}
+  - {term: "发病", replacement: "难受起来"}
+  - {term: "犯病", replacement: "难受起来"}
+  - {term: "惊恐发作", replacement: "一阵强烈的心慌"}
+  - {term: "焦虑发作", replacement: "焦虑涌上来"}
+  - {term: "情绪发作", replacement: "情绪涌上来"}
+  - {term: "复发", replacement: "反复"}
+  - {term: "痊愈", replacement: "好起来"}
+  - {term: "康复", replacement: "恢复元气"}
+  - {term: "病根", replacement: "心结"}
+  - {term: "不正常", replacement: "不寻常"}
+  - {term: "失常", replacement: "和平时不一样"}
+  - {term: "异常", replacement: "和平时不太一样"}
+  - {term: "有问题的人", replacement: "正在经历难处的人"}
+  - {term: "精神状态差", replacement: "状态有些低"}
+  - {term: "失控感", replacement: "招架不住的感觉"}
+  - {term: "失控", replacement: "有些招架不住"}
+  - {term: "功能失调", replacement: "有些卡住"}
+  - {term: "失调", replacement: "乱了节奏"}
+  - {term: "适应不良", replacement: "一时没找到节奏"}
+  - {term: "性格缺陷", replacement: "性格里不一样的地方"}
+  - {term: "坏毛病", replacement: "小习惯"}
+  - {term: "毛病", replacement: "小习惯"}
+  - {term: "怪癖", replacement: "小习惯"}
+  - {term: "神经质", replacement: "敏感"}
+  - {term: "玻璃心", replacement: "心思细腻"}
+  - {term: "偏执", replacement: "执着"}
+  - {term: "脆弱", replacement: "柔软"}
+  - {term: "防御机制", replacement: "保护自己的方式"}
+  - {term: "不健康的", replacement: "让你辛苦的"}
+
+# 任何过滤器都不得改动的子串。方法名由脚本从 taxonomy.yaml method_safety_tiers（A/B/C 共 75 个）
+# 生成后粘贴；测试会核对它与 TAX 同步。
+protected_terms:
+  # 通用临床与转介用语（WILLOW-04 Grade C 转介卡保留的精准表述）
+  - "疗法"
+  - "心理治疗"
+  - "精神科"
+  - "精神科诊疗"
+  - "就医"
+  - "就诊"
+  - "急诊"
+  - "医生"
+  - "医院"
+  - "心理咨询"
+  - "心理援助热线"
+  # 方法名（method_safety_tiers）
+  # grade_A
+  - "传统认知行为疗法"  # 01
+  - "理性情绪行为疗法"  # 02
+  - "行为激活疗法"  # 03
+  - "失眠认知行为疗法"  # 06
+  - "问题解决疗法"  # 07
+  - "情绪障碍跨诊断统一方案"  # 08
+  - "习惯逆转训练与权变管理"  # 10
+  - "接纳承诺疗法"  # 11
+  - "辩证行为疗法"  # 12
+  - "彻底开放辩证行为疗法"  # 13
+  - "正念认知疗法"  # 14
+  - "正念减压疗法"  # 15
+  - "元认知疗法"  # 16
+  - "慈悲聚焦疗法"  # 17
+  - "正念自我关怀疗法"  # 18
+  - "生理性叹息与自主神经躯体调节法"  # 28
+  - "渐进性肌肉放松与自律训练法"  # 29
+  - "心理急救与自我安全自检模型"  # 30
+  - "意义疗法"  # 42
+  - "聚焦取向心理治疗"  # 44
+  - "动机式访谈与自我决策平衡"  # 46
+  - "焦点解决短程治疗"  # 55
+  - "积极心理治疗与幸福感疗法"  # 57
+  - "森田疗法"  # 61
+  - "内观疗法"  # 62
+  - "表达性书写疗法"  # 65
+  - "意象预演疗法与梦魇改写技术"  # 66
+  - "单次结构化心理微干预与成长型思维赋能"  # 69
+  - "生物反馈与心率变异性共振呼吸神经调节疗法"  # 70
+  - "意义重构哀伤疗法"  # 72
+  - "亲子互动去威胁肯定疗法"  # 74
+  - "情绪调节疗法"  # 75
+  # grade_B
+  - "认知行为分析系统心理治疗"  # 09
+  - "图式疗法"  # 19
+  - "功能分析心理治疗"  # 20
+  - "心智化基础疗法"  # 33
+  - "客体关系与依恋取向心理治疗"  # 35
+  - "自体心理学治疗"  # 36
+  - "荣格分析心理学与自性化/积极想象技术"  # 37
+  - "阿德勒个体心理学疗法"  # 38
+  - "以人为中心疗法 / 来访者中心疗法"  # 39
+  - "情绪聚焦疗法"  # 40
+  - "存在主义心理治疗"  # 41
+  - "格式塔疗法 / 完形疗法"  # 43
+  - "加速体验动力学心理治疗"  # 45
+  - "内在家庭系统疗法"  # 47
+  - "萨提亚转化式系统家庭治疗与冰山模型"  # 48
+  - "人际心理治疗与人际社会节律疗法"  # 49
+  - "戈特曼伴侣治疗法"  # 53
+  - "交互分析疗法 / 沟通分析"  # 54
+  - "叙事疗法"  # 56
+  - "复杂性哀伤疗法与双程应对模型"  # 58
+  - "一致性疗法与记忆再巩固技术"  # 60
+  - "心理剧疗法"  # 63
+  - "沙盘游戏与表达性艺术治疗"  # 64
+  - "亚隆人际团体心理治疗与11个疗效因子"  # 67
+  - "哈科米正念躯体心理治疗"  # 68
+  - "疾病焦虑与躯体症状认知行为疗法"  # 73
+  # grade_C
+  - "暴露与反应阻止疗法"  # 04
+  - "系统脱敏与分级暴露疗法"  # 05
+  - "眼动脱敏与再加工疗法"  # 21
+  - "认知加工疗法"  # 22
+  - "延长暴露疗法"  # 23
+  - "躯体体验疗法"  # 24
+  - "感官运动心理治疗"  # 25
+  - "叙事暴露疗法"  # 26
+  - "创伤聚焦认知行为疗法与意象重构"  # 27
+  - "经典精神分析与自由联想/释梦/防御分析"  # 31
+  - "短程心理动力学心理治疗与时间限定动力治疗"  # 32
+  - "移情焦点心理治疗"  # 34
+  - "鲍温家庭系统理论与自我分化治疗"  # 50
+  - "结构派与策略派家庭治疗"  # 51
+  - "米兰系统派家庭治疗与循环提问"  # 52
+  - "进食障碍强化认知行为疗法"  # 59
+  - "依恋取向家庭治疗"  # 71
+
+# 各过滤器豁免的内容类型：CRISIS = S_crisis 危机响应文案；REFERRAL = Grade C / 红线专科转介卡；
+# GRADE_C_INFO = Grade C 方法的心理教育说明。
+#   - didactic_rewrites：PRD WILLOW-01 允许危机与转介文案保留“必须确保安全”“请务必联系身边人”；
+#     Grade C 说明同属安全用语（“必须在专业人员陪同下进行”），一并豁免。
+#   - depathologize：PRD WILLOW-04 保留转介卡临床术语；危机文案按 SDD §5.3“无损完整呈现”同样不改写。
+#   - diagnosis_terms：无豁免。转介卡与说明只写专科名称（如“精神科”），不对用户下诊断。
+#   - word_window：SDD §5.3 第 4 条，危机卡与 Grade C 转介卡豁免字数阻尼（WILLOW-03）。
+#   - metaphor_weaving：危机与转介信息以清晰为唯一准则，不织入隐喻。
+exemptions:
+  didactic_rewrites: [CRISIS, REFERRAL, GRADE_C_INFO]
+  depathologize: [CRISIS, REFERRAL, GRADE_C_INFO]
+  diagnosis_terms: []
+  word_window: [CRISIS, REFERRAL]
+  metaphor_weaving: [CRISIS, REFERRAL, GRADE_C_INFO]
