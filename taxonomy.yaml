@@ -1842,3 +1842,10 @@ thompson_sampling_index:
 late_night:
   start: "00:00"
   end: "05:00"
+
+# ------------------------------------------------------------------------------
+# 共情策略意图判定阈值 (Empathy Intent Rules)
+# ------------------------------------------------------------------------------
+intent_rules:
+  information_min_valence: -0.70  # 效价须 > -0.70 才可判 INFORMATION (docs/eval/perception-annotation-guide.md §4.2 第 4 步)
+  validation_max_valence: -0.50   # 效价 <= -0.50 判 VALIDATION (docs/eval/perception-annotation-guide.md §4.2 第 5 步)

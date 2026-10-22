@@ -1,0 +1,440 @@
+# Labelled sentences for the rule-based perception stub.
+#
+# Every sentence and label here was written for this suite, by hand, following
+# docs/eval/perception-annotation-guide.md (emotion: §2, arousal anchors: §3,
+# dominant spectrum: §9). Labels are what the guide says the message is, not what the
+# stub happens to output.
+#
+# Both halves were written before the lexicon existed. `tuned` cases may be consulted
+# while editing olivia/data/lexicons/perception.yaml; `heldout` cases must not be, so
+# their accuracy is reported separately as the honest estimate.
+#
+# Fields:
+#   arousal_band  TAX arousal.bands name: low | moderate | elevated | acute
+#   emotion       TAX emotion id
+#   spectrum      dominant TAX distress spectrum "01".."11", or "none" (guide §9)
+#   signals       optional; omitted keys mean "no signal":
+#                 battery (0.0-1.0), direct_request, lock_on, lock_off (bool),
+#                 command ("/done" | "/not-now" | "/unhelpful")
+
+version: 1
+cases:
+  # ---------------------------------------------------------------- heldout ----
+  - split: heldout
+    text: "最近每天晚上躺下就开始担心明天的汇报，心里一直悬着"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "01"
+  - split: heldout
+    text: "我现在心跳特别快，喘不上气，手一直在抖，感觉自己要死了"
+    arousal_band: acute
+    emotion: panic
+    spectrum: "01"
+  - split: heldout
+    text: "上周外婆走了，我到现在还是不敢相信，总想起她做的饭"
+    arousal_band: moderate
+    emotion: grief
+    spectrum: "06"
+  - split: heldout
+    text: "下班回到家，屋子空荡荡的，连个说话的人都没有"
+    arousal_band: low
+    emotion: loneliness
+    spectrum: "07"
+  - split: heldout
+    text: "我觉得自己就是个废物，什么都做不好，丢人"
+    arousal_band: moderate
+    emotion: shame
+    spectrum: "04"
+  - split: heldout
+    text: "我又没忍住对妈妈发火了，她转身就哭了，我真的很对不起她"
+    arousal_band: moderate
+    emotion: guilt
+    spectrum: "09"
+  - split: heldout
+    text: "同事又把他的错推到我头上，当着全组的面，我气得手都在抖"
+    arousal_band: acute
+    emotion: anger
+    spectrum: "09"
+  - split: heldout
+    text: "感觉什么都没意义了，每天就是重复，像个空壳"
+    arousal_band: low
+    emotion: numbness
+    spectrum: "11"
+  - split: heldout
+    text: "deadline 三个，消息一百多条没回，脑子已经乱成一锅粥，完全动不了"
+    arousal_band: elevated
+    emotion: overwhelm
+    spectrum: "05"
+  - split: heldout
+    text: "看到大学室友都升职买房了，我还在原地踏步，心里酸酸的"
+    arousal_band: moderate
+    emotion: envy
+    spectrum: "04"
+  - split: heldout
+    text: "准备了半年的考试还是没过，太失望了，同龄人都上岸了就我没有"
+    arousal_band: moderate
+    emotion: disappointment
+    spectrum: "04"
+  - split: heldout
+    text: "毕业半年了，不知道自己到底想做什么，每条路看起来都差不多"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "11"
+  - split: heldout
+    text: "今天天气挺好的，下午去公园走了走，心情还不错"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+  - split: heldout
+    text: "不管怎么努力都不会好起来了，我已经不想再挣扎了"
+    arousal_band: low
+    emotion: hopelessness
+    spectrum: "02"
+  - split: heldout
+    text: "[15%] 好累，什么都不想说"
+    arousal_band: low
+    emotion: numbness
+    spectrum: "05"
+    signals: {battery: 0.15}
+  - split: heldout
+    text: "我只想说说，不要给我建议，好吗"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {lock_on: true}
+  - split: heldout
+    text: "直接给我个方法吧，我现在就想把这个焦虑压下去"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "01"
+    signals: {direct_request: true}
+  - split: heldout
+    text: "/done"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {command: "/done"}
+  - split: heldout
+    text: "我不是想要建议，我只是需要有人听我说"
+    arousal_band: low
+    emotion: loneliness
+    spectrum: "07"
+    signals: {lock_on: true}
+  - split: heldout
+    text: "我想听听你的建议，我们下一步该怎么做"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {lock_off: true}
+  - split: heldout
+    text: "我一点都不焦虑，就是有点累"
+    arousal_band: low
+    emotion: calm
+    spectrum: "05"
+  - split: heldout
+    text: "晚上一闭眼就睡不着，已经连续一个月只睡三四个小时了"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "08"
+  - split: heldout
+    text: "一难受就控制不住去点外卖，吃到撑才停下来，吃完又特别恨自己"
+    arousal_band: elevated
+    emotion: shame
+    spectrum: "08"
+  - split: heldout
+    text: "刷短视频刷到凌晨三点，明明很困就是停不下来，第二天又后悔得要命"
+    arousal_band: moderate
+    emotion: guilt
+    spectrum: "10"
+  - split: heldout
+    text: "他已读不回三个小时了，我一直在想是不是我哪句话说错了，他是不是不要我了"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "07"
+  - split: heldout
+    text: "我男朋友总说是我记错了、是我太敏感，现在我都开始怀疑自己是不是疯了"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "07"
+  - split: heldout
+    text: "明明知道门锁好了，还是忍不住回去检查了七八遍"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "03"
+  - split: heldout
+    text: "那场车祸之后，我一听到刹车声就浑身发冷，画面一直往脑子里冲"
+    arousal_band: acute
+    emotion: fear
+    spectrum: "06"
+  - split: heldout
+    text: "有时候觉得周围的一切都不真实，像隔着一层玻璃在看自己"
+    arousal_band: low
+    emotion: numbness
+    spectrum: "06"
+  - split: heldout
+    text: "喝点酒才能睡着，不喝就整晚心烦，最近越喝越多"
+    arousal_band: moderate
+    emotion: anxiety
+    spectrum: "10"
+  - split: heldout
+    text: "一想到人终有一死，所有努力都会消失，我就很恐慌"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "11"
+  - split: heldout
+    text: "我是不是有抑郁症啊？这种一直提不起劲的状态正常吗"
+    arousal_band: low
+    emotion: sadness
+    spectrum: "02"
+  - split: heldout
+    text: "照顾生病的爸爸两年了，我真的被掏空了，可我不能倒下"
+    arousal_band: moderate
+    emotion: overwhelm
+    spectrum: "05"
+  - split: heldout
+    text: "最近总觉得胸口闷闷的，去医院查了也没毛病，越想越怕是大病"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "01"
+  - split: heldout
+    text: "一走进人多的会议室我就脸红出汗，生怕别人在看我"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "01"
+  - split: heldout
+    text: "我好像很难说清楚自己是什么感觉，别人问我我就说还行"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "09"
+  - split: heldout
+    text: "对不起又来打扰你了，我知道我很烦，你不想听也没关系"
+    arousal_band: moderate
+    emotion: shame
+    spectrum: "04"
+  - split: heldout
+    text: "今天终于把拖了一个月的报告交了，松了一口气"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+  - split: heldout
+    text: "又想辞职又怕找不到工作，每天在两个念头之间来回拉扯"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "03"
+  - split: heldout
+    text: "[80%] 今天状态不错，想聊聊怎么更好地安排时间"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {battery: 0.80}
+
+  # ------------------------------------------------------------------ tuned ----
+  - split: tuned
+    text: "我一直担心爸妈的身体，电话没人接我就会往最坏的地方想"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "01"
+  - split: tuned
+    text: "突然一阵心慌，胸口像被压住，我怕我要晕过去了"
+    arousal_band: acute
+    emotion: panic
+    spectrum: "01"
+  - split: tuned
+    text: "养了十年的狗昨天走了，家里到处都是它的影子"
+    arousal_band: moderate
+    emotion: grief
+    spectrum: "06"
+  - split: tuned
+    text: "在这个城市待了三年，还是一个朋友都没有，周末只能一个人待着"
+    arousal_band: low
+    emotion: loneliness
+    spectrum: "07"
+  - split: tuned
+    text: "开会时我说错了一句话，现在觉得所有人都看不起我，太丢脸了"
+    arousal_band: elevated
+    emotion: shame
+    spectrum: "01"
+  - split: tuned
+    text: "我忘了朋友的生日，她说没关系，可我心里一直很内疚"
+    arousal_band: moderate
+    emotion: guilt
+    spectrum: "07"
+  - split: tuned
+    text: "凭什么每次都是我加班，他们拿着一样的工资天天摸鱼，烦死了"
+    arousal_band: elevated
+    emotion: anger
+    spectrum: "05"
+  - split: tuned
+    text: "每天醒来都觉得没什么盼头，开心不起来，对以前喜欢的东西也没兴趣了"
+    arousal_band: low
+    emotion: sadness
+    spectrum: "02"
+  - split: tuned
+    text: "工作、搬家、考试全挤在这个月，我真的扛不住了"
+    arousal_band: elevated
+    emotion: overwhelm
+    spectrum: "05"
+  - split: tuned
+    text: "什么感觉都没有，哭不出来也笑不出来，像个木头人"
+    arousal_band: low
+    emotion: numbness
+    spectrum: "02"
+  - split: tuned
+    text: "朋友圈里大家都在晒旅行晒对象，我越看越不是滋味"
+    arousal_band: moderate
+    emotion: envy
+    spectrum: "04"
+  - split: tuned
+    text: "满心期待的面试又被拒了，有点泄气，感觉自己还是不够好"
+    arousal_band: moderate
+    emotion: disappointment
+    spectrum: "04"
+  - split: tuned
+    text: "我不知道该选留在老家还是去大城市，想了好久都没结论"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "03"
+  - split: tuned
+    text: "今天和朋友吃了顿火锅，聊得很开心，挺放松的"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+  - split: tuned
+    text: "[10%]"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {battery: 0.10}
+  - split: tuned
+    text: "［３０％］ 今天有点低落"
+    arousal_band: low
+    emotion: sadness
+    spectrum: "02"
+    signals: {battery: 0.30}
+  - split: tuned
+    text: "别问了，直接告诉我该做什么"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {direct_request: true}
+  - split: tuned
+    text: "你能不能给我一个缓解焦虑的小练习"
+    arousal_band: moderate
+    emotion: anxiety
+    spectrum: "01"
+    signals: {direct_request: true}
+  - split: tuned
+    text: "我现在不需要建议，你听我说完就好"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {lock_on: true}
+  - split: tuned
+    text: "好了，说完了，我想听听你的看法，接下来我该怎么做"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {lock_off: true}
+  - split: tuned
+    text: "/unhelpful"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {command: "/unhelpful"}
+  - split: tuned
+    text: "/not-now"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+    signals: {command: "/not-now"}
+  - split: tuned
+    text: "我没有很难过，只是有点想家"
+    arousal_band: low
+    emotion: loneliness
+    spectrum: "07"
+  - split: tuned
+    text: "躺在床上脑子停不下来，白天的每句对话都要回放一遍"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "03"
+  - split: tuned
+    text: "压力一大就胃疼、偏头痛，医生说是心理原因"
+    arousal_band: moderate
+    emotion: anxiety
+    spectrum: "08"
+  - split: tuned
+    text: "这周已经三次控制不住去商场乱买东西了，买完又心疼钱"
+    arousal_band: moderate
+    emotion: guilt
+    spectrum: "10"
+  - split: tuned
+    text: "我总觉得自己是骗子，现在的成绩都是运气，迟早会被拆穿"
+    arousal_band: moderate
+    emotion: shame
+    spectrum: "04"
+  - split: tuned
+    text: "明明什么都没做，却总觉得休息一下就是在浪费生命"
+    arousal_band: moderate
+    emotion: guilt
+    spectrum: "04"
+  - split: tuned
+    text: "他一不回消息我就慌，非要他发誓不会离开我才能安心"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "07"
+  - split: tuned
+    text: "只要他靠我太近，我就想逃，可他走了我又难受"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "07"
+  - split: tuned
+    text: "那些小时候被骂的话一直在耳边，我已经三十岁了还是甩不掉"
+    arousal_band: moderate
+    emotion: sadness
+    spectrum: "06"
+  - split: tuned
+    text: "情绪上来的时候我会砸东西，事后又觉得自己像个疯子"
+    arousal_band: elevated
+    emotion: anger
+    spectrum: "09"
+  - split: tuned
+    text: "活着到底为了什么，我想不明白"
+    arousal_band: moderate
+    emotion: confusion
+    spectrum: "11"
+  - split: tuned
+    text: "最近总在想三十岁了还一事无成，时间过得好快，好慌"
+    arousal_band: elevated
+    emotion: anxiety
+    spectrum: "04"
+  - split: tuned
+    text: "社会新闻看多了，觉得未来一片灰暗，什么都不确定"
+    arousal_band: moderate
+    emotion: anxiety
+    spectrum: "11"
+  - split: tuned
+    text: "我一紧张就拔头发，停不下来，头顶都秃了一块"
+    arousal_band: moderate
+    emotion: anxiety
+    spectrum: "10"
+  - split: tuned
+    text: "公司突然裁员，我上周被通知离职，到现在还缓不过来"
+    arousal_band: moderate
+    emotion: sadness
+    spectrum: "06"
+  - split: tuned
+    text: "我没事，真的，就是随便说说"
+    arousal_band: low
+    emotion: calm
+    spectrum: none
+  - split: tuned
+    text: "我好累啊，上班上到想吐，周末也不想出门"
+    arousal_band: low
+    emotion: sadness
+    spectrum: "05"
+  - split: tuned
+    text: "[50%] 今天被老板当众批评了，气到现在"
+    arousal_band: elevated
+    emotion: anger
+    spectrum: "09"
+    signals: {battery: 0.50}

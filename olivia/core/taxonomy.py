@@ -89,6 +89,19 @@ class RedFlag:
 
 
 @dataclass(frozen=True)
+class EmotionProfile:
+    """One TAX emotion's valence window and default arousal."""
+
+    id: str
+    valence_range: tuple[float, float]
+    default_arousal: float
+
+
+BandScale = Literal["arousal", "battery"]
+_BAND_SCALES: tuple[BandScale, ...] = ("arousal", "battery")
+
+
+@dataclass(frozen=True)
 class _CrisisBand:
     level: CrisisLevel
     low: float
@@ -119,6 +132,8 @@ class _Views:
         self._check_whitelist()
         self.crisis_bands = self._parse_crisis(data)
         self.exit_safe_turns = self._parse_exit_turns(data)
+        self.emotions = self._parse_emotions(data)
+        self.bands = {scale: self._parse_bands(data, scale) for scale in _BAND_SCALES}
         self._check_duplicated_values(data)
 
     # -- parsing -----------------------------------------------------------------
@@ -279,6 +294,42 @@ class _Views:
             turns[level] = value
         return turns
 
+    @staticmethod
+    def _parse_emotions(data: Mapping[str, Any]) -> dict[str, EmotionProfile]:
+        emotions: dict[str, EmotionProfile] = {}
+        for raw in _list(data.get("emotions"), "emotions"):
+            item = _mapping(raw, "emotions entry")
+            eid = _str(item.get("id"), "emotions entry id")
+            where = f"emotion {eid}"
+            if eid in emotions:
+                raise TaxonomyError(f"duplicate emotion id: {eid}")
+            low, high = _number_pair(item.get("valence_range"), f"{where} valence_range")
+            if not -1.0 <= low <= high <= 1.0:
+                raise TaxonomyError(f"{where}: valence_range must lie within [-1.0, 1.0]")
+            arousal = _unit_number(item.get("default_arousal"), f"{where} default_arousal")
+            emotions[eid] = EmotionProfile(eid, (low, high), arousal)
+        return emotions
+
+    @staticmethod
+    def _parse_bands(data: Mapping[str, Any], scale: BandScale) -> dict[str, tuple[float, float]]:
+        """Named bands, ordered by lower edge, that tile [0.0, 1.0] with no gap or overlap."""
+        section = _mapping(_mapping(data.get(scale), scale).get("bands"), f"{scale}.bands")
+        pairs = {
+            str(name): _number_pair(raw, f"{scale}.bands.{name}") for name, raw in section.items()
+        }
+        bands: dict[str, tuple[float, float]] = {}
+        expected_low = 0.0
+        for name, (low, high) in sorted(pairs.items(), key=lambda item: item[1]):
+            if low != expected_low or not low < high:
+                raise TaxonomyError(
+                    f"{scale}.bands.{name} must start at {expected_low} and be non-empty"
+                )
+            bands[str(name)] = (low, high)
+            expected_low = high
+        if expected_low != 1.0:
+            raise TaxonomyError(f"{scale}.bands must end at 1.0")
+        return bands
+
     # -- integrity checks ----------------------------------------------------------
 
     def _check_duplicated_values(self, data: Mapping[str, Any]) -> None:
@@ -422,6 +473,25 @@ def _opt_str(item: Mapping[str, Any], key: str, where: str, required: bool) -> s
             raise TaxonomyError(f"{where}: missing {key}")
         return None
     return _str(item[key], f"{where} {key}")
+
+
+def _number(node: Any, where: str) -> float:
+    if isinstance(node, bool) or not isinstance(node, int | float) or not math.isfinite(node):
+        raise TaxonomyError(f"taxonomy {where} must be a finite number, got {node!r}")
+    return float(node)
+
+
+def _unit_number(node: Any, where: str) -> float:
+    value = _number(node, where)
+    if not 0.0 <= value <= 1.0:
+        raise TaxonomyError(f"taxonomy {where} must lie within [0.0, 1.0], got {value}")
+    return value
+
+
+def _number_pair(node: Any, where: str) -> tuple[float, float]:
+    if not isinstance(node, list) or len(node) != 2:
+        raise TaxonomyError(f"taxonomy {where} must be a [low, high] pair")
+    return _number(node[0], where), _number(node[1], where)
 
 
 def _int_value(value: Any, key: str, where: str) -> int:
@@ -569,6 +639,26 @@ class Taxonomy:
 
     def stabilization_whitelist(self) -> tuple[str, ...]:
         return self._views().whitelist
+
+    def emotion_profiles(self) -> Mapping[str, EmotionProfile]:
+        """The 16 canonical emotions keyed by id, in taxonomy order."""
+        return MappingProxyType(self._views().emotions)
+
+    def bands(self, scale: BandScale) -> Mapping[str, tuple[float, float]]:
+        """``arousal.bands`` or ``battery.bands`` as ``name -> (low, high)``, in order."""
+        if scale not in _BAND_SCALES:
+            raise TaxonomyError(f"unknown band scale: {scale}")
+        return MappingProxyType(self._views().bands[scale])
+
+    def band_of(self, scale: BandScale, value: float) -> str:
+        """The band holding ``value``: every band is half-open except the last, closed one."""
+        if math.isnan(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"{scale} value must be within [0, 1], got {value}")
+        bands = dict(self.bands(scale))
+        for name, (low, high) in bands.items():
+            if low <= value < high:
+                return name
+        return list(bands)[-1]  # value == 1.0, the closed top edge
 
     def crisis_level_for_score(self, score: float) -> CrisisLevel:
         if math.isnan(score) or not 0.0 <= score <= 1.0:
