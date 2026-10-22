@@ -64,6 +64,28 @@ feedback); for an S_explore stabilization card the next S_explore turn's command
 aversion does, unless that turn enters a crisis. Leaving the stage the card was shown
 in ends the wait.
 
+Natural-language follow-ups (roadmap R-7b), read before the state machine runs and
+never on a crisis turn (the tracker's crisis or an L2/L3 screen):
+
+* While a card waits in the current stage, a feedback phrase ("做完了", "今天先不做了",
+  "这个不适合我") is passed to the state machine as the command it stands for, so it has
+  exactly the command's effects; a slash command wins. Aversion keeps its own route.
+* An unclear reply ("唉", "再说吧") to a waiting card that is still waiting after the
+  turn gets one clarification question (``followups.clarify_feedback``). On the next
+  turn only, a yes records NOT_NOW as if ``/not-now`` had been sent; a no, or anything
+  else, is handled as it would be without the question (the card keeps waiting).
+* A kit recall ("锦囊里那个再给我看看") outside a crisis acts as a direct request and
+  re-offers the most recently shelved action the solver allows now, which leaves the
+  kit until it is shelved again; with an empty kit the reply is ``followups.kit_empty``
+  (not in S_haven). The kit is the session's ``user_shelved_actions``; keeping it across
+  sessions waits for P5.
+* In S_closing a whole-message yes ("好", "可以") confirms the implementation intention
+  like an ``intent_confirmed`` phrase; a no ("不用了") gets ``followups.closing_declined``
+  and the session stays in S_closing.
+
+``inspect["feedback_source"]`` says where recorded feedback came from: ``command``,
+``phrase`` (a feedback or aversion phrase) or ``confirmed`` (a yes to the question).
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -87,7 +109,13 @@ from olivia.core.language.engine import LanguageEngine, Slots
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
 from olivia.core.methods.bandit import Feedback, ThompsonSampler
-from olivia.core.methods.solver import M0_ACTION_ID, SolverInput, allowed_actions, build_plan
+from olivia.core.methods.solver import (
+    M0_ACTION_ID,
+    AllowedSet,
+    SolverInput,
+    allowed_actions,
+    build_plan,
+)
 from olivia.core.models import (
     CrisisLevel,
     HelpStage,
@@ -97,7 +125,7 @@ from olivia.core.models import (
 )
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub, dominant_spectrum
-from olivia.core.perception.signals import Command, TurnSignals
+from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve
@@ -119,6 +147,20 @@ _COMMAND_FEEDBACK: Final = {
     Command.NOT_NOW: Feedback.NOT_NOW,
     Command.UNHELPFUL: Feedback.UNHELPFUL,
 }
+
+
+_NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
+
+
+class FeedbackSource(StrEnum):
+    """Where this turn's feedback came from (``inspect["feedback_source"]``)."""
+
+    COMMAND = "command"
+    """A slash command."""
+    PHRASE = "phrase"
+    """A natural-language feedback or aversion phrase."""
+    CONFIRMED = "confirmed"
+    """A yes to the clarification question asked on the turn before."""
 
 
 class AgeGateRefusedError(Exception):
@@ -202,6 +244,25 @@ class _Rendered:
     pending: _Pending | None = None
 
 
+@dataclass(frozen=True)
+class _FollowUp:
+    """What the session made of a turn's follow-up signals before the state machine ran."""
+
+    signals: TurnSignals
+    """The signals the state machine sees: an accepted phrase or answer becomes the
+    command (or ``intent_confirmed`` / ``direct_request``) it stands for."""
+    source: FeedbackSource | None = None
+    """The source if the waiting card gets feedback on this turn."""
+    clarify: bool = False
+    """An unclear reply to the waiting card: ask once whether to shelve it."""
+    recall: bool = False
+    """Show a shelved card again."""
+    kit_empty: bool = False
+    """A recall request with nothing in the kit."""
+    closing_declined: bool = False
+    """A no to the S_closing question."""
+
+
 # A composer returns (text, mirror it used) or None when the output gate blocked it.
 _Composer = Callable[[], tuple[str, str] | None]
 
@@ -233,6 +294,7 @@ class Session:
         self._state = SessionState(session_id=uuid4())
         self._last_status: CrisisStatus | None = None
         self._pending: _Pending | None = None
+        self._clarifying = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
 
@@ -273,6 +335,9 @@ class Session:
         status = self._tracker.observe(assessment, text, perception.valence)
         self._last_status = status
         flags = self._red_flags.observe(text)
+        pending = self._pending
+        follow = self._follow_up(signals, status, assessment.level, pending)
+        signals = follow.signals
         transition = step(
             self._tax,
             self._state,
@@ -283,11 +348,29 @@ class Session:
         spectrum = dominant_spectrum(perception.distress_vector)
         # A command is not something to mirror back.
         mirror_text = "" if signals.command is not None else text
-        pending = self._pending
         feedback = self._feedback_for(pending, transition, signals)
+        # The waiting card is still on screen, in the stage it was shown in.
+        still_waiting = (
+            pending is not None
+            and feedback is None
+            and transition.previous is pending.stage
+            and stage is pending.stage
+        )
 
+        templates = self._engine.data.templates
         if stage is HelpStage.S_CRISIS:
             rendered = self._crisis(status, now)
+        elif follow.clarify and still_waiting:
+            rendered = self._followup(templates.clarify_feedback, stage)
+            self._clarifying = True
+        elif follow.kit_empty and stage not in _NO_FOLLOWUP_STAGES:
+            rendered = self._followup(templates.kit_empty, stage)
+        elif follow.closing_declined and stage is HelpStage.S_CLOSING:
+            rendered = self._followup(templates.closing_declined, stage)
+        elif follow.recall and stage is HelpStage.S_EMPOWER:
+            rendered = self._offer(
+                stage, perception, flags, spectrum, mirror_text, now, recall=True
+            )
         elif stage is HelpStage.S_EMPOWER:
             # A card still waiting for feedback is not replaced: staying in S_empower, or
             # asking for a method right after an S_explore stabilization card, gets the
@@ -344,6 +427,9 @@ class Session:
             "candidates": list(rendered.candidates),
             "chosen": rendered.chosen,
             "feedback": feedback.value if feedback is not None else None,
+            "feedback_source": (
+                follow.source.value if feedback is not None and follow.source is not None else None
+            ),
             "gate": list(dict.fromkeys(self._gate_notes)),
             "hotline_source": self._shared.hotline_source,
             "hotline_reason": self._shared.hotline_reason,
@@ -386,6 +472,7 @@ class Session:
             "pending_action": pending.action_id if pending else None,
             "pending_spectrum": pending.spectrum if pending else None,
             "pending_stage": pending.stage.value if pending else None,
+            "awaiting_clarification": self._clarifying,
             "bandit": self._sampler.to_dict(),
         }
 
@@ -414,25 +501,31 @@ class Session:
         spectrum: str | None,
         mirror_text: str,
         now: datetime,
+        *,
+        recall: bool = False,
     ) -> _Rendered:
-        """Sample and show a card in S_empower, or a stabilization card in S_explore."""
+        """Sample and show a card in S_empower, or a stabilization card in S_explore.
+
+        With ``recall``, the most recently shelved action that the solver allows right now
+        is shown instead of a sampled one, and it leaves the kit (``/not-now`` puts it
+        back). When no shelved action is allowed now, a card is sampled as usual.
+        """
         tax = self._tax
-        allowed = allowed_actions(
-            tax,
-            SolverInput(
-                stage=stage,
-                arousal=perception.arousal,
-                active_red_flags=flags,
-                active_contraindications=frozenset(),
-                situation_codes=frozenset(),
-                shelved_actions=frozenset(self._state.user_shelved_actions),
-            ),
-        )
+        shelved = self._state.user_shelved_actions
         deck = self._engine.data.cards.cards
-        renderable = [aid for aid in allowed.candidates if aid in deck]
         chosen: str | None = None
         bucket = spectrum if spectrum is not None else FALLBACK_SPECTRUM
-        if renderable:
+        allowed = self._allowed(stage, perception, flags, frozenset(shelved))
+        if recall:
+            unmasked = self._allowed(stage, perception, flags, frozenset())
+            kit = [a for a in reversed(shelved) if a in unmasked.candidates and a in deck]
+            if kit:
+                chosen = kit[0]
+                remaining = [a for a in shelved if a != chosen]
+                self._state = replace(self._state, user_shelved_actions=remaining)
+                allowed = self._allowed(stage, perception, flags, frozenset(remaining))
+        renderable = [aid for aid in allowed.candidates if aid in deck]
+        if chosen is None and renderable:
             chosen = self._sampler.choose(renderable, bucket, perception.arousal, self._rng, now)
         plan = build_plan(tax, chosen, allowed)
         primary = plan.primary
@@ -474,6 +567,9 @@ class Session:
                 rendered.action_id = M0_ACTION_ID
         else:  # the gate blocked the card: show nothing rather than a broken card
             rendered = _Rendered(self._engine.gate.fallback, ReplyKind.HAVEN)
+        if chosen is not None and chosen in shelved and rendered.action_id != chosen:
+            # A recalled card that could not be shown stays in the kit.
+            self._state = replace(self._state, user_shelved_actions=list(shelved))
 
         rendered.candidates = allowed.candidates
         rendered.chosen = chosen
@@ -482,6 +578,25 @@ class Session:
         if stage is HelpStage.S_EMPOWER or rendered.action_id is not None:
             rendered.referral_flags = plan.referral_flags
         return rendered
+
+    def _allowed(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        flags: frozenset[str],
+        shelved: frozenset[str],
+    ) -> AllowedSet:
+        return allowed_actions(
+            self._tax,
+            SolverInput(
+                stage=stage,
+                arousal=perception.arousal,
+                active_red_flags=flags,
+                active_contraindications=frozenset(),
+                situation_codes=frozenset(),
+                shelved_actions=shelved,
+            ),
+        )
 
     def _compose(
         self,
@@ -538,14 +653,21 @@ class Session:
 
     def _after_card_prompt(self) -> tuple[str, str] | None:
         """The S_empower ``after_card`` line alone, for a card still waiting for feedback."""
+        return self._plain_line(self._engine.data.templates.after_card, HelpStage.S_EMPOWER)
+
+    def _followup(self, variants: tuple[str, ...], stage: HelpStage) -> _Rendered:
+        """A short follow-up line (roadmap R-7b), through the taboo filter and the gate."""
+        return self._with_taboo_filter(lambda: self._plain_line(variants, stage), stage)
+
+    def _plain_line(self, variants: tuple[str, ...], stage: HelpStage) -> tuple[str, str] | None:
+        """One variant with only the name slots filled, after WILLOW and the output gate."""
         values = self._plain_slots().values()
-        variants = self._engine.data.templates.after_card
         usable = [v for v in variants if all(values[s] for s in slots_of(v))]
         text = self._rng.choice(usable)
         for name, value in values.items():
             text = text.replace("{" + name + "}", value)
         text = apply_willow(text, ContentKind.NORMAL, self._engine.data.willow)
-        result = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=HelpStage.S_EMPOWER)
+        result = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=stage)
         self._engine.last_gate = result
         if not self._note_gate():
             return None
@@ -579,6 +701,56 @@ class Session:
             rendered.kind = ReplyKind.REFERRAL
 
     # -- feedback -------------------------------------------------------------------------
+
+    def _follow_up(
+        self,
+        signals: TurnSignals,
+        status: CrisisStatus,
+        assessed: CrisisLevel,
+        pending: _Pending | None,
+    ) -> _FollowUp:
+        """Read natural-language feedback, answers and kit recall (roadmap R-7b).
+
+        Nothing is read on a crisis turn (the tracker's crisis, or an L2/L3 screen): the
+        signals pass through unchanged and the state machine routes to S_crisis. Feedback
+        phrases count only while a card waits in the current stage, and a slash command
+        wins. A clarification question waits for exactly one turn.
+        """
+        clarifying, self._clarifying = self._clarifying, False
+        if status.in_crisis or assessed >= CrisisLevel.L2:
+            return _FollowUp(signals)
+        current = self._state.current_stage
+        source: FeedbackSource | None = None
+        clarify = False
+        if pending is not None and pending.stage is current:
+            if signals.command is not None:
+                source = FeedbackSource.COMMAND
+            elif signals.aversion and signals.feedback in (None, Command.UNHELPFUL):
+                # Aversion keeps its own route (EMPOWER_AVERSION), with the same feedback.
+                source = FeedbackSource.PHRASE
+            elif signals.feedback is not None:
+                # Read exactly as the command, so the state machine routes it the same way.
+                signals = replace(signals, command=signals.feedback, aversion=False)
+                source = FeedbackSource.PHRASE
+            elif clarifying and signals.answer is Answer.AFFIRM:
+                signals = replace(signals, command=Command.NOT_NOW, aversion=False)
+                source = FeedbackSource.CONFIRMED
+            elif signals.feedback_unclear and not clarifying:
+                clarify = True
+        recall = kit_empty = False
+        if signals.kit_recall and source is None and not clarify:
+            if self._state.user_shelved_actions:
+                signals = replace(signals, direct_request=True)
+                recall = True
+            else:
+                kit_empty = True
+        declined = False
+        if current is HelpStage.S_CLOSING and signals.command is None:
+            if signals.answer is Answer.AFFIRM:
+                signals = replace(signals, intent_confirmed=True)
+            elif signals.answer is Answer.DECLINE:
+                declined = True
+        return _FollowUp(signals, source, clarify, recall, kit_empty, declined)
 
     @staticmethod
     def _feedback_for(

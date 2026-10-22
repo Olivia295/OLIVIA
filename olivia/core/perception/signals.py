@@ -18,6 +18,13 @@ class Command(StrEnum):
     UNHELPFUL = "/unhelpful"
 
 
+class Answer(StrEnum):
+    """A whole-message yes or no ("好的" / "不用了"), for a question the session asked."""
+
+    AFFIRM = "affirm"
+    DECLINE = "decline"
+
+
 @dataclass(frozen=True)
 class TurnSignals:
     battery: float | None = None
@@ -36,9 +43,24 @@ class TurnSignals:
     "实施意向确认完成", the Gollwitzer implementation intention); in S_closing it ends the
     session (S_ready)."""
     command: Command | None = None
+    feedback: Command | None = None
+    """Natural-language feedback on a practice, as the command it stands for (roadmap
+    R-7b): "做完了" -> ``DONE``, "今天先不做了" -> ``NOT_NOW``, "这个不适合我" ->
+    ``UNHELPFUL``. The session reads it only while a card waits for feedback, and a
+    slash ``command`` on the same turn wins."""
+    feedback_unclear: bool = False
+    """A reply that may be about the card but does not say which way ("唉", "再说吧");
+    while a card waits, the session asks once whether to shelve it."""
+    answer: Answer | None = None
+    """The whole message is a plain yes or no; only a question the session just asked
+    gives it a meaning."""
+    kit_recall: bool = False
+    """The user asks to see a method they shelved earlier ("锦囊里那个再给我看看")."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:
             raise ValueError(f"battery must be within [0.0, 1.0], got {self.battery}")
         if self.listening_lock_on and self.listening_lock_off:
             raise ValueError("a turn cannot both set and release the listening lock")
+        if self.feedback is not None and self.feedback_unclear:
+            raise ValueError("feedback cannot be both read and unclear")

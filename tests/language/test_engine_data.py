@@ -133,6 +133,18 @@ def _template_without_haven_fallback(d: dict[str, Any]) -> None:
     d["stages"]["S_haven"]["variants"] = ["{user_name}，我在这里陪着你，慢慢歇一歇就好。"]
 
 
+def _followup_missing(d: dict[str, Any]) -> None:
+    del d["followups"]["kit_empty"]
+
+
+def _followup_with_mirror(d: dict[str, Any]) -> None:
+    d["followups"]["clarify_feedback"].append("{mirror}，要先收进锦囊吗？")
+
+
+def _followup_without_plain_variant(d: dict[str, Any]) -> None:
+    d["followups"]["closing_declined"] = ["{user_name}，不用定也没关系。"]
+
+
 def _bad_version(d: dict[str, Any]) -> None:
     d["version"] = 2
 
@@ -143,6 +155,9 @@ def _bad_version(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _drop_card_title_slot),
         ("templates/gentle_holding.yaml", _unknown_slot),
         ("templates/gentle_holding.yaml", _template_without_haven_fallback),
+        ("templates/gentle_holding.yaml", _followup_missing),
+        ("templates/gentle_holding.yaml", _followup_with_mirror),
+        ("templates/gentle_holding.yaml", _followup_without_plain_variant),
         ("language/needs.yaml", _missing_need),
         ("language/needs.yaml", _bad_version),
         ("cards/grade_a.yaml", _extra_card_step),

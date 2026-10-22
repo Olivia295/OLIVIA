@@ -855,7 +855,8 @@ lock_off:
 
 # The user rejects the suggested practice (SDD §4.2 S_empower "表达反感", PRD COLBO-04
 # "强烈排斥"). Routes S_empower back to S_explore. Phrases name the practice or the
-# suggestion itself, so a bare self-judgement ("我没什么用") is not read as aversion.
+# suggestion itself, so a bare self-judgement ("我没什么用", "我根本没用", "我一点用都
+# 没有") is not read as aversion (roadmap R-7b: self-criticism is never method feedback).
 aversion:
   - 不想做这个
   - 不想做这种
@@ -871,8 +872,10 @@ aversion:
   - 这个方法没用
   - 这方法没用
   - 这些都没用
-  - 根本没用
-  - 一点用都没有
+  - 这根本没用
+  - 这个根本没用
+  - 这一点用都没有
+  - 这个一点用都没有
   - 别让我练了
   - 别让我做了
   - 别再让我做
@@ -923,6 +926,274 @@ intent_confirmed:
   - 说定了
   - 我定个闹钟
   - 设个提醒
+
+# The user asks to see a method they shelved earlier (roadmap R-7b, PRD SOP 4 "应急锦囊").
+# The session re-offers the most recent shelved card that the solver still allows; the
+# kit lives in the session until P5 persists it.
+kit_recall:
+  - 锦囊里那个
+  - 锦囊里的
+  - 锦囊里有什么
+  - 打开锦囊
+  - 看看锦囊
+  - 翻翻锦囊
+  - 从锦囊里
+  - 收进锦囊的
+  - 放进锦囊的
+  - 存进锦囊的
+  - 上次存的
+  - 刚才存的
+  - 之前存的
+  - 上次收起来的
+  - 刚才收起来的
+  - 之前收起来的
+  - 存起来的那个
+  - 收起来的那个
+
+# Natural-language feedback on a card that waits for it (roadmap R-7b). The stub
+# matches these on the message with punctuation and symbols removed, so "试过了，没用"
+# reads as "试过了没用"; negation works as everywhere else ("不是没用" is not unhelpful).
+# The session reads them only while a card waits, never in a crisis turn, and a slash
+# command wins. When classes meet: unhelpful wins (aversion phrases count as unhelpful
+# here); done together with not_now is unclear.
+#
+# unhelpful needs the method in the phrase (这个/这方法/它/试了/做了 ...): self-criticism
+# such as "我真没用" or "我什么都做不好" is never method feedback.
+#
+# unclear lists whole messages only ("唉" inside a longer sentence is not about the card);
+# while a card waits they get one clarification question.
+feedback:
+  done:
+    - 做完了
+    - 做完啦
+    - 练完了
+    - 试完了
+    - 试过了
+    - 试了一下
+    - 试了一遍
+    - 做了一遍
+    - 做了一下
+    - 练了一遍
+    - 照着做了
+    - 跟着做了
+    - 练过了
+    - 已经做了
+    - 刚做完
+    - 刚试完
+    - 刚练完
+    - 感觉好多了
+    - 舒服多了
+    - 放松多了
+    - 平静多了
+    - 好受多了
+    - 挺有用
+    - 很有用
+    - 真有用
+    - 确实有用
+    - 挺有帮助
+    - 很有帮助
+    - 有点帮助
+    - 帮到我了
+    - 挺管用
+    - 真管用
+    - 很管用
+    - 挺有效
+  not_now:
+    - 今天先不做了
+    - 先不做了
+    - 先不做
+    - 今天不做了
+    - 今天不想做
+    - 今天不想做这个
+    - 现在不想做
+    - 暂时不想做
+    - 今天不想练
+    - 现在不想练
+    - 今天不想试
+    - 现在不想试
+    - 不想做了
+    - 不太想做
+    - 先不练了
+    - 先不试了
+    - 改天再做
+    - 改天再试
+    - 改天再练
+    - 改天再说
+    - 改天吧
+    - 下次再做
+    - 下次再试
+    - 下次再说
+    - 下次吧
+    - 以后再做
+    - 以后再试
+    - 晚点再做
+    - 晚点再试
+    - 等会再做
+    - 等会儿再做
+    - 回头再做
+    - 回头再试
+    - 先存着
+    - 先收着
+    - 先留着
+    - 先收起来
+    - 收进锦囊
+    - 放进锦囊
+    - 存进锦囊
+    - 先放一放
+    - 先放着
+    - 提不起劲做
+    - 没力气做
+    - 没精力做
+    - 没心情做
+    - 没心思做
+    - 做不了这个
+    - 今天做不动
+  unhelpful:
+    - 这个不适合我
+    - 这方法不适合我
+    - 方法不适合我
+    - 练习不适合我
+    - 它不适合我
+    - 刚才那个不适合我
+    - 这个对我没用
+    - 对我没什么用
+    - 对我没用
+    - 对我来说没用
+    - 对我没帮助
+    - 没什么帮助
+    - 这个没用
+    - 这个没什么用
+    - 这个没效果
+    - 这个不管用
+    - 这个帮不了我
+    - 这个帮不上我
+    - 这招没用
+    - 这招不管用
+    - 刚才那个没用
+    - 没什么效果
+    - 没啥效果
+    - 试了没用
+    - 试过了没用
+    - 试了也没用
+    - 试完没用
+    - 做了没用
+    - 做完没用
+    - 做了也没用
+    - 练了没用
+    - 练了也没用
+    - 试了没效果
+    - 做了没效果
+    - 试了不管用
+    - 做了不管用
+    - 但没用
+    - 但是没用
+    - 可是没用
+    - 不过没用
+    - 但没什么用
+    - 但是没什么用
+    - 可是没什么用
+    - 不过没什么用
+  unclear:
+    - 唉
+    - 哎
+    - 唉唉
+    - 哎哎
+    - 唉算了
+    - 哎算了
+    - 唉算了吧
+    - 算了
+    - 算了吧
+    - 再说吧
+    - 再说
+    - 以后再说
+    - 以后再说吧
+    - 随便吧
+    - 随便
+    - 不知道
+    - 不知道诶
+    - 不知道呢
+    - 看情况吧
+    - 看情况
+    - 看看吧
+    - 再看看吧
+    - 再看看
+    - 再看吧
+    - 好难
+    - 好难啊
+    - 有点难
+    - 没想好
+    - 还没想好
+    - 不确定
+    - 有点犹豫
+
+# Whole-message yes and no (roadmap R-7b), marks stripped: the answer to the session's
+# clarification question while a card waits, and to the S_closing question about when
+# to come back to the practice. Anywhere else they mean nothing.
+answers:
+  affirm:
+    - 好
+    - 好的
+    - 好吧
+    - 好啊
+    - 好呀
+    - 好哒
+    - 好嘞
+    - 嗯
+    - 嗯嗯
+    - 嗯好
+    - 嗯好的
+    - 嗯呢
+    - 可以
+    - 可以的
+    - 可以啊
+    - 当然可以
+    - 行
+    - 行吧
+    - 行啊
+    - 要
+    - 要的
+    - 是
+    - 是的
+    - 对
+    - 对的
+    - 对啊
+    - 收吧
+    - 收起来吧
+    - 收进去吧
+    - 那就收起来吧
+    - 好收起来吧
+    - 存吧
+    - 存起来吧
+    - ok
+    - okay
+    - 没问题
+    - 麻烦你了
+    - 拜托了
+  decline:
+    - 不
+    - 不要
+    - 不用
+    - 不用了
+    - 不了
+    - 不必
+    - 不必了
+    - 不需要
+    - 不用收
+    - 先不用
+    - 先不要
+    - 算了不用
+    - 不用不用
+    - 别
+    - 别收
+    - 不要收
+    - 不想收
+    - 还不要
+    - 不是
+    - 没有
+    - 不行
+    - 不好
+    - 不了谢谢
+    - 不用了谢谢
 
 # Knowledge questions (guide §4.2 step 4: knowledge, mechanism, method, "is this normal").
 information_cues:

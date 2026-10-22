@@ -45,6 +45,18 @@ def test_packaged_lexicon_loads(tax: Taxonomy) -> None:
     assert all(lex.spectrum_cues.values())
     assert lex.direct_request and lex.lock_on and lex.lock_off
     assert len(lex.aversion) >= 25 and len(lex.intent_confirmed) >= 20
+    assert lex.feedback_done and lex.feedback_not_now and lex.feedback_unhelpful
+    assert lex.feedback_unclear and lex.answer_affirm and lex.answer_decline
+    assert lex.kit_recall
+
+
+def test_feedback_and_answers_are_stored_without_marks(tax: Taxonomy, tmp_path: Path) -> None:
+    doc = _doc()
+    doc["feedback"]["done"].append("照著做完啦！")
+    doc["answers"]["affirm"].append("好滴~")
+    lex = load_perception_lexicon(tax, _write(tmp_path, doc))
+    assert "照着做完啦" in lex.feedback_done
+    assert "好滴" in lex.answer_affirm
 
 
 def test_packaged_lexicon_has_enough_cues_per_emotion(tax: Taxonomy) -> None:
@@ -141,6 +153,19 @@ def _delete(path: tuple[Any, ...]) -> Callable[[dict[str, Any]], None]:
         (_set(("negation", "suffixes"), ["x"]), "unknown keys"),
         (_set(("negation", "exceptions"), []), "negation.exceptions"),
         (_append(("negation", "exceptions"), "不"), "both prefixes and exceptions"),
+        (_delete(("feedback",)), "'feedback' must be"),
+        (_set(("feedback", "maybe"), ["x"]), "feedback: unknown keys"),
+        (_delete(("feedback", "unclear")), "feedback.unclear"),
+        (_append(("feedback", "done"), "！！"), "only marks"),
+        (_append(("feedback", "done"), "做完了！"), "repeated"),
+        (_append(("feedback", "done"), "先存着"), "both feedback.done and feedback.not_now"),
+        (_append(("feedback", "unhelpful"), "什么破练习"), "both feedback.unhelpful and aversion"),
+        (_append(("feedback", "not_now"), "锦囊里的"), "both feedback.not_now and kit_recall"),
+        (_append(("answers", "affirm"), "不用了"), "both answers.affirm and answers.decline"),
+        (_append(("feedback", "unclear"), "好的"), "both feedback.unclear and answers.affirm"),
+        (_set(("answers", "yes"), ["好"]), "answers: unknown keys"),
+        (_set(("kit_recall",), []), "kit_recall"),
+        (_append(("kit_recall",), "给我个方法"), "both direct_request and kit_recall"),
     ],
 )
 def test_invalid_lexicons_are_rejected(
