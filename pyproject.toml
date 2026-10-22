@@ -10,6 +10,8 @@ dependencies = [
     "PyYAML>=6.0",
     "platformdirs>=4.0",
     "cryptography>=42",
+    # The perception student's forward pass (SDD §9: NumPy static weights, no DL framework).
+    "numpy>=1.26",
     # Windows ships no IANA time-zone database; zoneinfo reads it from tzdata there.
     "tzdata; sys_platform == 'win32'",
 ]
@@ -40,6 +42,8 @@ olivia = [
     "data/cards/*.yaml",
     "data/language/*.yaml",
     "data/templates/*.yaml",
+    "data/models/perception/*.json",
+    "data/models/perception/*.npz",
 ]
 
 [tool.ruff]

@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "files": {
+    "student.npz": {
+      "sha256": "945a8c2131f19614817132517065bcfb359929abaf7e67018483a52fe9514b58",
+      "bytes": 509526
+    },
+    "vocab.json": {
+      "sha256": "e53abd3787ad107b16e4d32e104a40f4be8d0644a24044bb21e5586073590223",
+      "bytes": 12129
+    },
+    "student_config.json": {
+      "sha256": "81d696f873a3e1f4c3ad15307b2824676c07f4c2ebd55d95d37b04a049b44ed0",
+      "bytes": 4178
+    }
+  }
+}

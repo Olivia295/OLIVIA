@@ -2,3 +2,5 @@
 # Windows), or its Ed25519 signature stops verifying.
 olivia/data/resources/*.yaml -text
 olivia/data/resources/*.sig -text
+# P6-6a: the perception student's files are checked against MANIFEST.json hashes.
+olivia/data/models/perception/* -text
