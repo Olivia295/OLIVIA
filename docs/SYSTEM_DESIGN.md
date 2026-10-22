@@ -204,15 +204,15 @@ Type ActionSkeleton:
 ### 2.5 属地化与全球危机援助资源卡片模型 (`ResourceCard`)
 ```
 Type ResourceCard:
-    generated_at: DateTime              # 卡片生成时间戳 (UTC-aware)
-    region_used: String                 # 本次卡片生效的区域代码 (如 "CN-110100", "US", "ZZ")
-    user_timezone: String               # 用户当前生效 IANA 时区
-    ordering_mode: OrderingMode         # CRISIS (危机强时效优先) | BROWSING (综合排序)
-    lines: List<ResolvedLine>           # 已解析与重排序的热线与急救服务条目 (含拨打号、营业状态、属地标签)
-    directory_version: String           # 热线资源库版本号
-    directory_stale: Boolean            # 是否超过 180 天防呆更新周期
-    directory_published_at: Date        # 资源库官方发布日期
-    signature_verified: Boolean         # 资源包 Ed25519 签名合规性验证标识
+    region_used: String                 # 本次卡片生效的地区代码（"CN"、"HK"、"US"、"ZZ" 等，按国家/地区解析）
+    level: CrisisLevel                  # 卡片对应的危机等级（CRISIS 模式只接受 L2 / L3）
+    mode: CardMode                      # CRISIS（危机卡）| BROWSING（olivia resources 浏览，按类别分组）
+    emergency: List<EmergencyNumber>    # 急救与报警号码（L3 必含，排在热线之前）
+    lines: List<HotlineEntry>           # 热线、短信线与求助目录（按数据文件中的优先顺序）
+    stale_entries: List<String>         # 核验日期超过 180 天的已显示条目 id，界面提示“可能已过期”
+    compiled_on: Date                   # 资源库整理日期
+    directory_version: Integer          # 资源库版本号
+    # 签名在加载时校验（GEO-08，`resources/bundle.py`），未通过签名的数据不会进入卡片。
 ```
 
 ---
@@ -480,9 +480,10 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
   在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。危机态中每轮回复都重复呈现危机卡的精简版；跨会话的“关怀标记”存入用户画像，供下次会话启动时做轻度安全问候。
 
 ### 8.3 属地化与全球危机援助资源解析流水线 (GEO-01 ~ GEO-08)
-- **国家级基准线**：全国统一心理援助热线 `12356`（国家卫生健康委统一热线，官方承诺每日服务不少于 18 小时，各地实际服务时段依属地配置不同）；
-- **层级解析路由**：用户城市热线匹配 $\to$ 省级防线兜底 $\to$ 12356 全国统一专线；
-- **Rule R8 境外隔离与属地矩阵**：非大陆地区严格禁止呈现 12356/110/120 大陆号码。香港（`18111` / `2389 2222`，急救 `999`）、澳门（`2852 5222`，急救 `999`）、台湾（`1925` / `1995`，急救 `110/119`）、北美（`988`，急救 `911`）、英国（`116 123` / `111`，急救 `999`）、澳洲（`13 11 14`，急救 `000`）；
+- **国家级基准线**：全国统一心理援助热线 `12356`（国家卫生健康委统一热线，每日不少于 18 小时，各地时段不同，部分地区夜间不接听，L3 同时给 110/120）；12355 青少年服务台仅在 `is_minor` 为真（ONB-05 婉拒路径）时呈现；
+- **按国家/地区解析**：`UserRegion.country_code` 属于数据中的地区则取该地区，`None`、`ZZ` 或不支持的代码（如 `UK`，英国应为 `GB`）一律回退 `ZZ`。大陆 12356 按来电地自动转接，无需城市/省级路由或行政区划索引（2026-10-22 官方核验，各省原热线均已并入 12356）；
+- **卡片组装**：CRISIS 模式下，L2 卡片取该地区 `levels` 含 L2 的热线（仅当该地区没有 L2 热线时才附急救号码）；L3 卡片先列全部急救号码，再列 `levels` 含 L3 的热线；同组内按数据文件顺序（即优先级）。BROWSING 模式（`olivia resources`）呈现该地区全部条目，热线按类型分组。任一呈现条目 `verified_on` 距今超过 180 天时记入 `stale_entries`，界面标注“可能已过期”。L0/L1 不生成危机卡；
+- **Rule R8 境外隔离与属地矩阵**：非大陆用户的卡片绝不出现任何大陆条目（12356、120、12355 及大陆的 110 条目）；澳门、台湾的 110 是当地号码，属于该地区条目，按地区而非号码数字校验。香港（`18111` / `2389 2222` / `2382 0000`，急救 `999`）、澳门（`2852 5222`，急救 `999` / `110` / `112`）、台湾（`1925` / `1995`，L2 另有 `1980`，急救 `110` / `119`）、美国（`988` 电话/短信、L2 另有 `741741`，急救 `911`）、加拿大（`988` 电话/短信、L2 另有 Kids Help Phone `686868`，不呈现 `741741`，急救 `911`）、英国 GB（`116 123` / `111`，L2 另有 Shout `85258`，急救 `999`）、澳洲（`13 11 14`，L2 另有短信 `0477 13 11 14` 与 Beyond Blue `1300 22 4636`，急救 `000`）、未知地区 ZZ（findahelpline.com / befrienders.org，急救 `112`）；
 - **Ed25519 签名验真防篡改**：热线数据统一维护在 `olivia/data/resources/hotlines/` 树状目录中，由发布工具生成 Ed25519 签名包 `hotlines.bundle`，客户端利用公钥核签验证，无有效签名拒绝加载。
   - *GEO-08 实现说明（P2）*：当前采用分离式签名，而非打包的 `hotlines.bundle`。数据文件为 `olivia/data/resources/hotlines.yaml`，签名文件 `hotlines.yaml.sig` 存放对该文件**原始字节**的 Ed25519 签名（base64）；公钥（32 字节原始公钥的 base64）提交在 `olivia/core/resources/keys.py` 的 `HOTLINE_PUBLIC_KEY_B64`。私钥只保存在发布机仓库之外的 `~/.config/olivia/signing/hotlines.ed25519.signing.key`（PEM，文件 0600、目录 0700），从不打印、不入库（`.gitignore` 另有 `*.signing.key` 兜底）；每次修改数据后须运行 `python scripts/sign_hotlines.py` 重新签名，换钥用 `--rotate` 并同步更新 `keys.py`。`olivia/core/resources/bundle.py` 加载时：用户数据目录中的覆盖包仅在签名有效且 `compiled_on` 晚于内置数据（且不晚于当天）时启用，否则退回内置数据并给出原因供 `--inspect` 显示；内置数据签名校验失败则抛出 `BundleIntegrityError`，不显示未验真号码。`.gitattributes` 对这两个文件关闭换行转换，保证各平台检出的字节与签名一致。
 
@@ -561,10 +562,10 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
 | **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7] | `validate_ai_response(response, skeleton) -> bool` |
 | **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` [待实现 / P2] | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
-| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py` [待实现 / P2] | `resolve(region, now, mode, store, index, tz, build_date) -> ResourceCard` |
+| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` | `resolve(store, region, level, *, mode, today, is_minor=False) -> ResourceCard` |
 | **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/resources/render.py` [待实现 / P2] | `render_card(card: ResourceCard) -> str` |
 | **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` [待实现 / P2] | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
-| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/hotline_rules.py` [待实现 / P2] | `R8 境外号码硬隔离`, `R31 未知属地处理`, `FALLBACK_IDS` |
+| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/resolver.py` | R8：非大陆地区不显示大陆条目（按地区判断，澳门、台湾的 110 是当地号码）；未知或不支持的地区回落到 ZZ（求助目录 + 112） |
 | **§ 8.4 转介红线识别** | 7 处强制转介红线的文本识别与会话累积 | `olivia/core/safety/red_flags.py` [已实现 / P1] | `RedFlagDetector(tax: Taxonomy, lexicons: SafetyLexicons)`: `.detect(text: str) -> frozenset[str]`, `.profile_flags(clinical_history: Iterable[str]) -> frozenset[str]`; `SessionRedFlags(detector: RedFlagDetector, clinical_history: Iterable[str] = ())`: `.active -> frozenset[str]`, `.observe(text: str) -> frozenset[str]`; `UnknownRedFlagError` |
 | **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/methods/solver.py` | 红线掩码在 `allowed_actions` 内完成：多个红线的 `allowed_actions` 取交集、禁用取并集；有任一红线时 `AllowedSet.referral_flags` 非空，必须呈现转介卡 |
 | **§ 8.1 输入归一化与感知截断** | 风险匹配前的文本折叠（NFKC、大小写、繁体转简体、弯引号转直引号、去除空白与不可见字符）与感知窗口截取 | `olivia/core/safety/normalize.py` [已实现 / P1] | `normalize(text: str) -> str`, `clip_for_perception(text: str) -> str`, `PERCEPTION_HEAD = 128`, `PERCEPTION_TAIL = 256` |
