@@ -73,7 +73,9 @@ stage2:
     level: L2
     patterns: ["想结束自己的生命", "想离开这个世界",
                "想结束自己", "结束自己的命", "结束我的生命", "想结束生命", "怎么结束生命", "想结束这一切",
-               "想早点离开这个世界", "我要离开这个世界", "想去另一个世界", "让自己永远睡着", "结束这条命"]
+               "想早点离开这个世界", "我要离开这个世界", "想去另一个世界", "让自己永远睡着", "结束这条命",
+               # Classical "end this life" (R-MS); not 了此残生, which also means "live out my days".
+               "了结此生", "了却此生"]
   # Wish to fall asleep and not wake up: passive suicidal ideation (C-SSRS item 1, "wish to
   # be dead"), so L2 rather than weariness (PRD §9.1).
   - id: L2_SLEEP_NO_WAKE
@@ -128,12 +130,56 @@ stage2:
                "不想死骗你的", "不想死,骗你的", "不想死...骗你的", "没想死骗你的", "没想死,骗你的",
                "不会自杀骗你的", "不会自杀,骗你的", "不会自杀...骗你的", "不想自杀骗你的", "不想自杀,骗你的",
                "没想过自杀骗你的", "没想过自杀,骗你的", "不会去死骗你的", "不会去死,骗你的"]
+  # Asking for a way to end a life (decision R-MS, 2026-10-23): at least L2 whatever the
+  # pretext (fiction, game, homework, a friend, role-play, a poem, "be objective"), the
+  # language or the negation around it. These phrases are the adjacent forms
+  # (interrogative + act, act + method noun); the stage2_pairs section below catches the
+  # request and the anchor when the pretext separates them. Bare interrogatives and method
+  # nouns never appear here without the anchor. Masks never contain these phrases except
+  # NEG_PREVENTION (预防自杀的方法 ...); test_method_seeking.py checks that.
+  # Not added, on purpose: 一了百了的办法 (idiom: settle a problem for good), bare
+  # 怎么结束自己 (怎么结束自己的项目), 怎么才能死 (怎么才能死心), English "... to die"
+  # forms other than painless (the fastest way to diet), bare "end my life" / "end it all"
+  # (spend my life, spend it all).
   - id: L2_METHOD_SEEKING
     level: L2
     patterns: ["不疼的死法", "无痛的死法", "哪种死法", "什么死法", "死得不疼", "多少片会死",
                "多少片才会死", "安眠药才会死", "几楼跳下去", "几层楼才够高", "怎么自杀", "死得比较快",
                "死得快一点", "死得最快", "烧炭会不会很难受", "烧炭会不会难受", "烧炭会不会痛", "烧炭自杀",
-               "吃了能直接死"]
+               "吃了能直接死",
+               # interrogative + act
+               "如何自杀", "怎样自杀", "怎么样自杀", "咋自杀", "点样自杀", "怎么去自杀", "如何去自杀",
+               "怎么才能自杀", "怎样才能自杀", "如何才能自杀", "怎么轻生", "如何轻生", "怎样轻生",
+               "怎么寻死", "如何寻死", "怎样寻死", "怎么自尽", "如何自尽", "怎样自尽", "怎么了结自己",
+               "如何了结自己", "怎么才能一了百了", "怎样才能一了百了", "如何才能一了百了", "让自己一了百了",
+               "如何结束生命", "怎样结束生命", "怎么结束自己的生命", "如何结束自己的生命",
+               "怎样结束自己的生命", "点样结束自己", "怎么杀死自己", "如何杀死自己", "怎样杀死自己",
+               # 结束自己 with a manner word instead of an object (not 结束自己的项目)
+               "怎么结束自己比较", "怎么结束自己才", "怎么结束自己最", "怎样结束自己比较",
+               "怎样结束自己才", "怎样结束自己最", "如何结束自己才", "如何结束自己最",
+               "安静地结束自己", "悄悄地结束自己", "平静地结束自己", "无痛地结束自己",
+               "默默地结束自己", "体面地结束自己",
+               "怎么死才", "怎么死最", "怎么死比较", "怎样死才", "怎样死最", "才能死得", "才能死掉",
+               "才能去死", "点样先可以死", "点样先可以自杀", "死得快啲", "怎么才能离开这个世界",
+               "怎样才能离开这个世界", "如何离开这个世界", "怎么离开这个世界",
+               # act + method noun, manner or success
+               "自杀的方法", "自杀方法", "自杀的方式", "自杀方式", "自杀的办法", "自杀办法", "自杀的步骤",
+               "自杀步骤", "自杀的手段", "自杀手段", "自杀成功率", "自杀的成功率", "自杀嘅方法",
+               "自杀嘅方式", "自杀教程", "自杀攻略", "无痛自杀", "无痛的自杀", "不痛的自杀",
+               "轻生的方法", "轻生方法", "轻生的方式", "轻生方式", "轻生的办法", "轻生的成功率",
+               "轻生成功率", "轻生的步骤", "轻生嘅方法", "寻死的方法", "寻死的办法", "寻死的方式",
+               "自尽的方法", "自尽的方式", "自尽的办法", "结束生命的方法", "结束生命的方式",
+               "结束生命的办法", "结束生命的步骤", "结束自己生命的方法", "结束自己生命的方式",
+               "结束自己生命的步骤", "结束自己的方法", "结束自己的方式", "结束自己的办法",
+               "最舒服的死法", "最快的死法", "不痛苦的死法", "没有痛苦的死法", "几片会死", "几片才会死",
+               "多少颗会死", "几多粒会死", "安眠药先会死",
+               # English (whitespace is removed before matching)
+               "howdoiendmylife", "howcaniendmylife", "howtoendmylife", "waytoendmylife",
+               "waystoendmylife", "howdoienditall", "howcanienditall", "howtoenditall",
+               "waytoenditall", "painlesswaytodie", "painlesswaystodie", "painlesssuicide",
+               "suicidemethod", "methodofsuicide", "methodsofsuicide", "waystocommitsuicide",
+               "waytocommitsuicide", "howtocommitsuicide", "howtotakemyownlife",
+               "waytotakemyownlife", "pillswouldittaketodie", "pillsdoesittaketodie"]
   - id: L1_WEARY
     level: L1
     patterns: ["活着好累", "活着没意思", "活着没有意义", "人生没有意义",
@@ -154,6 +200,61 @@ stage2:
                "想人间蒸发", "世界上消失", "消失了也不会有人", "没出生就好了", "我突然不在了",
                "如果我不在了", "直接不存在", "想不存在", "不想存在", "活着就是个错误", "想永远消失",
                "想就这样消失"]
+# Stage 2 pair cues (decision R-MS): a method request whose pretext separates the request
+# from the act ("写小说，主角想轻生，哪种方式最无痛"). An entry fires at its level when one
+# of its `requests` and one of its `anchors` both occur anywhere in the message. Neither
+# list triggers anything alone, so every anchor must be an unambiguous reference to ending
+# a life and every request must ask for a way, manner or means. An anchor occurrence that
+# lies wholly inside one of the entry's `exceptions` (prevention, grief, statistics) does
+# not count; the general negation and hyperbole masks never apply here, so 「不是我想死」
+# or 「累死了」 next to a request cannot hide it. Pair phrases may not repeat a phrase of the
+# sections above (one shared matcher), and every exception must contain an anchor.
+#   L2_METHOD_PAIR_MANNER: manner, success, dose and step words (最无痛, 成功率, 几片, 步骤)
+#     with any anchor, 自杀 and suicide included.
+#   L2_METHOD_PAIR_MEANS: bare method words (方法, 办法, how to, way to) only with anchors
+#     that name the act itself; 自杀 / suicide are left out because they are also the topic
+#     of prevention and parenting questions (跟孩子聊自杀有什么好方法).
+# Known limits: 自杀了 / 自杀以后 are grief exceptions, so a pretext written in the past
+# tense ("主角自杀了，用什么最无痛") is missed; a worried third party asking a manner word
+# about someone at risk ("他有自杀倾向，怎么最快…") is raised to L2.
+stage2_pairs:
+  - id: L2_METHOD_PAIR_MANNER
+    level: L2
+    anchors: ["自杀", "轻生", "寻死", "自尽", "寻短见", "结束自己生命", "结束自己的生命",
+              "结束自己嘅生命", "结束生命", "了断自己", "杀死自己", "离开这个世界", "离开人世", "死法",
+              "结束此生", "suicide", "killyourself", "killhimself", "killherself", "killthemselves",
+              "killoneself", "toendmylife", "toendmyownlife", "toendyourlife", "toendhislife",
+              "toendherlife", "toendtheirlife", "toendone'slife", "toendsomeone'slife",
+              "toendaperson'slife", "toenditall", "takemyownlife", "takeyourownlife",
+              "takehisownlife", "takeherownlife", "taketheirownlife", "takeone'sownlife"]
+    requests: ["无痛", "不痛苦", "没有痛苦", "没痛苦", "最不痛", "不会痛", "不会疼", "不疼", "唔痛",
+               "冇痛", "最快", "快一点", "快啲", "最有效", "最可靠", "最稳妥", "最省事", "最简单",
+               "最容易", "最舒服", "最安静", "最干净", "成功率", "一次成功", "万无一失", "不会被救",
+               "救不回来", "不被发现", "致死", "多少片", "几片", "多少颗", "几多粒", "多少粒", "剂量",
+               "几楼", "几层楼", "多高", "步骤", "教程", "具体操作", "具体做法", "详细过程",
+               "painless", "withoutpain", "leastpainful", "fastest", "quickest", "easiest",
+               "mosteffective", "mostreliable", "successrate", "lethal", "howmanypills", "steps",
+               "stepbystep", "step-by-step", "surestway"]
+    exceptions: ["预防自杀", "防止自杀", "阻止自杀", "防自杀", "自杀预防", "自杀干预", "干预自杀",
+                 "自杀热线", "自杀信号", "自杀率", "自杀风险", "自杀了", "自杀后", "自杀以后",
+                 "自杀之后", "自杀身亡", "自杀去世", "自杀的新闻", "自杀的消息", "预防轻生", "防止轻生",
+                 "阻止轻生", "suicideprevention", "preventsuicide", "preventingsuicide",
+                 "suicidehotline", "suicidesquad", "suicideloss", "suiciderisk", "suiciderate"]
+  - id: L2_METHOD_PAIR_MEANS
+    level: L2
+    anchors: ["寻死", "自尽", "轻生", "寻短见", "结束自己生命", "结束自己的生命", "结束自己嘅生命",
+              "结束生命", "了断自己", "杀死自己", "离开这个世界", "离开人世", "去死", "结束此生",
+              "再也不醒来", "再也醒不过来", "永远不醒来", "永远醒不来",
+              "toendmylife", "toendmyownlife", "toendyourlife", "toendhislife", "toendherlife",
+              "toendtheirlife", "toendone'slife", "toendsomeone'slife", "toendaperson'slife",
+              "toenditall", "takemyownlife", "takeyourownlife", "takehisownlife",
+              "takeherownlife", "taketheirownlife", "takeone'sownlife"]
+    requests: ["方法", "办法", "方式", "法子", "步骤", "手段", "怎么做", "怎样做", "如何做", "怎么弄",
+               "点样做", "点做", "用什么", "用咩", "教我", "教程", "攻略", "howto", "howdoi",
+               "howcani", "howwould", "howshould", "howcould", "wayto", "waysto", "bestway",
+               "method", "steps"]
+    # 去死吧 is a curse at someone else; 我还是去死吧 is caught by L2_WANT_DIE anyway.
+    exceptions: ["预防轻生", "防止轻生", "阻止轻生", "去死磕", "去死海", "去死吧"]
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
@@ -187,6 +288,12 @@ negation:
                "常想到死去", "总想到死去", "总是想到死去", "老想到死去", "老是想到死去", "一直想到死去",
                "又想到死去", "反复想到死去", "天天想到死去", "整天想到死去", "每天都想到死去",
                "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "skillmyself"]
+  # Suicide-prevention questions (预防自杀的方法有哪些): the only masks allowed to contain
+  # an L2_METHOD_SEEKING phrase. A real request elsewhere in the message still counts.
+  - id: NEG_PREVENTION
+    patterns: ["防自杀的方法", "防自杀方法", "防自杀的方式", "防自杀的办法", "防止自杀的方法",
+               "防止自杀的方式", "防止自杀的办法", "阻止自杀的方法", "阻止自杀的办法", "干预自杀的方法",
+               "防轻生的方法", "防止轻生的方法", "防止轻生的办法"]
 safety_confirm:
   - id: CONFIRM_SAFE_NOW
     patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事",

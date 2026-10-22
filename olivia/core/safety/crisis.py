@@ -25,12 +25,14 @@ from itertools import accumulate
 from typing import Final, Literal, Protocol
 
 from olivia.core.models import CrisisLevel
-from olivia.core.safety.lexicon import RiskCue, RiskSection, SafetyLexicons
+from olivia.core.safety.lexicon import PairCue, RiskCue, RiskSection, SafetyLexicons
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
 
 _MATCHED_SECTIONS: Final[tuple[RiskSection, ...]] = ("stage1", "stage2", "hyperbole", "negation")
+# Matcher keys of pair-cue phrases start with this; lexicon cue ids are printable text.
+_PAIR_KEY: Final = "\x00"
 MODEL_FAILURE: Final = "MODEL_FAILURE"
 
 
@@ -67,7 +69,8 @@ def arbitrate(
 
 
 class _CueIndex:
-    """One matcher over every stage1/stage2/hyperbole/negation phrase, keyed by cue id."""
+    """One matcher over every stage1/stage2/hyperbole/negation phrase, keyed by cue id,
+    and every pair-cue phrase, keyed by the phrase behind ``_PAIR_KEY``."""
 
     def __init__(self, lexicons: SafetyLexicons) -> None:
         phrases: dict[str, str] = {}
@@ -77,11 +80,34 @@ class _CueIndex:
                 cues[cue.id] = cue
                 for phrase in cue.patterns:
                     phrases[phrase] = cue.id
+        # Lexicon validation keeps pair phrases disjoint from the risk phrases above.
+        for pair in lexicons.pairs:
+            for phrase in (*pair.anchors, *pair.requests, *pair.exceptions):
+                phrases[phrase] = _PAIR_KEY + phrase
         self.matcher = PhraseMatcher(phrases)
         self.cues: dict[str, RiskCue] = cues
+        self.pairs: tuple[PairCue, ...] = lexicons.pairs
 
     def scan(self, text: str) -> list[Match]:
         return self.matcher.find_all(text)
+
+    def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
+        """Pair cues with a request and an anchor that none of their exceptions contains."""
+        found: dict[str, list[Match]] = {}
+        for match in matches:
+            if match.key.startswith(_PAIR_KEY):
+                found.setdefault(match.key[len(_PAIR_KEY) :], []).append(match)
+        if not found:
+            return []
+        fired: list[PairCue] = []
+        for pair in self.pairs:
+            if not any(phrase in found for phrase in pair.requests):
+                continue
+            cover = _MaskCover(m for phrase in pair.exceptions for m in found.get(phrase, ()))
+            anchors = (m for phrase in pair.anchors for m in found.get(phrase, ()))
+            if any(not cover.contains(m) for m in anchors):
+                fired.append(pair)
+        return fired
 
 
 def _unique_ids(ids: Iterable[str]) -> tuple[str, ...]:
@@ -130,7 +156,8 @@ class RuleRiskModel:
         stage2: list[Match] = []
         hyperbole_ids: list[str] = []
         for match in matches:
-            section = cues[match.key].section
+            cue = cues.get(match.key)
+            section = None if cue is None else cue.section  # None: a pair phrase
             if section == "stage2":
                 stage2.append(match)
             elif section == "hyperbole":
@@ -141,10 +168,13 @@ class RuleRiskModel:
 
         covered = _MaskCover(masks)
         valid = [m for m in stage2 if not covered.contains(m)]
-        if valid:
-            score = max(_cue_score(cues[m.key]) for m in valid)
+        # Pair cues ignore the negation and hyperbole masks (only their own exceptions apply).
+        pairs = self._index.fired_pairs(matches)
+        if valid or pairs:
+            score = max([_cue_score(cues[m.key]) for m in valid] + [p.score for p in pairs])
             level = self._tax.crisis_level_for_score(score)
-            return RiskPrediction(level, score, _unique_ids(m.key for m in valid))
+            ids = _unique_ids([*(m.key for m in valid), *(p.id for p in pairs)])
+            return RiskPrediction(level, score, ids)
         if hyperbole_ids:
             return RiskPrediction(CrisisLevel.L0, self._score_hyperbole, _unique_ids(hyperbole_ids))
         return RiskPrediction(CrisisLevel.L0, self._score_l0, ())
@@ -180,7 +210,7 @@ class SafetyScreen:
         normalized = normalize(text)
         matches = self._index.scan(normalized)
         cues = self._index.cues
-        stage1 = [m for m in matches if cues[m.key].section == "stage1"]
+        stage1 = [m for m in matches if m.key in cues and cues[m.key].section == "stage1"]
         if stage1:
             score = max(_cue_score(cues[m.key]) for m in stage1)
             return CrisisAssessment(

@@ -59,3 +59,17 @@ def test_long_input_with_many_masked_cues_stays_fast():
     elapsed = time.perf_counter() - t0
     assert assessment.cue_ids == ()
     assert elapsed < LONG_INPUT_BUDGET_S, f"{elapsed:.3f}s for {len(text)} chars"
+
+
+@pytest.mark.skipif(_coverage_is_tracing(), reason="latency is not measurable under coverage")
+def test_long_input_with_many_excepted_pair_anchors_stays_fast():
+    # Every 自杀 sits inside a 预防自杀 exception next to a request word: the pair cue's
+    # exception check must not be quadratic either.
+    tax = load_taxonomy()
+    screen = SafetyScreen(tax, load_safety_lexicons(tax))
+    text = "预防自杀，最快，" * 10000
+    t0 = time.perf_counter()
+    assessment = screen.assess(text)
+    elapsed = time.perf_counter() - t0
+    assert assessment.cue_ids == ()
+    assert elapsed < LONG_INPUT_BUDGET_S, f"{elapsed:.3f}s for {len(text)} chars"

@@ -28,6 +28,8 @@ RedFlagTier = Literal["SELF_REPORT", "FEATURE"]
 _RISK_FILE: Final = "risk.yaml"
 _RED_FLAG_FILE: Final = "red_flags.yaml"
 _SECTIONS: Final[tuple[RiskSection, ...]] = get_args(RiskSection)
+_PAIR_SECTION: Final = "stage2_pairs"
+_PAIR_ROLES: Final = ("anchors", "requests", "exceptions")
 _TIERS: Final[tuple[RedFlagTier, ...]] = get_args(RedFlagTier)
 _SCORE_KEY_BY_SECTION: Final[Mapping[str, str]] = MappingProxyType(
     {"stage1": "L3", "hyperbole": "HYPERBOLE"}
@@ -49,6 +51,24 @@ class RiskCue:
 
 
 @dataclass(frozen=True)
+class PairCue:
+    """Stage 2 cue that needs two phrases in one message: a request and an anchor.
+
+    It fires when some ``requests`` phrase and some ``anchors`` phrase both occur, except
+    that an anchor occurrence lying wholly inside one of the entry's own ``exceptions``
+    (a benign sense such as 预防自杀) does not count. Negation and hyperbole masks never
+    apply to pair cues, so they cannot hide a method request.
+    """
+
+    id: str
+    level: CrisisLevel
+    score: float
+    anchors: tuple[str, ...]
+    requests: tuple[str, ...]
+    exceptions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -61,6 +81,7 @@ class SafetyLexicons:
     risk: Mapping[str, RiskCue]
     red_flags: Mapping[str, RedFlagCue]
     self_report_negations: tuple[str, ...]
+    pairs: tuple[PairCue, ...] = ()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -75,11 +96,13 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     flag_doc = _read_yaml(base, _RED_FLAG_FILE)
     seen_ids: dict[str, str] = {}
     risk = _parse_risk(tax, risk_doc, seen_ids)
+    pairs = _parse_pairs(tax, risk_doc, seen_ids, risk)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
         red_flags=MappingProxyType(red_flags),
         self_report_negations=negations,
+        pairs=pairs,
     )
 
 
@@ -126,8 +149,8 @@ def _entry_list(doc: Mapping[str, Any], key: str, file: str) -> list[Mapping[str
 
 def _entry_id(item: Mapping[str, Any], where: str, seen_ids: dict[str, str]) -> str:
     raw = item.get("id")
-    if not isinstance(raw, str) or not raw.strip():
-        raise LexiconError(f"{where}: 'id' must be a non-empty string")
+    if not isinstance(raw, str) or not raw.strip() or not raw.isprintable():
+        raise LexiconError(f"{where}: 'id' must be a non-empty printable string")
     if raw in seen_ids:
         raise LexiconError(f"duplicate id {raw}: used in {seen_ids[raw]} and {where}")
     seen_ids[raw] = where
@@ -169,7 +192,7 @@ def _claim_patterns(
 def _parse_risk(
     tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str]
 ) -> dict[str, RiskCue]:
-    _check_keys(doc, {"version", *_SECTIONS}, _RISK_FILE)
+    _check_keys(doc, {"version", *_SECTIONS, _PAIR_SECTION}, _RISK_FILE)
     owners: dict[str, str] = {}
     cues: dict[str, RiskCue] = {}
     for section in _SECTIONS:
@@ -217,6 +240,51 @@ def _stage2_level_and_score(
     if tax.crisis_level_for_score(score) != level:
         raise LexiconError(f"{where}: score {score} does not fall in the {level.name} band")
     return level, score
+
+
+def _parse_pairs(
+    tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str], risk: Mapping[str, RiskCue]
+) -> tuple[PairCue, ...]:
+    """Parse the optional pair section.
+
+    Pair phrases share the screen's one matcher with the risk cues, so none may repeat a
+    risk phrase; across pair entries a phrase may repeat, within one entry it may not.
+    """
+    if _PAIR_SECTION not in doc:
+        return ()
+    risk_owner = {phrase: cue.id for cue in risk.values() for phrase in cue.patterns}
+    pairs: list[PairCue] = []
+    for item in _entry_list(doc, _PAIR_SECTION, _RISK_FILE):
+        where = f"{_RISK_FILE} {_PAIR_SECTION} entry {item.get('id')!r}"
+        cue_id = _entry_id(item, where, seen_ids)
+        where = f"{_RISK_FILE} {_PAIR_SECTION} entry {cue_id}"
+        _check_keys(item, {"id", "level", "score", *_PAIR_ROLES}, where)
+        lists = {
+            role: _normalized_list(item[role], f"{where} {role}") if role in item else ()
+            for role in _PAIR_ROLES
+        }
+        for role in ("anchors", "requests"):
+            if not lists[role]:
+                raise LexiconError(f"{where}: '{role}' must be a non-empty list")
+        role_of: dict[str, str] = {}
+        for role, phrases in lists.items():
+            for phrase in phrases:
+                if phrase in risk_owner:
+                    raise LexiconError(
+                        f"{where}: phrase {phrase!r} is already a {risk_owner[phrase]} pattern"
+                    )
+                if phrase in role_of:
+                    raise LexiconError(
+                        f"{where}: phrase {phrase!r} is repeated in {role_of[phrase]} and {role}"
+                    )
+                role_of[phrase] = role
+        anchors, requests, exceptions = (lists[role] for role in _PAIR_ROLES)
+        for phrase in exceptions:
+            if not any(anchor in phrase for anchor in anchors):
+                raise LexiconError(f"{where}: exception {phrase!r} contains none of the anchors")
+        level, score = _stage2_level_and_score(tax, item, where)
+        pairs.append(PairCue(cue_id, level, score, anchors, requests, exceptions))
+    return tuple(pairs)
 
 
 # -- red_flags.yaml ----------------------------------------------------------------
