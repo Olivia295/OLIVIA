@@ -644,6 +644,14 @@ class Taxonomy:
         """The 16 canonical emotions keyed by id, in taxonomy order."""
         return MappingProxyType(self._views().emotions)
 
+    def emotion_name(self, emotion_id: str) -> str:
+        """The Chinese display name of a canonical emotion id (``anxiety`` -> ``焦虑心慌``)."""
+        for raw in self._section_list("emotions"):
+            item = _mapping(raw, "emotions entry")
+            if item.get("id") == emotion_id:
+                return _str(item.get("name"), f"emotion {emotion_id} name")
+        raise TaxonomyError(f"unknown emotion id: {emotion_id}")
+
     def bands(self, scale: BandScale) -> Mapping[str, tuple[float, float]]:
         """``arousal.bands`` or ``battery.bands`` as ``name -> (low, high)``, in order."""
         if scale not in _BAND_SCALES:

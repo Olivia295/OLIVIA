@@ -1,0 +1,48 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）
+#
+# 卡片外框文案：A 级跟练卡、B/C 科普卡、专科转介卡（REFERRAL）与危机卡（S_crisis）的标签和固定句。
+# 卡片正文分别来自 cards/grade_a.yaml、cards/grade_bc_info.yaml 与签名热线数据 hotlines.yaml，
+# 这里只放把它们串起来的话。
+#   - 转介卡只写“去哪里、找谁”（精神科、心理门诊、专业心理咨询等），绝不写病名或诊断（PRD §9.3）。
+#   - 危机卡号码只来自 ResourceCard，这里不写任何号码；“{minutes}”是唯一槽位。
+#   - 转介与危机文案享有 WILLOW-01/04 安全用语豁免（willow.yaml exemptions），但仍过诊断词门禁。
+version: 1
+
+card:
+  duration: "约 {minutes} 分钟"
+  safety_label: "安全提示："
+  stealth_label: "在工位上："
+
+info:
+  what_label: "它是什么："
+  how_label: "大致如何起作用："
+  who_label: "通常由谁进行："
+
+referral:
+  intro: "有些难处，值得有专业的人和你一起面对。如果你愿意，可以考虑去这些地方看看："
+  destinations:
+    SIT-02-04: "医院的精神科门诊，请医生帮你一起看看情绪和作息的起伏"
+    SIT-02-06: "妇幼保健院的产后心理门诊，或医院的精神科"
+    SIT-06-01: "医院的精神科或心理门诊，可以说明想找擅长处理创伤经历的医生"
+    SIT-06-05: "医院的精神科门诊"
+    SIT-08-04: "综合医院的营养科，同时到精神科就诊"
+    SIT-09-01: "医院的精神科或心理门诊，也请一位信任的家人或朋友一起陪着你"
+    SIT-10-04: "医院的成瘾医学科或精神科；在医生指导之前，请不要自己突然停用"
+  closing: "去就医不代表你有多糟糕，只是多了一个懂行的人陪你。去之前，也可以先打心理援助热线聊一聊。"
+
+crisis:
+  emergency_heading:
+    L2: "紧急情况可以拨打："
+    L3: "如果危险就在眼前，请立即拨打："
+  lines_heading: "可以联系的求助热线："
+  hours_label: "服务时间："
+  stale_mark: "（信息可能已过期）"
+  contact_people: "也请马上叫一位身边信任的人过来陪着你。"
+  unknown_region_l3: "也可以直接前往最近的医院急诊，或拨打你所在地的紧急电话。"
+  minimal: "我在这里陪着你。请拨打下面的电话："
+  emergency_purposes:
+    police: "报警"
+    ambulance: "医疗急救"
+    fire_ambulance: "消防与急救"
+    police_fire_ambulance: "报警、消防与急救"
+    generic_gsm_emergency: "通用紧急求助"
