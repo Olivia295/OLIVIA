@@ -160,3 +160,65 @@ def test_rejects_score_on_non_stage2_cue(tax, tmp_path):
 
     with pytest.raises(LexiconError, match="S1_MEANS_PILLS"):
         load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=m))
+
+
+# -- stage2_pairs ----------------------------------------------------------------------
+
+
+def _pair(d, cue_id="L2_METHOD_PAIR_MANNER"):
+    return next(p for p in d["stage2_pairs"] if p["id"] == cue_id)
+
+
+def test_loads_pair_cues(tax):
+    lex = load_safety_lexicons(tax)
+    by_id = {p.id: p for p in lex.pairs}
+    assert set(by_id) == {"L2_METHOD_PAIR_MANNER", "L2_METHOD_PAIR_MEANS"}
+    manner = by_id["L2_METHOD_PAIR_MANNER"]
+    assert manner.level is CrisisLevel.L2 and manner.score == pytest.approx(0.7)
+    assert "自杀" in manner.anchors and "无痛" in manner.requests
+    assert "预防自杀" in manner.exceptions
+    assert not set(by_id) & set(lex.risk)
+
+
+def test_pair_section_is_optional(tax, tmp_path):
+    def m(d):
+        del d["stage2_pairs"]
+
+    assert load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=m)).pairs == ()
+
+
+def test_pair_phrases_are_normalized(tax, tmp_path):
+    def m(d):
+        _pair(d)["anchors"].append("End  My Own Days")
+
+    lex = load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=m))
+    (manner,) = [p for p in lex.pairs if p.id == "L2_METHOD_PAIR_MANNER"]
+    assert manner.anchors[-1] == "endmyowndays"
+
+
+@pytest.mark.parametrize(
+    "mutate,match",
+    [
+        (lambda d: _pair(d)["anchors"].append("想死"), "L2_WANT_DIE"),
+        (lambda d: _pair(d)["requests"].append("自杀"), "自杀"),
+        (lambda d: _pair(d)["anchors"].append("自杀"), "自杀"),
+        (lambda d: _pair(d)["exceptions"].append("预防感冒"), "预防感冒"),
+        (lambda d: _pair(d).update(requests=[]), "requests"),
+        (lambda d: _pair(d).pop("anchors"), "anchors"),
+        (lambda d: _pair(d).update(level="L3"), "L2_METHOD_PAIR_MANNER"),
+        (lambda d: _pair(d).update(patterns=["x"]), "unknown keys"),
+        (lambda d: _pair(d).update(id="S1_MEANS_PILLS"), "S1_MEANS_PILLS"),
+        (lambda d: _pair(d).update(id="X\x00"), "printable"),
+    ],
+)
+def test_rejects_malformed_pair_cue(tax, tmp_path, mutate, match):
+    with pytest.raises(LexiconError, match=match):
+        load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=mutate))
+
+
+def test_pair_phrase_may_repeat_across_entries(tax):
+    # The two entries share anchors (轻生, 结束生命 ...); the matcher keys pair phrases by
+    # phrase, so one phrase can serve several entries.
+    lex = load_safety_lexicons(tax)
+    manner, means = sorted(lex.pairs, key=lambda p: p.id)
+    assert set(manner.anchors) & set(means.anchors)
