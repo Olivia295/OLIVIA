@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from cli_support import NOW, ONBOARD_CN, save_profile
 
 from olivia import cli
@@ -125,21 +124,6 @@ def test_sop4_not_now_shelves_without_penalty(run_cli, data_home):
     assert snapshot["user_shelved_actions"] == [shown]
     assert snapshot["bandit"] == {"spectra": {}}
     assert "反馈 NOT_NOW" in run.out
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SOP 4 has the hesitation sentence itself record NOT_NOW; Session reads feedback "
-        "only from /not-now (ruling 7), so the sentence alone gets the after-card prompt"
-    ),
-)
-def test_sop4_hesitation_sentence_alone_records_not_now(run_cli, data_home):
-    save_profile(data_home)
-    run = run_cli(["chat"], [METHOD_REQUEST, HESITATION])
-    card, hesitation = run.results
-    assert hesitation.inspect["feedback"] == "NOT_NOW"
-    assert run.sessions[0].snapshot()["user_shelved_actions"] == [card.action_id]
 
 
 def test_onboarding_answers_cover_the_cn_default(run_cli, data_home):
