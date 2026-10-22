@@ -14,7 +14,7 @@ UNKNOWN_COUNTRY: Final = "ZZ"
 PROFILE_SCHEMA_VERSION: Final = 1
 
 _COUNTRY_RE: Final = re.compile(r"[A-Z]{2}")
-_NAME_MAX_LEN: Final = 12
+NAME_MAX_LEN: Final = 12
 _MAX_SCHEMAS: Final = 3
 
 
@@ -108,17 +108,37 @@ class PersonaProfile:
     region: UserRegion | None = None
     clinical_history: tuple[str, ...] = ()
     enable_at_rest_encryption: bool = False
+    age_gate_refused_at: datetime | None = None
+    """Set only on the refusal record a declared minor leaves behind (NG-3, ruling 22).
+
+    Such a record has ``age_confirmed_18_plus=False`` and holds nothing collected from
+    the user: no region, taboo topics or clinical history. Every other profile is an
+    adult's and has ``age_confirmed_18_plus=True``.
+    """
 
     def __post_init__(self) -> None:
         for label, name in (("user_name", self.user_name), ("agent_name", self.agent_name)):
-            if not 1 <= len(name.strip()) <= _NAME_MAX_LEN:
-                raise ValueError(f"{label} must be 1-{_NAME_MAX_LEN} characters after trimming")
-        if self.age_confirmed_18_plus is not True:
-            raise ValueError("age_confirmed_18_plus must be True")
-        for label, ts in (("created_at", self.created_at), ("updated_at", self.updated_at)):
+            if not 1 <= len(name.strip()) <= NAME_MAX_LEN:
+                raise ValueError(f"{label} must be 1-{NAME_MAX_LEN} characters after trimming")
+        stamps = [("created_at", self.created_at), ("updated_at", self.updated_at)]
+        if self.age_gate_refused_at is None:
+            if self.age_confirmed_18_plus is not True:
+                raise ValueError("age_confirmed_18_plus must be True")
+        else:
+            if self.age_confirmed_18_plus is not False:
+                raise ValueError("an age-gate refusal record cannot confirm 18+")
+            if self.region is not None or self.taboo_topics or self.clinical_history:
+                raise ValueError("an age-gate refusal record must not hold user data")
+            stamps.append(("age_gate_refused_at", self.age_gate_refused_at))
+        for label, ts in stamps:
             if ts.tzinfo is None:
                 raise ValueError(f"{label} must be timezone-aware")
         _check_range("directiveness_preference", self.directiveness_preference)
+
+    @property
+    def is_age_gate_refusal(self) -> bool:
+        """True for a minor's refusal record, which must block onboarding and any session."""
+        return self.age_gate_refused_at is not None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -134,6 +154,9 @@ class PersonaProfile:
             "region": self.region.to_dict() if self.region is not None else None,
             "clinical_history": list(self.clinical_history),
             "enable_at_rest_encryption": self.enable_at_rest_encryption,
+            "age_gate_refused_at": (
+                self.age_gate_refused_at.isoformat() if self.age_gate_refused_at else None
+            ),
         }
 
     @classmethod
@@ -167,6 +190,11 @@ class PersonaProfile:
             region=UserRegion.from_dict(region_raw) if region_raw is not None else None,
             clinical_history=_str_tuple(data, "clinical_history"),
             enable_at_rest_encryption=_bool_or(data, "enable_at_rest_encryption", False),
+            age_gate_refused_at=(
+                _aware_datetime(data, "age_gate_refused_at")
+                if data.get("age_gate_refused_at") is not None
+                else None
+            ),
         )
 
 
