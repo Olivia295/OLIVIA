@@ -65,7 +65,7 @@ aversion does, unless that turn enters a crisis. Leaving the stage the card was 
 in ends the wait.
 
 Natural-language follow-ups (roadmap R-7b), read before the state machine runs and
-never on a crisis turn (the tracker's crisis or an L2/L3 screen):
+never on a crisis turn (the tracker's crisis or an L2/L3 screen) or an L1 screen:
 
 * While a card waits in the current stage, a feedback phrase ("做完了", "今天先不做了",
   "这个不适合我") is passed to the state machine as the command it stands for, so it has
@@ -719,6 +719,9 @@ class Session:
         clarifying, self._clarifying = self._clarifying, False
         if status.in_crisis or assessed >= CrisisLevel.L2:
             return _FollowUp(signals)
+        # An L1 screen ("我想消失") may hide distress the rules under-rate, so its everyday
+        # phrases are not read as feedback, answers or kit recall; commands still count.
+        phrases = assessed < CrisisLevel.L1
         current = self._state.current_stage
         source: FeedbackSource | None = None
         clarify = False
@@ -728,6 +731,8 @@ class Session:
             elif signals.aversion and signals.feedback in (None, Command.UNHELPFUL):
                 # Aversion keeps its own route (EMPOWER_AVERSION), with the same feedback.
                 source = FeedbackSource.PHRASE
+            elif not phrases:
+                pass
             elif signals.feedback is not None:
                 # Read exactly as the command, so the state machine routes it the same way.
                 signals = replace(signals, command=signals.feedback, aversion=False)
@@ -738,14 +743,14 @@ class Session:
             elif signals.feedback_unclear and not clarifying:
                 clarify = True
         recall = kit_empty = False
-        if signals.kit_recall and source is None and not clarify:
+        if phrases and signals.kit_recall and source is None and not clarify:
             if self._state.user_shelved_actions:
                 signals = replace(signals, direct_request=True)
                 recall = True
             else:
                 kit_empty = True
         declined = False
-        if current is HelpStage.S_CLOSING and signals.command is None:
+        if phrases and current is HelpStage.S_CLOSING and signals.command is None:
             if signals.answer is Answer.AFFIRM:
                 signals = replace(signals, intent_confirmed=True)
             elif signals.answer is Answer.DECLINE:
