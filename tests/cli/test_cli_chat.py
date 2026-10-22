@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -233,16 +234,19 @@ def test_cli_copy_passes_willow_and_the_output_gate():
 
 
 def test_help_runs_as_a_module():
+    # A cp1252 locale (common on Windows) must not break the Chinese help text.
     done = subprocess.run(
         [sys.executable, "-m", "olivia.cli", "--help"],
         cwd=ROOT,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
         check=False,
     )
-    assert done.returncode == 0
+    assert done.returncode == 0, done.stderr
     for command in ("chat", "resources", "region"):
         assert command in done.stdout
+    assert "开始聊天" in done.stdout
 
 
 def test_pyproject_declares_the_console_script():

@@ -433,6 +433,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _use_utf8_stdio() -> None:
+    """Read and write UTF-8 on the real streams.
+
+    Piped streams otherwise use the locale encoding (cp1252 on many Windows setups),
+    which cannot carry Chinese text; a console window is unaffected.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -442,6 +454,8 @@ def main(
     rng: random.Random | None = None,
 ) -> int:
     """Run one command; returns the exit status. ``clock`` must be timezone-aware."""
+    if stdin is None and stdout is None:
+        _use_utf8_stdio()
     args = build_parser().parse_args(argv)
     console = _Console(stdin or sys.stdin, stdout or sys.stdout)
     now = clock if clock is not None else _system_clock
