@@ -8,6 +8,9 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0", "platformdirs>=4.0", "cryptography>=42"]
 
+[project.scripts]
+olivia = "olivia.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",

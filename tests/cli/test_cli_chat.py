@@ -1,0 +1,257 @@
+"""``olivia chat``: the read-reply loop, exits, the inspect panel, persistence, offline."""
+
+from __future__ import annotations
+
+import io
+import json
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
+
+from olivia import cli
+from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
+from olivia.core.language.data import ContentKind, load_language_data
+from olivia.core.language.filters import apply_willow
+from olivia.core.language.gate import OutputGate
+from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
+from olivia.core.session import ReplyKind
+from olivia.core.taxonomy import load_taxonomy
+
+ROOT = Path(__file__).resolve().parents[2]
+SECRET = "蓝色风筝和外婆的院子"
+SECRET_FRAGMENTS = ("蓝色风筝", "外婆", "院子")
+
+
+# -- end to end ------------------------------------------------------------------------------
+
+
+def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
+    run = run_cli(["chat"], [*ONBOARD_CN, "今天上班好累", L3_SENTENCE, "/exit"])
+    assert run.code == 0
+    assert run.texts == ["今天上班好累", L3_SENTENCE]  # /exit never reaches the session
+    talk, crisis = run.results
+    assert talk.reply_kind is ReplyKind.NORMAL and talk.stage is HelpStage.S_EXPLORE
+    assert crisis.reply_kind is ReplyKind.CRISIS and crisis.stage is HelpStage.S_CRISIS
+    assert crisis.crisis_level is CrisisLevel.L3
+    assert crisis.resource_card is not None and crisis.resource_card.region_used == "CN"
+    # The card is printed exactly as the session rendered it: same numbers, same order.
+    assert f"Olivia：{crisis.reply}" in run.out
+    assert run.out.index("110") < run.out.index("120") < run.out.index("12356")
+    assert run.lines[-1] == cli.GOODBYE
+    assert run.out.count(cli.GOODBYE) == 1
+    assert [p.name for p in files_under(data_home) if p.parent == data_home] == [PROFILE_FILENAME]
+
+
+def test_returning_user_skips_onboarding(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat"], ["今天上班好累"])
+    assert run.code == 0
+    assert "欢迎来到这里" not in run.out
+    assert [r.reply_kind for r in run.results] == [ReplyKind.NORMAL]
+    assert run.lines[-1] == cli.GOODBYE
+
+
+def test_end_of_input_exits_cleanly(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat"], [])
+    assert run.code == 0 and run.results == []
+    assert run.lines[-1] == cli.GOODBYE
+
+
+def test_ctrl_c_exits_cleanly(run_cli, data_home):
+    save_profile(data_home)
+
+    class Interrupting(io.StringIO):
+        def readline(self, size: int | None = -1) -> str:
+            raise KeyboardInterrupt
+
+    run = run_cli(["chat"], stdin=Interrupting())
+    assert run.code == 0
+    assert run.lines[-1] == cli.GOODBYE
+
+
+def test_blank_lines_are_skipped_and_commands_reach_the_session(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat"], ["", "   ", "给我一个方法", "/done", "/not-now", "/unhelpful", "/exit"])
+    assert run.texts == ["给我一个方法", "/done", "/not-now", "/unhelpful"]
+
+
+def test_end_of_input_during_onboarding_saves_nothing(run_cli, data_home):
+    run = run_cli(["chat"], ONBOARD_CN[:5])
+    assert run.code == 0 and run.lines[-1] == cli.GOODBYE
+    assert not (data_home / PROFILE_FILENAME).exists()
+    assert run.sessions == []
+
+
+def test_corrupt_profile_is_reported_and_left_alone(run_cli, data_home):
+    data_home.mkdir(parents=True)
+    (data_home / PROFILE_FILENAME).write_text("{not json", encoding="utf-8")
+    run = run_cli(["chat"], ["你好"])
+    assert run.code == 1
+    assert cli.PROFILE_CORRUPT in run.out
+    assert (data_home / PROFILE_FILENAME).read_text(encoding="utf-8") == "{not json"
+    for argv in (["resources"], ["region"], ["region", "HK"]):
+        again = run_cli(argv)
+        assert again.code == 1 and cli.PROFILE_CORRUPT in again.out
+
+
+# -- inspect panel ---------------------------------------------------------------------------
+
+
+def test_inspect_panel_never_shows_user_text_or_city(run_cli, data_home):
+    save_profile(
+        data_home,
+        region=UserRegion(
+            "CN",
+            "Asia/Shanghai",
+            province_code="330000",
+            city_code="330100",
+            city_display_name="杭州",
+        ),
+    )
+    run = run_cli(
+        ["chat", "--inspect"],
+        [f"我想起{SECRET}，心里很难受", f"给我一个方法吧，{SECRET}", L3_SENTENCE, "/exit"],
+    )
+    assert len(run.results) == 3
+    panel = "\n".join(run.panel)
+    assert panel.count("┌ inspect") == 3
+    # The reply may mirror the user's words; the panel must not.
+    assert any(f in result.reply for result in run.results for f in SECRET_FRAGMENTS)
+    for forbidden in (*SECRET_FRAGMENTS, "难受", "遗书", "杭州", "330000", "330100"):
+        assert forbidden not in panel, forbidden
+    for forbidden in ("杭州", "330000", "330100"):
+        assert forbidden not in run.out
+    # Mirrored text and replies stay out of the panel too.
+    for result in run.results:
+        for paragraph in result.reply.split("\n"):
+            if len(paragraph) > 6:
+                assert paragraph not in panel
+
+
+def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法", L3_SENTENCE])
+    card_turn, crisis_turn = run.results
+    first, second = run.out.split("┌ inspect")[1:]
+    assert f"风险 {card_turn.inspect['level']}" in first
+    assert f"→ {HelpStage.S_EMPOWER.value}" in first
+    assert f"唤醒 {card_turn.inspect['arousal']:.2f}" in first
+    assert f"电量 {card_turn.inspect['battery']:.2f}" in first
+    assert "可用动作 " + ",".join(card_turn.inspect["candidates"]) in first  # type: ignore[arg-type]
+    assert f"选中 {card_turn.action_id}" in first
+    assert "风险 L3" in second and "线索 S1_NOTE_WRITTEN" in second
+    assert "资源卡 CN L3" in second
+    assert "热线数据 builtin（no override）" in second
+    assert crisis_turn.inspect["hotline_reason"] == "no override"
+
+
+def test_no_panel_without_inspect(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat"], ["今天上班好累"])
+    assert run.panel == []
+
+
+# -- persistence -----------------------------------------------------------------------------
+
+
+def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_home):
+    run = run_cli(
+        ["chat", "--inspect"],
+        [*ONBOARD_CN, f"我想起{SECRET}", "[5%] 好累", L3_SENTENCE, "/done"],
+    )
+    assert run.code == 0
+    files = files_under(data_home)
+    assert {p.name for p in files if p.parent == data_home} == {PROFILE_FILENAME}
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for forbidden in (*SECRET_FRAGMENTS, "遗书", "S_crisis", "L3", "12356"):
+            assert forbidden not in text, (path, forbidden)
+    saved = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
+    assert set(saved) == {
+        "schema_version",
+        "age_confirmed_18_plus",
+        "created_at",
+        "updated_at",
+        "user_name",
+        "agent_name",
+        "persona_spectrum",
+        "directiveness_preference",
+        "taboo_topics",
+        "region",
+        "clinical_history",
+        "enable_at_rest_encryption",
+        "age_gate_refused_at",
+    }
+    profile = ProfileStore(data_home).load()
+    assert profile is not None
+    assert profile.region == UserRegion("CN", "Asia/Shanghai")
+    assert profile.persona_spectrum is PersonaSpectrum.GENTLE_HOLDING
+    assert profile.created_at == NOW
+
+
+# -- offline ---------------------------------------------------------------------------------
+
+
+def test_full_scripted_chat_makes_no_network_calls(run_cli, data_home, monkeypatch):
+    calls: list[str] = []
+
+    def no_network(*_args: object, **_kwargs: object) -> None:
+        calls.append("network")
+        raise OSError("network access is forbidden in this test")
+
+    monkeypatch.setattr(socket, "socket", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(socket, "getaddrinfo", no_network)
+    chat = run_cli(
+        ["chat", "--inspect"],
+        [*ONBOARD_CN, "今天上班好累", "给我一个方法", "/done", L3_SENTENCE, "/exit"],
+    )
+    assert chat.code == 0
+    assert ReplyKind.CRISIS in [r.reply_kind for r in chat.results]
+    assert run_cli(["resources"]).code == 0
+    assert run_cli(["region", "HK"]).code == 0
+    assert run_cli(["region"]).code == 0
+    assert calls == []
+
+
+# -- copy and entry point --------------------------------------------------------------------
+
+
+def test_cli_copy_passes_willow_and_the_output_gate():
+    tax = load_taxonomy()
+    data = load_language_data(tax)
+    gate = OutputGate(tax, data)
+    for text in cli.USER_TEXTS:
+        assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
+        assert gate.reasons(text, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE) == (), text
+        assert "！" not in text and "!" not in text
+
+
+def test_help_runs_as_a_module():
+    done = subprocess.run(
+        [sys.executable, "-m", "olivia.cli", "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0
+    for command in ("chat", "resources", "region"):
+        assert command in done.stdout
+
+
+def test_pyproject_declares_the_console_script():
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '[project.scripts]\nolivia = "olivia.cli:main"' in text
+
+
+@pytest.mark.parametrize("argv", [[], ["unknown"]])
+def test_bad_arguments_exit_with_usage(argv):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(argv, stdout=io.StringIO())
+    assert exc.value.code == 2

@@ -161,6 +161,8 @@ class _Shared:
     language: LanguageData
     store: ResourceStore
     hotline_source: str
+    hotline_reason: str | None
+    """Why the built-in hotline data was used instead of an override (``None``: override)."""
 
 
 @lru_cache(maxsize=4)
@@ -175,6 +177,7 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         language=load_language_data(tax),
         store=parse_store(yaml.safe_load(bundle.data)),
         hotline_source=bundle.source,
+        hotline_reason=bundle.reason,
     )
 
 
@@ -343,6 +346,7 @@ class Session:
             "feedback": feedback.value if feedback is not None else None,
             "gate": list(dict.fromkeys(self._gate_notes)),
             "hotline_source": self._shared.hotline_source,
+            "hotline_reason": self._shared.hotline_reason,
         }
         return TurnResult(
             reply=rendered.reply,
