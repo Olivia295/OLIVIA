@@ -1820,6 +1820,18 @@ thompson_sampling_index:
   standard_key: "spectrum_id"  # 两位数字编号 "01" 至 "11"
   lambda_decay_per_day: 0.1    # UNHELPFUL 软衰减速率 λ_decay (每天)：β_eff = 1 + (β - 1) · exp(-λ_decay · Δt)，Δt 以天计
   description: "Thompson 采样状态维护使用两位数字谱系编号 '01' 至 '11' 作为困扰维度 d 的标准键，与 distress_category_mapping 保持无损互转。"
+  # 临床证据等级先验 Beta(alpha_0, beta_0)，数值来自 SYSTEM_DESIGN §6.3 「临床证据等级先验映射」；
+  # 键与 method_safety_tiers 中的 evidence_level 取值逐字一致，子动作沿用其 parent_method_id 的证据等级。
+  evidence_level_priors:
+    "Level I":                 # 跨诊断黄金循证 (如 CBT, ACT, MCT)
+      alpha: 4.0
+      beta: 1.0
+    "Level II":                # 良好实证支持 (如 BA, CFT, MSC)
+      alpha: 3.0
+      beta: 1.0
+    "Level III":               # 临床探索性支持 (如森田、内观)
+      alpha: 2.0
+      beta: 1.0
 
 late_night:
   start: "00:00"
