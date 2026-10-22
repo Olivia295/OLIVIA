@@ -12,6 +12,8 @@ SAMPLES_PER_ROUND = 2000
 # The 1 ms budget (SDD §10.1) is for a single-core baseline machine. CI runners vary by
 # several times between instances, so there it only guards against a gross slowdown.
 P99_BUDGET_S = 0.003 if os.environ.get("CI") else 0.001
+# A quadratic containment check would take far longer than either bound on 80,000 chars.
+LONG_INPUT_BUDGET_S = 2.0 if os.environ.get("CI") else 0.5
 
 
 def _coverage_is_tracing() -> bool:
@@ -46,6 +48,7 @@ def test_assess_p99_under_one_millisecond():
     assert min(p99s) < P99_BUDGET_S, f"P99 per round (s): {p99s}, budget {P99_BUDGET_S}"
 
 
+@pytest.mark.skipif(_coverage_is_tracing(), reason="latency is not measurable under coverage")
 def test_long_input_with_many_masked_cues_stays_fast():
     # Every 想死 sits inside a 不想死 mask: the containment check must not be quadratic.
     tax = load_taxonomy()
@@ -55,4 +58,4 @@ def test_long_input_with_many_masked_cues_stays_fast():
     assessment = screen.assess(text)
     elapsed = time.perf_counter() - t0
     assert assessment.cue_ids == ()
-    assert elapsed < 0.5, f"{elapsed:.3f}s for {len(text)} chars"
+    assert elapsed < LONG_INPUT_BUDGET_S, f"{elapsed:.3f}s for {len(text)} chars"
