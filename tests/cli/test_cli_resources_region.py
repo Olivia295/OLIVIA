@@ -1,0 +1,316 @@
+"""``olivia resources`` and ``olivia region``: snapshot tests over fixed data and dates."""
+
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
+
+import pytest
+from cli_support import NOW, SHANGHAI, save_profile
+
+from olivia import cli
+from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
+from olivia.core.models import UserRegion
+from olivia.core.resources.store import ResourceStore, parse_store
+
+
+def _line(
+    line_id: str, name: str, number: str, kind: str, hours: str, verified: str
+) -> dict[str, object]:
+    return {
+        "id": line_id,
+        "name_zh": name,
+        "number": number,
+        "kind": kind,
+        "levels": ["L2", "L3"],
+        "hours": hours,
+        "scope": "national",
+        "adcode": None,
+        "minors_only": False,
+        "source_url": "https://example.org/",
+        "verified_on": verified,
+        "notes": "",
+    }
+
+
+def _emergency(number: str, purpose: str, verified: str) -> dict[str, object]:
+    return {
+        "number": number,
+        "purpose": purpose,
+        "source_url": "https://example.org/",
+        "verified_on": verified,
+        "notes": "",
+    }
+
+
+FIXTURE = {
+    "version": 1,
+    "compiled_on": "2026-01-15",
+    "regions": {
+        "GB": {
+            "emergency": [_emergency("999", "police_fire_ambulance", "2026-01-15")],
+            "lines": [
+                _line("gb_fixture_text", "测试短信线", "85000", "text_line", "24/7", "2026-01-15"),
+                _line(
+                    "gb_fixture_call", "测试热线", "116 000", "crisis_hotline", "24/7", "2025-01-01"
+                ),
+                _line(
+                    "gb_fixture_dir",
+                    "测试目录",
+                    "https://example.org/",
+                    "directory_url",
+                    "unknown",
+                    "2026-01-15",
+                ),
+            ],
+        },
+        "ZZ": {
+            "emergency": [_emergency("112", "generic_gsm_emergency", "2026-01-15")],
+            "lines": [
+                _line(
+                    "zz_fixture_dir",
+                    "全球目录",
+                    "https://example.org/zz",
+                    "directory_url",
+                    "unknown",
+                    "2026-01-15",
+                ),
+            ],
+        },
+    },
+}
+FIXED_NOW = datetime(2026, 3, 1, 10, 0, tzinfo=SHANGHAI)
+
+
+@pytest.fixture
+def fixture_store(monkeypatch: pytest.MonkeyPatch) -> list[date]:
+    """Serve FIXTURE instead of the packaged data; records the ``today`` it was asked for."""
+    seen: list[date] = []
+
+    def load(today: date) -> ResourceStore:
+        seen.append(today)
+        return parse_store(FIXTURE)
+
+    monkeypatch.setattr(cli, "_load_store", load)
+    return seen
+
+
+# -- resources -------------------------------------------------------------------------------
+
+
+def test_resources_snapshot_groups_by_kind_and_marks_stale(run_cli, data_home, fixture_store):
+    save_profile(data_home, region=UserRegion("GB", "Europe/London"))
+    run = run_cli(["resources"], now=FIXED_NOW)
+    assert run.code == 0
+    assert run.out == (
+        "求助资源 · 英国（GB）\n"
+        "\n"
+        "紧急电话：\n"
+        "· 999（报警、消防与急救）\n"
+        "\n"
+        "心理援助与危机热线：\n"
+        "· 测试热线：116 000（信息可能已过期）\n"
+        "  服务时间：24/7\n"
+        "\n"
+        "短信与文字求助：\n"
+        "· 测试短信线：85000\n"
+        "  服务时间：24/7\n"
+        "\n"
+        "求助热线目录：\n"
+        "· 测试目录：https://example.org/\n"
+        "\n"
+        "资料整理于 2026-01-15（第 1 版）\n"
+    )
+    # "today" comes from the injected clock in the profile's timezone, never the real date.
+    assert fixture_store == [date(2026, 3, 1)]
+
+
+def test_resources_without_a_profile_shows_the_fallback_and_a_hint(run_cli, fixture_store):
+    run = run_cli(["resources"], now=FIXED_NOW)
+    assert run.code == 0
+    assert run.out == (
+        "求助资源 · 其他地区（ZZ）\n"
+        "\n"
+        "紧急电话：\n"
+        "· 112（通用紧急求助）\n"
+        "\n"
+        "求助热线目录：\n"
+        "· 全球目录：https://example.org/zz\n"
+        "\n"
+        "资料整理于 2026-01-15（第 1 版）\n"
+        "\n"
+        f"{cli.RESOURCES_SET_REGION}\n"
+    )
+
+
+def test_resources_for_an_unsupported_saved_region_fall_back_to_zz(
+    run_cli, data_home, fixture_store
+):
+    save_profile(data_home, region=UserRegion("CN", "Asia/Shanghai"))  # not in FIXTURE
+    run = run_cli(["resources"], now=FIXED_NOW)
+    assert run.out.startswith("求助资源 · 其他地区（ZZ）\n")
+    assert cli.RESOURCES_SET_REGION not in run.out
+    assert "no override" not in run.out  # the bundle reason belongs to chat --inspect
+
+
+@pytest.mark.parametrize(
+    ("code", "present", "absent"),
+    [
+        ("CN", ["110", "120", "12356"], ["12355", "999"]),
+        ("HK", ["999", "18111"], ["12356", "120（"]),
+        ("US", ["911", "988", "741741"], ["12356"]),
+        ("ZZ", ["112", "findahelpline.com"], ["12356", "911"]),
+    ],
+)
+def test_resources_with_the_packaged_data(run_cli, data_home, code, present, absent):
+    zone = {"CN": "Asia/Shanghai", "HK": "Asia/Hong_Kong", "US": "America/New_York"}
+    save_profile(data_home, region=UserRegion(code, zone.get(code, "UTC")))
+    run = run_cli(["resources"], now=NOW)
+    assert run.code == 0
+    assert f"（{code}）" in run.lines[0]
+    for text in present:
+        assert text in run.out, text
+    for text in absent:
+        assert text not in run.out, text
+    assert "可能已过期" not in run.out
+
+
+# -- region ----------------------------------------------------------------------------------
+
+
+def _saved(home) -> UserRegion | None:
+    profile = ProfileStore(home).load()
+    assert profile is not None
+    return profile.region
+
+
+def test_region_show_snapshot(run_cli, data_home):
+    save_profile(
+        data_home,
+        region=UserRegion("CN", "Asia/Shanghai", city_code="330100", city_display_name="杭州"),
+    )
+    run = run_cli(["region"])
+    assert run.code == 0
+    assert run.out == "地区：中国大陆（CN）\n时区：Asia/Shanghai\n"
+
+
+def test_region_show_without_profile_or_region(run_cli, data_home):
+    assert run_cli(["region"]).out == f"{cli.NO_REGION}\n"
+    save_profile(data_home, region=None)
+    assert run_cli(["region"]).out == f"{cli.NO_REGION}\n"
+
+
+def test_region_set_single_zone_snapshot(run_cli, data_home, fixture_store):
+    save_profile(data_home)
+    run = run_cli(["region", "gb"], now=FIXED_NOW)
+    assert run.code == 0
+    assert run.out == "好的，已经保存：英国（GB），时区 Europe/London。\n"
+    assert _saved(data_home) == UserRegion("GB", "Europe/London")
+    profile = ProfileStore(data_home).load()
+    assert profile is not None and profile.updated_at == FIXED_NOW
+
+
+def test_region_unknown_code_falls_back_to_zz_and_says_so(run_cli, data_home):
+    save_profile(data_home, region=UserRegion("GB", "Europe/London"))
+    run = run_cli(["region", "UK"])
+    assert run.code == 0
+    assert run.out == (
+        "暂时没有「UK」这个地区的资料，已按其他地区（ZZ）保存，求助卡片会显示全球通用的资源。\n"
+        "好的，已经保存：其他地区（ZZ），时区 Europe/London。\n"
+    )
+    assert _saved(data_home) == UserRegion("ZZ", "Europe/London")
+
+
+@pytest.mark.parametrize("raw", ["USA", "1", "中国", "fr"])
+def test_region_malformed_or_unsupported_codes_fall_back_to_zz(run_cli, data_home, raw):
+    save_profile(data_home)
+    run = run_cli(["region", raw])
+    assert run.code == 0
+    assert f"「{raw}」" in run.out and "（ZZ）" in run.out
+    assert _saved(data_home) == UserRegion("ZZ", "Asia/Shanghai")
+
+
+def test_region_multi_zone_needs_a_timezone(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["region", "US"])
+    assert run.code == 1
+    assert run.out == (
+        "美国有好几个时区，请用 --timezone 告诉我是哪一个，"
+        "例如：America/New_York、America/Chicago、America/Denver\n"
+    )
+    assert _saved(data_home) == UserRegion("CN", "Asia/Shanghai")
+
+
+def test_region_multi_zone_with_timezone_snapshot(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["region", "US", "--timezone", "america/los_angeles"])
+    assert run.code == 0
+    assert run.out == "好的，已经保存：美国（US），时区 America/Los_Angeles。\n"
+    # Same country again: the saved zone is kept.
+    assert run_cli(["region", "US"]).code == 0
+    assert _saved(data_home) == UserRegion("US", "America/Los_Angeles")
+
+
+def test_region_timezone_alone_keeps_the_country(run_cli, data_home):
+    save_profile(data_home, region=UserRegion("AU", "Australia/Sydney"))
+    run = run_cli(["region", "--timezone", "Australia/Perth"])
+    assert run.code == 0
+    assert _saved(data_home) == UserRegion("AU", "Australia/Perth")
+
+
+def test_region_bad_timezone_is_refused(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["region", "US", "--timezone", "Mars/Olympus"])
+    assert run.code == 1
+    assert run.out == (
+        "没有认出时区「Mars/Olympus」。可以用「大洲/城市」的格式，例如 Asia/Singapore。\n"
+    )
+    assert _saved(data_home) == UserRegion("CN", "Asia/Shanghai")
+
+
+def test_region_zz_without_profile_region_uses_utc(run_cli, data_home):
+    save_profile(data_home, region=None)
+    assert run_cli(["region", "ZZ"]).out == "好的，已经保存：其他地区（ZZ），时区 UTC。\n"
+    assert _saved(data_home) == UserRegion("ZZ", "UTC")
+
+
+def test_region_clear_snapshot(run_cli, data_home):
+    save_profile(
+        data_home,
+        region=UserRegion("CN", "Asia/Shanghai", city_code="330100", city_display_name="杭州"),
+    )
+    run = run_cli(["region", "--clear"])
+    assert run.code == 0
+    assert run.out == "已清除保存的地区和时区。求助卡片会显示全球通用的资源。\n"
+    assert _saved(data_home) == UserRegion("ZZ", "UTC")
+    saved = (data_home / PROFILE_FILENAME).read_text(encoding="utf-8")
+    assert "杭州" not in saved and "330100" not in saved
+    assert run_cli(["region"]).out == "地区：其他地区（ZZ）\n时区：UTC\n"
+
+
+def test_region_clear_with_a_code_is_refused(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["region", "HK", "--clear"])
+    assert run.code == 2
+    assert run.out == f"{cli.REGION_CLEAR_WITH_CODE}\n"
+    assert _saved(data_home) == UserRegion("CN", "Asia/Shanghai")
+
+
+@pytest.mark.parametrize("argv", [["region", "HK"], ["region", "--clear"]])
+def test_region_cannot_be_set_before_onboarding(run_cli, data_home, argv):
+    run = run_cli(argv)
+    assert run.code == 1
+    assert run.out == f"{cli.NOT_ONBOARDED}\n"
+    assert not (data_home / PROFILE_FILENAME).exists()
+
+
+def test_region_changes_reach_the_next_chat(run_cli, data_home):
+    save_profile(data_home)
+    assert run_cli(["region", "HK"]).code == 0
+    run = run_cli(["chat"], ["我不想活了"])
+    (result,) = run.results
+    assert result.resource_card is not None and result.resource_card.region_used == "HK"
+    assert "12356" not in run.out
+    record = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
+    assert record["region"]["country_code"] == "HK"
+    assert record["region"]["timezone"] == "Asia/Hong_Kong"
