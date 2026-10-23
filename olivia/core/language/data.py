@@ -136,6 +136,9 @@ class Templates:
     closing: tuple[str, ...]
     greeting: tuple[str, ...]
     returning_after_crisis: tuple[str, ...]
+    """S_ready, first session after a crisis (A3): a gentle check-in that asks about safety."""
+    returning_after_check: tuple[str, ...]
+    """S_ready, first session after a no to the D3 question: a lighter check-in."""
     clarify_feedback: tuple[str, ...]
     """One question after an unclear reply to a waiting card: shelve it? (roadmap R-7b)"""
     kit_empty: tuple[str, ...]
@@ -472,7 +475,9 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         if "metaphor" in slots_of(text):
             raise LanguageDataError(f"{where} S_crisis must not weave metaphors: {text!r}")
     ready = _map(stages[HelpStage.S_READY.value], f"{where} S_ready")
-    _keys(ready, {"greeting", "returning_after_crisis"}, f"{where} S_ready")
+    _keys(
+        ready, {"greeting", "returning_after_crisis", "returning_after_check"}, f"{where} S_ready"
+    )
     if not any(not slots_of(t) for t in singles[HelpStage.S_HAVEN]):
         raise LanguageDataError(f"{where} S_haven needs a slot-free variant for the gate fallback")
     lines = {
@@ -493,6 +498,9 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         greeting=_templates(ready["greeting"], f"{where} S_ready.greeting"),
         returning_after_crisis=_templates(
             ready["returning_after_crisis"], f"{where} S_ready.returning_after_crisis"
+        ),
+        returning_after_check=_templates(
+            ready["returning_after_check"], f"{where} S_ready.returning_after_check"
         ),
         clarify_feedback=lines["clarify_feedback"],
         kit_empty=lines["kit_empty"],

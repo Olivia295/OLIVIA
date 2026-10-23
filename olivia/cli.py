@@ -19,11 +19,14 @@
 ``olivia --version``
     The installed version, read from the package metadata.
 
-The only file the CLI writes is the profile (``chang/profile.py``: region, timezone and
-the onboarding answers) through ``storage.atomic_write_text``, plus, once there is
-something to encrypt, its wrapped data key under ``keys/`` (``core/crypto``). Health
-information is always encrypted, the whole profile when the user chose that (ONB-06).
-Conversation text, perception output and crisis history are never written anywhere.
+The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
+answers) through ``storage.atomic_write_text``, plus, once there is something to encrypt,
+its wrapped data key under ``keys/`` (``core/crypto``). Health information is always
+encrypted, the whole profile when the user chose that (ONB-06). After a crisis (or a no
+to the direct question about intent) ``chat`` also writes the care marker
+(``chang/care.py``): a time and a level, always encrypted, never written without a
+keychain. The next ``chat`` within seven days opens with a gentle check-in and removes it
+(PRD §9, step A3). Conversation text and perception output are never written anywhere.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -46,6 +49,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 from olivia import __version__
+from olivia.core.chang.care import CareRecorder, CareStore
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
     FALLBACK_TIMEZONE,
@@ -251,7 +255,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
         f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
-        f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}",
+        f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}"
+        f" · 关怀问候 {_fmt(data.get('care_greeting'))}",
         f"│ 状态 {_fmt(data.get('previous_stage'))} → {_fmt(data.get('stage'))}"
         f"（{_fmt(data.get('reason'))}） · 纯倾听锁 {_fmt(data.get('lock'))}",
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
@@ -308,6 +313,12 @@ def _chat(
         student=student,
     )
     console.say(CHAT_HINT)
+    care = CareStore(vault=store.vault)
+    marker = care.take(clock())
+    if marker is not None:
+        console.say(f"{profile.agent_name}：{session.care_greeting(light=marker.light)}")
+        console.say()
+    recorder = CareRecorder(care, clock)
     while True:
         line = console.ask(USER_PROMPT)
         if line is None or line.strip() == EXIT_COMMAND:
@@ -316,7 +327,9 @@ def _chat(
         if not line.strip():
             continue
         result = session.turn(line)
+        # The reply (a crisis card included) is on screen before any keychain access.
         console.say(f"{profile.agent_name}：{result.reply}")
+        recorder.observe(result, session.snapshot())
         if inspect:
             for panel_line in inspect_panel(result):
                 console.say(panel_line)
