@@ -274,6 +274,7 @@ from olivia.core.methods.solver import (
     info_cards,
 )
 from olivia.core.models import (
+    UNKNOWN_COUNTRY,
     CrisisLevel,
     HelpStage,
     PerceptionContext,
@@ -1636,7 +1637,10 @@ class Session:
             return
         codes = tuple(code for code in self._tax.red_flags() if code in wanted)
         self._engine.last_gate = None
-        referral = self._engine.render_referral(codes)
+        region = self._profile.region
+        referral = self._engine.render_referral(
+            codes, region.country_code if region is not None else UNKNOWN_COUNTRY
+        )
         self._note_gate()
         self._referred |= wanted
         rendered.reply = f"{rendered.reply}\n\n{referral}"

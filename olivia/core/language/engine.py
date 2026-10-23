@@ -81,6 +81,7 @@ _CLAUSE_ENDS: Final = frozenset("，,。.！!？?；;：:、\n…")
 # Working hours for the card's context line (F3): Monday-Friday, 09:00-18:00 local time.
 _WORK_DAYS: Final = range(0, 5)
 _WORK_HOURS: Final = range(9, 18)
+_HK_MO_TW: Final = frozenset({"HK", "MO", "TW"})
 
 
 @dataclass(frozen=True)
@@ -519,10 +520,20 @@ class LanguageEngine:
             ]
         )
 
-    def render_referral(self, flags: Iterable[str]) -> str:
-        """The specialist referral card for active red-flag codes (taxonomy order)."""
+    def render_referral(self, flags: Iterable[str], country: str = "CN") -> str:
+        """The specialist referral card for active red-flag codes (taxonomy order).
+
+        ``country`` (the profile's country code, ``ZZ`` when unknown) picks the wording of
+        the destinations: mainland China, Hong Kong / Macao / Taiwan, or elsewhere.
+        """
         active = set(flags)
-        destinations = self._data.render.referral_destinations
+        render = self._data.render
+        if country == "CN":
+            destinations = render.referral_destinations
+        elif country in _HK_MO_TW:
+            destinations = render.referral_destinations_hk_mo_tw
+        else:
+            destinations = render.referral_destinations_elsewhere
         unknown = active - set(destinations)
         if unknown:
             raise ValueError(f"unknown red flags: {sorted(unknown)}")
