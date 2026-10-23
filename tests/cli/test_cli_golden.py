@@ -182,6 +182,42 @@ def test_sop4_kit_recall_shows_the_shelved_card_again(run_cli, data_home):
     assert snapshot["user_shelved_actions"] == []
 
 
+# -- Grade B/C information cards (PRD §8.1, roadmap next-phase A4) ---------------------------
+
+TO_CLARIFY = [
+    "最近和男朋友总吵架，很难过",
+    "他总说我太黏人",
+    "我也不知道该怎么办，每次吵完都很失落",
+]
+
+
+# Rules mode only: the round-4 student rates the third turn L1, and an L1 turn never gets
+# an information card (like R-7b phrases, it may hide distress the screen under-rates).
+def test_grade_b_lens_in_clarify_then_grade_c_on_request(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect"], [*TO_CLARIFY, "那 EMDR 有用吗？", "/exit"])
+    *explore, lens, asked = run.results
+    assert all(r.reply_kind is ReplyKind.NORMAL for r in explore)
+    # S_clarify adds one Grade B perspective after its reflection, never an exercise.
+    assert lens.stage is HelpStage.S_CLARIFY and lens.reply_kind is ReplyKind.INFO
+    assert lens.inspect["info"] in {"35", "40", "53", "54"}
+    assert lens.action_id is None and "不需要你去做什么" in lens.reply
+    # A named Grade C therapy gets its card with clinical wording and a referral hint.
+    assert asked.reply_kind is ReplyKind.INFO and asked.inspect["info"] == "21"
+    assert "眼动脱敏与再加工疗法" in asked.reply and "不适合自己尝试" in asked.reply
+    assert "心理门诊" in asked.reply and asked.action_id is None
+    assert all(r.inspect["gate"] == [] for r in run.results)
+    assert "EMDR" not in "\n".join(run.panel)  # the panel never shows the user's words
+
+
+def test_red_flag_user_asking_about_a_grade_c_therapy_gets_the_referral(run_cli, data_home):
+    save_profile(data_home, clinical_history=("SIT-06-01",))
+    run = run_cli(["chat"], ["EMDR 是什么", "/exit"])
+    (result,) = run.results
+    assert result.reply_kind is ReplyKind.REFERRAL and result.inspect["info"] is None
+    assert "眼动脱敏与再加工疗法" not in run.out and "精神科" in result.reply
+
+
 def test_onboarding_answers_cover_the_cn_default(run_cli, data_home):
     run = run_cli(["chat"], ONBOARD_CN)
     assert run.code == 0

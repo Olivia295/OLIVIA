@@ -139,6 +139,60 @@ def build_plan(tax: Taxonomy, chosen_id: str | None, allowed: AllowedSet) -> Act
     return ActionPlan(_skeleton(tax, canonical), allowed.referral_flags)
 
 
+# -- Grade B/C information cards ------------------------------------------------------------
+
+_INFO_GRADES: Final = frozenset({SafetyGrade.GRADE_B, SafetyGrade.GRADE_C})
+# A named Grade C therapy is explained in the ordinary conversation stages, never in
+# S_haven (no new content), S_crisis (crisis card only) or S_ready.
+_ASK_STAGES: Final = frozenset(
+    {HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING}
+)
+
+
+def info_cards(tax: Taxonomy, inp: SolverInput, asked: str | None = None) -> tuple[str, ...]:
+    """Grade B/C information cards the masks allow, in taxonomy order (PRD §8.1).
+
+    Without ``asked``, the pool is every Grade B explainer in S_clarify and nothing in any
+    other stage: Grade B is a perspective S_clarify may offer, never an instruction.
+    With ``asked`` (the Grade B/C method the user asked about by name), the pool is that
+    method alone: a Grade C method in S_explore, S_clarify, S_empower or S_closing, a
+    Grade B method in S_clarify only. Either pool is empty at or above the somatic
+    priority arousal (stabilization only, R-P3a) and when an m0 situation is active, and
+    then goes through the same masks as an exercise: the red-flag closed upper bound (no
+    red flag allows an information card, so a referral turn never shows one), the bans
+    and the method's own contraindications. Shelving does not apply.
+
+    Raises ``ValueError`` when ``asked`` is not a Grade B or C method id, or on an unknown
+    flag or contraindication id.
+    """
+    _validate(tax, inp)
+    methods = tax.methods()
+    if asked is not None and (asked not in methods or methods[asked].grade not in _INFO_GRADES):
+        raise ValueError(f"{asked!r} is not a Grade B or C method id")
+    if inp.arousal >= tax.threshold(_SOMATIC_PRIORITY_KEY) or inp.situation_codes & M0_SITUATIONS:
+        return ()
+    if asked is None:
+        pool = (
+            {mid for mid, m in methods.items() if m.grade is SafetyGrade.GRADE_B}
+            if inp.stage is HelpStage.S_CLARIFY
+            else set()
+        )
+    elif methods[asked].grade is SafetyGrade.GRADE_C:
+        pool = {asked} if inp.stage in _ASK_STAGES else set()
+    else:
+        pool = {asked} if inp.stage is HelpStage.S_CLARIFY else set()
+    flags = inp.active_red_flags
+    if flags:
+        pool &= _red_flag_allowed(tax, flags)
+    pool -= banned_actions(tax, flags)
+    active = active_contraindications(tax, inp)
+    return tuple(
+        mid
+        for mid in methods
+        if mid in pool and active.isdisjoint(_own_contraindications(tax, mid))
+    )
+
+
 # -- the four masks ----------------------------------------------------------------------
 
 
