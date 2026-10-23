@@ -104,10 +104,15 @@ class Vault:
     def available(self) -> bool:
         """Whether the keychain answers now (a cheap read; nothing is created)."""
         try:
-            self._backend.get(MASTER_ITEM)
+            self.check()
         except KeychainUnavailableError:
             return False
         return True
+
+    def check(self) -> None:
+        """Raise :class:`KeychainUnavailableError` (:class:`NoKeychainError` when this
+        device has none) unless the keychain answers now; nothing is created."""
+        self._backend.get(MASTER_ITEM)
 
     def seal(self, store: str, plaintext: bytes, *, label: str = "") -> bytes:
         """Encrypt for ``store``, creating its data key (and the master key) on first use."""

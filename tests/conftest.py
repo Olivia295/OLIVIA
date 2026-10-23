@@ -3,15 +3,24 @@
 No test may ever reach the real OS keychain: every test gets a fresh in-memory
 :class:`FakeKeychain` as the default key backend, and ``keyring.get_keyring`` is
 replaced so that an accidental call fails loudly instead of touching the user's keychain.
+Underneath both, for the whole process (subprocesses included), ``keyring`` itself only
+knows its failing backend, which OLIVIA treats as no keychain at all: a test that undoes
+the fixture's patches (``monkeypatch.undo()``) still cannot reach the real keychain.
 """
 
 from __future__ import annotations
 
+import os
+
 import keyring
+import keyring.backends.fail
 import pytest
 
 from olivia.core.crypto import keychain as keychain_module
 from olivia.core.crypto.errors import KeychainUnavailableError
+
+os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
+keyring.set_keyring(keyring.backends.fail.Keyring())
 
 
 class FakeKeychain:

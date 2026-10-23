@@ -1,0 +1,74 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-23-next-phase.md B5，PRD JTBD 4、MIYI-05）
+#
+# olivia memory（查看记忆）与 olivia forget（遗忘）的文字。由 olivia/core/memory/forget.py 读取；
+# 菜单顺序、确认流程与删除方式都在代码里，这里只放文字。
+#
+# memory：只显示在屏幕上，不导出到任何文件。账本条目旧到新编号，每条是模板化小结、周记记录（B6）
+#   或用户让记住的原话；其余数据只说名字和有没有，从不显示健康信息与安全计划的内容（它们有各自的命令）。
+# forget：五个选项（一条记录、全部聊天记录、锦囊与方法偏好、安全计划、全部数据）；每次删除前都要
+#   输入 confirm_word 确认（--yes 跳过），输入结束即取消。
+#   未成年人的拒绝记录（裁定 22）不含个人信息，一直保留；--all 时用 kept_minor 一句话说明。
+#
+# 槽位（只允许下列几个，加载时校验）：
+#   {n}      条目序号
+#   {count}  数量
+#   {date}   日期（YYYY-MM-DD）
+#
+# 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
+# 不说教（不用“应该/必须/一定要”）、不用感叹号、不写任何电话号码。
+version: 1
+
+memory:
+  heading: 这台电脑上，我记得这些（只显示在屏幕上，不会另存成文件）：
+  empty: 账本里还没有任何记录。
+  note: 你让我记住的话（{date}）：
+  unreadable: 还有 {count} 条记录打不开了，可能已经损坏。用 olivia forget 选「全部聊天记录」，可以把它们一起删掉。
+  others: 除此之外，这台电脑上还存着：
+  profile: 你的基本设置：称呼、地区、陪伴方式
+  health: 健康信息：已经填写（用 olivia health 查看或修改）
+  safety_plan: 个人安全计划：已经保存（用 olivia safety-plan 查看或修改）
+  kit: 锦囊：{count} 张卡
+  preferences: 方法偏好：记下了哪些小练习更适合你
+  state_unreadable: 锦囊与方法偏好：存着一份，但现在打不开
+  care: 一个关心提醒：下次聊天时先问候你一声，问候完就删掉
+  nothing_else: 除此之外，这台电脑上没有存别的。
+  hint: 想让我忘掉其中一些，可以用 olivia forget。
+  no_keychain: 这台电脑上没有可用的系统钥匙串，没办法把记忆加密保存，所以我没有记下我们聊过的任何内容。
+  locked: 加密保存的记忆现在打不开：系统钥匙串没有响应。你的文件我没有改动，过一会儿再试试。
+  adults_only: 这台电脑上没有存关于你的任何内容。
+
+forget:
+  menu: 想让我忘掉哪些？输入序号；直接回车，就先不删。
+  entry: 一条记录
+  ledger: 全部聊天记录：每次聊天的小结、你让我记住的话、周记记录，以及关心提醒
+  kit: 锦囊与方法偏好
+  safety_plan: 个人安全计划
+  all: 全部数据，包括设置和健康信息；之后从第一次设置重新开始
+  pick_entry: 要忘掉哪一条？输入它的序号；直接回车，就先不删。
+  unknown_choice: 没有认出这个序号，这次先不删了。
+  no_entry: 没有第 {n} 条记录。用 olivia memory 可以看到每一条的序号。
+  about_entry: 要忘掉第 {n} 条记录。
+  about_ledger: 要忘掉全部聊天记录：每次聊天的小结、你让我记住的话、周记记录，以及关心提醒。
+  about_kit: 要忘掉锦囊里的卡，以及记下的方法偏好。
+  about_safety_plan: 要删掉你的个人安全计划。
+  about_all: 要忘掉这台电脑上的全部数据：设置、健康信息、聊天记录、锦囊、方法偏好和安全计划，加密用的钥匙也一起销毁。之后再打开 olivia chat，会从第一次设置开始。
+  confirm: 删掉之后就找不回来了。确定的话，请输入「确认」；输入别的内容，就先不删。
+  confirm_word: 确认
+  cancelled: 好，这次什么都没有删。
+  done_entry: 第 {n} 条记录已经删掉了，留下的加密文件也再也打不开了。
+  done_entry_dropped: 另外还有 {count} 条早就打不开的记录，也一起清理掉了。
+  done_ledger: 全部聊天记录已经忘掉了，留下的加密文件也再也打不开了。
+  done_kit: 锦囊与方法偏好已经忘掉了。下次聊天，我会重新了解哪些小练习适合你。
+  done_safety_plan: 个人安全计划已经删掉了。想重新写的时候，可以用 olivia safety-plan。
+  done_all: 这台电脑上的全部数据都已经忘掉了，加密用的钥匙也一起销毁了。下次打开 olivia chat，我们从头认识。
+  keychain_left: 文件都已经删掉，留下的也再也打不开了。只是系统钥匙串现在没有响应，里面那把钥匙还没删掉；等钥匙串恢复后，再运行一次 olivia forget --all 就好。
+  nothing_entry: 账本里还没有任何记录。
+  nothing_ledger: 账本里本来就没有记录。
+  nothing_kit: 锦囊和方法偏好里本来就没有记录。
+  nothing_safety_plan: 还没有保存过个人安全计划。
+  nothing_all: 这台电脑上本来就没有任何数据。
+  locked: 系统钥匙串现在没有响应，这次删不干净，所以我什么都没有改动。过一会儿再试试。
+  adults_only: 这台电脑上没有存关于你的任何内容。
+  about_all_minor: 要删掉这台电脑上的全部数据，加密用的钥匙也一起销毁。
+  done_all_minor: 这台电脑上的数据都已经删掉了，加密用的钥匙也一起销毁了。
+  kept_minor: 只留下了一条记录：它不含任何关于你的信息，只记着这里的陪伴是为成年人准备的，所以不会重新开始设置。
