@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from olivia.core.models import PersonaProfile, UserRegion
-from olivia.core.perception.rule_stub import EmpathyIntent, dominant_spectrum
+from olivia.core.perception.rule_stub import FALLBACK_EMOTION, EmpathyIntent, dominant_spectrum
 from olivia.core.perception.student import StudentModel, default_student
 from olivia.core.safety.tracker import CrisisTracker
 from olivia.core.session import Session
@@ -142,7 +142,13 @@ def test_the_crisis_tracker_keeps_the_rule_valence(monkeypatch):
     session = _open(student=True)
     for text in TEXTS[:5]:
         session.turn(text)
-    assert seen == [_rule_context(text).valence for text in TEXTS[:5]]
+    # Fix F2a: no emotion word (the fallback emotion at 0.0) is passed as None, no evidence.
+    rule = [_rule_context(text) for text in TEXTS[:5]]
+    expected = [
+        None if c.fine_grained_emotion == FALLBACK_EMOTION and c.valence == 0.0 else c.valence
+        for c in rule
+    ]
+    assert seen == expected and None in seen and any(v is not None for v in seen)
 
 
 def test_model_mode_inspect_holds_no_user_text():

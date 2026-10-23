@@ -9,12 +9,32 @@ Precedence, highest first:
 1. Crisis. While the crisis tracker reports ``in_crisis`` the stage is S_crisis, whatever
    else the turn carries. S_crisis is left only on the turn the tracker reports
    ``just_exited``, and only to S_explore (SDD 8.2).
-2. Haven. Outside crisis, an effective battery at or below the haven threshold puts the
-   session in S_haven from any stage.
-3. Direct request. Asking outright for a method moves any other non-crisis stage to
-   S_empower (COLBO-03), for every persona.
+2. Direct request. Asking outright for a method moves any other non-crisis stage to
+   S_empower (COLBO-03), for every persona, S_haven included (owner decision 2026-10-24),
+   and also at L1 (ruling 5), where ``Transition.stabilization_only`` limits the card.
+3. Haven. Outside crisis, an effective battery at or below the haven threshold puts the
+   session in S_haven from any stage, except that S_empower re-enters the haven only on a
+   new battery reading: a direct request out of the haven is not undone on the next turn
+   by the stored low battery. Once S_empower is left the ordinary way, the stored battery
+   applies again.
 4. The per-stage rows of the transition table. In S_empower an arousal spike is judged
-   first, then aversion, then the commands.
+   first, then aversion, then the commands. In S_clarify an arousal at or above the
+   somatic line retreats to S_explore (``CLARIFY_AROUSAL_RETREAT``) before any advance.
+
+L1 guard (PRD 9.1, taxonomy L1, SDD 8.2: L1 stays in S_explore). On a turn whose
+effective level is L1 the turn-count advances do not fire: no ``EXPLORE_TO_CLARIFY`` and
+no ``CLARIFY_TO_EMPOWER``. A direct request still does. ``CLARIFY_CORE_BELIEF`` is not
+held: the session sets ``core_belief_confirmed`` only on a turn the rule screen found
+below L1, so an L1 level there can only be a risk model's score band (the same rule as
+the D3 answer and the schema mirror).
+
+Stabilization flags on the transition, for the session to act on:
+
+* ``stabilization_only``: the turn's effective level is L1 (outside crisis), so any card
+  shown on it must come from the stabilization whitelist (ruling 5), whatever the stage.
+* ``offer_stabilization``: the turn retreated for safety (``CLARIFY_AROUSAL_RETREAT``,
+  ``EMPOWER_AROUSAL_RETREAT``, ``EMPOWER_AVERSION``); the reply should carry stabilization
+  presence, a stabilization card when the solver allows one (COLBO-04 "激活稳定化在场通道").
 
 Aversion. A turn whose signals carry ``aversion`` ("表达反感", COLBO-04 "强烈排斥") in
 S_empower goes back to S_explore, the same route as ``/unhelpful``. The machine only
@@ -42,7 +62,13 @@ import math
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from olivia.core.models import HelpStage, PerceptionContext, PersonaSpectrum, SessionState
+from olivia.core.models import (
+    CrisisLevel,
+    HelpStage,
+    PerceptionContext,
+    PersonaSpectrum,
+    SessionState,
+)
 from olivia.core.perception.signals import Command, TurnSignals
 from olivia.core.safety.tracker import CrisisStatus
 from olivia.core.taxonomy import Taxonomy, TaxonomyError
@@ -79,6 +105,9 @@ class Reason(StrEnum):
     CLARIFY_CORE_BELIEF = "CLARIFY_CORE_BELIEF"
     """S_clarify -> S_empower: the user affirmed the schema mirror question (PRD C_2
     "核心信念识别", decision D4), with the auto-advance's lock, persona and battery gates."""
+    CLARIFY_AROUSAL_RETREAT = "CLARIFY_AROUSAL_RETREAT"
+    """S_clarify -> S_explore: arousal at or above the somatic line, so the session can offer
+    the stabilization channel of S_explore (COLBO-02) instead of reflective work."""
     EMPOWER_AROUSAL_RETREAT = "EMPOWER_AROUSAL_RETREAT"
     """S_empower -> S_explore: ΔArousal or absolute arousal spike (COLBO-04)."""
     EMPOWER_AVERSION = "EMPOWER_AVERSION"
@@ -99,11 +128,21 @@ class Reason(StrEnum):
     """S_crisis -> S_explore: confirmed safety plus the safe-turn streak (SDD 8.2)."""
 
 
+# Safety retreats after which the reply should carry stabilization presence (COLBO-04).
+_STABILIZING_RETREATS = frozenset(
+    {Reason.CLARIFY_AROUSAL_RETREAT, Reason.EMPOWER_AROUSAL_RETREAT, Reason.EMPOWER_AVERSION}
+)
+
+
 @dataclass(frozen=True)
 class Transition:
     previous: HelpStage
     state: SessionState
     reason: Reason
+    stabilization_only: bool = False
+    """An L1 turn outside crisis: a card shown on it comes from the stabilization whitelist."""
+    offer_stabilization: bool = False
+    """A safety retreat: the reply should carry stabilization presence (a card if allowed)."""
 
 
 @dataclass(frozen=True)
@@ -155,6 +194,7 @@ def step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition:
     previous = state.current_stage
     stage, reason = _route(gates, state, inp, battery, locked)
     changed = stage is not previous
+    l1_turn = inp.crisis.level is CrisisLevel.L1 and not inp.crisis.in_crisis
     new_state = replace(
         state,
         current_stage=stage,
@@ -167,7 +207,13 @@ def step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition:
         stage_entry_arousal=inp.perception.arousal if changed else state.stage_entry_arousal,
         user_shelved_actions=list(state.user_shelved_actions),
     )
-    return Transition(previous=previous, state=new_state, reason=reason)
+    return Transition(
+        previous=previous,
+        state=new_state,
+        reason=reason,
+        stabilization_only=l1_turn,
+        offer_stabilization=reason in _STABILIZING_RETREATS,
+    )
 
 
 def close_session(state: SessionState) -> Transition:
@@ -207,17 +253,23 @@ def _route(
             return HelpStage.S_EXPLORE, Reason.CRISIS_EXIT
         return HelpStage.S_CRISIS, Reason.STAY
 
-    if battery <= gates.haven_enter:
-        return HelpStage.S_HAVEN, _enter_or_stay(previous, HelpStage.S_HAVEN, Reason.HAVEN_ENTER)
     if inp.signals.direct_request and previous is not HelpStage.S_EMPOWER:
         return HelpStage.S_EMPOWER, Reason.DIRECT_REQUEST
+    fresh_reading = inp.signals.battery is not None
+    if battery <= gates.haven_enter and (previous is not HelpStage.S_EMPOWER or fresh_reading):
+        return HelpStage.S_HAVEN, _enter_or_stay(previous, HelpStage.S_HAVEN, Reason.HAVEN_ENTER)
 
     if previous is HelpStage.S_READY:
         return HelpStage.S_EXPLORE, Reason.SESSION_START
     if previous is HelpStage.S_EMPOWER:
         return _from_empower(gates, state, inp)
+    if previous is HelpStage.S_CLARIFY and inp.perception.arousal >= gates.clarify_arousal_max:
+        return HelpStage.S_EXPLORE, Reason.CLARIFY_AROUSAL_RETREAT
+    # L1 stays in S_explore: no auto-advance on an L1 turn (a direct request still works).
+    held = crisis.level is CrisisLevel.L1
     if previous is HelpStage.S_EXPLORE and (
-        state.stage_turn_count >= gates.clarify_turns
+        not held
+        and state.stage_turn_count >= gates.clarify_turns
         and inp.perception.arousal < gates.clarify_arousal_max
         and not locked
         and battery >= gates.clarify_battery
@@ -225,7 +277,7 @@ def _route(
         return HelpStage.S_CLARIFY, Reason.EXPLORE_TO_CLARIFY
     confirmed = inp.signals.core_belief_confirmed
     if previous is HelpStage.S_CLARIFY and (
-        (confirmed or state.stage_turn_count >= gates.auto_advance_turns)
+        (confirmed or (not held and state.stage_turn_count >= gates.auto_advance_turns))
         and not locked
         and inp.persona is not PersonaSpectrum.SILENT_ANCHOR
         and battery >= gates.empower_battery

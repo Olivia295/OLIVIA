@@ -254,7 +254,7 @@ from olivia.core.perception.introspector import (
 )
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.model_heads import ModelHeads
-from olivia.core.perception.rule_stub import RuleStub, dominant_spectrum
+from olivia.core.perception.rule_stub import FALLBACK_EMOTION, RuleStub, dominant_spectrum
 from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.perception.student import RiskChoice, choose_risk_model
 from olivia.core.resources.bundle import load_hotlines_bytes
@@ -563,7 +563,12 @@ class Session:
         model_level, model_score = self._risk.take_turn()
         perception, signals = self._shared.stub.perceive(text, assessment)
         perception = self._shared.introspector.apply(text, perception)
-        status = self._tracker.observe(assessment, text, perception.valence)
+        # The rule stub reports valence 0.0 under the fallback emotion when no emotion word
+        # matched: that is no evidence, which the tracker never reads as an improvement.
+        evidence = not (
+            perception.fine_grained_emotion == FALLBACK_EMOTION and perception.valence == 0.0
+        )
+        status = self._tracker.observe(assessment, text, perception.valence if evidence else None)
         self._last_status = status
         if self._heads is not None:
             perception = self._heads.refine(text, perception)

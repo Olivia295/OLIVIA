@@ -317,8 +317,10 @@ def test_crisis_exit_never_routes_to_haven():
     assert nxt.state.current_stage is S.S_HAVEN
 
 
-def test_haven_beats_direct_request():
-    t = run(state(S.S_EXPLORE), turn(battery=0.20, direct_request=True))
+def test_low_battery_without_a_request_enters_the_haven():
+    # Was test_haven_beats_direct_request: since the 2026-10-24 owner decision a direct
+    # request wins over the haven (COLBO-03, see test_direct_request_leaves_haven).
+    t = run(state(S.S_EXPLORE), turn(battery=0.20))
     assert t.state.current_stage is S.S_HAVEN
 
 
@@ -497,7 +499,7 @@ def test_walkthrough_with_aversion_and_intent():
 
 
 def test_reason_has_one_member_per_row_plus_stay():
-    assert len(Reason) == 16 and Reason.STAY in Reason
+    assert len(Reason) == 17 and Reason.STAY in Reason
 
 
 def test_turn_thresholds_must_be_whole_numbers():
@@ -606,3 +608,170 @@ def test_property_s_ready_is_reached_by_a_turn_only_from_closing_with_intent(st_
     if t.state.current_stage is S.S_READY:
         assert t.previous is S.S_CLOSING and inp.signals.intent_confirmed
         assert t.reason is Reason.CLOSING_INTENT_CONFIRMED
+
+
+# --- fix F2a: L1 guard, stabilization flags, clarify retreat, haven exit -----------------
+
+L1 = CrisisLevel.L1
+
+
+def l1(**kwargs):
+    return replace(crisis(level=L1), consecutive_l1_count=1, **kwargs)
+
+
+def test_l1_blocks_explore_to_clarify():
+    t = run(state(S.S_EXPLORE, turns=5), turn(arousal=0.3, status=l1()))
+    assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.STAY
+
+
+def test_l1_blocks_clarify_to_empower():
+    t = run(state(S.S_CLARIFY, turns=9), turn(arousal=0.3, status=l1()))
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
+
+
+def test_l1_does_not_hold_a_confirmed_core_belief():
+    # The session only sets core_belief_confirmed on a turn the rule screen found below L1,
+    # so L1 here is a risk model's score band (MIYI-03 dialogue in model mode).
+    t = run(state(S.S_CLARIFY), turn(arousal=0.3, status=l1(), core_belief_confirmed=True))
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.CLARIFY_CORE_BELIEF
+
+
+def test_eight_l1_turns_stay_in_explore():
+    # "我想消失" x 8 used to reach S_empower through the two auto-advances.
+    st_ = run(SessionState(session_id=uuid4()), turn(arousal=0.25, status=l1())).state
+    for _ in range(7):
+        st_ = run(st_, turn(arousal=0.25, status=l1())).state
+    assert st_.current_stage is S.S_EXPLORE and st_.stage_turn_count == 8
+
+
+def test_l0_turn_after_l1_turns_advances_again():
+    st_ = run(state(S.S_EXPLORE, turns=4), turn(arousal=0.3, status=l1())).state
+    t = run(st_, turn(arousal=0.3))
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.EXPLORE_TO_CLARIFY
+
+
+@pytest.mark.parametrize("stage", [S.S_EXPLORE, S.S_CLARIFY, S.S_CLOSING, S.S_HAVEN])
+def test_l1_direct_request_still_reaches_empower_with_stabilization_only(stage):
+    # Ruling 5: a direct request at L1 may get a card, from the stabilization whitelist only.
+    battery = 0.1 if stage is S.S_HAVEN else 0.6
+    t = run(state(stage, battery=battery), turn(status=l1(), direct_request=True))
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.DIRECT_REQUEST
+    assert t.stabilization_only
+
+
+def test_stabilization_only_follows_the_turn_level():
+    t = run(state(S.S_EMPOWER, entry=0.5), turn(status=l1()))
+    assert t.state.current_stage is S.S_EMPOWER and t.stabilization_only
+    t = run(state(S.S_EMPOWER, entry=0.5), turn())
+    assert not t.stabilization_only
+    t = run(state(S.S_EXPLORE), turn(direct_request=True))
+    assert t.state.current_stage is S.S_EMPOWER and not t.stabilization_only
+    assert not run(state(S.S_EXPLORE), turn(status=crisis(in_crisis=True))).stabilization_only
+
+
+@pytest.mark.parametrize("arousal", [0.80, 0.95, 1.0])
+def test_clarify_at_the_somatic_line_retreats_to_explore(arousal):
+    t = run(state(S.S_CLARIFY, turns=9), turn(arousal=arousal))
+    assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.CLARIFY_AROUSAL_RETREAT
+    assert t.offer_stabilization
+    assert t.state.stage_entry_arousal == arousal
+
+
+def test_clarify_below_the_somatic_line_does_not_retreat():
+    t = run(state(S.S_CLARIFY, turns=1), turn(arousal=0.79))
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
+    assert not t.offer_stabilization
+
+
+def test_clarify_retreat_beats_the_auto_advance_and_core_belief():
+    t = run(state(S.S_CLARIFY, turns=9), turn(arousal=0.9, core_belief_confirmed=True))
+    assert t.reason is Reason.CLARIFY_AROUSAL_RETREAT
+
+
+@pytest.mark.parametrize(
+    "st_,inp,reason",
+    [
+        (state(S.S_EMPOWER, entry=0.3), turn(0.9), Reason.EMPOWER_AROUSAL_RETREAT),
+        (state(S.S_EMPOWER, entry=0.3), turn(0.55), Reason.EMPOWER_AROUSAL_RETREAT),
+        (state(S.S_EMPOWER, entry=0.5), turn(aversion=True), Reason.EMPOWER_AVERSION),
+    ],
+)
+def test_empower_retreats_ask_for_stabilization(st_, inp, reason):
+    t = run(st_, inp)
+    assert t.state.current_stage is S.S_EXPLORE and t.reason is reason
+    assert t.offer_stabilization
+
+
+@pytest.mark.parametrize(
+    "st_,inp",
+    [
+        (state(S.S_EMPOWER, entry=0.5), turn(command=Command.UNHELPFUL)),
+        (state(S.S_EMPOWER, entry=0.5), turn(command=Command.DONE)),
+        (state(S.S_EXPLORE), turn()),
+        (state(S.S_EXPLORE), turn(0.9)),
+        (state(S.S_EMPOWER, entry=0.5), turn()),
+    ],
+)
+def test_other_turns_do_not_ask_for_stabilization(st_, inp):
+    assert not run(st_, inp).offer_stabilization
+
+
+def test_close_session_carries_no_flags():
+    t = close_session(state(S.S_CLOSING))
+    assert not t.offer_stabilization and not t.stabilization_only
+
+
+def test_direct_request_leaves_haven():
+    # PRD COLBO-03: a direct request works in any non-crisis stage, the haven included.
+    t = run(state(S.S_HAVEN, battery=0.1), turn(direct_request=True))
+    assert (t.previous, t.state.current_stage, t.reason) == (
+        S.S_HAVEN,
+        S.S_EMPOWER,
+        Reason.DIRECT_REQUEST,
+    )
+    assert t.state.social_battery == 0.1
+
+
+def test_direct_request_beats_a_low_battery_reading_on_the_same_turn():
+    t = run(state(S.S_EXPLORE), turn(battery=0.05, direct_request=True))
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.DIRECT_REQUEST
+
+
+def test_empower_left_from_haven_stays_until_a_new_reading_or_an_exit():
+    st_ = run(state(S.S_HAVEN, battery=0.1), turn(direct_request=True)).state
+    t = run(st_, turn())
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.STAY
+    # A new low reading puts the session back in the haven.
+    back = run(t.state, turn(battery=0.1))
+    assert back.state.current_stage is S.S_HAVEN and back.reason is Reason.HAVEN_ENTER
+    # Leaving S_empower the ordinary way returns to the haven on the next turn.
+    done = run(t.state, turn(command=Command.DONE))
+    assert done.state.current_stage is S.S_CLOSING
+    assert run(done.state, turn()).state.current_stage is S.S_HAVEN
+
+
+def test_crisis_still_beats_direct_request_in_haven():
+    t = run(state(S.S_HAVEN, battery=0.1), turn(status=crisis(in_crisis=True), direct_request=True))
+    assert t.state.current_stage is S.S_CRISIS and t.reason is Reason.CRISIS_ENTER
+
+
+@given(states(), inputs())
+def test_property_l1_never_auto_advances(st_, inp):
+    t = run(st_, inp)
+    if inp.crisis.level is CrisisLevel.L1 and not inp.crisis.in_crisis:
+        assert t.reason not in (Reason.EXPLORE_TO_CLARIFY, Reason.CLARIFY_TO_EMPOWER)
+
+
+@given(states(), inputs())
+def test_property_flags_match_their_reasons(st_, inp):
+    t = run(st_, inp)
+    assert t.offer_stabilization == (
+        t.reason
+        in (
+            Reason.CLARIFY_AROUSAL_RETREAT,
+            Reason.EMPOWER_AROUSAL_RETREAT,
+            Reason.EMPOWER_AVERSION,
+        )
+    )
+    if t.stabilization_only:
+        assert inp.crisis.level is CrisisLevel.L1 and not inp.crisis.in_crisis

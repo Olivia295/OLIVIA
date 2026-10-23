@@ -30,9 +30,12 @@ def _a(level, score):
     )
 
 
-def test_plain_l1_does_not_escalate(run):
-    statuses = [run("活着好累") for _ in range(5)]
-    assert all(s.level is L.L1 and not s.in_crisis for s in statuses)
+def test_plain_l1_escalates_on_third_turn_without_improvement(run):
+    # Owner decision 2026-10-24: cue strength no longer matters (the old EWMA gate of 0.45
+    # could never be reached by plain 0.40 cues, so these never escalated).
+    s1, s2, s3 = (run("活着好累") for _ in range(3))
+    assert s1.level is L.L1 and s2.level is L.L1 and not s2.in_crisis
+    assert s3.level is L.L2 and s3.escalated and s3.in_crisis and s3.just_entered
 
 
 def test_strong_l1_escalates_on_third_turn(run):
@@ -41,12 +44,61 @@ def test_strong_l1_escalates_on_third_turn(run):
     assert s3.level is L.L2 and s3.escalated and s3.in_crisis and s3.just_entered
 
 
-def test_valence_must_worsen_when_given(tax, lex):
+@pytest.mark.parametrize(
+    "valences",
+    [
+        (-0.5, -0.5, -0.5),  # flat is no improvement
+        (-0.3, -0.5, -0.7),  # worsening
+        (None, None, None),  # no emotion evidence is never an improvement
+        (-0.5, None, -0.6),
+        (None, -0.7, -0.7),
+        (0.6, 0.6, 0.6),  # a positive word on an L1 turn is not an improvement by itself
+    ],
+)
+def test_three_l1_turns_without_improvement_escalate(tax, lex, valences):
     t = CrisisTracker(tax, lex)
-    statuses = [t.observe(_a(L.L1, 0.48), "x", v) for v in (-0.5, -0.5, -0.5)]
-    assert statuses[-1].level is L.L1  # 极性未恶化，不升级
-    t2 = CrisisTracker(tax, lex)
-    statuses = [t2.observe(_a(L.L1, 0.48), "x", v) for v in (-0.3, -0.5, -0.7)]
+    statuses = [t.observe(_a(L.L1, 0.40), "x", v) for v in valences]
+    assert [s.consecutive_l1_count for s in statuses[:2]] == [1, 2]
+    assert statuses[-1].level is L.L2 and statuses[-1].escalated
+
+
+@pytest.mark.parametrize(
+    "valences,expected",
+    [
+        ((-0.7, -0.5, -0.5), [1, 0, 1]),  # valence up on the second turn
+        ((-0.7, None, -0.6), [1, 2, 0]),  # compared with the last known L1 valence
+        ((-0.8, -0.7, -0.6), [1, 0, 0]),  # steadily improving never escalates
+    ],
+)
+def test_an_improving_l1_turn_resets_the_count(tax, lex, valences, expected):
+    t = CrisisTracker(tax, lex)
+    statuses = [t.observe(_a(L.L1, 0.40), "x", v) for v in valences]
+    assert [s.consecutive_l1_count for s in statuses] == expected
+    assert all(s.level is L.L1 and not s.in_crisis for s in statuses)
+
+
+@pytest.mark.parametrize("valence", [0.0, 0.6, -0.5])
+def test_a_calm_or_improving_l0_turn_resets_the_count(tax, lex, valence):
+    # 0.0 and 0.6 are calm; -0.5 is up on the last L1 turn's -0.7.
+    t = CrisisTracker(tax, lex)
+    t.observe(_a(L.L1, 0.40), "x", -0.7)
+    t.observe(_a(L.L1, 0.40), "x", -0.7)
+    assert t.observe(_a(L.L0, 0.0), "x", valence).consecutive_l1_count == 0
+    assert t.observe(_a(L.L1, 0.40), "x", -0.7).level is L.L1
+
+
+@pytest.mark.parametrize("valence", [None, -0.8])
+def test_other_l0_turns_pause_the_count(tax, lex, valence):
+    t = CrisisTracker(tax, lex)
+    t.observe(_a(L.L1, 0.40), "x", -0.7)
+    t.observe(_a(L.L1, 0.40), "x", -0.7)
+    assert t.observe(_a(L.L0, 0.0), "x", valence).consecutive_l1_count == 2
+    assert t.observe(_a(L.L1, 0.40), "x", -0.7).level is L.L2
+
+
+def test_non_finite_valence_is_no_evidence(tax, lex):
+    t = CrisisTracker(tax, lex)
+    statuses = [t.observe(_a(L.L1, 0.40), "x", v) for v in (-0.7, float("nan"), float("inf"))]
     assert statuses[-1].level is L.L2
 
 
@@ -171,9 +223,110 @@ def test_l1_run_count_is_exposed_on_status_and_tracker(tax, lex):
 
     assert tracker.consecutive_l1_count == 0
     assert [observe("活着好累") for _ in range(2)] == [1, 2]
-    assert observe("今天吃了面") == 2  # one L0 turn does not break the run
-    assert observe("活着好累") == 3
-    assert [observe("今天吃了面") for _ in range(3)] == [3, 3, 0]  # l1_clear_streak L0 turns
+    assert observe("今天吃了面") == 2  # an L0 turn with no valence pauses the run
+    assert observe("今天吃了面") == 2
+    assert observe("今天吃了面") == 0  # l1_clear_streak L0 turns reset it
     observe("活着好累")
     assert observe("我想死") == 0  # any L2/L3 turn resets the run
     assert tracker.consecutive_l1_count == 0
+
+
+# -- safety confirmation (fix F2a) ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "是的，我是安全的",
+        "我很安全",
+        "我是安全的",
+        "我现在是安全的",
+        "我没事了",
+        "我不会伤害自己",
+        "我已经联系上朋友了",
+        "我都联系上家人了",
+        "我在家，家人在旁边",
+        "我给12356打过电话了",
+        "我现在已经安全了",
+        "朋友在身边",
+    ],
+)
+def test_confirmation_phrases_with_gap_tolerance(run, reply):
+    run("我想死")
+    s = run(reply)
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "是",
+        "是的",
+        "对",
+        "对的",
+        "安全",
+        "安全的",
+        "安全了",
+        "嗯安全",
+        "嗯，安全的。",
+        "嗯 是的",
+        "是的，我很安全",
+        "我安全",
+        "是安全的",
+        "Yes",
+        "I'm safe",
+        "I’m safe",
+    ],
+)
+def test_short_answer_to_the_safety_question_confirms(run, reply):
+    assert run("我想死").awaiting_confirmation
+    s = run(reply)
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
+    assert run("嗯").in_crisis
+    assert run("嗯").just_exited
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "嗯",
+        "嗯嗯",
+        "好",
+        "不是",
+        "不安全",
+        "是不安全的",
+        "不是很安全",
+        "我不安全",
+        "安全吗",
+        "是吗",
+        "我是",
+        "暂时安全",
+        "安全吧",
+        "是 但还是想死",
+        "是的 但是很难受",
+        "我觉得我是安全的吗",
+        "我不是安全的",
+        "说不上安全",
+    ],
+)
+def test_non_answers_do_not_confirm(run, reply):
+    run("我想死")
+    s = run(reply)
+    assert s.in_crisis and s.awaiting_confirmation
+    for _ in range(3):
+        s = run("嗯")
+    assert s.in_crisis and s.awaiting_confirmation
+
+
+def test_short_answer_outside_crisis_is_ignored(run):
+    s = run("是的")
+    assert not s.in_crisis and not s.awaiting_confirmation
+
+
+def test_short_answer_after_relapse_needs_a_new_answer(run):
+    run("我想死")
+    run("是的")
+    s = run("我又想死了")
+    assert s.awaiting_confirmation
+    assert run("嗯").awaiting_confirmation
+    assert not run("安全的").awaiting_confirmation

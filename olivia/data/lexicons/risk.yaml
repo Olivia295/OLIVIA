@@ -393,13 +393,19 @@ negation:
     patterns: ["防自杀的方法", "防自杀方法", "防自杀的方式", "防自杀的办法", "防止自杀的方法",
                "防止自杀的方式", "防止自杀的办法", "阻止自杀的方法", "阻止自杀的办法", "干预自杀的方法",
                "防轻生的方法", "防止轻生的方法", "防止轻生的办法"]
+# Explicit safety confirmations that start the crisis exit (SDD 8.2). The tracker drops
+# 已经 / 现在 / 都 from both the message and these phrases before matching (gap tolerance),
+# so write each phrase without them: "我安全了" also matches "我现在已经安全了". A short
+# whole-message yes to the crisis reply's question ("是的", "安全的") is read in tracker.py.
 safety_confirm:
   - id: CONFIRM_SAFE_NOW
-    patterns: ["我现在安全了", "我已经安全了", "我现在没事了", "我不会做傻事",
-               "我现在很安全", "我已经冷静下来了", "我保证不会伤害自己"]
+    patterns: ["我安全了", "我是安全的", "我很安全", "我没事了", "我不会做傻事",
+               "我冷静下来了", "我保证不会伤害自己", "我不会伤害自己"]
   - id: CONFIRM_REACHED_SUPPORT
-    patterns: ["我联系上朋友了", "我已经联系了家人", "我给热线打过电话了", "家人在我身边了",
-               "朋友过来陪我了", "热线接通了"]
+    patterns: ["我联系上朋友了", "我联系上家人了", "我联系了家人", "我给热线打过电话了",
+               "我给12356打过电话了", "我打过12356了", "家人在我身边了", "家人在身边",
+               "家人在旁边", "朋友在身边", "朋友在旁边", "家人陪着我", "朋友陪着我",
+               "朋友过来陪我了", "热线接通了", "12356接通了"]
 confirm_veto:
   - id: CONFIRM_VETO
     patterns: ["才怪", "不觉得", "不认为", "怎么可能", "并没有", "还没有", "不是真的",
