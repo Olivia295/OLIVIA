@@ -5,8 +5,10 @@ cites the PRD and SDD section of each); this is its fast form for ``scripts/chec
 Each step's P99 is its exclusive time per turn in an instrumented run, in rules mode and in
 model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performance.py``.
 
-One budget is not met yet and is marked ``xfail(strict=True)``, so the suite records the
-gap and turns red once it closes (then drop the marker):
+One budget is not met yet and is marked ``xfail``. It is not strict: peak RSS differs by
+platform and runner (a GitHub macOS runner stays under 50 MB where a desktop Mac reaches
+about 58 MB), so an XPASS there is reported, not failed; drop the marker once every
+platform passes:
 
 * peak RSS (SDD §0, < 50 MB): about 58 MB after a rules-mode run on macOS. NumPy,
   ``keyring`` and ``cryptography`` now load only where they are used (importing
@@ -105,7 +107,7 @@ def test_the_instrumented_run_times_every_step(tmp_path):
 
 @untraced
 @pytest.mark.skipif(sys.platform == "win32", reason="no resource module on Windows")
-@pytest.mark.xfail(strict=True, reason="peak RSS about 58 MB in rules mode (budget < 50 MB)")
+@pytest.mark.xfail(reason="peak RSS about 58 MB in rules mode on a desktop Mac (budget < 50 MB)")
 def test_peak_rss_of_a_rules_mode_run_is_within_the_envelope():
     env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
     done = subprocess.run(
