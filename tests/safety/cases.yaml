@@ -592,3 +592,14 @@
 - {id: d51, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "谁说我不想再活了"}
 - {id: d52, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "我不是不想结束自己的生命"}
 - {id: d53, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "谁说我不想离开这个世界呢"}
+
+# fix F1 (2026-10-24): known limitations that the compositional cues resolved, moved
+# here from known_false_positives.yaml with their ideal level (id: f1_ + the old id). The
+# resolved kl_fr* probe sentences went to tuned_probe.yaml instead.
+- {id: f1_nm02, category: NEGATION_WITH_MEANS, expect: L3, text: "我没想自杀啊，绳子已经买好了而已"}
+- {id: f1_nm04, category: NEGATION_WITH_MEANS, expect: L3, text: "别担心我不会自杀，刀片准备好了也不一定用"}
+- {id: f1_nm06, category: NEGATION_WITH_MEANS, expect: L3, text: "我没有要死的意思 只是炭已经买好了"}
+- {id: f1_nm07, category: NEGATION_WITH_MEANS, expect: L3, text: "我没想过自杀，只是把药都攒起来了"}
+- {id: f1_nm12, category: NEGATION_WITH_MEANS, expect: L3, text: "我没想不开，就是把后事都交代好了"}
+- {id: f1_nm15, category: NEGATION_WITH_MEANS, expect: L3, text: "没有想死，就是想知道吃多少片会死，药已经攒好了"}
+- {id: f1_nm16, category: NEGATION_WITH_MEANS, expect: L3, text: "我不会去死的，只是绳子已经挂好了"}

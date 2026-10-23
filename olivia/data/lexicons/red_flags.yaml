@@ -13,5 +13,19 @@ entries:
   - {id: RF_ANOREXIA_FEAT, code: SIT-08-04, tier: FEATURE, patterns: ["连续三天没吃东西", "好几天没吃饭", "故意不吃饭", "饿了也忍着不吃", "胃疼也忍着不吃"]}
   - {id: RF_BPD_SELF, code: SIT-09-01, tier: SELF_REPORT, patterns: ["边缘型人格", "边缘人格", "边缘性人格", "边缘性人格障碍", "bpd"]}
   - {id: RF_BPD_FEAT, code: SIT-09-01, tier: FEATURE, patterns: ["自伤手臂", "划手臂", "用刀划自己", "用烟头烫自己", "拿刀片划自己", "拿刀片划手"]}
+  # Current or recent self-injury, said by the user (owner decision 2026-10-24, fix F1):
+  # SIT-09-01 referral, and risk.yaml's ASK_INTENT_SELF_INJURY_* cues ask the D3 question.
+  # Tier SELF_REPORT so that a negation right before the act voids it (我没有割自己). The
+  # forms carry a current marker (又, 在, 开始, 还在) or a direct object, so a past experience
+  # (以前自残过, 割过自己, 曾经绝食过) and a stopped one (不再自残了: no bare 自残了) do not
+  # match. Known limit: 不会 is not a negation here, so 我不会再割自己了 still flags.
+  - {id: RF_SELF_INJURY_ACT, code: SIT-09-01, tier: SELF_REPORT, patterns: [
+      "割自己", "划自己", "烫自己", "掐自己", "扎自己", "刺自己", "撞自己",
+      "割了自己", "划了自己", "烫了自己", "掐了自己", "扎了自己", "撞了自己",
+      "割伤自己", "划伤自己", "烫伤自己", "割伤了自己", "划伤了自己", "烫伤了自己", "割破自己", "划破自己",
+      "把自己割伤", "把自己划伤", "把自己烫伤", "把自己弄伤", "把自己割破", "把自己划破",
+      "又自残", "在自残", "开始自残", "忍不住自残", "刚自残", "刚刚自残", "还在自残",
+      "又自伤", "在自伤", "开始自伤", "刚自伤", "刚才自伤",
+      "天绝食", "在绝食", "又绝食", "开始绝食", "绝食两天", "绝食三天", "绝食好几天", "绝食一周"]}
   - {id: RF_SUBSTANCE_SELF, code: SIT-10-04, tier: SELF_REPORT, patterns: ["酒精依赖", "酒瘾", "药物依赖", "毒瘾"]}
   - {id: RF_SUBSTANCE_FEAT, code: SIT-10-04, tier: FEATURE, patterns: ["每天都要喝酒才能睡", "不喝酒手就抖", "一天不喝酒就浑身难受", "我离不开酒", "离不开酒精"]}

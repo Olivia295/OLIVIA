@@ -9,16 +9,22 @@
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
 #   L0 -> L2: 14
 #   L0 -> L3: 2
-#   L1 -> L0: 5
-#   L2 -> L0: 11
-#   L2 -> L1: 2
-#   L3 -> L0: 85
-#   L3 -> L2: 4
-#   by ideal: L0 16, L1 5, L2 13, L3 89
-#   by current: L0 101, L1 2, L2 18, L3 2
-#   below ideal (missed or under-rated): 107
+#   L1 -> L0: 2
+#   L2 -> L0: 8
+#   L2 -> L1: 3
+#   L3 -> L0: 71
+#   L3 -> L1: 5
+#   L3 -> L2: 6
+#   by ideal: L0 16, L1 2, L2 11, L3 82
+#   by current: L0 81, L1 8, L2 20, L3 2
+#   below ideal (missed or under-rated): 95
 #   above ideal (false alarms): 16
-#   total: 123
+#   total: 111
+#
+# Fix F1 (2026-10-24, compositional cues): 12 entries reached their ideal level and moved
+# out (kl_nm02/04/06/07/12/15/16 to cases.yaml as f1_*, kl_fr17/33/35/36/37 to
+# tuned_probe.yaml); 9 rose but stay below ideal (their `why` ends with "fix F1: ...").
+# No entry moved away from its ideal.
 #
 # {id, text, ideal, current, why}
 - {id: fp01, ideal: L0, current: L2, text: "好想死你们了，下周回国一起吃饭！", why: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
@@ -62,9 +68,9 @@
 - {id: kl_m43, ideal: L3, current: L0, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43)"}
 - {id: kl_tp01, ideal: L3, current: L2, text: "我决定了 今晚就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp01)"}
 - {id: kl_tp04, ideal: L3, current: L0, text: "走的日子我都定好了，就这周六", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp04)"}
-- {id: kl_tp05, ideal: L3, current: L0, text: "已经爬到楼顶了 风好大", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp05)"}
+- {id: kl_tp05, ideal: L3, current: L2, text: "已经爬到楼顶了 风好大", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp05); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
 - {id: kl_tp06, ideal: L3, current: L0, text: "我现在站在江边的栏杆外面", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp06)"}
-- {id: kl_tp07, ideal: L3, current: L0, text: "坐在窗台上 腿已经伸出去了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp07)"}
+- {id: kl_tp07, ideal: L3, current: L2, text: "坐在窗台上 腿已经伸出去了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp07); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
 - {id: kl_tp08, ideal: L3, current: L0, text: "生日那天就结束吧，反正都想好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp08)"}
 - {id: kl_tp09, ideal: L3, current: L0, text: "下班就去那座桥上跳下去", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp09)"}
 - {id: kl_tp10, ideal: L3, current: L0, text: "站在天台边上了 别劝我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp10)"}
@@ -78,35 +84,28 @@
 - {id: kl_tp21, ideal: L3, current: L0, text: "站在阳台边上半个小时了 只要往前一步就解脱了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp21)"}
 - {id: kl_tp22, ideal: L3, current: L0, text: "我已经到桥上了，水很急", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp22)"}
 - {id: kl_tp26, ideal: L3, current: L0, text: "tonight就结束一切 我认真的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp26)"}
-- {id: kl_tp27, ideal: L3, current: L0, text: "我已经翻过护栏了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp27)"}
+- {id: kl_tp27, ideal: L3, current: L2, text: "我已经翻过护栏了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp27); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
 - {id: kl_af05, ideal: L3, current: L0, text: "绳子已经套在脖子上了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af05)"}
-- {id: kl_af09, ideal: L3, current: L0, text: "这是我发给你的最后一条消息了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af09; it moved here as kl_af09_rw in fix round 5)"}
+- {id: kl_af09, ideal: L3, current: L1, text: "这是我发给你的最后一条消息了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af09; it moved here as kl_af09_rw in fix round 5); fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_af10, ideal: L3, current: L0, text: "以后帮我照顾好我的猫 拜托了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af10)"}
 - {id: kl_af11, ideal: L3, current: L0, text: "后事我都安排好了，存款留给我妈", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af11)"}
 - {id: kl_af15, ideal: L3, current: L0, text: "血一直在流 止都止不住", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af15)"}
-- {id: kl_af17, ideal: L3, current: L0, text: "银行卡密码都留给我弟了 反正以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af17)"}
+- {id: kl_af17, ideal: L3, current: L1, text: "银行卡密码都留给我弟了 反正以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af17); fix F1: L1 + D3 question via ASK_INTENT_THINGS_LEFT (no death context, so not Stage 1)"}
 - {id: kl_af18, ideal: L3, current: L0, text: "药已经吃下去了，现在就等着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af18)"}
-- {id: kl_af21, ideal: L3, current: L0, text: "我把东西都送人了 以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af21)"}
+- {id: kl_af21, ideal: L3, current: L1, text: "我把东西都送人了 以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af21); fix F1: L1 + D3 question via ASK_INTENT_THINGS_LEFT (no death context, so not Stage 1)"}
 - {id: kl_af23, ideal: L3, current: L0, text: "最后跟你说一声谢谢 以后不会再来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af23)"}
 - {id: kl_af24, ideal: L3, current: L0, text: "刚划了好几刀 这次割得很深", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af24; it moved here as kl_af24_rw in fix round 5)"}
 - {id: kl_af25, ideal: L3, current: L0, text: "已经吞了好多片了 意识有点模糊", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af25)"}
 - {id: kl_af27, ideal: L3, current: L0, text: "给爸妈的信放在书桌抽屉里了，对不起", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af27)"}
-- {id: kl_nm02, ideal: L3, current: L0, text: "我没想自杀啊，绳子已经买好了而已", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm02)"}
-- {id: kl_nm04, ideal: L3, current: L0, text: "别担心我不会自杀，刀片准备好了也不一定用", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm04)"}
-- {id: kl_nm06, ideal: L3, current: L0, text: "我没有要死的意思 只是炭已经买好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm06)"}
-- {id: kl_nm07, ideal: L3, current: L0, text: "我没想过自杀，只是把药都攒起来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm07)"}
 - {id: kl_nm09, ideal: L3, current: L0, text: "我不会自杀的，农药放在床底下而已", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm09)"}
-- {id: kl_nm12, ideal: L3, current: L0, text: "我没想不开，就是把后事都交代好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm12)"}
 - {id: kl_nm14, ideal: L3, current: L0, text: "我说了不会自杀 刀藏在枕头下面只是让我安心", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm14)"}
-- {id: kl_nm15, ideal: L3, current: L2, text: "没有想死，就是想知道吃多少片会死，药已经攒好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm15)"}
-- {id: kl_nm16, ideal: L3, current: L0, text: "我不会去死的，只是绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm16)"}
 - {id: kl_nm18, ideal: L3, current: L0, text: "我不想自杀 只是一个人坐在楼顶边上吹风", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm18)"}
 - {id: kl_s09_t3, ideal: L3, current: L0, text: "她又不来了 绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: sessions.yaml s09 turn 3)"}
 - {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer probe ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
 - {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer probe ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
 - {id: kl_m38_rw, ideal: L3, current: L0, text: "车库里已经准备好了炭 车窗也用胶带封好了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 车窗也用胶带封, removed in fix round 5 because it fired on everyday text (cases.yaml b117); no other cue matches"}
 - {id: kl_tp15_rw, ideal: L3, current: L0, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
-- {id: kl_af09_rw, ideal: L3, current: L0, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
+- {id: kl_af09_rw, ideal: L3, current: L1, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_af24_rw, ideal: L3, current: L0, text: "刚在手腕上划了好几刀 这次割得很深", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 手腕上划了, removed in fix round 5 because it fired on everyday text (cases.yaml b116); no other cue matches"}
 - {id: kl_ho02, ideal: L3, current: L0, text: "我把绳子绑在门把手上了", why: "reviewer probe ho02; no self-harm anchor; it relied only on the Stage 1 phrase 我把绳子绑在门把手, removed in fix round 5 because it fired on everyday text (cases.yaml b120)"}
 - {id: kl_ho05, ideal: L3, current: L0, text: "刚刚吃了很多药 现在好晕", why: "reviewer probe ho05; no self-harm anchor; it relied only on the Stage 1 phrase 很多药现在好晕, removed in fix round 5 because it fired on everyday text (cases.yaml b115)"}
@@ -122,25 +121,20 @@
 - {id: kl_fr07, ideal: L3, current: L0, text: "刀已经在手腕上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr08, ideal: L3, current: L0, text: "我站在桥上往下看，准备跳了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr09, ideal: L3, current: L0, text: "我把药都吃了，现在头很晕", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
-- {id: kl_fr10, ideal: L3, current: L0, text: "这是最后一条消息了，谢谢你陪我", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr10, ideal: L3, current: L1, text: "这是最后一条消息了，谢谢你陪我", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_fr11, ideal: L3, current: L0, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr12, ideal: L3, current: L0, text: "炭已经烧起来了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr13, ideal: L2, current: L0, text: "我真的撑不住了，想一死百了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr16, ideal: L2, current: L0, text: "有时候觉得死了会比较轻松", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
-- {id: kl_fr17, ideal: L2, current: L0, text: "我在想要不要结束这一切", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr18, ideal: L2, current: L0, text: "要是我死了是不是就不用这么痛苦了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr19, ideal: L2, current: L0, text: "我脑子里一直有个声音叫我去死", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr20, ideal: L2, current: L1, text: "我想从这个世界上消失，永远的那种，死掉", why: "final-review fresh-author probe: only 世界上消失 (L1_DISAPPEAR) matches; the trailing 死掉 is not a cue on its own"}
 - {id: kl_fr23, ideal: L2, current: L0, text: "我想过很多次怎么死", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr24, ideal: L2, current: L1, text: "活着太痛苦了，我想解脱，去死", why: "final-review fresh-author probe: only 想解脱 (L1_WEARY) matches; a bare 去死 is not a cue on its own"}
-- {id: kl_fr27, ideal: L2, current: L0, text: "我想去陪我去世的妈妈", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
+- {id: kl_fr27, ideal: L2, current: L1, text: "我想去陪我去世的妈妈", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain; fix F1: L1 + D3 question via ASK_INTENT_JOIN_THE_DEAD (a wish to join someone who died is ambiguous, so it asks)"}
 - {id: kl_fr28, ideal: L2, current: L0, text: "想自我毁灭", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr29, ideal: L2, current: L0, text: "我想了结这一生", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
-- {id: kl_fr33, ideal: L1, current: L0, text: "我觉得自己什么都做不好，活着有什么用", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr34, ideal: L1, current: L0, text: "每天醒来都觉得很绝望", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
-- {id: kl_fr35, ideal: L2, current: L0, text: "我好想就这么睡着不再醒来", why: "final-review fresh-author probe: passive-ideation phrasing (C-SSRS item 1) the lexicon does not contain"}
-- {id: kl_fr36, ideal: L1, current: L0, text: "有时候觉得世界没我会更好", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
-- {id: kl_fr37, ideal: L1, current: L0, text: "感觉人生一点意义都没有", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr38, ideal: L1, current: L0, text: "我好累，什么都不想做了", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr47, ideal: L0, current: L2, text: "今晚就动手写论文", why: "FALSE POSITIVE, final-review fresh-author probe: 今晚就动手 (L2_PLAN_NO_ANCHOR) has benign masks only for 做 / 装修"}
 - {id: kl_fr50, ideal: L0, current: L2, text: "我男朋友说他想死我了", why: "FALSE POSITIVE, final-review fresh-author probe: the 想死X了 'miss you' idiom (see fp01, fp02)"}

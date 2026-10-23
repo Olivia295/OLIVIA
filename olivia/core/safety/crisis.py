@@ -13,9 +13,15 @@ passes an independent evaluation), an injected model's own in-contract L3 predic
 counts as plan evidence, so Stage 2 can answer L3. The rule model's prediction and a
 model failure never count as plan evidence.
 
-``asks_intent`` (decision D3) is set when a rule ``ASK_INTENT`` cue fires: an L1 pair cue
-for a euphemistic request for a way to end a life. The screen only reports it; the
-session decides to ask.
+Compositional cues (fix F1, ``safety/compose.py``) join two phrase lists across a short
+gap. An L3 composition is Stage 1 plan evidence like a Stage 1 phrase; L1 and L2 ones are
+rule-model cues that the negation and hyperbole masks can void, like Stage 2 phrases; ASK
+ones are D3 cues, never masked, like the ask pairs.
+
+``asks_intent`` (decision D3) is set when a rule ``ASK_INTENT`` cue fires: an L1 pair or
+composition cue for a euphemistic request for a way to end a life, current self-injury,
+a farewell, or a sense of being a burden. The screen only reports it; the session
+decides to ask.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from itertools import accumulate
 from typing import Final, Literal, Protocol
 
 from olivia.core.models import CrisisLevel
+from olivia.core.safety.compose import Composer, CompositionHit
 from olivia.core.safety.lexicon import PairCue, RiskCue, RiskSection, SafetyLexicons
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import normalize
@@ -97,10 +104,19 @@ class _CueIndex:
         self.matcher = PhraseMatcher(phrases)
         self.cues: dict[str, RiskCue] = cues
         self.pairs: tuple[PairCue, ...] = pairs
-        self.ask_ids: frozenset[str] = frozenset(p.id for p in lexicons.ask_pairs)
+        self.composer = Composer(lexicons.compositions)
+        self.ask_ids: frozenset[str] = frozenset(
+            [
+                *(p.id for p in lexicons.ask_pairs),
+                *(c.id for c in lexicons.compositions.entries if c.ask),
+            ]
+        )
 
     def scan(self, text: str) -> list[Match]:
         return self.matcher.find_all(text)
+
+    def compose(self, text: str) -> list[CompositionHit]:
+        return self.composer.find(text)
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
         """Pair cues with a request and an anchor that none of their exceptions contains."""
@@ -158,10 +174,15 @@ class RuleRiskModel:
         self._score_l0 = tax.threshold("risk.lexicon_scores.L0")
 
     def predict(self, text: str) -> RiskPrediction:
-        return self.predict_matches(self._index.scan(normalize(text)))
+        normalized = normalize(text)
+        return self.predict_matches(self._index.scan(normalized), self._index.compose(normalized))
 
-    def predict_matches(self, matches: Sequence[Match]) -> RiskPrediction:
-        """Score a prior scan of the normalized text (spans are only valid there)."""
+    def predict_matches(
+        self, matches: Sequence[Match], compositions: Sequence[CompositionHit] = ()
+    ) -> RiskPrediction:
+        """Score a prior scan of the normalized text (spans are only valid there).
+
+        L3 compositions are Stage 1 evidence and play no part here."""
         cues = self._index.cues
         masks: list[Match] = []
         stage2: list[Match] = []
@@ -179,12 +200,36 @@ class RuleRiskModel:
 
         covered = _MaskCover(masks)
         valid = [m for m in stage2 if not covered.contains(m)]
-        # Pair cues ignore the negation and hyperbole masks (only their own exceptions apply).
+        # Pair cues ignore the negation and hyperbole masks (only their own exceptions apply),
+        # and so do ask compositions; L1 and L2 compositions are masked like stage2 phrases.
         pairs = self._index.fired_pairs(matches)
-        if valid or pairs:
-            score = max([_cue_score(cues[m.key]) for m in valid] + [p.score for p in pairs])
+        phrase_level = max(
+            [cues[m.key].level or CrisisLevel.L0 for m in valid] + [p.level for p in pairs],
+            default=CrisisLevel.L0,
+        )
+        # A composition adds what the phrases miss: an L1 or L2 one counts only above the
+        # phrase cues' level, so the cue ids of a turn the phrases already rate stay as they
+        # were. An ask composition always counts: it sets the D3 flag.
+        composed = [
+            hit.entry
+            for hit in compositions
+            if hit.entry.ask
+            or (
+                hit.entry.level is not CrisisLevel.L3
+                and hit.entry.level > phrase_level
+                and not covered.contains(Match(hit.entry.id, hit.start, hit.end))
+            )
+        ]
+        if valid or pairs or composed:
+            score = max(
+                [_cue_score(cues[m.key]) for m in valid]
+                + [p.score for p in pairs]
+                + [c.score for c in composed]
+            )
             level = self._tax.crisis_level_for_score(score)
-            ids = _unique_ids([*(m.key for m in valid), *(p.id for p in pairs)])
+            ids = _unique_ids(
+                [*(m.key for m in valid), *(p.id for p in pairs), *(c.id for c in composed)]
+            )
             return RiskPrediction(level, score, ids)
         if hyperbole_ids:
             return RiskPrediction(CrisisLevel.L0, self._score_hyperbole, _unique_ids(hyperbole_ids))
@@ -222,12 +267,15 @@ class SafetyScreen:
         matches = self._index.scan(normalized)
         cues = self._index.cues
         stage1 = [m for m in matches if m.key in cues and cues[m.key].section == "stage1"]
-        if stage1:
-            score = max(_cue_score(cues[m.key]) for m in stage1)
-            return CrisisAssessment(
-                CrisisLevel.L3, score, "STAGE1", True, _unique_ids(m.key for m in stage1)
-            )
-        prediction = self._rule_model.predict_matches(matches)
+        composed = self._index.compose(normalized)
+        # Like the Stage 2 compositions, an L3 one is reported only when no Stage 1 phrase
+        # already gives the plan evidence.
+        plans = [] if stage1 else [h.entry for h in composed if h.entry.level is CrisisLevel.L3]
+        if stage1 or plans:
+            score = max([_cue_score(cues[m.key]) for m in stage1] + [c.score for c in plans])
+            ids = _unique_ids([*(m.key for m in stage1), *(c.id for c in plans)])
+            return CrisisAssessment(CrisisLevel.L3, score, "STAGE1", True, ids)
+        prediction = self._rule_model.predict_matches(matches, composed)
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False
         if self._model is not None:

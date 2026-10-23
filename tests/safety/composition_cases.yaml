@@ -1,0 +1,349 @@
+# Compositional crisis cues (fix F1, 2026-10-24): synthetic user messages, no real people.
+# The rules screen used to match closed exact phrases only, so one inserted word (已经, 都,
+# 也, 真的) or a different verb dropped a plain crisis statement to L0. The `compositions`
+# section of risk.yaml now joins two phrase lists across a short gap (no clause punctuation
+# in between), with negation, third-person, context and exception checks.
+#
+# Each case: {id, kind, text, level, stage, ask, flag?}. `level` and `stage` are asserted
+# exactly, `ask` is CrisisAssessment.asks_intent (decision D3) and `flag`, when present, is
+# whether the red-flag detector reports SIT-09-01 (self-injury). Never lower an expectation
+# to make a case pass. Phrases stay minimal: generic means words, no method detail.
+#
+# kinds (positives):
+#   intent_act       intent verb x act of ending one's life -> L2
+#   intent_time      plan verb x act + a time or preparation word nearby -> L3 (Stage 1)
+#   prep_note        note / last words / own affairs + prepared or finished -> L3
+#   prep_means       a generic means + prepared, with a death context anywhere -> L3
+#   farewell_ctx     farewell or arrangements + a death or ending context -> L3
+#   farewell_ask     the same farewell or arrangements alone -> L1 + D3 question
+#   place            already standing or sitting at a height or a rail edge -> L2 (no
+#                    self-harm anchor, as cases.yaml pn04)
+#   no_wake          wish not to wake up (C-SSRS item 1, passive ideation) -> L2
+#   burden_ask       being a burden, the world better without me, joining someone who
+#                    died -> L1 + D3 question
+#   weary            living / life + meaningless or tiring, with a word in between -> L1
+#   self_injury      current or recent self-injury -> L1 + D3 question + SIT-09-01
+# kinds (negatives): hyperbole, benign_object, third_person, negation, past, fiction,
+#   prep_benign, farewell_benign, place_benign, sleep_benign, burden_benign, weary_benign,
+#   injury_benign, method_benign
+
+positives:
+# --- intent_act: L2 ---
+- {id: cp001, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我要自杀"}
+- {id: cp002, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我真的要自杀了"}
+- {id: cp003, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我决定自杀"}
+- {id: cp004, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我打算自杀"}
+- {id: cp005, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我准备自杀"}
+- {id: cp006, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我计划自杀很久了"}
+- {id: cp007, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我已经决定要自杀了"}
+- {id: cp008, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我打算轻生"}
+- {id: cp009, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我要结束自己"}
+- {id: cp010, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我决定结束自己的生命"}
+- {id: cp011, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我准备去死了"}
+- {id: cp012, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我会去自杀的"}
+- {id: cp013, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我干脆自杀算了"}
+- {id: cp014, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "干脆去死好了"}
+- {id: cp015, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我是不是该去死"}
+- {id: cp016, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "要不我去死吧"}
+- {id: cp017, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我决定结束这一切"}
+- {id: cp018, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我准备寻死"}
+- {id: cp019, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我只想自杀"}
+- {id: cp020, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我打算自尽"}
+- {id: cp021, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "其实我一直打算自杀"}
+- {id: cp022, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我已经下决心要自杀了"}
+- {id: cp023, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "他走了以后，我也要自杀"}
+- {id: cp024, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我真的决定轻生了"}
+- {id: cp025, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我会去结束自己的"}
+- {id: cp026, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我宁愿去死"}
+- {id: cp027, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我恐怕会去自杀"}
+- {id: cp028, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "不如自杀算了"}
+- {id: cp029, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我只好去死了"}
+- {id: cp030, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "要不要自杀呢"}
+- {id: cp031, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我跟她说我要自杀"}
+- {id: cp032, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我打算就这样了结自己"}
+- {id: cp033, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "我準備自殺"}
+- {id: cp034, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "谢谢你陪我这么久，准备去死了"}
+- {id: cp035, kind: intent_act, level: L2, stage: STAGE2, ask: false, text: "他们都不理我，我准备自杀"}
+# --- intent_time: L3 (Stage 1 plan evidence) ---
+- {id: cp040, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我今晚要自杀"}
+- {id: cp041, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我打算明天自杀"}
+- {id: cp042, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我准备今晚自杀"}
+- {id: cp043, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我今晚就打算结束这一切"}
+- {id: cp044, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我决定这周六自杀"}
+- {id: cp045, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "明天一早我就去死"}
+- {id: cp046, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "等他们都睡着了我就自杀"}
+- {id: cp047, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我计划下周一轻生"}
+- {id: cp048, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我已经决定了，今晚就去自杀"}
+- {id: cp049, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我准备过完年就结束自己"}
+- {id: cp050, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我现在就要自杀"}
+- {id: cp051, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我马上就去死"}
+- {id: cp052, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我打算考完试就自杀"}
+- {id: cp053, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我决定生日那天自杀"}
+- {id: cp054, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我要在凌晨三点自杀"}
+- {id: cp055, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "今天晚上我要去自杀"}
+- {id: cp056, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我打算这个周末结束自己的生命"}
+- {id: cp057, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我要自杀，东西都准备好了"}
+- {id: cp058, kind: intent_time, level: L3, stage: STAGE1, ask: false, text: "我决定自杀了，都安排好了"}
+# --- prep_note: L3 ---
+- {id: cp060, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗书已经写好了"}
+- {id: cp061, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗书我早就写好了"}
+- {id: cp062, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗书差不多都写完了"}
+- {id: cp063, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗言我也都录好了"}
+- {id: cp064, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗书也已经放好了"}
+- {id: cp065, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "给我妈的遗书全写好了"}
+- {id: cp066, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "后事我都交代好了"}
+- {id: cp067, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "我把自己的后事都安排好了"}
+- {id: cp068, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "我的后事早就安排好了"}
+- {id: cp069, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "绝笔信写好了"}
+- {id: cp070, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "已经写好了一封遗书"}
+- {id: cp071, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗书我昨天就写完了"}
+- {id: cp072, kind: prep_note, level: L3, stage: STAGE1, ask: false, text: "遗言都想好了"}
+# --- prep_means: L3 ---
+- {id: cp080, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我不想死，可是绳子都准备好了"}
+- {id: cp081, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我没想自杀啊，绳子早就买好了"}
+- {id: cp082, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我不会自杀的，药都攒够了"}
+- {id: cp083, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "不想活了，刀片也备好了"}
+- {id: cp084, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我想去死，炭全买好了"}
+- {id: cp085, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我不会做傻事，只是药已经囤好了"}
+- {id: cp086, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "自杀的念头一直在，绳子已经挂好了"}
+- {id: cp087, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我想结束这一切，药我都准备齐了"}
+- {id: cp088, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "别担心我不会去死，安眠药我都藏好了"}
+- {id: cp089, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我活不下去了，农药已经买回来了"}
+- {id: cp090, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "买好了绳子，我真的不想活了"}
+- {id: cp091, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我说了不想死，可刀已经磨好了"}
+- {id: cp092, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我没打算轻生，就是把药都攒起来了"}
+# --- farewell_ctx: L3 ---
+- {id: cp100, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "跟大家都道别了，我真的不想活了"}
+- {id: cp101, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "这是最后一条消息了，我要去死了"}
+- {id: cp102, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "密码都留给妹妹了，以后用不上了，我想自杀"}
+- {id: cp103, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "东西都送人了，反正我也不想活了"}
+- {id: cp104, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "我已经和这个世界告别了，不想活了"}
+- {id: cp105, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "猫就托付给你了，我想结束自己"}
+- {id: cp106, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "跟所有人告别之后我就去自杀"}
+- {id: cp107, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "帮我照顾好我爸妈，我真的活不下去了"}
+# --- farewell_ask: L1 + D3 ---
+- {id: cp110, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已经跟大家道别了"}
+- {id: cp111, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我把银行卡密码都告诉妹妹了，以后用不上了"}
+- {id: cp112, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已经和所有人告别了"}
+- {id: cp113, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "存款都留给我妈了，以后也用不上"}
+- {id: cp114, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我想跟这个世界告别"}
+- {id: cp115, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我的猫就托付给你了"}
+- {id: cp116, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "这应该是最后一条消息了"}
+- {id: cp117, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "东西都送人了，以后用不上了"}
+# --- place: L2 ---
+- {id: cp120, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经站在楼顶了"}
+- {id: cp121, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经坐在天台边上了"}
+- {id: cp122, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经爬上楼顶了"}
+- {id: cp123, kind: place, level: L2, stage: STAGE2, ask: false, text: "已经翻过护栏了"}
+- {id: cp124, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经站到窗台上了"}
+- {id: cp125, kind: place, level: L2, stage: STAGE2, ask: false, text: "此刻我正坐在楼顶边"}
+- {id: cp126, kind: place, level: L2, stage: STAGE2, ask: false, text: "已经走到铁轨上了"}
+- {id: cp127, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经爬到天台上了"}
+# --- no_wake: L2 ---
+- {id: cp130, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "真希望睡着就不要醒来了"}
+- {id: cp131, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "如果明天不用醒来就好了"}
+- {id: cp132, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "好想一觉睡过去别醒了"}
+- {id: cp133, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "希望明天早上醒不过来"}
+- {id: cp134, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "但愿今晚睡着了就别醒"}
+- {id: cp135, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "不用再醒来该多好"}
+- {id: cp136, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "我想睡着以后永远不醒"}
+- {id: cp137, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "巴不得睡下去不要醒"}
+- {id: cp138, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "真想闭上眼就不再醒来"}
+- {id: cp139, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "要是一睡就醒不来就好了"}
+- {id: cp140, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "每天都希望不要醒来"}
+- {id: cp141, kind: no_wake, level: L2, stage: STAGE2, ask: false, text: "好希望明天别再醒了"}
+# --- burden_ask: L1 + D3 ---
+- {id: cp150, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "我觉得自己是个累赘"}
+- {id: cp151, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "我就是大家的累赘"}
+- {id: cp152, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "我一直在拖累家里人"}
+- {id: cp153, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "有时候我觉得大家没有我会过得更好"}
+- {id: cp154, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "世界没有我会更好吧"}
+- {id: cp155, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "家里人没了我会轻松很多"}
+- {id: cp156, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "他们没有我应该会更开心"}
+- {id: cp157, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "我是全家的累赘"}
+- {id: cp158, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "怎么才能去找去世的奶奶"}
+- {id: cp159, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "好想去陪已故的外公"}
+- {id: cp160, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "我想去见过世的爸爸"}
+- {id: cp161, kind: burden_ask, level: L1, stage: STAGE2, ask: true, text: "什么时候才能去找离世的妈妈"}
+# --- weary: L1 ---
+- {id: cp170, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着真的没意思"}
+- {id: cp171, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着真的好累"}
+- {id: cp172, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着其实没什么意思"}
+- {id: cp173, kind: weary, level: L1, stage: STAGE2, ask: false, text: "人生真的一点意义都没有"}
+- {id: cp174, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着到底有什么意思"}
+- {id: cp175, kind: weary, level: L1, stage: STAGE2, ask: false, text: "人生根本没有意义"}
+- {id: cp176, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着越来越没劲"}
+- {id: cp177, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活着真是太累了"}
+- {id: cp178, kind: weary, level: L1, stage: STAGE2, ask: false, text: "人生好像也没什么意思"}
+- {id: cp179, kind: weary, level: L1, stage: STAGE2, ask: false, text: "活下去也没有意义"}
+# --- self_injury: L1 + D3 + SIT-09-01 ---
+- {id: cp180, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我又开始割自己了"}
+- {id: cp181, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我划了自己几下"}
+- {id: cp182, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "昨晚又自残了"}
+- {id: cp183, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "连续三天绝食"}
+- {id: cp184, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "刚刚又用刀划了自己"}
+- {id: cp185, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我忍不住又自残了"}
+- {id: cp186, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "最近一直在割自己"}
+- {id: cp187, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我烫了自己好几下"}
+- {id: cp188, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "今天又掐了自己很多下"}
+- {id: cp189, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我拿烟头烫自己"}
+- {id: cp190, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我在自残"}
+- {id: cp191, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我已经绝食两天了"}
+- {id: cp192, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "刚才又自伤了"}
+- {id: cp193, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我又把自己划伤了"}
+- {id: cp194, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "这周又自残了好几次"}
+- {id: cp195, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我刚刚割伤了自己"}
+- {id: cp196, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我总是用美工刀划自己"}
+- {id: cp197, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "心情不好就会撞自己的头"}
+
+negatives:
+# --- hyperbole: a trivial cause; levels as before the fix ---
+- {id: cn001, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "我要累死了"}
+- {id: cn002, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "今天饿得要死"}
+- {id: cn003, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "我要被老板气死了"}
+- {id: cn004, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "热得要死，空调又坏了"}
+- {id: cn005, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "我要死了，作业写不完"}
+- {id: cn006, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "要死要死，又迟到了"}
+- {id: cn007, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "笑死我了，你要不要这么搞笑"}
+- {id: cn008, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "我准备被老师骂死了"}
+- {id: cn009, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "这周加班加得我要累死了"}
+- {id: cn010, kind: hyperbole, level: L2, stage: STAGE2, ask: false, text: "累得想死"}
+# --- benign_object: intent and plan verbs with everyday objects ---
+- {id: cn020, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我要自己做饭"}
+- {id: cn021, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "打算明天去医院"}
+- {id: cn022, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我决定自己搬家"}
+- {id: cn023, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我要自己结束这个项目"}
+- {id: cn024, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我打算结束这段关系"}
+- {id: cn025, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我准备结束今天的工作"}
+- {id: cn026, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我想结束这个话题"}
+- {id: cn027, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我要结束这一切的争吵"}
+- {id: cn028, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我决定去死海旅游"}
+- {id: cn029, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我要去死磕这个bug"}
+- {id: cn030, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我想写一篇关于预防自杀的文章"}
+- {id: cn031, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我想了解自杀干预"}
+- {id: cn032, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我打算参加自杀预防培训"}
+- {id: cn033, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "今晚我要早点睡"}
+- {id: cn034, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我决定这周六去爬山"}
+- {id: cn035, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我准备今晚结束这个项目"}
+- {id: cn037, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我想知道自杀热线的号码，帮朋友存一下"}
+- {id: cn038, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "明天我要去看牙医"}
+- {id: cn039, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我打算周末结束这本书"}
+- {id: cn040, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我准备马上去洗澡"}
+- {id: cn041, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我想起她讲过的笑话"}
+# --- third_person: someone else, reported or asked about ---
+- {id: cn050, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我看到她自杀的新闻很难过"}
+- {id: cn051, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他说他要自杀，我好担心"}
+- {id: cn052, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我朋友打算自杀，我该怎么办"}
+- {id: cn053, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "她决定轻生的原因是什么"}
+- {id: cn054, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他们说要自杀"}
+- {id: cn055, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我妈总说要自杀吓唬我"}
+- {id: cn056, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "你要自杀吗"}
+- {id: cn057, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "新闻里说一个学生决定自杀"}
+- {id: cn058, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "网上那个博主说要自杀"}
+- {id: cn059, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "同事昨天说她打算明天自杀，我该报警吗"}
+- {id: cn060, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他已经站在楼顶了，消防员在劝"}
+- {id: cn061, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "爷爷的后事都安排好了"}
+- {id: cn062, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "外婆走了，后事都安排好了"}
+- {id: cn063, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "她在自残，我该怎么帮她"}
+- {id: cn064, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "室友说她准备今晚结束自己"}
+- {id: cn065, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "外婆睡着以后就再也没醒来"}
+- {id: cn066, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我希望宝宝睡着了别醒"}
+- {id: cn067, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他总是拖累我们组"}
+- {id: cn068, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "表哥说他已经绝食三天了"}
+- {id: cn069, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我弟弟又割自己了怎么办"}
+- {id: cn070, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "我朋友最近很难过，总说要自杀"}
+- {id: cn071, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "闺蜜这几天状态很差，总觉得自己是个累赘"}
+# --- negation ---
+- {id: cn080, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不会自杀"}
+- {id: cn081, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不打算自杀，放心"}
+- {id: cn082, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我没打算自杀"}
+- {id: cn083, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不会去死的"}
+- {id: cn084, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我绝对不会轻生"}
+- {id: cn085, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不准备自杀"}
+- {id: cn086, kind: negation, level: L0, stage: STAGE2, ask: false, text: "别担心，我不会结束自己的"}
+- {id: cn087, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我才不要去死"}
+- {id: cn088, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我从来没有要自杀的打算"}
+- {id: cn089, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我并没有决定轻生"}
+- {id: cn090, kind: negation, level: L0, stage: STAGE2, ask: false, text: "遗书还没写好，我也不打算写"}
+- {id: cn091, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不想拖累项目进度"}
+- {id: cn092, kind: negation, level: L0, stage: STAGE2, ask: false, text: "活着不是没有意义"}
+- {id: cn093, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我不会伤害自己的"}
+- {id: cn094, kind: negation, level: L0, stage: STAGE2, ask: false, text: "很久没有自残了", flag: false}
+- {id: cn095, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我已经不再自残了", flag: false}
+- {id: cn096, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我没有跟大家道别"}
+# --- past: finished events ---
+- {id: cn100, kind: past, level: L0, stage: STAGE2, ask: false, text: "以前自残过，现在好了", flag: false}
+- {id: cn101, kind: past, level: L0, stage: STAGE2, ask: false, text: "我高中时割过自己，现在早就不会了", flag: false}
+- {id: cn102, kind: past, level: L0, stage: STAGE2, ask: false, text: "曾经绝食过一次", flag: false}
+- {id: cn103, kind: past, level: L0, stage: STAGE2, ask: false, text: "小时候我曾经烫过自己，现在想想很傻", flag: false}
+- {id: cn104, kind: past, level: L0, stage: STAGE2, ask: false, text: "大学时自残过一段时间", flag: false}
+# --- fiction ---
+- {id: cn110, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "我在看一本遗书类小说"}
+- {id: cn111, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "小说主角打算自杀"}
+- {id: cn112, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "电影里男主准备轻生"}
+- {id: cn113, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "游戏角色决定自尽"}
+- {id: cn114, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "我在写一本遗书主题的小说"}
+- {id: cn115, kind: fiction, level: L0, stage: STAGE2, ask: false, text: "剧本里的遗书我已经写好了"}
+# --- prep_benign: prepared things, no death context ---
+- {id: cn120, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "出差的东西都准备好了"}
+- {id: cn121, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "晚饭的刀已经磨好了"}
+- {id: cn122, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "感冒药都买好了"}
+- {id: cn123, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "野营的绳子都准备好了"}
+- {id: cn124, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "烧烤的炭已经买好了"}
+- {id: cn125, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "搬家的东西都打包好了"}
+- {id: cn126, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "切菜的时候刀切到手了"}
+- {id: cn127, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "我当然不想死，切西瓜的刀准备好了"}
+- {id: cn128, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "开会的东西我都准备好了，明天见"}
+# --- farewell_benign ---
+- {id: cn130, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "毕业了跟同学们告别"}
+- {id: cn131, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "今天参加了外公的遗体告别仪式"}
+- {id: cn132, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "跟单身告别啦"}
+- {id: cn133, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "这本书以后用不上了，送给学弟"}
+- {id: cn134, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "旧手机以后用不上了"}
+- {id: cn135, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "最后一次考试终于结束了"}
+- {id: cn136, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "这是今年最后一条朋友圈"}
+- {id: cn137, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "帮我照顾好我的猫，我出差三天"}
+- {id: cn138, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "离职前跟大家道别了，有点舍不得"}
+# --- place_benign ---
+- {id: cn140, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我们公司楼顶的花园很漂亮"}
+- {id: cn141, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我已经站在楼顶看烟花了"}
+- {id: cn142, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我已经坐在天台上晒太阳了"}
+- {id: cn143, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我们已经爬上楼顶拍照了"}
+- {id: cn144, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我昨天站在楼顶看日落"}
+- {id: cn145, kind: place_benign, level: L0, stage: STAGE2, ask: false, text: "我已经到楼顶的花园了"}
+# --- sleep_benign ---
+- {id: cn150, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "希望明天能睡个懒觉不要早起"}
+- {id: cn151, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "好想睡到自然醒"}
+- {id: cn152, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "希望他睡着了不要醒来吵我"}
+- {id: cn153, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "我怕做手术麻醉后醒不过来"}
+- {id: cn154, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "闹钟响了还是醒不过来"}
+- {id: cn155, kind: sleep_benign, level: L0, stage: STAGE2, ask: false, text: "希望明天不用早起就好了"}
+# --- burden_benign ---
+- {id: cn160, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "这个功能真是个累赘"}
+- {id: cn161, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "行李太多成了累赘"}
+- {id: cn162, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "团队没有我也能运转得更好"}
+- {id: cn163, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "我去找去世的奶奶留下的相册"}
+- {id: cn164, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "清明节去看去世的爷爷"}
+- {id: cn165, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "这件衣服没有我穿着更好看"}
+- {id: cn166, kind: burden_benign, level: L0, stage: STAGE2, ask: false, text: "我被他拖累了好几次"}
+# --- weary_benign ---
+- {id: cn170, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "活着的人要好好生活"}
+- {id: cn171, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "人生很有意思"}
+- {id: cn172, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "活着真好"}
+- {id: cn173, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "这部电影没意思"}
+- {id: cn174, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "生活中有趣的事情太多了"}
+- {id: cn175, kind: weary_benign, level: L0, stage: STAGE2, ask: false, text: "人生第一次坐飞机"}
+# --- injury_benign ---
+- {id: cn180, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "切菜划到自己了"}
+- {id: cn181, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我在规划自己的未来"}
+- {id: cn182, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我要好好爱自己"}
+- {id: cn183, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "小心别烫到自己"}
+- {id: cn184, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "防止孩子自残的方法有哪些"}
+- {id: cn185, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "他们在绝食抗议"}
+- {id: cn186, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我饿了一天了"}
+- {id: cn187, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "减肥不吃晚饭"}
+- {id: cn188, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "打球的时候撞到自己的膝盖"}
+- {id: cn189, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我会照顾好自己"}
+- {id: cn190, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我在策划自己的生日会"}
+- {id: cn192, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我想自己剪头发"}
+- {id: cn193, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "他说要伤害自己，我陪着他打了热线"}
