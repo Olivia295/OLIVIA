@@ -52,6 +52,14 @@ _PART_NAMES: Final = {
 # Short follow-up lines (roadmap R-7b) and the direct question about intent (decision D3);
 # the session fills only the two name slots.
 _FOLLOWUPS: Final = ("clarify_feedback", "kit_empty", "closing_declined", "safety_check")
+# Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
+_WELLBEING: Final = (
+    "break_reminder",
+    "break_reminder_haven",
+    "late_night",
+    "late_night_haven",
+    "real_support",
+)
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
 # Slots a part must carry in every variant (the template file's own contract).
 _REQUIRED_SLOTS: Final = {
@@ -136,6 +144,17 @@ class Templates:
     """S_closing: the user says no to choosing when to come back to the practice."""
     safety_check: tuple[str, ...]
     """One gentle, direct question about suicidal intent (decision D3), persona-free."""
+    break_reminder: tuple[str, ...]
+    """A paragraph after an ordinary reply once the session has run 45 minutes (B7)."""
+    break_reminder_haven: tuple[str, ...]
+    """The same in S_haven, replacing the haven line (no question, haven window)."""
+    late_night: tuple[str, ...]
+    """Once per session between 00:00 and 05:00 local time: rest, and someone to reach."""
+    late_night_haven: tuple[str, ...]
+    """The late-night line in S_haven, replacing the haven line (rest only)."""
+    real_support: tuple[str, ...]
+    """Replaces the S_explore / S_clarify invite: one question about people in the user's
+    life (PRD §11.1 real-support share)."""
 
 
 @dataclass(frozen=True)
@@ -413,7 +432,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
 
 def _parse_templates(data: Mapping[str, Any]) -> Templates:
     where = "gentle_holding.yaml"
-    _keys(data, {"persona", "window", "stages", "followups"}, where)
+    _keys(data, {"persona", "window", "stages", "followups", "wellbeing"}, where)
     persona = _enum(PersonaSpectrum, data["persona"], f"{where} persona")
     window = _map(data["window"], f"{where} window")
     _keys(window, {"normal", "paragraph_max", "haven"}, f"{where} window")
@@ -456,18 +475,10 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
     _keys(ready, {"greeting", "returning_after_crisis"}, f"{where} S_ready")
     if not any(not slots_of(t) for t in singles[HelpStage.S_HAVEN]):
         raise LanguageDataError(f"{where} S_haven needs a slot-free variant for the gate fallback")
-    followups = _map(data["followups"], f"{where} followups")
-    _keys(followups, set(_FOLLOWUPS), f"{where} followups")
-    lines: dict[str, tuple[str, ...]] = {}
-    for name in _FOLLOWUPS:
-        lines[name] = _templates(followups[name], f"{where} followups.{name}")
-        for text in lines[name]:
-            if slots_of(text) - _PLAIN_SLOTS:
-                raise LanguageDataError(
-                    f"{where} followups.{name}: only name slots are filled here: {text!r}"
-                )
-        if not any(not slots_of(t) for t in lines[name]):
-            raise LanguageDataError(f"{where} followups.{name} needs a slot-free variant")
+    lines = {
+        **_plain_lines(data, "followups", _FOLLOWUPS, where),
+        **_plain_lines(data, "wellbeing", _WELLBEING, where),
+    }
     return Templates(
         persona=persona,
         normal_window=_int_pair(window["normal"], f"{where} window.normal"),
@@ -487,7 +498,31 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         kit_empty=lines["kit_empty"],
         closing_declined=lines["closing_declined"],
         safety_check=lines["safety_check"],
+        break_reminder=lines["break_reminder"],
+        break_reminder_haven=lines["break_reminder_haven"],
+        late_night=lines["late_night"],
+        late_night_haven=lines["late_night_haven"],
+        real_support=lines["real_support"],
     )
+
+
+def _plain_lines(
+    data: Mapping[str, Any], section: str, names: tuple[str, ...], where: str
+) -> dict[str, tuple[str, ...]]:
+    """Groups of short lines that fill only the name slots, each with a slot-free variant."""
+    body = _map(data[section], f"{where} {section}")
+    _keys(body, set(names), f"{where} {section}")
+    lines: dict[str, tuple[str, ...]] = {}
+    for name in names:
+        lines[name] = _templates(body[name], f"{where} {section}.{name}")
+        for text in lines[name]:
+            if slots_of(text) - _PLAIN_SLOTS:
+                raise LanguageDataError(
+                    f"{where} {section}.{name}: only name slots are filled here: {text!r}"
+                )
+        if not any(not slots_of(t) for t in lines[name]):
+            raise LanguageDataError(f"{where} {section}.{name} needs a slot-free variant")
+    return lines
 
 
 def _templates(node: Any, where: str) -> tuple[str, ...]:

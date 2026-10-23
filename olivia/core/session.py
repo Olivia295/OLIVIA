@@ -101,6 +101,13 @@ never on a crisis turn (the tracker's crisis or an L2/L3 screen) or an L1 screen
   like an ``intent_confirmed`` phrase; a no ("不用了") gets ``followups.closing_declined``
   and the session stays in S_closing.
 
+Anti-dependence prompts (next-phase B7, decision D5; ``chang/wellbeing.py``): the 45-minute
+break reminder, the once-per-session late-night line and real-world support guidance go
+only on an ordinary composed reply on a calm turn (no crisis, no L1-L3 screen), never on a
+card, information, referral, safety-question or follow-up reply. ``inspect["reminder"]`` is
+``none``, ``break`` or ``late_night``; ``inspect["real_support_share"]`` is the share of
+this session's replies that carried real-support guidance (PRD §11.1).
+
 ``inspect["feedback_source"]`` says where recorded feedback came from: ``command``,
 ``phrase`` (a feedback or aversion phrase) or ``confirmed`` (a yes to the question).
 
@@ -133,6 +140,7 @@ from uuid import uuid4
 
 import yaml
 
+from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
 from olivia.core.language.engine import LanguageEngine, Slots
@@ -319,6 +327,7 @@ class Session:
         rng: random.Random,
         now: Callable[[], datetime],
         risk: RiskChoice | None = None,
+        started_at: datetime | None = None,
     ) -> None:
         self._tax = tax
         self._profile = profile
@@ -345,6 +354,9 @@ class Session:
         self._gate_notes: list[str] = []
         self._last_spectrum: str | None = None
         self._lens_shown = False
+        start = started_at if started_at is not None else now()
+        zone = profile.region.timezone if profile.region is not None else None
+        self._wellbeing = Wellbeing(tax, zone, start)
 
     @classmethod
     def open(
@@ -381,7 +393,7 @@ class Session:
             if risk.model is None
             else SafetyScreen(tax, shared.lexicons, risk.model, model_plan_evidence=False)
         )
-        return cls(tax, profile, shared, screen, rng=rng, now=now, risk=risk)
+        return cls(tax, profile, shared, screen, rng=rng, now=now, risk=risk, started_at=moment)
 
     @property
     def state(self) -> SessionState:
@@ -436,6 +448,8 @@ class Session:
         )
 
         templates = self._engine.data.templates
+        # Only the plain composed reply of the current stage carries a wellbeing prompt.
+        ordinary = False
         if stage is HelpStage.S_CRISIS:
             rendered = self._crisis(status, now)
         elif ask:
@@ -480,6 +494,20 @@ class Session:
             rendered = self._with_taboo_filter(
                 lambda: self._compose(stage, perception, spectrum, mirror_text), stage
             )
+            ordinary = True
+
+        calm = not status.in_crisis and assessment.level < CrisisLevel.L1
+        plain = rendered.kind is ReplyKind.NORMAL or stage is HelpStage.S_HAVEN
+        prompted = self._wellbeing.prompt(
+            rendered.reply,
+            now=now,
+            stage=stage,
+            eligible=ordinary and calm and plain,
+            locked=transition.state.pure_listening_locked,
+            templates=templates,
+            render=lambda variant: self._wellbeing_line(variant, stage),
+        )
+        rendered.reply = prompted.reply
 
         if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
@@ -526,6 +554,8 @@ class Session:
             "model_level": model_level,
             "model_score": model_score,
             "safety_check": "asked" if ask else (answer.value if answer is not None else None),
+            "reminder": prompted.reminder.value,
+            "real_support_share": round(self._wellbeing.real_support_share, 4),
         }
         return TurnResult(
             reply=rendered.reply,
@@ -890,6 +920,21 @@ class Session:
         if not self._note_gate():
             return None
         return text, ""
+
+    def _wellbeing_line(self, variant: str, stage: HelpStage) -> str | None:
+        """One wellbeing variant with the name slots filled, or None when the gate or a
+        taboo topic rules it out (B7)."""
+        values = self._plain_slots().values()
+        if not all(values[s] for s in slots_of(variant)):
+            return None
+        text = variant
+        for name, value in values.items():
+            text = text.replace("{" + name + "}", value)
+        text = apply_willow(text, ContentKind.NORMAL, self._engine.data.willow)
+        self._engine.last_gate = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=stage)
+        if not self._note_gate() or self._has_taboo(text, ""):
+            return None
+        return text
 
     def _with_taboo_filter(self, compose: _Composer, stage: HelpStage) -> _Rendered:
         kind = ReplyKind.HAVEN if stage is HelpStage.S_HAVEN else ReplyKind.NORMAL

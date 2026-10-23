@@ -418,3 +418,105 @@ def test_safety_check_asks_one_direct_question_and_nothing_else() -> None:
         for word in [*ADVICE_WORDS, "办法", "方式"]:
             assert word not in variant, f"{word!r} in {variant!r}"
         assert not any(ch.isdigit() for ch in variant), variant
+
+
+# -- anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1) ---------------------
+
+WELLBEING: dict[str, list[str]] = DATA["wellbeing"]
+HAVEN_GROUPS = ("break_reminder_haven", "late_night_haven")
+PEOPLE_WORDS = ("朋友", "家人", "同事", "心理咨询师", "信得过的人", "信任的")
+
+
+def test_wellbeing_groups_and_variant_counts() -> None:
+    assert set(WELLBEING) == {
+        "break_reminder",
+        "break_reminder_haven",
+        "late_night",
+        "late_night_haven",
+        "real_support",
+    }
+    for name, variants in WELLBEING.items():
+        assert 2 <= len(variants) <= 5, name
+        assert len(set(variants)) == len(variants), name
+        assert any(not SLOT.findall(v) for v in variants), name
+
+
+def test_wellbeing_lines_carry_name_slots_only_and_no_banned_words() -> None:
+    for variants in WELLBEING.values():
+        for variant in variants:
+            assert set(SLOT.findall(variant)) <= FOLLOWUP_SLOTS, variant
+            assert "\n" not in variant
+            for word in [*FORBIDDEN, *ADVICE_WORDS, *SCHEMA_WORDS]:
+                assert word not in variant, f"{word!r} in {variant!r}"
+            assert not EMOJI.search(variant) and "?" not in variant, variant
+            assert not any(ch.isdigit() for ch in variant), variant
+
+
+def test_wellbeing_paragraphs_fit_the_paragraph_limit() -> None:
+    for name, variants in WELLBEING.items():
+        if name in HAVEN_GROUPS:
+            continue
+        for variant in variants:
+            assert _all_chars(_fill(variant, LONGEST)) <= PARAGRAPH_MAX, variant
+
+
+def test_wellbeing_haven_lines_follow_the_haven_contract() -> None:
+    for name in HAVEN_GROUPS:
+        for variant in WELLBEING[name]:
+            line = _fill(variant, TYPICAL)
+            assert HAVEN[0] <= _cjk_chars(line), line
+            assert _all_chars(line) <= HAVEN[1], line
+            assert "？" not in line, line
+
+
+def test_late_night_names_the_hour_and_someone_to_reach() -> None:
+    for variant in WELLBEING["late_night"]:
+        assert "夜" in variant, variant
+        assert any(word in variant for word in PEOPLE_WORDS), variant
+    for variant in WELLBEING["late_night_haven"]:
+        assert "夜" in variant, variant
+
+
+def test_real_support_asks_one_question_about_people_in_the_users_life() -> None:
+    for variant in WELLBEING["real_support"]:
+        assert variant.count("？") == 1, variant
+        assert any(word in variant for word in [*PEOPLE_WORDS, "谁"]), variant
+
+
+@pytest.mark.parametrize("stage", [HelpStage.S_EXPLORE, HelpStage.S_CLARIFY])
+def test_real_support_as_the_invite_keeps_the_normal_window(stage: str) -> None:
+    # The session swaps a real-support line in for the invite paragraph.
+    pools = [variants for name, variants in _parts(stage) if name != "invite"]
+    for combo in itertools.product(*pools, WELLBEING["real_support"]):
+        reply = _compose(combo, TYPICAL)
+        assert NORMAL[0] <= _cjk_chars(reply), reply
+        assert _all_chars(reply) <= NORMAL[1], reply
+        assert _all_chars(_compose(combo, LONGEST)) <= NORMAL[1]
+
+
+def test_wellbeing_lines_pass_willow_unchanged_and_the_output_gate() -> None:
+    tax = load_taxonomy()
+    data = load_language_data(tax)
+    gate = OutputGate(tax, data)
+    templates = data.templates
+    loaded = {
+        "break_reminder": templates.break_reminder,
+        "break_reminder_haven": templates.break_reminder_haven,
+        "late_night": templates.late_night,
+        "late_night_haven": templates.late_night_haven,
+        "real_support": templates.real_support,
+    }
+    assert {name: list(v) for name, v in loaded.items()} == WELLBEING
+    stages = (
+        HelpStage.S_EXPLORE,
+        HelpStage.S_CLARIFY,
+        HelpStage.S_EMPOWER,
+        HelpStage.S_CLOSING,
+        HelpStage.S_HAVEN,
+    )
+    for variants in loaded.values():
+        for variant in variants:
+            text = _fill(variant, TYPICAL)
+            assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
+            for stage in stages:
+                assert gate.reasons(text, kind=ContentKind.NORMAL, stage=stage) == (), text
