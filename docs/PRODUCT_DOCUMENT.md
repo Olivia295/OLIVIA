@@ -433,6 +433,8 @@ flowchart TD
 - **二级 (高危特征词扫描)**：捕获“连续三天绝食”、“自伤手臂”、“闪回停不下来”等特征线索；
 - **三级 (上下文画像累积)**：继承 PersonaProfile 中的 `clinical_history` 标记；候选池全链路执行红线掩码过滤。
 
+*实现说明（决定 D2，步骤 A1；第三项为 2026-10-23 决定）*：首访授权后的情况清单（`olivia health` 中同一份）有三项自述：心脏或呼吸方面需要格外小心（`CARDIORESPIRATORY_INSTABILITY`）、人身安全险境（`INTERPERSONAL_SAFETY_HAZARD`）、曾有过幻觉或妄想这类体验（`RED_FLAG_PSYCHOSIS`）。它们和 `clinical_history` 一样始终加密保存。精神病性体验不在七类红线里，也不从对话识别（待 G-0/G-2 临床定义）；选了它只屏蔽 taxonomy 为它标注的 8 种方法（01、02、10、11、14、16、44、66），不改变转介。
+
 ---
 
 ## 10. 现代高压用户专属体验与标准交互 SOP 矩阵 (End-to-End User Usage SOPs)

@@ -56,6 +56,7 @@ def _offered(result: TurnResult) -> set[str]:
     [
         ("CARDIORESPIRATORY_INSTABILITY", (REQUEST, "心慌得要命，喘不上气，直接给我一个方法")),
         ("INTERPERSONAL_SAFETY_HAZARD", (REQUEST,)),
+        ("RED_FLAG_PSYCHOSIS", (REQUEST,)),
     ],
 )
 def test_a_profile_disclosure_is_never_offered_a_contraindicated_action(enum_id, requests):

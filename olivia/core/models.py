@@ -16,11 +16,17 @@ PROFILE_SCHEMA_VERSION: Final = 1
 _COUNTRY_RE: Final = re.compile(r"[A-Z]{2}")
 NAME_MAX_LEN: Final = 12
 _MAX_SCHEMAS: Final = 3
-PROFILE_CONTRAINDICATIONS: Final = ("CARDIORESPIRATORY_INSTABILITY", "INTERPERSONAL_SAFETY_HAZARD")
+PROFILE_CONTRAINDICATIONS: Final = (
+    "CARDIORESPIRATORY_INSTABILITY",
+    "INTERPERSONAL_SAFETY_HAZARD",
+    "RED_FLAG_PSYCHOSIS",
+)
 """Contraindication enums the user may record in the profile (decision D2, step A1).
 
-Their taxonomy ``detection_source`` is ``USER_PROFILE_DISCLOSURE``; every other enum is
-derived during the conversation (``methods/contraindications.py``).
+Their taxonomy ``detection_source`` names ``USER_PROFILE_DISCLOSURE``; every other enum is
+derived during the conversation (``methods/contraindications.py``). The order is the
+checklist's, so new items go last. ``RED_FLAG_PSYCHOSIS`` (owner decision 2026-10-23) is
+a profile disclosure only: no conversation cue sets it until clinicians define one.
 """
 
 

@@ -336,6 +336,16 @@ def test_profile_contraindications_round_trip_and_default_to_none():
     assert PersonaProfile.from_dict(legacy).contraindications == ()
 
 
+def test_profile_records_the_psychosis_disclosure_and_older_lists_still_load():
+    p = _profile(contraindications=("RED_FLAG_PSYCHOSIS",))
+    assert PersonaProfile.from_dict(p.to_dict()) == p
+    # A profile saved before the third checklist item (A1's two-item list) loads as is.
+    older = _profile().to_dict() | {
+        "contraindications": ["CARDIORESPIRATORY_INSTABILITY", "INTERPERSONAL_SAFETY_HAZARD"]
+    }
+    assert "RED_FLAG_PSYCHOSIS" not in PersonaProfile.from_dict(older).contraindications
+
+
 @pytest.mark.parametrize("bad", [("ACUTE_AROUSAL_OVERLOAD",), ("RED_FLAG_MANIA",), ("x",)])
 def test_profile_records_only_the_disclosure_contraindications(bad):
     with pytest.raises(ValueError, match="contraindications"):

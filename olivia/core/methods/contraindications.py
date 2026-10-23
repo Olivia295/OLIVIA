@@ -8,7 +8,9 @@ Each of the taxonomy's 13 ``contraindication_enums`` is derived from its
 ``RED_FLAG_*``                  the session's active red flags (profile ``clinical_history``
                                 codes included), through the red-flag codes the taxonomy
                                 names in each source ("RED_FLAG_DETECTOR (SIT-02-04)").
-                                ``RED_FLAG_PSYCHOSIS`` names no code, so nothing sets it yet.
+``RED_FLAG_PSYCHOSIS``          its source names no red-flag code: only the profile's
+                                ``contraindications`` (third checklist item, onboarding or
+                                ``olivia health``). No conversation cue sets it (G-0/G-2).
 ``ACUTE_AROUSAL_OVERLOAD``      arousal, added by the solver itself
                                 (:func:`olivia.core.methods.solver.active_contraindications`).
 ``TOXIC_SHAME_SPIRAL``          a ``contraindication_cues`` hit (intense self-attack), or the
@@ -27,9 +29,10 @@ Situation codes (``situation_cues``: SIT-06-04 acute bereavement, SIT-11-01 extr
 meaninglessness) go to the solver as they are; its m0 rule handles them.
 
 Everything read from the conversation holds for the rest of the session and is never
-written to the profile. A profile-type disclosure heard only in the conversation is
-reported once by :meth:`SessionContraindications.unsaved_disclosures`, so the session
-can say once that it can be saved with ``olivia health``.
+written to the profile. A profile-type disclosure heard only in the conversation (the
+last two rows; psychosis has no cue) is reported once by
+:meth:`SessionContraindications.unsaved_disclosures`, so the session can say once that
+it can be saved with ``olivia health``.
 """
 
 from __future__ import annotations
