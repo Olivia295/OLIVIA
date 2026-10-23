@@ -78,6 +78,11 @@ _FOLLOWUPS: Final = (
     "closing_declined",
     "safety_check",
     "health_hint",
+    "no_pending_feedback",
+    "unhelpful_ack",
+    "safety_confirmed",
+    "forget_hint",
+    "haven_return",
 )
 # Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
 _WELLBEING: Final = (
@@ -172,11 +177,16 @@ class Templates:
     haven: tuple[str, ...]
     crisis: tuple[str, ...]
     closing: tuple[str, ...]
+    """S_closing after ``/done`` (HELPFUL): says nothing about the kit or not trying."""
+    closing_after_not_now: tuple[str, ...]
+    """S_closing after ``/not-now`` (NOT_NOW): the card really is in the kit now."""
     greeting: tuple[str, ...]
     returning_after_crisis: tuple[str, ...]
     """S_ready, first session after a crisis (A3): a gentle check-in that asks about safety."""
     returning_after_check: tuple[str, ...]
     """S_ready, first session after a no to the D3 question: a lighter check-in."""
+    after_close: tuple[str, ...]
+    """One short, warm line after the closing ritual ("好", "谢谢"): no question."""
     clarify_feedback: tuple[str, ...]
     """One question after an unclear reply to a waiting card: shelve it? (roadmap R-7b)"""
     kit_empty: tuple[str, ...]
@@ -199,6 +209,16 @@ class Templates:
     health_hint: tuple[str, ...]
     """A heart, breathing or home-safety disclosure heard in the conversation can be
     saved with ``olivia health`` (decision D2, step A1)."""
+    no_pending_feedback: tuple[str, ...]
+    """A feedback command while no card waits for feedback: one short line."""
+    unhelpful_ack: tuple[str, ...]
+    """Leads the reply after ``/unhelpful`` (or aversion) on a waiting card."""
+    safety_confirmed: tuple[str, ...]
+    """Leads the crisis reply on the turn the tracker hears an explicit safety confirmation."""
+    forget_hint: tuple[str, ...]
+    """A request in the chat to wipe the memory: how to do it (``olivia forget --all``)."""
+    haven_return: tuple[str, ...]
+    """After a card that left S_haven on a direct request: how to get back to quiet company."""
 
 
 @dataclass(frozen=True)
@@ -577,14 +597,19 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
     singles: dict[HelpStage, tuple[str, ...]] = {}
     for stage in (HelpStage.S_HAVEN, HelpStage.S_CRISIS, HelpStage.S_CLOSING):
         body = _map(stages[stage.value], f"{where} {stage}")
-        _keys(body, {"variants"}, f"{where} {stage}")
+        expected = {"variants", "after_not_now"} if stage is HelpStage.S_CLOSING else {"variants"}
+        _keys(body, expected, f"{where} {stage}")
         singles[stage] = _templates(body["variants"], f"{where} {stage}")
+    closing = _map(stages[HelpStage.S_CLOSING.value], f"{where} S_closing")
+    after_not_now = _templates(closing["after_not_now"], f"{where} S_closing.after_not_now")
     for text in singles[HelpStage.S_CRISIS]:
         if "metaphor" in slots_of(text):
             raise LanguageDataError(f"{where} S_crisis must not weave metaphors: {text!r}")
     ready = _map(stages[HelpStage.S_READY.value], f"{where} S_ready")
     _keys(
-        ready, {"greeting", "returning_after_crisis", "returning_after_check"}, f"{where} S_ready"
+        ready,
+        {"greeting", "returning_after_crisis", "returning_after_check", "after_close"},
+        f"{where} S_ready",
     )
     if not any(not slots_of(t) for t in singles[HelpStage.S_HAVEN]):
         raise LanguageDataError(f"{where} S_haven needs a slot-free variant for the gate fallback")
@@ -608,6 +633,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         haven=singles[HelpStage.S_HAVEN],
         crisis=singles[HelpStage.S_CRISIS],
         closing=singles[HelpStage.S_CLOSING],
+        closing_after_not_now=after_not_now,
         greeting=_templates(ready["greeting"], f"{where} S_ready.greeting"),
         returning_after_crisis=_templates(
             ready["returning_after_crisis"], f"{where} S_ready.returning_after_crisis"
@@ -615,11 +641,17 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         returning_after_check=_templates(
             ready["returning_after_check"], f"{where} S_ready.returning_after_check"
         ),
+        after_close=_templates(ready["after_close"], f"{where} S_ready.after_close"),
         clarify_feedback=lines["clarify_feedback"],
         kit_empty=lines["kit_empty"],
         closing_declined=lines["closing_declined"],
         safety_check=lines["safety_check"],
         health_hint=lines["health_hint"],
+        no_pending_feedback=lines["no_pending_feedback"],
+        unhelpful_ack=lines["unhelpful_ack"],
+        safety_confirmed=lines["safety_confirmed"],
+        forget_hint=lines["forget_hint"],
+        haven_return=lines["haven_return"],
         break_reminder=lines["break_reminder"],
         break_reminder_haven=lines["break_reminder_haven"],
         late_night=lines["late_night"],

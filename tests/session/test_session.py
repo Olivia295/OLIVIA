@@ -361,19 +361,31 @@ def test_sop3_high_arousal_in_explore_gets_a_stabilization_card():
         assert "/done" in result.reply
 
 
-def test_explore_card_waits_then_takes_feedback_in_explore():
+def test_explore_card_takes_feedback_in_explore():
     session = _open()
     shown = session.turn("被领导催进度，心慌得要命").action_id
     assert shown is not None
     spectrum = str(session.snapshot()["pending_spectrum"])
     alpha, beta = session._sampler.posterior(shown, spectrum, NOW)
-    again = session.turn("还是心慌得要命")
-    assert again.stage is HelpStage.S_EXPLORE and again.action_id is None
-    assert again.reply_kind is ReplyKind.NORMAL
     done = session.turn("/done")  # may also move on to S_clarify; the answer still counts
     assert done.action_id is None
     assert done.inspect["feedback"] == "HELPFUL"
     assert session._sampler.posterior(shown, spectrum, NOW) == (alpha + 1.0, beta)
+
+
+def test_explore_card_expires_after_one_turn_not_about_it():
+    # F2b fix 2: the waiting card holds back a second card for one turn, then expires, so
+    # it can no longer swallow a later request or late feedback.
+    session = _open()
+    shown = session.turn("被领导催进度，心慌得要命").action_id
+    assert shown is not None
+    again = session.turn("还是心慌得要命")
+    assert again.stage is HelpStage.S_EXPLORE and again.action_id is None
+    assert again.reply_kind is ReplyKind.NORMAL
+    assert session.snapshot()["pending_action"] is None
+    late = session.turn("/done")
+    assert late.inspect["feedback"] is None
+    assert session.snapshot()["bandit"] == {"spectra": {}}
 
 
 @BOTH_MODES

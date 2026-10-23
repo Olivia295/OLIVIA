@@ -128,7 +128,7 @@ def test_sop4_card_then_hesitation_in_the_personas_voice(
     assert shelved.inspect["feedback"] == "NOT_NOW"
     assert shelved.inspect["feedback_source"] == "phrase"
     assert shelved.stage is HelpStage.S_CLOSING and shelved.action_id is None
-    assert shelved.reply in {_names(v) for v in tpl.closing}
+    assert shelved.reply in {_names(v) for v in tpl.closing_after_not_now}
     assert _within(shelved.reply, tpl.normal_window), shelved.reply
     snapshot = session.snapshot()
     assert snapshot["user_shelved_actions"] == [shown]
