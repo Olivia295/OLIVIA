@@ -130,6 +130,9 @@ class PersonaProfile:
     the user: no region, taboo topics or clinical history. Every other profile is an
     adult's and has ``age_confirmed_18_plus=True``.
     """
+    notifications: bool = False
+    """System reminders (next-phase B9, decision D5): off by default, switched in
+    ``olivia settings``; not sensitive."""
 
     def __post_init__(self) -> None:
         for label, name in (("user_name", self.user_name), ("agent_name", self.agent_name)):
@@ -147,6 +150,7 @@ class PersonaProfile:
                 or self.taboo_topics
                 or self.clinical_history
                 or self.contraindications
+                or self.notifications
             ):
                 raise ValueError("an age-gate refusal record must not hold user data")
             stamps.append(("age_gate_refused_at", self.age_gate_refused_at))
@@ -181,6 +185,7 @@ class PersonaProfile:
             "age_gate_refused_at": (
                 self.age_gate_refused_at.isoformat() if self.age_gate_refused_at else None
             ),
+            "notifications": self.notifications,
         }
 
     @classmethod
@@ -220,6 +225,7 @@ class PersonaProfile:
                 if data.get("age_gate_refused_at") is not None
                 else None
             ),
+            notifications=_bool_or(data, "notifications", False),
         )
 
 
