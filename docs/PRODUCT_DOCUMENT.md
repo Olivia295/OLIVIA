@@ -247,7 +247,7 @@ flowchart TD
   - *Given* 用户进入称呼设定步，*When* 用户输入合法文本（1-12字），*Then* 系统更新用户画像并在后续对话中生效。
 - `ONB-03` **四维人格光谱选定**：提供 `GENTLE_HOLDING`、`ZEN_PHILOSOPHER`、`RATIONAL_PEER`、`SILENT_ANCHOR` 四选一。
   - *Given* 呈现人格选项，*When* 用户做出选择，*Then* 系统将对应的语态风格特征与隐喻偏好写入专属配置。
-  - *实现说明（决定 Q8，2026-10-22）*：R1 首访只提供 `GENTLE_HOLDING` 一种人格；`ZEN_PHILOSOPHER`、`RATIONAL_PEER`、`SILENT_ANCHOR`（含 WILLOW-03 的 $[10, 30]$ 字窗口）在 R2 前完成（计划 D-1）。
+  - *实现说明（决定 Q8，2026-10-22；计划 D-1 已完成，2026-10-23）*：首访提供四种人格，各附一句说明，直接回车为 `GENTLE_HOLDING`；之后可用 `olivia persona [序号或简称]` 随时查看与切换（JTBD 4），下次 `olivia chat` 生效。每种人格一个模板文件（`olivia/data/templates/` 下 `gentle_holding.yaml`、`zen_philosopher.yaml`、`rational_peer.yaml`、`silent_anchor.yaml`，新增三份标“草稿：待 G-0”）。人格只改变语气与字数：危机卡的求助电话（号码、顺序、标题）、D3 的直接询问对所有人格完全相同。`SILENT_ANCHOR` 执行 WILLOW-03 的 $[10, 30]$ 字窗口（避风港取与 $[15, 40]$ 的交集 $[15, 30]$），不提问（安全询问除外），不自动推进到 $S_{empower}$，$S_{clarify}$ 也不主动给 B 级视角卡；用户直接要方法时，卡片前后的说明须写出三个反馈命令，放不进 30 字，因此单独按 $[10, 70]$ 字计（不含卡片正文，待 G-0 与产品负责人确认）。
 - `ONB-04` **话题雷区过滤登记**：登记用户不愿被提及的话题。
   - *Given* 用户输入雷区关键词（如“前夫/高考/体重”），*When* 系统保存画像，*Then* 后续生成管道中强制施加负向惩罚硬过滤。
 - `ONB-05` **18+ 成年人准入硬门禁 (NG-3)**：
