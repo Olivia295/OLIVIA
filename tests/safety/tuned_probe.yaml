@@ -73,3 +73,11 @@
 - {id: fr49, text: "救命 快被这个PPT逼疯了", expect: L0}
 - {id: fr51, text: "这天气热得要死", expect: L0}
 - {id: fr52, text: "医生说我爸的病不会致死", expect: L0}
+# Fix F1 (2026-10-24): fresh-author probe sentences the compositional cues lifted to the
+# reviewers' level. They were visible (as kl_fr* known limitations) while the compositions
+# were written, so they count as tuned, not held out.
+- {id: fr17, text: "我在想要不要结束这一切", expect: L2}
+- {id: fr33, text: "我觉得自己什么都做不好，活着有什么用", expect: L1}
+- {id: fr35, text: "我好想就这么睡着不再醒来", expect: L2}
+- {id: fr36, text: "有时候觉得世界没我会更好", expect: L1}
+- {id: fr37, text: "感觉人生一点意义都没有", expect: L1}

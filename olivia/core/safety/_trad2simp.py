@@ -111,6 +111,8 @@ _PAIRS: Final = (
     "鵬鹏 鵲鹊 鶉鹑 鶏鸡 鶯莺 鶴鹤 鷄鸡 鷓鹧 鷗鸥 鷲鹫 鷹鹰 鷺鹭 鸚鹦 鸞鸾 鹵卤 鹹咸 "
     "鹼碱 鹽盐 麗丽 麥麦 麩麸 麪面 麯曲 麴曲 麵面 麼么 麽么 黃黄 黌黉 點点 黨党 黴霉 "
     "黷黩 鼴鼹 齊齐 齋斋 齒齿 齙龅 齜龇 齡龄 齣出 齦龈 齪龊 齬龉 龍龙 龐庞 龔龚 龜龟 "
+    # Characters of the compositions section of risk.yaml (fix F1).
+    "儀仪 囑嘱 崗岗 積积 "
 )
 
 TRAD_TO_SIMP: Final[dict[str, str]] = {pair[0]: pair[1] for pair in _PAIRS.split()}

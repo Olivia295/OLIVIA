@@ -34,6 +34,38 @@ _ASK_ID_PREFIX: Final = "ASK_INTENT"
 _ANSWER_SECTION: Final = "intent_answers"
 _ANSWER_LISTS: Final = ("deny_whole", "deny_start", "affirm_start", "unsure")
 _PAIR_ROLES: Final = ("anchors", "requests", "exceptions")
+_COMP_SECTION: Final = "compositions"
+_COMP_GLOBAL_LISTS: Final = (
+    "negators",
+    "non_negators",
+    "selves",
+    "others",
+    "recipients",
+    "listeners",
+)
+_COMP_KEYS: Final = frozenset(
+    {"stops", "lookback", "subject_window", "lists", "entries", *_COMP_GLOBAL_LISTS}
+)
+_COMP_PHRASE_KEYS: Final = ("heads", "tails", "context", "unless", "exceptions", "blockers")
+_COMP_ENTRY_KEYS: Final = frozenset(
+    {
+        "id",
+        "level",
+        "max_gap",
+        "order",
+        "context_window",
+        "unless_window",
+        "persons",
+        *_COMP_PHRASE_KEYS,
+    }
+)
+_COMP_LEVELS: Final = ("L1", "L2", "L3", "ASK")
+_COMP_ORDERS: Final = ("head_first", "either")
+_STAGE1_ID_PREFIX: Final = "S1_"
+# Upper bounds that keep a composition local: a gap or window wider than a short clause
+# would join words that have nothing to do with each other.
+_MAX_GAP: Final = 12
+_MAX_WINDOW: Final = 24
 _TIERS: Final[tuple[RedFlagTier, ...]] = get_args(RedFlagTier)
 _SCORE_KEY_BY_SECTION: Final[Mapping[str, str]] = MappingProxyType(
     {"stage1": "L3", "hyperbole": "HYPERBOLE"}
@@ -73,6 +105,61 @@ class PairCue:
 
 
 @dataclass(frozen=True)
+class Composition:
+    """A cue built from two phrase lists joined across a short gap (fix F1).
+
+    It matches a ``heads`` occurrence followed, within ``max_gap`` characters and with no
+    clause punctuation in between, by a ``tails`` occurrence (either order with
+    ``either_order``); with no ``tails`` a head occurrence alone is the match. A match is
+    rejected when a part lies wholly inside one of ``exceptions``, a ``blockers`` phrase
+    lies in the gap, a negator sits in the gap or just before the first part, the last
+    person word before the second part names someone else (``persons``), no ``context``
+    phrase lies within ``context_window`` characters of it (anywhere when the window is
+    None), or an ``unless`` phrase lies within ``unless_window`` characters of it in the
+    same clause. ``ask`` marks a D3 cue (L1); a level of L3 is Stage 1 plan evidence.
+    """
+
+    id: str
+    level: CrisisLevel
+    score: float
+    ask: bool
+    heads: tuple[str, ...]
+    tails: tuple[str, ...] = ()
+    max_gap: int = 0
+    either_order: bool = False
+    context: tuple[str, ...] = ()
+    context_window: int | None = None
+    unless: tuple[str, ...] = ()
+    unless_window: int = 0
+    exceptions: tuple[str, ...] = ()
+    blockers: tuple[str, ...] = ()
+    persons: bool = True
+
+
+@dataclass(frozen=True)
+class CompositionRules:
+    """The ``compositions`` section: shared word lists and the entries that use them."""
+
+    stops: frozenset[str] = frozenset()
+    """Clause punctuation (folded). A gap never crosses it; the person, negation and
+    ``unless`` windows stop at it."""
+    lookback: int = 0
+    """How many characters before the first part a negator still negates it."""
+    subject_window: int = 0
+    """How many characters before the second part a person word can be its subject."""
+    negators: tuple[str, ...] = ()
+    non_negators: tuple[str, ...] = ()
+    """Words that contain a negator without negating anything (忍不住, 要不, 差不多)."""
+    selves: tuple[str, ...] = ()
+    others: tuple[str, ...] = ()
+    recipients: tuple[str, ...] = ()
+    """A person word right after one of these (跟她说, 给我妈) is an object, not a subject."""
+    listeners: tuple[str, ...] = ()
+    """The person spoken to (你): never carried over as the subject of a later clause."""
+    entries: tuple[Composition, ...] = ()
+
+
+@dataclass(frozen=True)
 class IntentAnswers:
     """Phrases for reading the answer to the D3 question (``safety/intent_check.py``).
 
@@ -108,6 +195,7 @@ class SafetyLexicons:
     """L1 ``ASK_INTENT`` cues (decision D3), matched like ``pairs``: the session asks about
     intent when one fires on a turn below L2."""
     intent_answers: IntentAnswers = IntentAnswers()
+    compositions: CompositionRules = CompositionRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -124,6 +212,9 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     risk = _parse_risk(tax, risk_doc, seen_ids)
     pairs = _parse_pairs(tax, risk_doc, seen_ids, risk, _PAIR_SECTION)
     ask_pairs = _parse_pairs(tax, risk_doc, seen_ids, risk, _ASK_SECTION)
+    compositions = _parse_compositions(tax, risk_doc, seen_ids)
+    # Composition ask cues do not make the answers required: without them every answer
+    # reads as unclear, which the session treats as L2 (fail-safe).
     answers = _parse_answers(risk_doc, required=bool(ask_pairs))
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
@@ -133,6 +224,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         pairs=pairs,
         ask_pairs=ask_pairs,
         intent_answers=answers,
+        compositions=compositions,
     )
 
 
@@ -222,7 +314,7 @@ def _claim_patterns(
 def _parse_risk(
     tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str]
 ) -> dict[str, RiskCue]:
-    allowed = {"version", *_SECTIONS, _PAIR_SECTION, _ASK_SECTION, _ANSWER_SECTION}
+    allowed = {"version", *_SECTIONS, _PAIR_SECTION, _ASK_SECTION, _ANSWER_SECTION, _COMP_SECTION}
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
     cues: dict[str, RiskCue] = {}
@@ -329,6 +421,150 @@ def _parse_pairs(
             level, score = _stage2_level_and_score(tax, item, where)
         pairs.append(PairCue(cue_id, level, score, anchors, requests, exceptions))
     return tuple(pairs)
+
+
+def _parse_compositions(
+    tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str]
+) -> CompositionRules:
+    """Parse the optional ``compositions`` section (fix F1).
+
+    Its phrases go to a matcher of their own, so they may repeat a phrase of any other
+    section. ``lists`` holds named phrase lists that entries refer to by name; an entry
+    may also give a list inline.
+    """
+    if _COMP_SECTION not in doc:
+        return CompositionRules()
+    where = f"{_RISK_FILE} {_COMP_SECTION}"
+    node = doc[_COMP_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, set(_COMP_KEYS), where)
+    raw_stops = node.get("stops")
+    stops = frozenset(normalize(raw_stops)) if isinstance(raw_stops, str) else frozenset()
+    if not stops:
+        raise LexiconError(f"{where}: 'stops' must be a non-empty string of punctuation")
+    lookback = _bounded_int(node.get("lookback"), 0, 8, f"{where} lookback")
+    subject_window = _bounded_int(node.get("subject_window"), 0, 16, f"{where} subject_window")
+    shared = {
+        name: _normalized_list(node.get(name), f"{where} {name}") for name in _COMP_GLOBAL_LISTS
+    }
+    raw_lists = node.get("lists", {})
+    if not isinstance(raw_lists, dict):
+        raise LexiconError(f"{where}: 'lists' must be a mapping")
+    lists = {
+        str(name): _normalized_list(value, f"{where} lists.{name}")
+        for name, value in raw_lists.items()
+    }
+    entries = tuple(
+        _parse_composition(tax, item, lists, seen_ids)
+        for item in _entry_list(node, "entries", where)
+    )
+    return CompositionRules(
+        stops=stops,
+        lookback=lookback,
+        subject_window=subject_window,
+        negators=shared["negators"],
+        non_negators=shared["non_negators"],
+        selves=shared["selves"],
+        others=shared["others"],
+        recipients=shared["recipients"],
+        listeners=shared["listeners"],
+        entries=entries,
+    )
+
+
+def _bounded_int(raw: Any, low: int, high: int, where: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int) or not low <= raw <= high:
+        raise LexiconError(f"{where}: must be an integer in [{low}, {high}], got {raw!r}")
+    return raw
+
+
+def _composition_list(
+    item: Mapping[str, Any], key: str, lists: Mapping[str, tuple[str, ...]], where: str
+) -> tuple[str, ...]:
+    """An entry's phrase list: a name from ``lists`` or an inline list; () when absent."""
+    if key not in item:
+        return ()
+    raw = item[key]
+    if isinstance(raw, str):
+        if raw not in lists:
+            raise LexiconError(f"{where}: '{key}' names an unknown list {raw!r}")
+        return lists[raw]
+    return _normalized_list(raw, f"{where} {key}")
+
+
+def _parse_composition(
+    tax: Taxonomy,
+    item: Mapping[str, Any],
+    lists: Mapping[str, tuple[str, ...]],
+    seen_ids: dict[str, str],
+) -> Composition:
+    where = f"{_RISK_FILE} {_COMP_SECTION} entry {item.get('id')!r}"
+    cue_id = _entry_id(item, where, seen_ids)
+    where = f"{_RISK_FILE} {_COMP_SECTION} entry {cue_id}"
+    _check_keys(item, set(_COMP_ENTRY_KEYS), where)
+    raw_level = item.get("level")
+    if raw_level not in _COMP_LEVELS:
+        raise LexiconError(f"{where}: level must be one of {list(_COMP_LEVELS)}, got {raw_level!r}")
+    ask = raw_level == "ASK"
+    if ask != cue_id.startswith(_ASK_ID_PREFIX):
+        raise LexiconError(
+            f"{where}: the id starts with {_ASK_ID_PREFIX} exactly when level is ASK"
+        )
+    if (raw_level == "L3") != cue_id.startswith(_STAGE1_ID_PREFIX):
+        raise LexiconError(
+            f"{where}: the id starts with {_STAGE1_ID_PREFIX} exactly when level is L3"
+        )
+    level = CrisisLevel.L1 if ask else CrisisLevel[raw_level]
+    phrases = {key: _composition_list(item, key, lists, where) for key in _COMP_PHRASE_KEYS}
+    if not phrases["heads"]:
+        raise LexiconError(f"{where}: 'heads' must be a non-empty list or list name")
+    max_gap, order = 0, "head_first"
+    if phrases["tails"]:
+        max_gap = _bounded_int(item.get("max_gap"), 0, _MAX_GAP, f"{where} max_gap")
+        order = item.get("order", order)
+        if order not in _COMP_ORDERS:
+            raise LexiconError(f"{where}: order must be one of {list(_COMP_ORDERS)}")
+    elif "max_gap" in item or "order" in item:
+        raise LexiconError(f"{where}: 'max_gap' and 'order' need 'tails'")
+    context_window: int | None = None
+    if "context_window" in item:
+        if not phrases["context"]:
+            raise LexiconError(f"{where}: 'context_window' needs 'context'")
+        context_window = _bounded_int(
+            item["context_window"], 0, _MAX_WINDOW, f"{where} context_window"
+        )
+    unless_window = 0
+    if phrases["unless"]:
+        unless_window = _bounded_int(
+            item.get("unless_window"), 1, _MAX_WINDOW, f"{where} unless_window"
+        )
+    elif "unless_window" in item:
+        raise LexiconError(f"{where}: 'unless_window' needs 'unless'")
+    parts = (*phrases["heads"], *phrases["tails"])
+    for phrase in phrases["exceptions"]:
+        if not any(part in phrase for part in parts):
+            raise LexiconError(f"{where}: exception {phrase!r} contains no head or tail")
+    persons = item.get("persons", True)
+    if not isinstance(persons, bool):
+        raise LexiconError(f"{where}: 'persons' must be true or false")
+    return Composition(
+        id=cue_id,
+        level=level,
+        score=tax.threshold(f"risk.lexicon_scores.{level.name}"),
+        ask=ask,
+        heads=phrases["heads"],
+        tails=phrases["tails"],
+        max_gap=max_gap,
+        either_order=order == "either",
+        context=phrases["context"],
+        context_window=context_window,
+        unless=phrases["unless"],
+        unless_window=unless_window,
+        exceptions=phrases["exceptions"],
+        blockers=phrases["blockers"],
+        persons=persons,
+    )
 
 
 def _parse_answers(doc: Mapping[str, Any], *, required: bool) -> IntentAnswers:

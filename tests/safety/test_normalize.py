@@ -25,6 +25,11 @@ SAME_IN_TRADITIONAL = frozenset(
     "狂玻璃瓶生用界畏留疼痛百的盆盒直相盼看眠眼睡知磨社神空突窗站笑等算精累罐聊肉胃胎能脖腕臂自"
     "草蒸藏血行被西要解言走起跟跳躁身躺送逃通道那部都酒醒量陪隔障需非食高魂毛病唯泥海砂磕紫茶路陶常老"
     "亡先具冇功咋咩唔啲嘅妥容弄式息操攻效救新易服步段率略省短程粒舒苦防阻靠平悄此默吧旁"
+    # fix F1: characters of the compositions section of risk.yaml.
+    "七中主久乘九亮付件休俺假健兄八六冒凌分初刺刻前勿包匙午博卡印取同告咱哥唱坐墓外夜女奶她"
+    "妹始姐姥姻婆婚客宴密小居岩崖工差巴幸弟影待律患您情戒戳房所抓抗拍拜掐排攀收散文施旅星春"
+    "晨景晾暖更曾替未末本李案楚款歌母毫水求清演火烤爬父班理瓜甩甭由男目研破禁福究立策管翻考"
+    "者聚脆船色花莫菜落蓄蜜衣角象跑蹲退重野院露"
 )
 
 
@@ -35,6 +40,12 @@ def _lexicon_phrases() -> list[str]:
     phrases += [p for cue in lex.red_flags.values() for p in cue.patterns]
     phrases += list(lex.self_report_negations)
     phrases += [p for pair in lex.pairs for p in (*pair.anchors, *pair.requests, *pair.exceptions)]
+    rules = lex.compositions
+    phrases += [*rules.negators, *rules.non_negators, *rules.selves, *rules.others]
+    phrases += list(rules.recipients)
+    for entry in rules.entries:
+        phrases += [*entry.heads, *entry.tails, *entry.context, *entry.unless]
+        phrases += [*entry.exceptions, *entry.blockers]
     return phrases
 
 

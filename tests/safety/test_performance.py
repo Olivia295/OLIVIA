@@ -73,3 +73,17 @@ def test_long_input_with_many_excepted_pair_anchors_stays_fast():
     elapsed = time.perf_counter() - t0
     assert assessment.cue_ids == ()
     assert elapsed < LONG_INPUT_BUDGET_S, f"{elapsed:.3f}s for {len(text)} chars"
+
+
+@pytest.mark.skipif(_coverage_is_tracing(), reason="latency is not measurable under coverage")
+def test_long_input_with_many_voided_compositions_stays_fast():
+    # Thousands of composition candidates, each voided by a third person, a negator or an
+    # everyday word in its clause (fix F1): the per-candidate checks must stay bounded.
+    tax = load_taxonomy()
+    screen = SafetyScreen(tax, load_safety_lexicons(tax))
+    text = "她打算明天自杀，我不要自杀，感冒药准备好了，不想死，" * 3000
+    t0 = time.perf_counter()
+    assessment = screen.assess(text)
+    elapsed = time.perf_counter() - t0
+    assert assessment.cue_ids == ()
+    assert elapsed < LONG_INPUT_BUDGET_S, f"{elapsed:.3f}s for {len(text)} chars"
