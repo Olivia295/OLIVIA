@@ -27,5 +27,5 @@ fi
 # skipped under coverage run again here on their own.
 "$PY" -m pytest -q tests/safety/test_performance.py tests/perception/test_perception_performance.py \
     tests/perception/test_student_performance.py tests/session/test_session_performance.py \
-    tests/memory/test_retrieval_performance.py
+    tests/session/test_step_performance.py tests/memory/test_retrieval_performance.py
 "$PY" scripts/validate_taxonomy.py
