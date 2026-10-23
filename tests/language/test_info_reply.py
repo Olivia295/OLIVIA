@@ -52,7 +52,8 @@ def test_closings_suggest_a_professional_and_ask_nothing_of_the_user(lang: Langu
     assert "不需要你去做" in r.info_b_closing
 
 
-@pytest.mark.parametrize("method_id", ["01", "28", "EMOTIONAL_HOLDING_PRESENCE"])
+# 01 and 28 have Grade A explainers since F3; 02 and 14 have none.
+@pytest.mark.parametrize("method_id", ["02", "14", "EMOTIONAL_HOLDING_PRESENCE"])
 def test_info_reply_refuses_non_info_ids(engine: LanguageEngine, method_id: str) -> None:
     with pytest.raises(ValueError):
         engine.render_info_reply(method_id, lens=False)

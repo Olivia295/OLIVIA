@@ -20,7 +20,7 @@ import yaml
 from olivia.core.language.data import load_language_data
 from olivia.core.methods.contraindications import SessionContraindications, source_links
 from olivia.core.methods.solver import M0_ACTION_ID
-from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, UserRegion
+from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, PersonaSpectrum, UserRegion
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
 from olivia.core.safety.crisis import CrisisAssessment
@@ -38,13 +38,14 @@ NOT_MINE = "我同事被裁员了，交接完走出公司，心里空落落的"
 ADJUSTMENT = "SIT-06-03"
 
 
-def _open(seed: int = 7) -> Session:
+def _open(seed: int = 7, persona: PersonaSpectrum = PersonaSpectrum.GENTLE_HOLDING) -> Session:
     profile = PersonaProfile(
         age_confirmed_18_plus=True,
         created_at=NOW,
         updated_at=NOW,
         user_name="小林",
         region=UserRegion("CN", "Asia/Shanghai"),
+        persona_spectrum=persona,
     )
     return Session.open(
         TAX, replace(profile), rng=random.Random(seed), now=lambda: NOW, student=False
@@ -86,12 +87,14 @@ def test_someone_elses_story_sets_no_situation() -> None:
 
 
 def test_the_metaphor_slot_prefers_the_dossier_imagery() -> None:
+    # The nature images, dossier imagery included, are ZEN_PHILOSOPHER's since F3.
+    zen = PersonaSpectrum.ZEN_PHILOSOPHER
     own = set(LANG.metaphors.by_situation[ADJUSTMENT])
     shown_with: set[str] = set()
     shown_without: set[str] = set()
     for seed in range(30):
-        shown_with |= _images_in(_open(seed).turn(LAYOFF))
-        shown_without |= _images_in(_open(seed).turn(NOT_MINE))
+        shown_with |= _images_in(_open(seed, zen).turn(LAYOFF))
+        shown_without |= _images_in(_open(seed, zen).turn(NOT_MINE))
     assert shown_with  # some templates carry the {metaphor} slot
     assert shown_with <= own
     assert shown_without and not shown_without & own

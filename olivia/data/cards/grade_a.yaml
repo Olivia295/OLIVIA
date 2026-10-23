@@ -1,5 +1,8 @@
 # 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）
 #
+# display_title（草稿：待 G-0，质量修复 F3）：用户看到的名字，是一个小练习，不是一种治疗；
+# 括号里注明它源自哪种方法。title 保持与 taxonomy 的 name_zh 一致，只用于校验。
+#
 # Grade A 微练习跟练卡片（温和包裹型人格 GENTLE_HOLDING 版本）。
 # 每张卡的 steps 与 taxonomy.yaml 中对应条目的 core_action_steps 一一对应、顺序一致，
 # 只做口语化展开，不引入任何新技术；duration_minutes 与 taxonomy 保持一致。
@@ -14,6 +17,7 @@ cards:
   # ---------------------------------------------------------------------------
   - id: "01"
     title: "传统认知行为疗法"
+    display_title: "念头检验小练习（源自传统认知行为疗法）"
     duration_minutes: 3
     intro: "有个念头让你不好受吗？我们花 3 分钟，一起把它放到桌面上看一看。"
     steps:
@@ -26,6 +30,7 @@ cards:
 
   - id: "02"
     title: "理性情绪行为疗法"
+    display_title: "松一松“一定要”（源自理性情绪行为疗法）"
     duration_minutes: 3
     intro: "心里是不是有一句“一定要做到”在压着你？我们花 3 分钟，把它轻轻松一松。"
     steps:
@@ -38,6 +43,7 @@ cards:
 
   - id: "03"
     title: "行为激活疗法"
+    display_title: "做一件小事（源自行为激活疗法）"
     duration_minutes: 4
     intro: "提不起劲的时候，我们不求多，只找一件 2 分钟就能做完的小事。"
     steps:
@@ -50,6 +56,7 @@ cards:
 
   - id: "06"
     title: "失眠认知行为疗法"
+    display_title: "睡前放下担心（源自失眠认知行为疗法）"
     duration_minutes: 3
     intro: "夜里睡不好真的很磨人。我们花 3 分钟，一起给今晚定几个小约定。"
     steps:
@@ -62,6 +69,7 @@ cards:
 
   - id: "07"
     title: "问题解决疗法"
+    display_title: "拆解一个难题（源自问题解决疗法）"
     duration_minutes: 4
     intro: "事情乱成一团的时候，我们花 4 分钟，理出一个能下手的小头绪。"
     steps:
@@ -74,6 +82,7 @@ cards:
 
   - id: "08"
     title: "情绪障碍跨诊断统一方案"
+    display_title: "情绪觉察小练习（源自统一方案）"
     duration_minutes: 3
     intro: "情绪来的时候，身体往往最先知道。我们花 3 分钟，一起听听它在说什么。"
     steps:
@@ -86,6 +95,7 @@ cards:
 
   - id: "10"
     title: "习惯逆转训练与权变管理"
+    display_title: "替代动作小练习（源自习惯逆转训练）"
     duration_minutes: 3
     intro: "手又不自觉地动起来了吗？我们花 3 分钟，练练怎么温和地接住它。"
     steps:
@@ -98,6 +108,7 @@ cards:
 
   - id: "11"
     title: "接纳承诺疗法"
+    display_title: "和念头拉开距离（源自接纳承诺疗法）"
     duration_minutes: 3
     intro: "有个念头一直缠着你吗？我们花 3 分钟，试着和它隔开一点距离。"
     steps:
@@ -110,6 +121,7 @@ cards:
 
   - id: "12"
     title: "辩证行为疗法"
+    display_title: "先停一停（源自辩证行为疗法）"
     duration_minutes: 3
     intro: "情绪冲上来的时候，先给自己按一个暂停键。我们一起花 3 分钟。"
     steps:
@@ -121,6 +133,7 @@ cards:
 
   - id: "13"
     title: "彻底开放辩证行为疗法"
+    display_title: "松开一点小练习（源自彻底开放辩证行为疗法）"
     duration_minutes: 3
     intro: "一直绷着、想做到最好，会很累。我们花 3 分钟，让自己稍微松开一点。"
     steps:
@@ -133,6 +146,7 @@ cards:
 
   - id: "14"
     title: "正念认知疗法"
+    display_title: "正念小练习（源自正念认知疗法）"
     duration_minutes: 3
     intro: "我们花 3 分钟，给自己一个呼吸的小空间，一分钟一分钟地来。"
     steps:
@@ -145,6 +159,7 @@ cards:
 
   - id: "15"
     title: "正念减压疗法"
+    display_title: "身体扫描小练习（源自正念减压疗法）"
     duration_minutes: 4
     intro: "压力大的时候，我们花 4 分钟，把注意力从脑袋里请回到身体上。"
     steps:
@@ -157,6 +172,7 @@ cards:
 
   - id: "16"
     title: "元认知疗法"
+    display_title: "给担心定个时间（源自元认知疗法）"
     duration_minutes: 3
     intro: "担心停不下来的时候，我们花 3 分钟，试着站到旁边看看它。"
     steps:
@@ -169,6 +185,7 @@ cards:
 
   - id: "17"
     title: "慈悲聚焦疗法"
+    display_title: "温柔对待自己（源自慈悲聚焦疗法）"
     duration_minutes: 3
     intro: "对自己太严厉的时候，我们花 3 分钟，换一种温和的方式陪陪自己。"
     steps:
@@ -181,6 +198,7 @@ cards:
 
   - id: "18"
     title: "正念自我关怀疗法"
+    display_title: "自我关怀三句话（源自正念自我关怀疗法）"
     duration_minutes: 3
     intro: "我们花 3 分钟，用三句话，像对待好朋友那样对待自己。"
     steps:
@@ -193,6 +211,7 @@ cards:
 
   - id: "28"
     title: "生理性叹息与自主神经躯体调节法"
+    display_title: "叹气式呼吸（源自生理性叹息）"
     duration_minutes: 2
     intro: "我们花 2 分钟，用一种特别的呼吸，帮身体慢慢降下来。"
     steps:
@@ -205,6 +224,7 @@ cards:
 
   - id: "29"
     title: "渐进性肌肉放松与自律训练法"
+    display_title: "肌肉放松小练习（源自渐进性肌肉放松）"
     duration_minutes: 4
     intro: "身体绷了很久吧？我们花 4 分钟，先收紧再放开，让身体记起松下来的感觉。"
     steps:
@@ -216,6 +236,7 @@ cards:
 
   - id: "30"
     title: "心理急救与自我安全自检模型"
+    display_title: "安全自检小练习（源自心理急救）"
     duration_minutes: 3
     intro: "刚经历了一些事吧。我们花 3 分钟，先确认你此刻是安全的，再照顾好身体。"
     steps:
@@ -228,6 +249,7 @@ cards:
 
   - id: "42"
     title: "意义疗法"
+    display_title: "找找意义小练习（源自意义疗法）"
     duration_minutes: 3
     intro: "很难熬的时候，我们花 3 分钟，看看自己在这里还能选择什么。"
     steps:
@@ -240,6 +262,7 @@ cards:
 
   - id: "44"
     title: "聚焦取向心理治疗"
+    display_title: "感受身体的信号（源自聚焦取向）"
     duration_minutes: 4
     intro: "有些感受说不清，但身体知道。我们花 4 分钟，慢慢听一听。"
     steps:
@@ -252,6 +275,7 @@ cards:
 
   - id: "46"
     title: "动机式访谈与自我决策平衡"
+    display_title: "利弊清单小练习（源自动机式访谈）"
     duration_minutes: 3
     intro: "想改变又有点犹豫，很正常。我们花 3 分钟，把两边都摊开看看。"
     steps:
@@ -264,6 +288,7 @@ cards:
 
   - id: "55"
     title: "焦点解决短程治疗"
+    display_title: "想象事情好转之后（源自焦点解决）"
     duration_minutes: 3
     intro: "我们花 3 分钟，先不盯着问题，去找找那些已经在起作用的小东西。"
     steps:
@@ -276,6 +301,7 @@ cards:
 
   - id: "57"
     title: "积极心理治疗与幸福感疗法"
+    display_title: "三件好事（源自积极心理学）"
     duration_minutes: 3
     intro: "我们花 3 分钟，一起找找过去一天里那些小小的好事。"
     steps:
@@ -288,6 +314,7 @@ cards:
 
   - id: "61"
     title: "森田疗法"
+    display_title: "带着感受做事（源自森田疗法）"
     duration_minutes: 3
     intro: "不安还在，也可以先做点什么。我们花 3 分钟，试试带着它往前走。"
     steps:
@@ -300,6 +327,7 @@ cards:
 
   - id: "62"
     title: "内观疗法"
+    display_title: "回看一段关系（源自内观疗法）"
     duration_minutes: 4
     intro: "我们花 4 分钟，安静地回看一段对你重要的关系。"
     steps:
@@ -312,6 +340,7 @@ cards:
 
   - id: "65"
     title: "表达性书写疗法"
+    display_title: "写下来小练习（源自表达性书写）"
     duration_minutes: 5
     intro: "有些话憋在心里太久了。我们花 5 分钟，让它们落到纸上。"
     steps:
@@ -323,6 +352,7 @@ cards:
 
   - id: "66"
     title: "意象预演疗法与梦魇改写技术"
+    display_title: "改写一个梦（源自意象预演）"
     duration_minutes: 4
     intro: "那个反复出现的画面或梦，结局是可以改写的。我们花 4 分钟试试。"
     steps:
@@ -335,6 +365,7 @@ cards:
 
   - id: "69"
     title: "单次结构化心理微干预与成长型思维赋能"
+    display_title: "一次小小的改写（源自单次心理微干预）"
     duration_minutes: 3
     intro: "觉得“我就是这样了”的时候，我们花 3 分钟，看看改变的可能。"
     steps:
@@ -347,6 +378,7 @@ cards:
 
   - id: "70"
     title: "生物反馈与心率变异性共振呼吸神经调节疗法"
+    display_title: "慢节奏共振呼吸（源自心率变异性呼吸训练）"
     duration_minutes: 3
     intro: "我们花 3 分钟，用慢慢的呼吸，让身体回到平稳的节奏。"
     steps:
@@ -359,6 +391,7 @@ cards:
 
   - id: "72"
     title: "意义重构哀伤疗法"
+    display_title: "给思念找个位置（源自意义重构哀伤疗法）"
     duration_minutes: 4
     intro: "失去的人或事，依然以某种方式留在你身上。我们花 4 分钟，去找找它。"
     steps:
@@ -371,6 +404,7 @@ cards:
 
   - id: "74"
     title: "亲子互动去威胁肯定疗法"
+    display_title: "肯定的话怎么说（源自亲子互动疗法）"
     duration_minutes: 3
     intro: "我们花 3 分钟，练习三种让关系更温暖的说话方式。"
     steps:
@@ -383,6 +417,7 @@ cards:
 
   - id: "75"
     title: "情绪调节疗法"
+    display_title: "观察情绪小练习（源自情绪调节疗法）"
     duration_minutes: 3
     intro: "有时候让人更难受的，是对情绪的责怪。我们花 3 分钟，换个方式和它相处。"
     steps:
@@ -398,6 +433,7 @@ cards:
   # ---------------------------------------------------------------------------
   - id: "12:tipp_breathing"
     title: "DBT TIPP 慢节奏呼吸稳定法"
+    display_title: "慢节奏呼吸（源自辩证行为疗法）"
     duration_minutes: 2
     intro: "我们花 2 分钟，一起慢慢呼吸，让呼气长过吸气。"
     steps:
@@ -409,6 +445,7 @@ cards:
 
   - id: "29:pmr_release"
     title: "渐进肌肉紧绷释放"
+    display_title: "肌肉紧绷再放松"
     duration_minutes: 4
     intro: "我们花 4 分钟，试试先收紧、再一下子放开，感受身体松下来。"
     steps:
@@ -419,6 +456,7 @@ cards:
 
   - id: "30:grounding"
     title: "5-4-3-2-1 感官外感受着陆法"
+    display_title: "5-4-3-2-1 感官着陆"
     duration_minutes: 2
     intro: "我们花 2 分钟，用眼睛、手、耳朵、鼻子和舌尖，把自己带回此时此地。"
     steps:
@@ -430,6 +468,7 @@ cards:
 
   - id: "SAFE_PLACE_CONTAINER"
     title: "安全岛与情绪保险箱意象锚定"
+    display_title: "安全岛想象"
     duration_minutes: 3
     intro: "有些东西此刻还不必去碰。我们花 3 分钟，先给它找个安放的地方。"
     steps:
@@ -441,6 +480,7 @@ cards:
 
   - id: "ENVIRONMENT_STIMULUS_REDUCTION"
     title: "环境高刺激隔离与感官减载"
+    display_title: "给感官减减负"
     duration_minutes: 2
     intro: "周围太吵太亮的时候，我们花 2 分钟，先帮你把环境调安静一点。"
     steps:
@@ -452,6 +492,7 @@ cards:
 
   - id: "ENVIRONMENT_PHYSICAL_ANCHOR"
     title: "本体感觉与物理接触实体锚定"
+    display_title: "踩稳地面小练习"
     duration_minutes: 1
     intro: "我们花 1 分钟，借身体的感觉，把自己稳稳地带回来。"
     steps:

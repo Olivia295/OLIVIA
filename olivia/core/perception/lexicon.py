@@ -16,9 +16,12 @@ within the whole-message group (unclear, affirm, decline) a phrase may appear on
 Emotion keys may be TAX emotion aliases; they are folded into the canonical id, and the
 key order is kept as the tie-break priority between emotions (first key wins).
 
-``therapy_names`` maps every Grade B and Grade C taxonomy method id, and nothing else, to
-the names a user may ask about it by; a name belongs to one method only.
-``therapy_question_cues`` are the words that make a named therapy a question.
+``therapy_names`` maps every Grade B and Grade C taxonomy method id to the names a user
+may ask about it by; a name belongs to one method only. It may also map Grade A practices
+(a Grade A method id or a card-type registry action id such as ``30:grounding``) that a
+user can ask about or ask to do by a common name (F3: 正念, CBT, 呼吸练习 ...).
+``therapy_question_cues`` are the words that make a named therapy a question;
+``therapy_request_cues`` the words that ask to do it ("带我做一下").
 
 ``situation_cues`` maps taxonomy situation codes, and ``contraindication_cues`` taxonomy
 contraindication enum ids, to the phrases that reveal them in conversation (roadmap
@@ -38,7 +41,7 @@ from typing import Any, Final
 
 import yaml
 
-from olivia.core.models import SafetyGrade
+from olivia.core.models import ActionType, SafetyGrade
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy, TaxonomyError
 
@@ -55,6 +58,7 @@ _PHRASE_SECTIONS: Final = (
     "acute_arousal_cues",
     "kit_recall",
     "therapy_question_cues",
+    "therapy_request_cues",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -87,6 +91,7 @@ _SIGNAL_GROUP: Final = (
 _FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
 _ANSWER_KEYS: Final = ("affirm", "decline")
 _INFO_GRADES: Final = frozenset({SafetyGrade.GRADE_B, SafetyGrade.GRADE_C})
+_CARD_ACTION_TYPES: Final = frozenset({ActionType.STABILIZATION, ActionType.MICRO_EXERCISE})
 
 
 class PerceptionLexiconError(Exception):
@@ -128,9 +133,12 @@ class PerceptionLexicon:
     kit_recall: tuple[str, ...]
     """The user asks to see a shelved method again ("锦囊里那个再给我看看")."""
     therapy_names: Mapping[str, tuple[str, ...]]
-    """Grade B/C method id -> folded names, every such method present, in taxonomy order."""
+    """Method or card id -> folded names: every Grade B/C method, in taxonomy order, then
+    the Grade A practices that have common names (F3)."""
     therapy_question_cues: tuple[str, ...]
     """Words that make a named therapy a question ("是什么", "有用吗")."""
+    therapy_request_cues: tuple[str, ...]
+    """Words that ask to do a named practice ("带我做一下", "教我练"; F3)."""
     situation_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy situation code -> folded phrases (A1: SIT-06-04, SIT-11-01)."""
     contraindication_cues: Mapping[str, tuple[str, ...]]
@@ -204,6 +212,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         kit_recall=phrases["kit_recall"],
         therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
         therapy_question_cues=phrases["therapy_question_cues"],
+        therapy_request_cues=phrases["therapy_request_cues"],
         situation_cues=MappingProxyType(_situation_cues(tax, doc.get("situation_cues"))),
         contraindication_cues=MappingProxyType(
             _keyed_cues(
@@ -340,20 +349,25 @@ def _spectrum_cues(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
 
 def _therapy_names(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
     methods = tax.methods()
+    practices = [
+        aid for aid, a in tax.action_registry().items() if a.action_type in _CARD_ACTION_TYPES
+    ]
     section = _mapping(node, "therapy_names")
     names: dict[str, tuple[str, ...]] = {}
     for key, raw in section.items():
         method = methods.get(key) if isinstance(key, str) else None
-        if method is None or method.grade not in _INFO_GRADES:
+        if method is None and key not in practices:
             raise PerceptionLexiconError(
-                f"{_FILE}: therapy_names key {key!r} is not a Grade B or C method id (quote it)"
+                f"{_FILE}: therapy_names key {key!r} is not a method or practice id (quote it)"
             )
         names[key] = _phrases(raw, f"therapy_names.{key}")
     missing = [mid for mid, m in methods.items() if m.grade in _INFO_GRADES and mid not in names]
     if missing:
         raise PerceptionLexiconError(f"{_FILE}: therapy_names has no entry for {missing}")
     _check_distinct(names, "therapy_names")
-    return {mid: names[mid] for mid in methods if mid in names}
+    ordered = {mid: names[mid] for mid in methods if mid in names}
+    ordered.update({aid: names[aid] for aid in practices if aid in names and aid not in ordered})
+    return ordered
 
 
 def _keyed_cues(node: Any, where: str, known: tuple[str, ...]) -> dict[str, tuple[str, ...]]:

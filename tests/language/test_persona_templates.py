@@ -66,8 +66,18 @@ NEW = [PersonaSpectrum.ZEN_PHILOSOPHER, PersonaSpectrum.RATIONAL_PEER]
 NEW_ALL = [*NEW, PersonaSpectrum.SILENT_ANCHOR]
 FULL = [PersonaSpectrum.GENTLE_HOLDING, *NEW]
 WINDOWS: dict[PersonaSpectrum, dict[str, Any]] = {
-    PersonaSpectrum.ZEN_PHILOSOPHER: {"normal": [140, 260], "paragraph_max": 80, "haven": [15, 40]},
-    PersonaSpectrum.RATIONAL_PEER: {"normal": [140, 260], "paragraph_max": 80, "haven": [15, 40]},
+    PersonaSpectrum.ZEN_PHILOSOPHER: {
+        "normal": [140, 260],
+        "paragraph_max": 80,
+        "haven": [15, 40],
+        "short": [50, 160],
+    },
+    PersonaSpectrum.RATIONAL_PEER: {
+        "normal": [140, 260],
+        "paragraph_max": 80,
+        "haven": [15, 40],
+        "short": [50, 160],
+    },
     PersonaSpectrum.SILENT_ANCHOR: {
         "normal": [10, 30],
         "paragraph_max": 50,

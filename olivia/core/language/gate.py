@@ -82,7 +82,11 @@ class OutputGate:
         self._grade_a_titles = tuple(
             sorted((tax.methods()[mid].name_zh for mid in tax.grade_a_ids()), key=len, reverse=True)
         )
-        self._card_titles = tuple(card.title for card in data.cards.cards.values())
+        self._card_titles = tuple(
+            title
+            for card in data.cards.cards.values()
+            for title in (card.title, card.taxonomy_title)
+        )
         fallback = next(t for t in data.templates.haven if not slots_of(t))
         self._fallback = fallback
 

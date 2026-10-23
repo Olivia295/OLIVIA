@@ -8,6 +8,8 @@
 #   note_unavailable    这台电脑不能加密保存，所以这句没有记。
 #   memory_unavailable  同上原因，整个记忆功能不可用；每台电脑只在开场说一次。
 #   summary_not_saved   会话结束时小结没能写入（例如钥匙串中途被锁）。
+#   note_continue       （草稿：待 G-0，质量修复 F3）“记住：……”这一轮只回确认句，再接这一句
+#                       温和地接着聊，不把要记的话当成感受来复述。
 #
 # summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
 #   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after}
@@ -20,6 +22,7 @@ replies:
   note_unavailable: "这台电脑上暂时没办法把记忆加密保存，所以这句我先不记了。"
   memory_unavailable: "先告诉你一件事：这台电脑上暂时没办法把记忆加密保存，所以我不会记下我们聊过什么。其他的一切都照常。"
   summary_not_saved: "这次聊天的小结没能保存下来，下次再试试。"
+  note_continue: "还有什么想说的，随时告诉我，我在这里听着。"
 summary:
   heading: "## {date} 的一次聊天"
   time: "- 时间：{start} – {end}"

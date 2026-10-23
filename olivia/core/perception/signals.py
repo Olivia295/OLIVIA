@@ -61,8 +61,12 @@ class TurnSignals:
     "核心信念识别", decision D4; model mode only). Set by the session, never by the stub;
     in S_clarify it opens S_empower like the auto-advance, through the same gates."""
     therapy_question: str | None = None
-    """The Grade B/C method the user asks about by name ("EMDR 有用吗" -> ``"21"``), as a
-    taxonomy method id; None when the turn asks about none (roadmap next-phase A4)."""
+    """The method the user asks about by name ("EMDR 有用吗" -> ``"21"``, "正念是什么" ->
+    ``"15"``), as a taxonomy method or practice id; None when the turn asks about none
+    (roadmap next-phase A4, F3)."""
+    therapy_request: str | None = None
+    """The Grade A practice the user asks to do by name ("能带我做一下正念吗" -> ``"15"``;
+    F3); the stub sets ``direct_request`` with it."""
     situation_codes: frozenset[str] = frozenset()
     """Taxonomy situation codes the message reveals (``situation_cues``: "亲人刚走" ->
     ``SIT-06-04``, "一切都没有意义" -> ``SIT-11-01``; roadmap next-phase A1)."""

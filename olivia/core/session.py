@@ -101,6 +101,16 @@ Persona (PRD ONB-03, plan D-1): the profile's ``persona_spectrum`` picks the rep
 templates and word windows (``LanguageData.for_persona``); crisis resource lines and the
 D3 question are the same for every persona.
 
+Language quality (F3): the ``{emotion}`` slot never names the rule stub's fallback
+emotion (``LanguageEngine.feeling_word``); a very short message gets the two-paragraph
+reply (``is_short_input``) unless a naming line must be swapped in; a Grade A practice
+asked for by name ("带我做一下正念", ``TurnSignals.therapy_request``) is the card shown
+when the solver allows it, and one asked about ("CBT是什么") gets its short explainer
+(never for a red-flag user); the spectrum lens must fit the active situations
+(``fitting_spectra``); cards end with the at-work line only in the user's working hours;
+and outside a crisis a medication-dose or "am I X?" question gets one plain line
+(``LanguageEngine.boundary_line``) before the reply.
+
 A card whose text names one of the profile's taboo topics, or that the gate blocks, is
 not shown and the turn is handled as if nothing had been asked.
 
@@ -247,8 +257,8 @@ from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_
 from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
-from olivia.core.language.dossiers import lens_pool
-from olivia.core.language.engine import LanguageEngine, Slots
+from olivia.core.language.dossiers import fitting_spectra, lens_pool
+from olivia.core.language.engine import LanguageEngine, Slots, at_work, is_short_input
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
@@ -808,7 +818,15 @@ class Session:
                 rendered = self._with_taboo_filter(self._after_card_prompt, stage)
                 rendered.pending = replace(pending, stage=HelpStage.S_EMPOWER)
             else:
-                rendered = self._offer(stage, perception, flags, spectrum, mirror_text, now)
+                rendered = self._offer(
+                    stage,
+                    perception,
+                    flags,
+                    spectrum,
+                    mirror_text,
+                    now,
+                    requested=signals.therapy_request,
+                )
         elif (
             stage is HelpStage.S_EXPLORE
             and (
@@ -872,6 +890,11 @@ class Session:
         )
         rendered.reply = prompted.reply
 
+        if stage is not HelpStage.S_CRISIS and not ask and not status.in_crisis:
+            # A dose or "am I X?" question gets one plain line before the reply (F3).
+            boundary = self._engine.boundary_line(text)
+            if boundary:
+                rendered.reply = f"{boundary}\n\n{rendered.reply}"
         if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
             self._append_health_hint(rendered, stage)
@@ -1117,12 +1140,16 @@ class Session:
         now: datetime,
         *,
         recall: bool = False,
+        requested: str | None = None,
     ) -> _Rendered:
         """Sample and show a card in S_empower, or a stabilization card in S_explore.
 
         With ``recall``, the most recently shelved action that the solver allows right now
         is shown instead of a sampled one, and it leaves the kit (``/not-now`` puts it
         back). When no shelved action is allowed now, a card is sampled as usual.
+        ``requested`` is a practice the user asked for by name ("带我做一下正念", F3): it
+        is shown when the solver allows it now, otherwise a card is sampled as usual. The
+        card's context line follows the user's local time (working hours or not).
         """
         tax = self._tax
         shelved = self._state.user_shelved_actions
@@ -1145,6 +1172,8 @@ class Session:
                     self._state = replace(self._state, user_shelved_actions=remaining)
                     allowed = self._allowed(stage, perception, flags, frozenset(remaining))
         renderable = [aid for aid in allowed.candidates if aid in deck]
+        if chosen is None and requested in renderable:
+            chosen = requested
         if chosen is None and renderable:
             chosen = self._sampler.choose(renderable, bucket, perception.arousal, self._rng, now)
         plan = build_plan(tax, chosen, allowed)
@@ -1153,7 +1182,10 @@ class Session:
         card_text: str | None = None
         if primary.method_id != M0_ACTION_ID:
             self._engine.last_gate = None
-            card_text = self._engine.render_card(primary)
+            region = self._profile.region
+            card_text = self._engine.render_card(
+                primary, at_work=at_work(now, region.timezone if region is not None else None)
+            )
             if not self._note_gate():
                 card_text = None
 
@@ -1237,7 +1269,12 @@ class Session:
             shelved_actions=frozenset(),
         )
         asked = signals.therapy_question
-        if asked is not None:
+        data = self._engine.data
+        if asked is not None and asked in data.exercise_info:
+            # A Grade A practice asked about by name: its short explainer (F3), never
+            # for a red-flag user, who only gets the referral card.
+            chosen, lens = (None if flags else asked), False
+        elif asked is not None:
             chosen, lens = (asked if info_cards(self._tax, inp, asked) else None), False
         elif (
             stage is HelpStage.S_CLARIFY
@@ -1246,12 +1283,14 @@ class Session:
             # SILENT_ANCHOR only listens (SDD §6.1): no unasked perspective.
             and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
         ):
-            data = self._engine.data
+            # Only a lens that fits: the active situations' spectra when there are any,
+            # so a breakup or a loss never gets a relationship-skills lens (F3).
+            fit = fitting_spectra(self._context.situations, self._last_spectrum)
             pool = lens_pool(
                 info_cards(self._tax, inp),
                 data.situation_lenses,
                 self._context.situations,
-                data.info_lenses.get(self._last_spectrum or "", ()),
+                [mid for sid in sorted(fit) for mid in data.info_lenses.get(sid, ())],
             )
             chosen, lens = (self._rng.choice(pool) if pool else None), True
         else:
@@ -1338,8 +1377,15 @@ class Session:
         card_title: str = "",
         card: str = "",
         light: bool = False,
+        short: bool | None = None,
     ) -> tuple[str, str] | None:
-        """One composed reply and the mirror it used (taboo hits inside it are allowed)."""
+        """One composed reply and the mirror it used (taboo hits inside it are allowed).
+
+        ``short`` asks for the two-paragraph reply to a very short message (F3); None
+        decides from ``mirror_text``.
+        """
+        # The engine names the feeling only when there is one (F3): never the rule stub's
+        # fallback emotion, and the user's own word first ("好累" -> 疲惫).
         slots = self._engine.build_slots(
             user_name=self._profile.user_name,
             agent_name=self._profile.agent_name,
@@ -1353,7 +1399,9 @@ class Session:
         if not slots.mirror:
             slots = replace(slots, mirror=FALLBACK_MIRROR)
         self._engine.last_gate = None
-        text = self._engine.compose(stage, slots, card=card, light=light)
+        if short is None:
+            short = bool(mirror_text) and is_short_input(mirror_text)
+        text = self._engine.compose(stage, slots, card=card, light=light, short=short)
         if not self._note_gate():
             return None
         return text, slots.mirror
@@ -1447,7 +1495,10 @@ class Session:
         reply that is not three paragraphs, or a line naming a taboo topic, keeps the
         reply's own text.
         """
-        composed = self._compose(stage, perception, spectrum, mirror_text)
+        # A line to swap in needs the three-paragraph reply.
+        composed = self._compose(
+            stage, perception, spectrum, mirror_text, short=False if line is not None else None
+        )
         if composed is None or line is None or self._has_taboo(line, ""):
             return composed
         parts = composed[0].split("\n\n")
@@ -1537,11 +1588,14 @@ class Session:
         values = self._plain_slots().values()
         willow = self._engine.data.willow
         usable = [v for v in variants if all(values[s] for s in slots_of(v))]
-        texts = [apply_willow(_fill_names(v, values), ContentKind.NORMAL, willow) for v in usable]
-        pool = [t for t in texts if t != avoid] or texts
+        rendered = {
+            v: apply_willow(_fill_names(v, values), ContentKind.NORMAL, willow) for v in usable
+        }
+        pool = [v for v in usable if rendered[v] != avoid] or usable
         if window:
-            pool = [t for t in pool if self._engine.window_penalty(stage, t) == 0] or pool
-        text = self._rng.choice(pool)
+            pool = [v for v in pool if self._engine.window_penalty(stage, rendered[v]) == 0] or pool
+        # The engine skips a line the replies just before already said (F3).
+        text = rendered[self._engine.pick_line(pool, values)]
         result = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=stage)
         self._engine.last_gate = result
         if not self._note_gate():
