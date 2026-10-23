@@ -20,6 +20,9 @@
     Show and change the recorded health information (clinical-history codes and the
     D2 disclosures), interactively with numbered choices (``chang/health.py``); it is
     always saved encrypted.
+``olivia persona [CHOICE]``
+    Show the four companion personas with the saved one marked, or switch to CHOICE (a
+    number, short name or enum value; PRD JTBD 4, ONB-03). The next ``olivia chat`` uses it.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -63,6 +66,7 @@ from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
     FALLBACK_TIMEZONE,
+    PERSONA_CHOICES,
     TIMEZONE_CHOICES,
     Completed,
     OnboardingFlow,
@@ -70,12 +74,19 @@ from olivia.core.chang.onboarding import (
     Refused,
     canonical_timezone,
     load_onboarding_text,
+    persona_from_reply,
 )
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.recorder import SessionRecorder
-from olivia.core.models import UNKNOWN_COUNTRY, CrisisLevel, PersonaProfile, UserRegion
+from olivia.core.models import (
+    UNKNOWN_COUNTRY,
+    CrisisLevel,
+    PersonaProfile,
+    PersonaSpectrum,
+    UserRegion,
+)
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve, resolve_region_code
@@ -127,6 +138,17 @@ RESOURCES_EMERGENCY: Final = "紧急电话："
 RESOURCES_HOURS: Final = "服务时间："
 RESOURCES_FOOTER: Final = "资料整理于 {compiled_on}（第 {version} 版）"
 OTHER_REGION_LABEL: Final = "其他地区"
+PERSONA_SHOW: Final = "现在的陪伴方式：{label}"
+PERSONA_CHOICES_HEADING: Final = "可以选择的陪伴方式："
+PERSONA_CURRENT_MARK: Final = "（当前）"
+PERSONA_HOW_TO: Final = "想换的话，输入 olivia persona 加序号或简称，例如：olivia persona 2"
+PERSONA_SAVED: Final = "好的，之后我会用「{name}」的方式陪你，下次打开 olivia chat 时生效。"
+PERSONA_UNCHANGED: Final = "现在用的就是「{name}」，不用改动。"
+PERSONA_UNKNOWN: Final = "没有认出「{raw}」。可以用下面的序号或简称："
+PERSONA_NOT_ONBOARDED: Final = (
+    "还没有完成第一次设置。先运行 olivia chat，之后就可以更换陪伴方式了。"
+)
+PERSONA_ADULTS_ONLY: Final = "这里的陪伴只为成年人设计，所以没有可以更换的陪伴方式。"
 LINE_KIND_HEADINGS: Final = {
     LineKind.CRISIS_HOTLINE: "心理援助与危机热线：",
     LineKind.TEXT_LINE: "短信与文字求助：",
@@ -157,6 +179,15 @@ USER_TEXTS: Final = (
     RESOURCES_HOURS,
     RESOURCES_FOOTER,
     OTHER_REGION_LABEL,
+    PERSONA_SHOW,
+    PERSONA_CHOICES_HEADING,
+    PERSONA_CURRENT_MARK,
+    PERSONA_HOW_TO,
+    PERSONA_SAVED,
+    PERSONA_UNCHANGED,
+    PERSONA_UNKNOWN,
+    PERSONA_NOT_ONBOARDED,
+    PERSONA_ADULTS_ONLY,
     *LINE_KIND_HEADINGS.values(),
 )
 """Every sentence the CLI itself says, for the WILLOW and gate checks in the tests."""
@@ -559,6 +590,53 @@ def _health(console: _Console, clock: Clock) -> int:
     return 0 if outcome.ok else 1
 
 
+# -- persona ----------------------------------------------------------------------------------
+
+
+def _persona_list(console: _Console, current: PersonaSpectrum | None) -> None:
+    labels = load_onboarding_text().persona_labels
+    console.say(PERSONA_CHOICES_HEADING)
+    for number, persona in enumerate(PERSONA_CHOICES, start=1):
+        mark = PERSONA_CURRENT_MARK if persona is current else ""
+        console.say(f"  {number}. {labels[persona]}{mark}")
+
+
+def _persona(console: _Console, choice: str | None, clock: Clock) -> int:
+    """``olivia persona [CHOICE]``: show the saved persona, or switch it (JTBD 4)."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    setting = choice is not None
+    if profile is None:
+        console.say(PERSONA_NOT_ONBOARDED)
+        return 1 if setting else 0
+    if profile.is_age_gate_refusal:
+        console.say(PERSONA_ADULTS_ONLY)
+        return 1 if setting else 0
+    labels = load_onboarding_text().persona_labels
+    current = profile.persona_spectrum
+    if choice is None:
+        console.say(PERSONA_SHOW.format(label=labels[current]))
+        console.say()
+        _persona_list(console, current)
+        console.say()
+        console.say(PERSONA_HOW_TO)
+        return 0
+    chosen = persona_from_reply(choice, labels)
+    if chosen is None:
+        console.say(PERSONA_UNKNOWN.format(raw=choice.strip()))
+        _persona_list(console, current)
+        return 1
+    name = labels[chosen].split("：", 1)[0]
+    if chosen is current:
+        console.say(PERSONA_UNCHANGED.format(name=name))
+        return 0
+    if not _save_profile(console, replace(profile, persona_spectrum=chosen, updated_at=clock())):
+        return 1
+    console.say(PERSONA_SAVED.format(name=name))
+    return 0
+
+
 # -- entry point ------------------------------------------------------------------------------
 
 
@@ -587,6 +665,8 @@ def build_parser() -> argparse.ArgumentParser:
     region.add_argument("--timezone", help="IANA 时区，例如 America/New_York")
     region.add_argument("--clear", action="store_true", help="清除保存的地区和时区")
     commands.add_parser("health", help="查看或修改加密记录的健康信息")
+    persona = commands.add_parser("persona", help="查看或更换陪伴方式")
+    persona.add_argument("choice", nargs="?", help="序号（1–4）或简称，例如 2 或 沉静哲思")
     return parser
 
 
@@ -623,6 +703,8 @@ def main(
             return _resources(console, now)
         if args.command == "health":
             return _health(console, now)
+        if args.command == "persona":
+            return _persona(console, args.choice, now)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()

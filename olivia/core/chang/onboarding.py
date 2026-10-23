@@ -6,10 +6,10 @@ or :class:`Refused`. All wording lives in ``olivia/data/templates/onboarding.yam
 
 Order: disclaimer (explicit acceptance) -> 18+ gate -> at-rest encryption switch (ONB-06,
 default off: only health information is encrypted, ruling 28) -> both names -> persona
-(R1 offers only ``GENTLE_HOLDING``, decision Q8) -> taboo topics -> region -> timezone ->
-optional clinical-history consent (last, ruling 23) -> after consent, the clinical
-history and the D2 checklist of the profile's contraindication disclosures (heart or
-breathing, safety at home; step A1) -> one atomic save (ONB-08). The age
+(the four of ONB-03, ``GENTLE_HOLDING`` by default; plan D-1) -> taboo topics -> region ->
+timezone -> optional clinical-history consent (last, ruling 23) -> after consent, the
+clinical history and the D2 checklist of the profile's contraindication disclosures
+(heart or breathing, safety at home; step A1) -> one atomic save (ONB-08). The age
 gate comes before anything personal is asked, so nothing is ever collected from a minor
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
@@ -52,7 +52,14 @@ from olivia.core.taxonomy import RedFlag, Taxonomy
 DEFAULT_USER_NAME: Final = "朋友"
 DEFAULT_AGENT_NAME: Final = "Olivia"
 FALLBACK_TIMEZONE: Final = "UTC"
-R1_PERSONA: Final = PersonaSpectrum.GENTLE_HOLDING
+# ONB-03: the personas in display order (numbered from 1); the first is the default.
+PERSONA_CHOICES: Final = (
+    PersonaSpectrum.GENTLE_HOLDING,
+    PersonaSpectrum.ZEN_PHILOSOPHER,
+    PersonaSpectrum.RATIONAL_PEER,
+    PersonaSpectrum.SILENT_ANCHOR,
+)
+DEFAULT_PERSONA: Final = PERSONA_CHOICES[0]
 
 # The region codes with a section in olivia/data/resources/hotlines.yaml, in display order.
 SUPPORTED_REGIONS: Final = ("CN", "HK", "MO", "TW", "US", "CA", "GB", "AU", UNKNOWN_COUNTRY)
@@ -139,7 +146,7 @@ _HINT_KEYS: Final = (
     "unrecognized",
     "name_length",
     "name_unprintable",
-    "persona_only",
+    "persona_choice",
     "taboo_limits",
     "timezone_invalid",
     "consent_unrecognized",
@@ -229,7 +236,8 @@ class OnboardingText:
     choices: Mapping[str, tuple[Choice, Choice]]
     """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``encryption`` as
     ``(keep_off, encrypt_all)``, the first being the default."""
-    persona_label: str
+    persona_labels: Mapping[PersonaSpectrum, str]
+    """One line per persona, ``简称：description`` (ONB-03)."""
     region_labels: Mapping[str, str]
     region_aliases: Mapping[str, tuple[str, ...]]
     timezone_labels: Mapping[str, str]
@@ -255,6 +263,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         raise OnboardingTextError(f"{_TEXT_FILE}: must be a mapping with version 1")
 
     prompts = _str_map(doc, "prompts", _PROMPT_KEYS)
+    labels = _str_map(doc, "persona_labels", tuple(p.value for p in PERSONA_CHOICES))
     hints = _str_map(doc, "hints", _HINT_KEYS)
     outcomes = _str_map(doc, "outcomes", _OUTCOME_KEYS)
     disclosure_labels = _str_map(doc, "disclosure_labels", PROFILE_CONTRAINDICATIONS)
@@ -296,7 +305,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         consent_sentence=_nonempty_str(doc.get("consent_sentence"), "consent_sentence"),
         prompts=MappingProxyType(prompts),
         choices=MappingProxyType(choices),
-        persona_label=_nonempty_str(doc.get("persona_label"), "persona_label"),
+        persona_labels=MappingProxyType({p: labels[p.value] for p in PERSONA_CHOICES}),
         region_labels=MappingProxyType(region_labels),
         region_aliases=MappingProxyType(region_aliases),
         timezone_labels=MappingProxyType(timezone_labels),
@@ -322,6 +331,21 @@ def parse_choices(reply: str, keys: tuple[str, ...]) -> tuple[tuple[str, ...], t
     unknown = tuple(t for t in tokens if t not in by_token)
     chosen = {by_token[t] for t in tokens if t in by_token}
     return tuple(key for key in keys if key in chosen), unknown
+
+
+def persona_from_reply(reply: str, labels: Mapping[PersonaSpectrum, str]) -> PersonaSpectrum | None:
+    """The persona ``reply`` names, else None (an empty reply names none).
+
+    Accepted, after NFKC folding and case-folding: the number in ``PERSONA_CHOICES``
+    (from 1), the enum value, the whole label, or its short name before ``：``.
+    """
+    folded = _fold(reply)
+    for number, persona in enumerate(PERSONA_CHOICES, start=1):
+        label = labels[persona]
+        names = (str(number), persona.value, label, label.split("：", 1)[0])
+        if folded and folded in {_fold(name) for name in names}:
+            return persona
+    return None
 
 
 def canonical_timezone(raw: str) -> str | None:
@@ -369,6 +393,7 @@ class OnboardingFlow:
         self._hint = ""
         self._user_name = DEFAULT_USER_NAME
         self._agent_name = DEFAULT_AGENT_NAME
+        self._persona = DEFAULT_PERSONA
         self._taboo: tuple[str, ...] = ()
         self._country = UNKNOWN_COUNTRY
         self._timezone = FALLBACK_TIMEZONE
@@ -431,7 +456,8 @@ class OnboardingFlow:
             case Step.AGENT_NAME:
                 return self._render(prompts["agent_name"]), ()
             case Step.PERSONA:
-                return prompts["persona"], (self._text.persona_label,)
+                personas = self._text.persona_labels
+                return prompts["persona"], tuple(personas[p] for p in PERSONA_CHOICES)
             case Step.REGION:
                 labels = self._text.region_labels
                 return prompts["region"], tuple(labels[code] for code in SUPPORTED_REGIONS)
@@ -507,12 +533,16 @@ class OnboardingFlow:
             self._step = Step.PERSONA
 
     def _on_persona(self, text: str) -> None:
-        reply = _fold(text)
-        accepted = {"", "1", _fold(self._text.persona_label), _fold(R1_PERSONA.value)}
-        if reply in accepted:
-            self._step = Step.TABOO
-        else:
-            self._hint = self._text.hints["persona_only"]
+        chosen = (
+            DEFAULT_PERSONA
+            if _fold(text) == ""
+            else persona_from_reply(text, self._text.persona_labels)
+        )
+        if chosen is None:
+            self._hint = self._text.hints["persona_choice"]
+            return
+        self._persona = chosen
+        self._step = Step.TABOO
 
     def _on_taboo(self, text: str) -> None:
         if _fold(text) in self._skip_words():
@@ -612,7 +642,7 @@ class OnboardingFlow:
             updated_at=self._now,
             user_name=self._user_name,
             agent_name=self._agent_name,
-            persona_spectrum=R1_PERSONA,
+            persona_spectrum=self._persona,
             taboo_topics=self._taboo,
             region=UserRegion(country_code=self._country, timezone=self._timezone),
             clinical_history=clinical_history,

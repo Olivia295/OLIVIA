@@ -267,13 +267,69 @@ def test_name_length_validation(tmp_path):
 # -- ONB-03 persona, ONB-04 taboo ----------------------------------------------------
 
 
-def test_persona_offers_only_gentle_holding(tmp_path):
+def test_persona_offers_the_four_personas_gentle_first(tmp_path):
     flow = _flow(tmp_path)
     prompt = _walk(flow, ["1", "1", "", "", ""])
     assert isinstance(prompt, Prompt) and prompt.step is Step.PERSONA
-    assert prompt.options == (TEXT.persona_label,)
-    assert flow.answer("2").step is Step.PERSONA
-    assert flow.answer("gentle_holding").step is Step.TABOO
+    assert tuple(PersonaSpectrum) == onb.PERSONA_CHOICES
+    assert onb.PERSONA_CHOICES[0] is onb.DEFAULT_PERSONA is PersonaSpectrum.GENTLE_HOLDING
+    assert prompt.options == tuple(TEXT.persona_labels[p] for p in onb.PERSONA_CHOICES)
+    assert "olivia persona" in prompt.text
+    for label in prompt.options:
+        name, _, description = label.partition("：")
+        assert 2 <= len(name) <= 4 and description, label
+    # Enter keeps the default.
+    result = _walk(flow, ["", "", "1", ""])
+    assert isinstance(result, Completed)
+    assert result.profile.persona_spectrum is PersonaSpectrum.GENTLE_HOLDING
+
+
+@pytest.mark.parametrize(
+    ("reply", "persona"),
+    [
+        ("2", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("４", PersonaSpectrum.SILENT_ANCHOR),
+        ("平视战友", PersonaSpectrum.RATIONAL_PEER),
+        (" rational_peer ", PersonaSpectrum.RATIONAL_PEER),
+        ("SILENT_ANCHOR", PersonaSpectrum.SILENT_ANCHOR),
+        ("1", PersonaSpectrum.GENTLE_HOLDING),
+    ],
+)
+def test_persona_choice_is_saved(tmp_path, reply, persona):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "1", "", "", ""])
+    assert flow.answer(reply).step is Step.TABOO
+    result = _walk(flow, ["", "1", ""])
+    assert isinstance(result, Completed) and result.profile.persona_spectrum is persona
+    assert ProfileStore(tmp_path).load() == result.profile
+
+
+def test_persona_full_label_is_accepted(tmp_path):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "1", "", "", ""])
+    assert flow.answer(TEXT.persona_labels[PersonaSpectrum.ZEN_PHILOSOPHER]).step is Step.TABOO
+
+
+@pytest.mark.parametrize("reply", ["5", "0", "随便", "树洞型"])
+def test_unrecognized_persona_asks_again(tmp_path, reply):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "1", "", "", ""])
+    again = flow.answer(reply)
+    assert isinstance(again, Prompt) and again.step is Step.PERSONA
+    assert again.text.startswith(TEXT.hints["persona_choice"])
+
+
+@pytest.mark.parametrize(
+    ("reply", "persona"),
+    [
+        ("3", PersonaSpectrum.RATIONAL_PEER),
+        ("沉静哲思", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("", None),
+        ("五", None),
+    ],
+)
+def test_persona_from_reply(reply, persona):
+    assert onb.persona_from_reply(reply, TEXT.persona_labels) is persona
 
 
 def test_taboo_parsing_and_limits(tmp_path):
@@ -560,7 +616,7 @@ def test_text_file_has_draft_header_and_no_banned_wording():
     diagnosis = yaml.safe_load(WILLOW.read_text(encoding="utf-8"))["diagnosis_terms"]
     texts = [
         TEXT.consent_sentence,
-        TEXT.persona_label,
+        *TEXT.persona_labels.values(),
         *TEXT.prompts.values(),
         *TEXT.hints.values(),
         *TEXT.outcomes.values(),
@@ -586,6 +642,12 @@ def test_text_loader_rejects_missing_and_unknown_slots(tmp_path):
     broken["hints"]["unrecognized"] = "{city}"
     (tmp_path / "onboarding.yaml").write_text(yaml.safe_dump(broken), encoding="utf-8")
     with pytest.raises(OnboardingTextError, match="city"):
+        load_onboarding_text(tmp_path)
+
+    broken = json.loads(json.dumps(data))
+    del broken["persona_labels"]["SILENT_ANCHOR"]
+    (tmp_path / "onboarding.yaml").write_text(yaml.safe_dump(broken), encoding="utf-8")
+    with pytest.raises(OnboardingTextError, match="SILENT_ANCHOR"):
         load_onboarding_text(tmp_path)
 
     broken = json.loads(json.dumps(data))
