@@ -1,20 +1,39 @@
-"""The distilled perception student: a pure-NumPy text CNN (roadmap P6-6a, SDD §9).
+"""The distilled perception student: pure-NumPy text CNNs (roadmap P6-6a, SDD §9).
 
 The packaged weights live in ``olivia/data/models/perception`` next to ``MANIFEST.json``,
 which records each file's SHA-256 and byte size. Loading checks, in order: the manifest,
-every file's size and hash, ``student_config.json`` (``format_version`` 1, preprocessing
-numbers, the head layout and the risk thresholds), ``vocab.json``, and every array of
-``student.npz`` (read with ``allow_pickle=False``) against the shape listed in the
-config. Any mismatch makes the model *unavailable* with a short machine reason; loading
-never raises past :func:`try_load_student`, so a session falls back to the rule screen.
+every file's size and hash, ``student_config.json`` (its ``format_version``, preprocessing
+numbers, the architecture, the head layout and the risk thresholds), ``vocab.json``, and
+every array of ``student.npz`` (read with ``allow_pickle=False``) against the shape listed
+in the config. Any mismatch, or any format or architecture this module does not know,
+makes the model *unavailable* with a short machine reason; loading never raises past
+:func:`try_load_student`, so a session falls back to the rule screen.
 
-Forward pass (the training notebook's reference): ``html.unescape`` -> NBSP to space ->
-collapse whitespace -> strip; one id per code point (UNK for unknown); texts longer than
-``max_len`` keep the first ``head_chars`` and the last ``max_len - head_chars`` ids, and
-short ones are right-padded with PAD to ``min_len``. Then embedding -> for each kernel a
-valid convolution, ReLU and global max pool -> concatenation -> dense + ReLU -> one linear
-layer whose slices are the heads. Class heads are ``softmax(z / temperature)``, ``tanh``
-heads ``tanh``, and ``sigmoid`` / ``bce`` heads ``sigmoid``.
+Two config formats load:
+
+* ``format_version`` 1: one CNN. Top-level ``kernels`` and ``student_fingerprint``; the
+  arrays are ``embedding``, ``conv{k}_weight`` / ``conv{k}_bias`` per kernel,
+  ``dense_*`` and ``heads_*``.
+* ``format_version`` 2 with ``architecture.type == "ensemble"``: ``architecture.members``
+  CNNs of the same shape (``architecture.member``: ``type`` ``"cnn"``, ``kernels``), their
+  arrays named as in version 1 behind the prefix ``m{i}_`` (``architecture.array_prefix``),
+  each with its own embedding; ``variant_fingerprint`` names the model. Every member's
+  arrays are checked, and the npz holds exactly the members' arrays. Other version-2
+  architectures (the experiment notebook's ``cnn``, ``bigru``, ``transformer``) are not
+  supported here and leave the model unavailable.
+
+Forward pass (the training notebooks' NumPy reference): ``html.unescape`` -> NBSP to
+space -> collapse whitespace -> strip; one id per code point (UNK for unknown); texts
+longer than ``max_len`` keep the first ``head_chars`` and the last ``max_len - head_chars``
+ids, and short ones are right-padded with PAD to ``min_len``. A CNN runs embedding -> for
+each kernel a valid convolution, ReLU and global max pool -> concatenation -> dense + ReLU
+-> one linear layer whose slices are the heads. An ensemble runs every member on the same
+ids and merges their raw outputs head by head (``architecture.combine``, in float64):
+class heads ``log(mean softmax)``, ``tanh`` heads ``atanh(mean tanh)`` and ``sigmoid`` /
+``bce`` heads ``logit(mean sigmoid)``, the means clipped 1e-6 inside the open range.
+Then, for either format, class heads are ``softmax(z / temperature)``, ``tanh`` heads
+``tanh``, and ``sigmoid`` / ``bce`` heads ``sigmoid``; the temperatures and the risk
+thresholds were fitted on the merged output.
 
 The risk heads feed the crisis screen (:class:`StudentRiskModel`, an injected
 ``RiskModel`` for ``SafetyScreen``); the other heads feed model-mode perception
@@ -45,7 +64,9 @@ from typing import TYPE_CHECKING, Any, Final
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import RiskModel, RiskPrediction
 
-FORMAT_VERSION: Final = 1
+MANIFEST_VERSION: Final = 1
+CNN_VERSION: Final = 1
+ENSEMBLE_VERSION: Final = 2
 MANIFEST: Final = "MANIFEST.json"
 WEIGHTS: Final = "student.npz"
 VOCAB: Final = "vocab.json"
@@ -54,6 +75,9 @@ _FILES: Final = (WEIGHTS, VOCAB, CONFIG)
 _PACKAGE_DIR: Final = "data/models/perception"
 _HEAD_KINDS: Final = frozenset({"class", "tanh", "sigmoid", "bce"})
 _RISK_LABELS: Final = ("L0", "L1", "L2", "L3")
+_ENSEMBLE_PREFIX: Final = "m{i}_"
+_ENSEMBLE_EPS: Final = 1e-6
+_COMBINE_KINDS: Final = frozenset({"class", "tanh", "sigmoid"})
 _WHITESPACE: Final = re.compile(r"\s+")
 RULES_ONLY: Final = "rules-only"
 MODEL_FAILURE_LEVEL: Final = "MODEL_FAILURE"
@@ -92,6 +116,42 @@ class _Layer:
     bias: Floats
 
 
+class _CNN:
+    """One text CNN: embedding -> valid conv + ReLU + max pool per kernel -> dense -> heads."""
+
+    def __init__(
+        self,
+        *,
+        embedding: Floats,
+        layers: tuple[_Layer, ...],
+        dense_weight: Floats,
+        dense_bias: Floats,
+        heads_weight: Floats,
+        heads_bias: Floats,
+    ) -> None:
+        import numpy as np
+
+        self.embedding = embedding
+        self.layers = layers
+        self.dense_t = np.ascontiguousarray(dense_weight.T)
+        self.dense_bias = dense_bias
+        self.heads_t = np.ascontiguousarray(heads_weight.T)
+        self.heads_bias = heads_bias
+
+    def raw(self, ids: NDArray[np.intp]) -> Floats:
+        import numpy as np
+
+        x = self.embedding[ids]
+        pooled = []
+        for layer in self.layers:
+            windows = np.lib.stride_tricks.sliding_window_view(x, layer.kernel, axis=0)
+            flat = windows.reshape(windows.shape[0], -1)
+            pooled.append(np.maximum(flat @ layer.weight + layer.bias, 0.0).max(axis=0))
+        hidden = np.maximum(np.concatenate(pooled) @ self.dense_t + self.dense_bias, 0.0)
+        out: Floats = hidden @ self.heads_t + self.heads_bias
+        return out
+
+
 def preprocess(text: str) -> str:
     """The training preprocessing: unescape, NBSP to space, collapse whitespace, strip."""
     text = html.unescape(text).replace(" ", " ")
@@ -99,7 +159,7 @@ def preprocess(text: str) -> str:
 
 
 class StudentModel:
-    """The loaded student; build it with :func:`load_student`."""
+    """The loaded student (one CNN or an ensemble of CNNs); build it with :func:`load_student`."""
 
     def __init__(
         self,
@@ -111,12 +171,8 @@ class StudentModel:
         max_len: int,
         head_chars: int,
         min_len: int,
-        embedding: Floats,
-        layers: tuple[_Layer, ...],
-        dense_weight: Floats,
-        dense_bias: Floats,
-        heads_weight: Floats,
-        heads_bias: Floats,
+        members: tuple[_CNN, ...],
+        ensemble: bool,
         heads: tuple[Head, ...],
         threshold_ge2: float,
         threshold_l3: float,
@@ -128,14 +184,8 @@ class StudentModel:
         self._max_len = max_len
         self._head_chars = head_chars
         self._min_len = min_len
-        self._embedding = embedding
-        self._layers = layers
-        import numpy as np
-
-        self._dense_t = np.ascontiguousarray(dense_weight.T)
-        self._dense_bias = dense_bias
-        self._heads_t = np.ascontiguousarray(heads_weight.T)
-        self._heads_bias = heads_bias
+        self._members = members
+        self._ensemble = ensemble
         self.heads: dict[str, Head] = {head.name: head for head in heads}
         self.threshold_ge2 = threshold_ge2
         self.threshold_l3 = threshold_l3
@@ -149,18 +199,36 @@ class StudentModel:
             ids += [self._pad] * (self._min_len - len(ids))
         return ids
 
-    def raw_outputs(self, text: str) -> Floats:
-        """The heads layer's raw outputs (before any activation)."""
+    def raw_outputs(self, text: str) -> NDArray[np.floating[Any]]:
+        """The heads layer's raw outputs (before any activation); merged for an ensemble."""
         import numpy as np
 
-        x = self._embedding[np.asarray(self.encode(text), dtype=np.intp)]
-        pooled = []
-        for layer in self._layers:
-            windows = np.lib.stride_tricks.sliding_window_view(x, layer.kernel, axis=0)
-            flat = windows.reshape(windows.shape[0], -1)
-            pooled.append(np.maximum(flat @ layer.weight + layer.bias, 0.0).max(axis=0))
-        hidden = np.maximum(np.concatenate(pooled) @ self._dense_t + self._dense_bias, 0.0)
-        out: Floats = hidden @ self._heads_t + self._heads_bias
+        ids = np.asarray(self.encode(text), dtype=np.intp)
+        if not self._ensemble:
+            return self._members[0].raw(ids)
+        return self._combine(np.stack([member.raw(ids) for member in self._members]))
+
+    def _combine(self, raw: Floats) -> NDArray[np.float64]:
+        """Merge the members' raw outputs ``(members, width)`` head by head (float64)."""
+        import numpy as np
+
+        z = raw.astype(np.float64)
+        out = np.empty(z.shape[1])
+        for head in self.heads.values():
+            s = slice(head.offset, head.offset + head.size)
+            v = z[:, s]
+            if head.kind == "class":  # log of the mean probability, via each member's log softmax
+                log_p = v - v.max(axis=1, keepdims=True)
+                log_p = log_p - np.log(np.exp(log_p).sum(axis=1, keepdims=True))
+                top = log_p.max(axis=0)
+                out[s] = top + np.log(np.exp(log_p - top).mean(axis=0))
+            elif head.kind == "tanh":
+                mean = np.tanh(v).mean(axis=0)
+                out[s] = np.arctanh(np.clip(mean, -1 + _ENSEMBLE_EPS, 1 - _ENSEMBLE_EPS))
+            else:  # sigmoid and bce
+                mean = (0.5 * (1 + np.tanh(0.5 * v))).mean(axis=0)
+                p = np.clip(mean, _ENSEMBLE_EPS, 1 - _ENSEMBLE_EPS)
+                out[s] = np.log(p) - np.log1p(-p)
         return out
 
     def predict_heads(self, text: str) -> dict[str, HeadValue]:
@@ -270,41 +338,41 @@ def load_student(directory: Path | None = None) -> StudentModel:
 
 
 def _load(base: Traversable | Path) -> StudentModel:
-    import numpy as np
-
     blobs = _verified_files(base)
     config = _json(blobs[CONFIG], "config_invalid")
-    if config.get("format_version") != FORMAT_VERSION:
+    version = config.get("format_version")
+    if type(version) is not int or version not in (CNN_VERSION, ENSEMBLE_VERSION):
         raise StudentUnavailableError("format_version")
     arrays = _arrays(blobs[WEIGHTS], config)
-    vocab, unk, pad = _vocab(_json(blobs[VOCAB], "vocab_invalid"), arrays["embedding"].shape[0])
-    kernels = _int_list(config.get("kernels"), "config_invalid")
+    if version == CNN_VERSION:
+        prefixes = [""]
+        kernels = _int_list(config.get("kernels"), "config_invalid")
+        fingerprint = config.get("student_fingerprint")
+    else:
+        prefixes, kernels = _ensemble_layout(config)
+        fingerprint = config.get("variant_fingerprint")
+        expected = {f"{prefix}{name}" for prefix in prefixes for name in _cnn_array_names(kernels)}
+        if set(arrays) != expected:
+            raise StudentUnavailableError("array_names")
+    for prefix in prefixes:
+        _require_core_arrays(arrays, prefix)
+    rows = {arrays[f"{prefix}embedding"].shape[0] for prefix in prefixes}
+    if len(rows) != 1:
+        raise StudentUnavailableError("architecture")
+    vocab, unk, pad = _vocab(_json(blobs[VOCAB], "vocab_invalid"), rows.pop())
     max_len = _int(config.get("max_len"), "config_invalid")
     head_chars = _int(config.get("head_chars"), "config_invalid")
     min_len = _int(config.get("min_len"), "config_invalid")
     if not (0 <= head_chars <= max_len and max(kernels) <= min_len <= max_len):
         raise StudentUnavailableError("config_invalid")
-    fingerprint = config.get("student_fingerprint")
     if not isinstance(fingerprint, str) or not fingerprint:
         raise StudentUnavailableError("config_invalid")
 
-    embedding = arrays["embedding"]
-    embed_dim = embedding.shape[1]
-    layers = []
-    for k in kernels:
-        weight = arrays.get(f"conv{k}_weight")
-        bias = arrays.get(f"conv{k}_bias")
-        if weight is None or bias is None or weight.shape[1:] != (embed_dim, k):
-            raise StudentUnavailableError("architecture")
-        flat = np.ascontiguousarray(weight.reshape(weight.shape[0], -1).T)
-        layers.append(_Layer(k, flat, bias))
-    dense_weight, heads_weight = arrays["dense_weight"], arrays["heads_weight"]
-    if dense_weight.shape[1] != sum(layer.bias.shape[0] for layer in layers) or (
-        heads_weight.shape[1] != dense_weight.shape[0]
-    ):
+    members = tuple(_cnn(arrays, prefix, kernels) for prefix in prefixes)
+    widths = {member.heads_bias.shape[0] for member in members}
+    if len(widths) != 1:
         raise StudentUnavailableError("architecture")
-
-    heads = _heads(config, heads_weight.shape[0])
+    heads = _heads(config, widths.pop())
     ge2, l3 = _thresholds(config)
     return StudentModel(
         fingerprint=fingerprint,
@@ -314,15 +382,83 @@ def _load(base: Traversable | Path) -> StudentModel:
         max_len=max_len,
         head_chars=head_chars,
         min_len=min_len,
-        embedding=embedding,
-        layers=tuple(layers),
-        dense_weight=dense_weight,
-        dense_bias=arrays["dense_bias"],
-        heads_weight=heads_weight,
-        heads_bias=arrays["heads_bias"],
+        members=members,
+        ensemble=version == ENSEMBLE_VERSION,
         heads=heads,
         threshold_ge2=ge2,
         threshold_l3=l3,
+    )
+
+
+def _ensemble_layout(config: Mapping[str, Any]) -> tuple[list[str], list[int]]:
+    """The members' array prefixes and their shared kernels (format version 2)."""
+    arch = config.get("architecture")
+    if not isinstance(arch, dict) or arch.get("type") != "ensemble":
+        raise StudentUnavailableError("architecture")
+    count = _int(arch.get("members"), "architecture")
+    member, combine = arch.get("member"), arch.get("combine")
+    if (
+        count < 1
+        or arch.get("array_prefix") != _ENSEMBLE_PREFIX
+        or not isinstance(member, dict)
+        or member.get("type") != "cnn"
+        or not isinstance(combine, dict)
+        or set(combine) != _COMBINE_KINDS
+    ):
+        raise StudentUnavailableError("architecture")
+    kernels = _int_list(member.get("kernels"), "architecture")
+    return [_ENSEMBLE_PREFIX.format(i=i) for i in range(count)], kernels
+
+
+def _cnn_array_names(kernels: list[int]) -> list[str]:
+    names = ["embedding", "dense_weight", "dense_bias", "heads_weight", "heads_bias"]
+    return names + [f"conv{k}_{part}" for k in kernels for part in ("weight", "bias")]
+
+
+def _require_core_arrays(arrays: Mapping[str, Floats], prefix: str) -> None:
+    for name in ("embedding", "dense_weight", "dense_bias", "heads_weight", "heads_bias"):
+        if f"{prefix}{name}" not in arrays:
+            raise StudentUnavailableError("array_names")
+    if arrays[f"{prefix}embedding"].ndim != 2 or arrays[f"{prefix}heads_weight"].ndim != 2:
+        raise StudentUnavailableError("architecture")
+
+
+def _cnn(arrays: Mapping[str, Floats], prefix: str, kernels: list[int]) -> _CNN:
+    """One CNN from the arrays behind ``prefix``, its shapes checked against each other."""
+    import numpy as np
+
+    embedding = arrays[f"{prefix}embedding"]
+    embed_dim = embedding.shape[1]
+    layers = []
+    for k in kernels:
+        weight = arrays.get(f"{prefix}conv{k}_weight")
+        bias = arrays.get(f"{prefix}conv{k}_bias")
+        if (
+            weight is None
+            or bias is None
+            or weight.shape[1:] != (embed_dim, k)
+            or bias.shape != weight.shape[:1]
+        ):
+            raise StudentUnavailableError("architecture")
+        flat = np.ascontiguousarray(weight.reshape(weight.shape[0], -1).T)
+        layers.append(_Layer(k, flat, bias))
+    dense_weight, dense_bias = arrays[f"{prefix}dense_weight"], arrays[f"{prefix}dense_bias"]
+    heads_weight, heads_bias = arrays[f"{prefix}heads_weight"], arrays[f"{prefix}heads_bias"]
+    if (
+        dense_weight.ndim != 2
+        or dense_weight.shape[1] != sum(layer.bias.shape[0] for layer in layers)
+        or dense_bias.shape != dense_weight.shape[:1]
+        or heads_weight.shape[1] != dense_weight.shape[0]
+        or heads_bias.shape != heads_weight.shape[:1]
+    ):
+        raise StudentUnavailableError("architecture")
+    return _CNN(
+        embedding=embedding,
+        layers=tuple(layers),
+        dense_weight=dense_weight,
+        dense_bias=dense_bias,
+        heads_weight=heads_weight,
+        heads_bias=heads_bias,
     )
 
 
@@ -336,7 +472,7 @@ def _read(base: Traversable | Path, name: str) -> bytes:
 def _verified_files(base: Traversable | Path) -> dict[str, bytes]:
     manifest = _json(_read(base, MANIFEST), "manifest_invalid")
     entries = manifest.get("files")
-    if manifest.get("format_version") != FORMAT_VERSION or not isinstance(entries, dict):
+    if manifest.get("format_version") != MANIFEST_VERSION or not isinstance(entries, dict):
         raise StudentUnavailableError("manifest_invalid")
     blobs: dict[str, bytes] = {}
     for name in _FILES:
@@ -402,11 +538,6 @@ def _arrays(data: bytes, config: Mapping[str, Any]) -> dict[str, Floats]:
         if not np.isfinite(values).all():
             raise StudentUnavailableError(f"array_nonfinite:{name}")
         arrays[name] = values
-    for name in ("embedding", "dense_weight", "dense_bias", "heads_weight", "heads_bias"):
-        if name not in arrays:
-            raise StudentUnavailableError("array_names")
-    if arrays["embedding"].ndim != 2 or arrays["heads_weight"].ndim != 2:
-        raise StudentUnavailableError("architecture")
     return arrays
 
 
@@ -547,11 +678,12 @@ class RiskChoice:
 def choose_risk_model(model: RiskModel | None = None, *, student: bool = False) -> RiskChoice:
     """The session's Stage 2 model: an injected one, the packaged student, or rules only.
 
-    Rules only is the default until a student passes the release gate (P6-6a). The packaged
-    round-4 student still sends 11 of 109 non-crisis red-team cases into S_crisis (round 1:
-    39) and reaches the crisis level of 16 of the 28 cases the rules miss. ``student=True``
-    asks for the packaged student; one that fails to load falls back to rules only, with
-    its reason.
+    Rules only is the default (owner decision 2026-10-24) until a student passes the release
+    gate (P6-6a). On the 267-case red team the packaged student (the three-CNN ensemble)
+    sends 11 of the 169 cases with ``crisis_below`` into S_crisis that the rules keep out
+    (round 4: 27) and reaches the crisis level of 11 of the 22 cases the rules miss (round
+    4: 13). ``student=True`` asks for the packaged student; one that fails to load falls
+    back to rules only, with its reason.
     """
     if model is not None and student:
         raise ValueError("an injected risk model and student are mutually exclusive")

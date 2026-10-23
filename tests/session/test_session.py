@@ -42,20 +42,13 @@ def _open(seed: int = 7, *, rules_only: bool = True, **overrides: object) -> Ses
     )
 
 
-# Session flows run in both modes. BOTH_MODES_FALSE_ALARM marks the flows the packaged
-# perception student (round 4) still breaks: it raises one of the flow's ordinary turns to
-# L2 (a false alarm; today only "<stress>，给我一个方法"), so the session enters S_crisis
-# instead. Model mode is a strict xfail there, so a better student fails the suite until
-# the mark is removed (P6-6a; same rule as tests/redteam/known_gaps_model.yaml).
-MODEL_FALSE_ALARM = pytest.mark.xfail(
-    strict=True, reason="model false alarm: the student raises an ordinary turn to L2"
-)
+# Session flows run in both modes. The round-4 student raised "<stress>，给我一个方法" to L2
+# (a false alarm), so that flow was a strict model-mode xfail; the packaged three-CNN
+# ensemble keeps it below L2 and every flow here passes in model mode (P6-6a). A student
+# that breaks a flow again fails the suite here; a known false alarm belongs in
+# tests/redteam/known_gaps_model.yaml, never in a weakened assertion.
 BOTH_MODES = pytest.mark.parametrize(
     "rules_only", [pytest.param(True, id="rules"), pytest.param(False, id="model")]
-)
-BOTH_MODES_FALSE_ALARM = pytest.mark.parametrize(
-    "rules_only",
-    [pytest.param(True, id="rules"), pytest.param(False, id="model", marks=MODEL_FALSE_ALARM)],
 )
 
 
@@ -144,6 +137,20 @@ def test_crisis_exit_needs_confirmation_then_safe_turns(rules_only):
     assert "12356" not in result.reply
 
 
+@BOTH_MODES
+@pytest.mark.parametrize("text", ["你听着就好，不用给我建议", "我就想说说"])
+def test_a_listen_only_request_never_enters_the_crisis_flow(rules_only, text):
+    # Round-7 hard negatives (L0_listen_only_request): a short request to be heard, alone
+    # or after an ordinary complaint, stays below L2 in both modes.
+    for opener in ([], ["今天上班被领导骂了，很难受"]):
+        session = _open(rules_only=rules_only)
+        for line in opener:
+            session.turn(line)
+        result = session.turn(text)
+        assert result.stage is not HelpStage.S_CRISIS
+        assert result.crisis_level < CrisisLevel.L2
+
+
 def test_session_state_mirrors_the_tracker_l1_run_count():
     session = _open()
     session.turn("活着好累")
@@ -194,7 +201,7 @@ def test_sop2_explore_then_haven_by_battery_then_back(rules_only):
 # -- empower, cards and feedback (SOP 4) ----------------------------------------------------
 
 
-@BOTH_MODES_FALSE_ALARM
+@BOTH_MODES
 def test_direct_request_shows_a_card_from_the_available_set(rules_only):
     result = _open(rules_only=rules_only).turn("最近压力很大，给我一个方法")
     assert result.stage is HelpStage.S_EMPOWER

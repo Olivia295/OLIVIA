@@ -1,4 +1,8 @@
-"""The packaged perception student (P6-6a): parity, loader failures, RiskModel contract."""
+"""The packaged perception student (P6-6a): parity, loader failures, RiskModel contract.
+
+The packaged student is a format-version-2 ensemble of three CNNs. Format version 1 (one
+CNN) still loads; its tests run on a copy rebuilt from the ensemble's first member.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 import yaml
+from student_reference import NpCNN, NumpyArchStudent
 
 from olivia.core.models import CrisisLevel
 from olivia.core.perception import student as student_module
@@ -54,8 +59,35 @@ def student() -> StudentModel:
 
 
 def test_golden_fixture_matches_the_packaged_student(student: StudentModel) -> None:
-    assert GOLDEN["student_fingerprint"] == student.fingerprint
+    assert GOLDEN["fingerprint"] == student.fingerprint
     assert len(GOLDEN["cases"]) >= 40
+
+
+def _flat(heads: dict[str, Any]) -> list[float]:
+    values: list[float] = []
+    for name in sorted(heads):
+        value = heads[name]
+        if isinstance(value, dict):
+            values += list(value.values())
+        elif isinstance(value, int | float):
+            values.append(float(value))
+        else:
+            values += [float(v) for v in value]
+    return values
+
+
+def test_every_head_matches_the_notebook_reference_run_live(student: StudentModel) -> None:
+    """The notebook's NumPy reference (``student_reference.py``) on the packaged files."""
+    reference = NumpyArchStudent(PACKAGED)
+    worst = 0.0
+    for case in GOLDEN["cases"]:
+        ours, theirs = student.predict_heads(case["text"]), reference.predict(case["text"])
+        assert set(ours) == set(theirs)
+        diff = np.abs(np.array(_flat(ours)) - np.array(_flat(theirs)))
+        worst = max(worst, float(diff.max()))
+        assert student.risk(case["text"])[0] == CrisisLevel(reference.level(theirs["risk"]))
+        assert np.array_equal(student.encode(case["text"]), reference.encode(case["text"]))
+    assert worst <= TOLERANCE
 
 
 @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda c: f"{len(c['text'])}ch")
@@ -71,6 +103,8 @@ def test_forward_matches_the_reference(student: StudentModel, case: dict[str, An
     level, score = student.risk(case["text"])
     assert level == CrisisLevel(case["risk_level"])
     assert score == pytest.approx(case["crisis_confidence"], abs=TOLERANCE)
+    expected = np.array(_flat(case["heads"]))
+    assert np.allclose(_flat(heads), expected, rtol=0, atol=TOLERANCE)
 
 
 def test_golden_covers_the_edge_cases() -> None:
@@ -182,32 +216,32 @@ def test_broken_manifest(tmp_path: Path) -> None:
 def test_wrong_shape(tmp_path: Path) -> None:
     folder = _copy(tmp_path)
     arrays = _arrays(folder)
-    arrays["dense_bias"] = arrays["dense_bias"][:-1]
+    arrays["m0_dense_bias"] = arrays["m0_dense_bias"][:-1]
     _save_npz(folder, arrays)
-    assert _reason(folder) == "array_shape:dense_bias"
+    assert _reason(folder) == "array_shape:m0_dense_bias"
 
 
 def test_wrong_dtype(tmp_path: Path) -> None:
     folder = _copy(tmp_path)
     arrays = _arrays(folder)
-    arrays["heads_bias"] = arrays["heads_bias"].astype(np.int32)
+    arrays["m1_heads_bias"] = arrays["m1_heads_bias"].astype(np.int32)
     _save_npz(folder, arrays)
-    assert _reason(folder) == "array_dtype:heads_bias"
+    assert _reason(folder) == "array_dtype:m1_heads_bias"
 
 
 def test_non_finite_weights(tmp_path: Path) -> None:
     folder = _copy(tmp_path)
     arrays = _arrays(folder)
-    arrays["heads_bias"] = arrays["heads_bias"].copy()
-    arrays["heads_bias"][0] = np.nan
+    arrays["m2_heads_bias"] = arrays["m2_heads_bias"].copy()
+    arrays["m2_heads_bias"][0] = np.nan
     _save_npz(folder, arrays)
-    assert _reason(folder) == "array_nonfinite:heads_bias"
+    assert _reason(folder) == "array_nonfinite:m2_heads_bias"
 
 
 def test_missing_and_extra_arrays(tmp_path: Path) -> None:
     folder = _copy(tmp_path)
     arrays = _arrays(folder)
-    del arrays["conv5_bias"]
+    del arrays["m1_conv5_bias"]
     _save_npz(folder, arrays)
     assert _reason(folder) == "array_names"
     arrays = _arrays(_copy(tmp_path / "again"))
@@ -219,7 +253,7 @@ def test_missing_and_extra_arrays(tmp_path: Path) -> None:
 def test_pickled_npz_is_refused(tmp_path: Path) -> None:
     folder = _copy(tmp_path)
     arrays: dict[str, Any] = _arrays(folder)
-    arrays["embedding"] = np.array([{"x": 1}], dtype=object)
+    arrays["m0_embedding"] = np.array([{"x": 1}], dtype=object)
     _save_npz(folder, arrays, allow_pickle=True)
     assert _reason(folder) == "npz_unreadable"
 
@@ -231,10 +265,216 @@ def test_garbage_npz(tmp_path: Path) -> None:
     assert _reason(folder) == "npz_unreadable"
 
 
-def test_format_version(tmp_path: Path) -> None:
+@pytest.mark.parametrize("version", [0, 3, "2", True, None])
+def test_format_version(tmp_path: Path, version: object) -> None:
     folder = _copy(tmp_path)
-    _edit_config(folder, lambda c: c.update(format_version=2))
+    _edit_config(folder, lambda c: c.update(format_version=version))
     assert _reason(folder) == "format_version"
+
+
+def test_a_version_1_config_over_ensemble_arrays_is_refused(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, lambda c: c.update(format_version=1, kernels=[2, 3, 4, 5]))
+    assert _reason(folder) == "array_names"  # version 1 has no member prefixes
+
+
+# -- the ensemble's architecture (format version 2) ------------------------------------------
+
+
+def _architecture(change: Any) -> Any:
+    def edit(config: dict[str, Any]) -> None:
+        change(config["architecture"])
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda c: c.update(type="transformer"),
+        lambda c: c.update(type="cnn"),
+        lambda c: c.pop("type"),
+        lambda c: c.update(members=0),
+        lambda c: c.update(members="3"),
+        lambda c: c.update(array_prefix="member{i}_"),
+        lambda c: c["member"].update(type="bigru"),
+        lambda c: c["member"].update(kernels=[]),
+        lambda c: c["combine"].pop("tanh"),
+        lambda c: c["combine"].update(median="?"),
+        lambda c: c.pop("combine"),
+    ],
+    ids=[
+        "transformer",
+        "single-cnn",
+        "no-type",
+        "no-members",
+        "members-not-int",
+        "prefix",
+        "member-bigru",
+        "no-kernels",
+        "combine-missing",
+        "combine-unknown",
+        "no-combine",
+    ],
+)
+def test_unknown_ensemble_architecture_is_unavailable(tmp_path: Path, change: Any) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, _architecture(change))
+    assert _reason(folder) == "architecture"
+
+
+def test_missing_architecture(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, lambda c: c.pop("architecture"))
+    assert _reason(folder) == "architecture"
+
+
+def _save_with_config(folder: Path, arrays: dict[str, np.ndarray]) -> None:
+    """New arrays whose config lists exactly their shapes, so only the structure is wrong."""
+    buffer = io.BytesIO()
+    np.savez(buffer, **arrays)
+    (folder / WEIGHTS).write_bytes(buffer.getvalue())
+    _edit_config(folder, lambda c: c.update(arrays={k: list(v.shape) for k, v in arrays.items()}))
+
+
+def test_fewer_members_than_the_arrays_hold(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, _architecture(lambda c: c.update(members=2)))
+    assert _reason(folder) == "array_names"  # m2_* left over
+
+
+def test_more_members_than_the_arrays_hold(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, _architecture(lambda c: c.update(members=4)))
+    assert _reason(folder) == "array_names"
+
+
+def test_every_member_array_is_required(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = _arrays(folder)
+    del arrays["m2_conv3_weight"]
+    _save_with_config(folder, arrays)
+    assert _reason(folder) == "array_names"
+
+
+def test_a_member_kernel_must_match_the_conv_shape(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = _arrays(folder)
+    arrays["m1_conv4_weight"] = arrays["m1_conv4_weight"][:, :, :3]
+    _save_with_config(folder, arrays)
+    assert _reason(folder) == "architecture"
+
+
+def test_members_must_share_the_vocabulary(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = _arrays(folder)
+    arrays["m2_embedding"] = arrays["m2_embedding"][:-1]
+    _save_with_config(folder, arrays)
+    assert _reason(folder) == "architecture"
+
+
+def test_members_must_share_the_head_width(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = _arrays(folder)
+    arrays["m1_heads_weight"] = arrays["m1_heads_weight"][:-1]
+    arrays["m1_heads_bias"] = arrays["m1_heads_bias"][:-1]
+    _save_with_config(folder, arrays)
+    assert _reason(folder) == "architecture"
+
+
+def test_a_member_dense_layer_must_match_its_convs(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = _arrays(folder)
+    arrays["m0_dense_weight"] = arrays["m0_dense_weight"][:, :-1]
+    _save_with_config(folder, arrays)
+    assert _reason(folder) == "architecture"
+
+
+def test_the_ensemble_needs_its_fingerprint(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    _edit_config(folder, lambda c: c.pop("variant_fingerprint"))
+    assert _reason(folder) == "config_invalid"
+
+
+def test_a_one_member_ensemble_matches_the_reference(tmp_path: Path) -> None:
+    folder = _copy(tmp_path)
+    arrays = {k: v for k, v in _arrays(folder).items() if k.startswith("m0_")}
+    _save_with_config(folder, arrays)
+    _edit_config(folder, _architecture(lambda c: c.update(members=1)))
+    single = load_student(folder)
+    reference = NumpyArchStudent(folder)
+    for case in GOLDEN["cases"][:8]:
+        assert np.allclose(
+            _flat(single.predict_heads(case["text"])),
+            _flat(reference.predict(case["text"])),
+            rtol=0,
+            atol=TOLERANCE,
+        )
+
+
+# -- format version 1 (one CNN) --------------------------------------------------------------
+
+
+def _v1_copy(tmp_path: Path) -> Path:
+    """A format-version-1 student made of the packaged ensemble's first member."""
+    folder = _copy(tmp_path)
+    arrays = {k[3:]: v for k, v in _arrays(folder).items() if k.startswith("m0_")}
+    buffer = io.BytesIO()
+    np.savez(buffer, **arrays)
+    (folder / WEIGHTS).write_bytes(buffer.getvalue())
+
+    def to_v1(config: dict[str, Any]) -> None:
+        member = config.pop("architecture")["member"]
+        config.pop("variant_fingerprint")
+        config.update(
+            format_version=1,
+            student_fingerprint="v1-member0",
+            embed_dim=member["embed_dim"],
+            kernels=member["kernels"],
+            filters=member["filters"],
+            hidden=member["hidden"],
+            arrays={k: list(v.shape) for k, v in arrays.items()},
+        )
+
+    _edit_config(folder, to_v1)
+    return folder
+
+
+def test_version_1_loads_and_matches_the_single_cnn_reference(tmp_path: Path) -> None:
+    folder = _v1_copy(tmp_path)
+    model = load_student(folder)
+    assert model.fingerprint == "v1-member0"
+    reference = NumpyArchStudent(folder)
+    assert isinstance(reference.net, NpCNN)
+    for case in GOLDEN["cases"]:
+        raw = model.raw_outputs(case["text"])
+        assert raw.dtype == np.float32  # version 1's forward is unchanged: no merge step
+        assert np.allclose(raw, reference.raw(case["text"]), rtol=0, atol=TOLERANCE)
+        ours, theirs = model.predict_heads(case["text"]), reference.predict(case["text"])
+        assert np.allclose(_flat(ours), _flat(theirs), rtol=0, atol=TOLERANCE)
+        assert model.risk(case["text"])[0] == CrisisLevel(reference.level(theirs["risk"]))
+
+
+def test_version_1_loader_failures(tmp_path: Path) -> None:
+    folder = _v1_copy(tmp_path / "shape")
+    arrays = _arrays(folder)
+    arrays["dense_bias"] = arrays["dense_bias"][:-1]
+    _save_npz(folder, arrays)
+    assert _reason(folder) == "array_shape:dense_bias"
+
+    folder = _v1_copy(tmp_path / "names")
+    arrays = _arrays(folder)
+    del arrays["conv5_bias"]
+    _save_npz(folder, arrays)
+    assert _reason(folder) == "array_names"
+
+    folder = _v1_copy(tmp_path / "kernels")
+    _edit_config(folder, lambda c: c.update(kernels=[1, 2, 3, 4]))
+    assert _reason(folder) == "architecture"  # no conv1 arrays
+
+    folder = _v1_copy(tmp_path / "fingerprint")
+    _edit_config(folder, lambda c: c.pop("student_fingerprint"))
+    assert _reason(folder) == "config_invalid"
 
 
 def test_head_layout_must_cover_the_output_width(tmp_path: Path) -> None:

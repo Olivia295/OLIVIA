@@ -15,7 +15,9 @@ platform passes:
   ``olivia.cli`` alone is about 36 MB), but a chat seals its ledger with the OS keychain:
   ``cryptography`` (about 4 MB) and ``keyring`` (about 11 MB, mostly ``urllib.request``
   and the macOS frameworks behind it) are on the rules path, and the shared lexicons,
-  matchers and templates add about 6 MB.
+  matchers and templates add about 6 MB. Model mode (no test yet) loads NumPy and the
+  packaged student on top: about 81 MB with the three-CNN ensemble (about 1.2 M weights
+  held as float32), up from about 73 MB with the round-4 single CNN.
 """
 
 from __future__ import annotations
