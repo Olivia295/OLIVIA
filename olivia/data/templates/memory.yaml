@@ -11,6 +11,7 @@
 #
 # summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
 #   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after}
+#   journal_*：周记记录（B6）的正文：哪天提出过周记、看没看、觉得有没有帮助。
 # stages / spectra / feedback：阶段、困扰谱系与反馈的日常说法，不用病名。
 version: 1
 replies:
@@ -32,6 +33,11 @@ summary:
   none: "没有"
   joiner: "、"
   arrow: " → "
+  journal_heading: "## {date} 的一周小结"
+  journal_shown: "- 看了这一周的小结。"
+  journal_skipped: "- 这次先没有看这一周的小结。"
+  journal_helpful: "- 觉得有帮助。"
+  journal_not_helpful: "- 觉得帮助不大。"
 stages:
   S_ready: 开始
   S_explore: 倾听

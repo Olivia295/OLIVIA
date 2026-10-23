@@ -28,6 +28,9 @@
     one and edit a section or clear it, interactively with numbered choices; every section
     can be skipped. It is always saved encrypted, and not at all without a keychain. A
     crisis reply in ``chat`` shows its coping, distraction and people sections.
+``olivia journal``
+    The weekly journal (``chang/journal.py``, B6): a read-only summary of the last seven
+    days built from the ledger, then one optional "was it helpful" question.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -48,8 +51,11 @@ never writes it; when there is none, the first S_closing reply mentions
 ``olivia safety-plan`` once per device (an empty marker file, step B10). Conversation text
 and perception output are never written anywhere; the ledger keeps only ids, levels and
 times, and the session summary is written at every exit (``/exit``, end of input, Ctrl-C)
-and whenever the session closes itself (S_closing -> S_ready). Without a keychain nothing
-is remembered, and the user is told so once per device.
+and whenever the session closes itself (S_closing -> S_ready). ``chat`` also asks one
+optional 0-10 self-rating at the opening and at the end, and offers the weekly journal at
+the opening when it is due (``chang/journal.py``, B6; not on a care-greeting opening, not
+after a crisis or in S_haven); both only go into the ledger. Without a keychain nothing
+is remembered or asked, and the user is told so once per device.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -74,6 +80,8 @@ import yaml
 from olivia import __version__
 from olivia.core.chang.care import CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
+from olivia.core.chang.journal import ChatChecks, load_journal_text
+from olivia.core.chang.journal import run_command as run_journal
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
     FALLBACK_TIMEZONE,
@@ -382,7 +390,8 @@ def _chat(
         suggest_safety_plan=plan is None and plan_store.should_suggest(),
     )
     state_recorder = StateRecorder(state_store, session.carried_state())
-    ledger = Ledger(store.path.parent, store.vault, method_titles=_card_titles(tax))
+    titles = _card_titles(tax)
+    ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
     recorder = SessionRecorder(ledger, session.state.session_id, local)
     if not recorder.enabled and ledger.take_unavailable_notice():
         console.say(ledger.text.replies["memory_unavailable"])
@@ -393,14 +402,28 @@ def _chat(
         console.say(f"{profile.agent_name}：{session.care_greeting(light=marker.light)}")
         console.say()
     care_recorder = CareRecorder(care, clock)
+    # Self-ratings and the journal offer (B6); a care-greeting opening stays alone.
+    checks = ChatChecks(
+        tax, ledger, recorder, lambda: console.ask(ANSWER_PROMPT), console.say, method_titles=titles
+    )
     try:
-        while True:
-            line = console.ask(USER_PROMPT)
-            if line is None or line.strip() == EXIT_COMMAND:
+        carry = checks.opening(local()) if marker is None else None
+        pending = carry.line if carry is not None else None
+        while carry is None or not carry.ended:
+            line = pending if pending is not None else console.ask(USER_PROMPT)
+            pending = None
+            if line is None:
                 break
+            if line.strip() == EXIT_COMMAND:
+                carry = checks.at_exit(session.state)
+                if carry.line is None or carry.line.strip() == EXIT_COMMAND:
+                    break
+                pending = carry.line  # text typed at the rating: the chat goes on
+                continue
             if not line.strip():
                 continue
             result = recorder.observe(line, session.turn(line))
+            checks.observe(result)
             # The reply (a crisis card included) is on screen before any keychain access.
             console.say(f"{profile.agent_name}：{result.reply}")
             care_recorder.observe(result, session.snapshot())
@@ -411,6 +434,8 @@ def _chat(
                 for panel_line in inspect_panel(result):
                     console.say(panel_line)
             console.say()
+            carry = checks.after_turn(session.state)
+            pending = carry.line
     finally:  # Ctrl-C included: main() says goodbye after this
         if not recorder.close():
             console.say(ledger.text.replies["summary_not_saved"])
@@ -634,6 +659,31 @@ def _safety_plan(console: _Console) -> int:
     return run_command(lambda: console.ask(ANSWER_PROMPT), console.say, SafetyPlanStore())
 
 
+# -- journal ----------------------------------------------------------------------------------
+
+
+def _journal(console: _Console, clock: Clock) -> int:
+    """``olivia journal``: the rolling week's journal (``chang/journal.py``, B6)."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    replies = load_journal_text().replies
+    if profile is None:
+        console.say(replies["not_onboarded"])
+        return 1
+    if profile.is_age_gate_refusal:
+        console.say(replies["adults_only"])
+        return 1
+    store = ProfileStore()
+    tax = _taxonomy()
+    titles = _card_titles(tax)
+    ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
+    now = _local_clock(clock, profile)()
+    return run_journal(
+        lambda: console.ask(ANSWER_PROMPT), console.say, ledger, now, method_titles=titles
+    )
+
+
 # -- persona ----------------------------------------------------------------------------------
 
 
@@ -710,6 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
     region.add_argument("--clear", action="store_true", help="清除保存的地区和时区")
     commands.add_parser("health", help="查看或修改加密记录的健康信息")
     commands.add_parser("safety-plan", help="填写、查看或修改加密保存的个人安全计划")
+    commands.add_parser("journal", help="看看这一周的小结")
     persona = commands.add_parser("persona", help="查看或更换陪伴方式")
     persona.add_argument("choice", nargs="?", help="序号（1–4）或简称，例如 2 或 沉静哲思")
     return parser
@@ -752,6 +803,8 @@ def main(
             return _persona(console, args.choice, now)
         if args.command == "safety-plan":
             return _safety_plan(console)
+        if args.command == "journal":
+            return _journal(console, now)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()

@@ -431,6 +431,16 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 3. 产生积极反馈的 A 级微方法复盘；
 4. 若当周触发过 L2/L3 危机，周记自动转为庄重守护口吻，严禁轻浮轻淡散文。
 
+**实现（步骤 B6，裁定 30）**：`olivia/core/chang/journal.py`，文案 `olivia/data/templates/journal.yaml`（G-0 草稿）。
+
+*自评*：`olivia chat` 开场（提示语之后）问一句「此刻的心情，0 到 10 你会打几分？（0 是很糟，10 是很好；直接回车跳过）」，会话结束时问同一句：`/exit` 时（当前段有过对话才问），以及状态机 S_closing → S_ready 那一轮的回复之后。只认 0–10 的整数（全角数字也算），其他一律当作跳过、不再追问；不是回答的非空文字（例如直接开始说话，或在结束时又想说一句）不会丢掉，而是作为下一句对话交给会话，危机筛查照常看到它。自评只写进账本会话摘要的 `self_rating.before` / `after`，没有别的存储：开场分数记在本次会话的第一段；`/exit` 的分数记在当前段；S_closing → S_ready 时摘要已先写入，分数到手后用同一条目 id 原地重写。以下情况不问：没有可用钥匙串（或此刻打不开）；本次开场是 A3 的关怀问候（问候保持第一句、单独出现，不问开场分数、不提周记；结束时照常可问）；会话中任何一轮进入过危机流程、筛查到 L2 及以上或问过意图确认（D3）之后不问结束分数；处于 S_haven 或电量不高于避风港阈值时不问（“避风港中不问”）；输入结束与 Ctrl-C 不问。
+
+*周记*：只读账本，不产生新的用户文字。窗口为滚动 7 天（`now − 7 天` 起），内容：会话段数；各段“开始 → 结束”心情分（缺的写“没打”）与其中聊完后分数升高的次数；最常出现的困扰谱系（最多 3 个，按出现的会话数，用 `memory.yaml` 的日常说法）；试过的小练习（卡片标题）与各自的反馈；用户要求记住的话只给条数（原话留在账本里，SOP 5 未规定，按计划取条数）。窗口内有会话进入过危机流程时，开头与结尾换成庄重守护口吻，并指向 `olivia resources`。除自评分与次数外不出现数字，文案经 WILLOW 与输出网关检查，不含诊断词。SOP 5 的“复原力金句”需要对话原文，与决定 D1 冲突，不做。
+
+*何时*：开场分数之后，当窗口内会话摘要 ≥ 2 条、且窗口内没有任何周记记录（看过或婉拒都算）时，问「这周的小结写好了，想看看吗？」：回答“好/想看”等即展示，随后问「这份小结对你有帮助吗？」（有 / 没有，可跳过，对应 PRD §11.1 的周记满意度）；回答“不用”或直接回车即婉拒，并告诉用户 `olivia journal` 随时可看。婉拒同样算一次，7 天内不再提（PRD Q-3“杜绝压迫感”）。`olivia journal` 随时展示同一份周记（窗口内没有会话时温和说明），并问同样的满意度问题。没有钥匙串时不提、不展示。SOP 5 的“周日 20:30”定时提醒属系统通知，留给 B9。
+
+*记录*：每次提出周记都写一条账本条目 `kind: journal`（`olivia_ledger: 1`，字段 `offered_at`、`shown`、`helpful`，正文是“某天的一周小结 / 看了或没看 / 有没有帮助”），先在展示时写入，得到满意度后用同一 id 重写；和其他条目一样始终加密，`Ledger.shred()` 一并擦除。选账本而不是 B3 的 `state.bin`：只是在账本里多一种条目（约 40 行），对用户透明（B5 的 `olivia memory` 列账本时能看到；B4/B5 遍历条目时需认得 `JournalEntry`），而改 `state.bin` 要升版本号并让会话把它原样带过去，否则聊天退出时的保存会把它覆盖掉。旧版本读到 `journal` 条目时按“未知条目”跳过计数，不报内容。`--inspect` 不变：这些都不是轮次级数据。
+
 ### 6.5 记忆档案原子级写入安全协议
 遵循影子替换协议：
 $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{Atomic Rename} \to \text{Persistent Ledger}$$
@@ -438,11 +448,11 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 
 **实现（B2，决定 D1）**：`olivia/core/memory/`（`ledger.py`、`notes.py`、`recorder.py`、`text.py`；文案 `olivia/data/templates/memory.yaml`，“记住”线索 `olivia/data/lexicons/memory.yaml`）。
 
-*只记两类条目*，其余用户说的话一概不存：
+*只记两类条目*（B6 另加一种不含文字的 `journal` 记录，见 §6.4），其余用户说的话一概不存：
 
 | 条目 | 内容 | 何时写 |
 | :--- | :--- | :--- |
-| 会话摘要 `summary` | 首末轮时间；阶段路径（相邻重复合并，如 `S_ready → S_explore → S_empower → S_closing`）；主要困扰谱系 id（最多 3 个，按出现次数）；展示过的练习卡 id 与各自反馈（`HELPFUL` / `NOT_NOW` / `UNHELPFUL` / 无）；是否进入危机流程（只记标志与等级）；会话前后 0–10 自评（字段已留，B6 填写）；显著标记（裁定 29：当轮 ≥ L2 或用户标记）与 `marked_by_user` | 会话结束时：状态机 S_closing → S_ready（之后若继续聊，算新的一段、另记一条），或 `/exit`、输入结束、Ctrl-C。按“会话 id + 段号”定条目 id，重复关闭不会多出条目；没有任何一轮的段不写 |
+| 会话摘要 `summary` | 首末轮时间；阶段路径（相邻重复合并，如 `S_ready → S_explore → S_empower → S_closing`）；主要困扰谱系 id（最多 3 个，按出现次数）；展示过的练习卡 id 与各自反馈（`HELPFUL` / `NOT_NOW` / `UNHELPFUL` / 无）；是否进入危机流程（只记标志与等级）；会话前后 0–10 自评（B6，见 §6.4）；显著标记（裁定 29：当轮 ≥ L2 或用户标记）与 `marked_by_user` | 会话结束时：状态机 S_closing → S_ready（之后若继续聊，算新的一段、另记一条），或 `/exit`、输入结束、Ctrl-C。按“会话 id + 段号”定条目 id，重复关闭不会多出条目；没有任何一轮的段不写 |
 | 笔记 `note` | 用户明确要求记住的话：消息**开头**是「记住：」「帮我记一下」「请记得」等线索时，线索之后的文字原样保存（≤ 500 字），回复末尾简短确认、不复述内容 | 当轮。当轮在危机流程中、筛查 ≥ L1、或是意图确认（D3）时一律不记，也不确认——危机处理优先，显著标记已足够；“我记住了他说的话”这类不在开头或不带分隔符的说法不是请求 |
 
 *格式*：每个条目是一份带 YAML 头的 Markdown。头部是记录本身；正文是由头部生成的简短中文小结（阶段、谱系与反馈都用日常说法，不用病名），笔记的正文就是笔记原文：
@@ -650,7 +660,7 @@ marked_by_user: false
 | **§ 6.1 健康信息查看与修改** | `olivia health`：临床史编号与两项自述禁忌症（决定 D2），加密保存；首访在授权后多一步勾选清单 | `olivia/core/chang/health.py` [已实现 / A1] | `HealthEditor(tax, store, now, text=None)`: `.prompt() -> HealthPrompt`, `.answer(text) -> HealthPrompt \| HealthDone`, `.outcome`; `parse_choices(reply, keys)`（`onboarding.py`） |
 | **§ 6.1 首访角色契约** | 首访流程 ONB-01~05、07、08（18+ 门禁先于采集任何个人信息） | `olivia/core/chang/onboarding.py` [已实现 / P4-2] | `OnboardingFlow(tax, store: ProfileStore, now: datetime, text: OnboardingText \| None = None)`: `.prompt() -> Prompt`, `.answer(text) -> Prompt \| Completed \| Refused`, `.step`, `.outcome`; `load_onboarding_text(directory=None) -> OnboardingText`（`.persona_labels`）, `canonical_timezone(raw) -> str \| None`, `persona_from_reply(reply, labels) -> PersonaSpectrum \| None`; `Step`, `RefusalReason`, `PERSONA_CHOICES`, `DEFAULT_PERSONA`（ONB-03 四选一，计划 D-1） |
 | **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7（裁定 35）] | `validate_ai_response(response, skeleton) -> bool`（草案） |
-| **§ 6.4 情绪周记与自评** | 滚动 7 天周记、会话前后自评 | `olivia/core/chang/journal.py` [待实现 / B6] | 接口待定 |
+| **§ 6.4 情绪周记与自评** | 滚动 7 天周记（只读账本，模板化，危机周转庄重口吻）、会话前后 0–10 自评（只存账本摘要）、开场周记提示（窗口内 ≥ 2 次会话且 7 天内没提过）、满意度（有 / 没有）；`olivia journal` 随时查看 | `olivia/core/chang/journal.py`，文案 `templates/journal.yaml` [已实现 / B6]；`memory/ledger.py`（`journal` 条目）、`memory/recorder.py`、`cli.py` | `ChatChecks(tax, ledger, recorder, ask, say, *, method_titles=None, text=None)`: `.opening(now) -> Carry`, `.observe(result)`, `.after_turn(state) -> Carry`, `.at_exit(state) -> Carry`, `.may_ask_after(state)`; `Carry(line, ended)`; `gather(ledger, now) -> Week`, `is_due(week)`, `render_journal(week, text, memory, method_titles=None) -> str`, `run_command(ask, say, ledger, now, *, method_titles=None, text=None) -> int`; `parse_rating(text)`, `parse_yes_no(text, words)`, `load_journal_text(directory=None)`; `WINDOW`, `MIN_SESSIONS`; `Ledger.record_journal(offered_at, *, shown, helpful=None, entry_id=None) -> str`, `JournalEntry`; `SessionRecorder.rate_before(r)`, `.rate_after(r) -> bool`, `.closed_segment`, `.segment_open` |
 | **PRD § 11.1 / RSK-07 防依赖提示** | 会话满 45 分钟的休息提醒、深夜（taxonomy `late_night`，按画像时区）关怀、现实支持引导占比；只上常规回复，不上危机、卡片与跟进句（决定 D5） | `olivia/core/chang/wellbeing.py` [已实现 / B7]；文案在 `gentle_holding.yaml` 的 `wellbeing` | `Wellbeing(tax, timezone, started_at)`: `.prompt(reply, *, now, stage, eligible, locked, templates, render) -> Prompted`, `.due(now)`, `.is_late_night(now)`, `.real_support_share`; `Reminder`, `BREAK_AFTER`; `Taxonomy.late_night_window()`；`inspect["reminder"]`、`inspect["real_support_share"]` |
 | **§ 8.3 危机资源签名数据** | Ed25519 分离式签名校验与覆盖包选择（GEO-08） | `olivia/core/resources/bundle.py`、`keys.py` [已实现 / P2-3] | `load_hotlines_bytes(override_dir: Path \| None, *, today: date) -> LoadedBundle`（`LoadedBundle(data: bytes, source: "override" \| "builtin", reason: str \| None)`；内置数据验签失败抛 `BundleIntegrityError`）; `verify_signature(data: bytes, signature_b64: bytes, public_key_b64: str) -> bool`; `REASON_*` 常量; `keys.HOTLINE_PUBLIC_KEY_B64` |
 | **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` [已实现 / P2-1、P2-2] | `resolve(store, region, level, *, mode: CardMode, today, is_minor=False) -> ResourceCard`, `resolve_region_code(store, region) -> str`; `parse_store(data) -> ResourceStore`, `load_store(path=None) -> ResourceStore`, `ResourceDataError`; `ResourceCard.stale`, `.lines_by_kind()` |

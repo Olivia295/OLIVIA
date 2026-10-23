@@ -1,6 +1,6 @@
 """The transparent memory ledger (decision D1, step B2; SDD §3.3, §6.5).
 
-The ledger holds exactly two kinds of entry, and nothing else the user says:
+The ledger holds three kinds of entry, and nothing else the user says:
 
 * a **session summary**, built from ids only: start and end time, the stage path, the
   dominant distress-spectrum ids, the exercise cards shown with the feedback each got,
@@ -8,7 +8,9 @@ The ledger holds exactly two kinds of entry, and nothing else the user says:
   (filled in by B6) and a significance flag (ruling 29: a turn at L2 or above, or the
   user marked it);
 * a **note**: text the user explicitly asked to have remembered (``notes.py``), kept
-  verbatim.
+  verbatim;
+* a **journal** record (step B6): when the weekly journal was offered, whether it was
+  shown and whether the user found it helpful (yes / no / skipped). No text.
 
 Every entry is a small Markdown document with YAML front-matter; the front-matter is the
 record and the body is a short templated summary in Chinese generated from it (for a
@@ -98,6 +100,7 @@ _SUMMARY_KEYS: Final = frozenset(
     }
 )
 _NOTE_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "created_at", "significant"})
+_JOURNAL_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "offered_at", "shown", "helpful"})
 
 
 class LedgerUnavailableError(Exception):
@@ -193,7 +196,29 @@ class NoteEntry:
         return self.created_at
 
 
-LedgerEntry = SummaryEntry | NoteEntry
+@dataclass(frozen=True)
+class JournalEntry:
+    """The weekly journal (B6): offered at ``offered_at`` (at a chat opening or by
+    ``olivia journal``), ``shown`` or declined, and the user's answer to "was it
+    helpful" (None: not asked or skipped). Holds no text."""
+
+    entry_id: str
+    offered_at: datetime
+    shown: bool
+    helpful: bool | None = None
+    significant: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        _aware(self.offered_at, "offered_at")
+        if self.helpful is not None and not self.shown:
+            raise ValueError("only a journal that was shown can be rated")
+
+    @property
+    def time(self) -> datetime:
+        return self.offered_at
+
+
+LedgerEntry = SummaryEntry | NoteEntry | JournalEntry
 
 
 def summary_id(key: str) -> str:
@@ -262,6 +287,23 @@ class Ledger:
         self._write(entry)
         return entry.entry_id
 
+    def record_journal(
+        self,
+        offered_at: datetime,
+        *,
+        shown: bool,
+        helpful: bool | None = None,
+        entry_id: str | None = None,
+    ) -> str:
+        """Record a journal offer; pass the ``entry_id`` it returned to update it later."""
+        if entry_id is not None and not _ID.fullmatch(entry_id):
+            raise ValueError("not a ledger entry id")
+        entry = JournalEntry(
+            secrets.token_hex(12) if entry_id is None else entry_id, offered_at, shown, helpful
+        )
+        self._write(entry)
+        return entry.entry_id
+
     # -- reading ---------------------------------------------------------------------------
 
     def entry_paths(self) -> list[Path]:
@@ -320,6 +362,16 @@ class Ledger:
                 "significant": True,
             }
             body = entry.text
+        elif isinstance(entry, JournalEntry):
+            front = {
+                "olivia_ledger": FORMAT_VERSION,
+                "id": entry.entry_id,
+                "kind": "journal",
+                "offered_at": entry.offered_at.isoformat(),
+                "shown": entry.shown,
+                "helpful": entry.helpful,
+            }
+            body = self._journal_body(entry)
         else:
             front = _summary_front(entry)
             body = self._summary_body(entry.summary)
@@ -394,6 +446,16 @@ class Ledger:
             lines.append(st.significant)
         return "\n".join(lines)
 
+    def _journal_body(self, entry: JournalEntry) -> str:
+        st = self.text.summary
+        lines = [
+            st.journal_heading.format(date=entry.offered_at.date().isoformat()),
+            st.journal_shown if entry.shown else st.journal_skipped,
+        ]
+        if entry.helpful is not None:
+            lines.append(st.journal_helpful if entry.helpful else st.journal_not_helpful)
+        return "\n".join(lines)
+
 
 def _rating(value: int | None, none: str) -> str:
     return none if value is None else str(value)
@@ -458,6 +520,13 @@ def _parse(document: str, entry_id: str) -> LedgerEntry:
         if not body.endswith("\n"):
             raise ValueError("truncated note")
         return NoteEntry(entry_id, body[:-1], _time(front["created_at"]))
+    if kind == "journal":
+        if set(front) != _JOURNAL_KEYS:
+            raise ValueError("bad journal front-matter")
+        shown, helpful = front["shown"], front["helpful"]
+        if not isinstance(shown, bool) or not (helpful is None or isinstance(helpful, bool)):
+            raise ValueError("bad journal record")
+        return JournalEntry(entry_id, _time(front["offered_at"]), shown, helpful)
     if kind == "summary":
         if set(front) != _SUMMARY_KEYS:
             raise ValueError("bad summary front-matter")

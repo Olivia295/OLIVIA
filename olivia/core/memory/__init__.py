@@ -9,6 +9,7 @@ not re-exported here: import it from :mod:`olivia.core.memory.recorder`.
 from olivia.core.memory.ledger import (
     LEDGER_STORE,
     NOTE_MAX_CHARS,
+    JournalEntry,
     Ledger,
     LedgerEntry,
     LedgerUnavailableError,
@@ -30,6 +31,7 @@ from olivia.core.memory.state import (
 from olivia.core.memory.text import MemoryText, MemoryTextError, load_memory_text
 
 __all__ = [
+    "JournalEntry",
     "KIT_MAX",
     "LEDGER_STORE",
     "NOTE_MAX_CHARS",

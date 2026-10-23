@@ -17,6 +17,7 @@ from olivia.core.memory.ledger import (
     LEDGER_DIRNAME,
     LEDGER_STORE,
     NOTE_MAX_CHARS,
+    JournalEntry,
     Ledger,
     LedgerUnavailableError,
     MethodRecord,
@@ -194,6 +195,58 @@ def test_append_summary_is_idempotent_per_key(ledger):
     assert entry.summary.ended_at == END + timedelta(minutes=1)
 
 
+# -- journal records (B6) --------------------------------------------------------------------
+
+
+def test_journal_record_round_trips_and_is_updated_in_place(ledger):
+    entry_id = ledger.record_journal(START, shown=True)
+    assert ledger.record_journal(START, shown=True, helpful=False, entry_id=entry_id) == entry_id
+    (entry,) = ledger.entries()
+    assert entry == JournalEntry(entry_id, START, shown=True, helpful=False)
+    assert entry.time == START and not entry.significant
+    raw = ledger.read_markdown(entry_id)
+    front = yaml.safe_load(raw[4:].split("\n---\n", 1)[0])
+    assert front == {
+        "olivia_ledger": 1,
+        "id": entry_id,
+        "kind": "journal",
+        "offered_at": START.isoformat(),
+        "shown": True,
+        "helpful": False,
+    }
+    assert raw.endswith("## 2026-10-22 的一周小结\n- 看了这一周的小结。\n- 觉得帮助不大。\n")
+
+
+def test_journal_record_validation(ledger):
+    with pytest.raises(ValueError):
+        ledger.record_journal(START, shown=False, helpful=True)
+    with pytest.raises(ValueError):
+        ledger.record_journal(datetime(2026, 10, 22), shown=True)  # naive
+    with pytest.raises(ValueError):
+        ledger.record_journal(START, shown=True, entry_id="../x")
+    assert ledger.entries() == ()
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        "kind: journal\noffered_at: '2026-10-22T23:30:00+08:00'\nshown: 1\nhelpful: null\n",
+        "kind: journal\noffered_at: '2026-10-22T23:30:00+08:00'\nshown: true\nhelpful: 2\n",
+        "kind: journal\noffered_at: '2026-10-22T23:30:00+08:00'\nshown: false\nhelpful: true\n",
+        "kind: journal\noffered_at: '2026-10-22T23:30:00'\nshown: true\nhelpful: null\n",
+        "kind: journal\nshown: true\nhelpful: null\n",
+        "kind: diary\noffered_at: '2026-10-22T23:30:00+08:00'\nshown: true\nhelpful: null\n",
+    ],
+)
+def test_a_malformed_journal_record_is_skipped(tmp_path, ledger, front):
+    entry_id = "a" * 24
+    document = f"---\nolivia_ledger: 1\nid: {entry_id}\n{front}---\n正文\n"
+    blob = ledger.vault.seal(LEDGER_STORE, document.encode(), label=f"e_{entry_id}")
+    (tmp_path / LEDGER_DIRNAME).mkdir()
+    (tmp_path / LEDGER_DIRNAME / f"{entry_id}.olv").write_bytes(blob)
+    assert ledger.entries() == () and ledger.skipped == 1
+
+
 # -- encryption at rest ----------------------------------------------------------------------
 
 
@@ -313,6 +366,10 @@ def test_memory_copy_passes_willow_and_the_output_gate():
         text.summary.crisis,
         text.summary.significant,
         text.summary.no_methods,
+        text.summary.journal_shown,
+        text.summary.journal_skipped,
+        text.summary.journal_helpful,
+        text.summary.journal_not_helpful,
     ]
     for line in lines:
         assert apply_willow(line, ContentKind.NORMAL, data.willow) == line, line
