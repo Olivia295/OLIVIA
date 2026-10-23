@@ -1,4 +1,5 @@
 import copy
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -303,6 +304,14 @@ def test_l1_alone_does_not_change_stage():
     t = run(state(S.S_EXPLORE), turn(status=crisis(level=CrisisLevel.L1)))
     assert t.state.current_stage is S.S_EXPLORE and t.reason is Reason.STAY
     assert t.state.current_risk_level is CrisisLevel.L1
+
+
+def test_state_mirrors_the_tracker_l1_run_count():
+    status = replace(crisis(level=CrisisLevel.L1), consecutive_l1_count=2)
+    t = run(state(S.S_EXPLORE), turn(status=status))
+    assert t.state.consecutive_l1_count == 2
+    t = run(t.state, turn(status=crisis()))
+    assert t.state.consecutive_l1_count == 0
 
 
 def test_direct_request_in_empower_stays():

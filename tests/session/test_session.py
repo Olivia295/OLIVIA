@@ -144,6 +144,15 @@ def test_crisis_exit_needs_confirmation_then_safe_turns(rules_only):
     assert "12356" not in result.reply
 
 
+def test_session_state_mirrors_the_tracker_l1_run_count():
+    session = _open()
+    session.turn("活着好累")
+    session.turn("活着好累")
+    assert session.state.consecutive_l1_count == 2
+    session.turn("我想死")
+    assert session.state.consecutive_l1_count == 0
+
+
 def test_taboo_topic_never_hides_crisis_resources():
     result = _open(taboo_topics=("求助热线", "电话")).turn("我不想活了")
     assert result.reply_kind is ReplyKind.CRISIS

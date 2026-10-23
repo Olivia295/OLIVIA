@@ -43,6 +43,8 @@ class CrisisStatus:
     safe_turns_remaining: int
     just_entered: bool
     just_exited: bool
+    consecutive_l1_count: int = 0
+    """L1 turns in the current escalation run (see ``CrisisTracker.consecutive_l1_count``)."""
 
 
 def _whole_threshold(tax: Taxonomy, path: str) -> int:
@@ -82,6 +84,16 @@ class CrisisTracker:
         self._entry_level: CrisisLevel | None = None
         self._confirmed = False
         self._safe_turns = 0
+
+    @property
+    def consecutive_l1_count(self) -> int:
+        """L1 turns in the current escalation run: the one count of record for the session.
+
+        A single L0 turn does not break the run; ``risk.l1_clear_streak`` L0 turns in a row,
+        any L2/L3 turn and crisis exit reset it to 0. ``SessionState.consecutive_l1_count``
+        mirrors this value each turn and is never counted separately.
+        """
+        return self._l1_run
 
     def observe(
         self, assessment: CrisisAssessment, text: str, valence: float | None = None
@@ -193,4 +205,5 @@ class CrisisTracker:
             safe_turns_remaining=remaining,
             just_entered=just_entered,
             just_exited=just_exited,
+            consecutive_l1_count=self._l1_run,
         )
