@@ -370,10 +370,6 @@ def test_card_that_leaves_haven_says_how_to_get_back(monkeypatch: pytest.MonkeyP
     assert result.reply.rsplit("\n\n", 1)[1] in _filled(TEMPLATES.haven_return)
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="F2a moves a direct request out of S_haven; on this branch the FSM keeps haven",
-)
 def test_direct_request_in_haven_gets_a_card_and_the_way_back() -> None:
     session = _open()
     session.turn("[5%] 好累，今天不想动脑，只想躺着")
@@ -441,3 +437,28 @@ def test_every_crisis_turn_repeats_the_full_card() -> None:
     for reply in replies:
         for part in ("110", "120", "12356", "服务时间："):
             assert part in reply
+
+
+# -- F2a flags wired (stabilization at L1 and on a safety retreat) -------------------------
+
+
+def _whitelisted(action_id: str | None) -> bool:
+    assert action_id is not None
+    base = {TAX.canonical_action_id(a).split(":")[0] for a in TAX.stabilization_whitelist()}
+    return action_id.split(":")[0] in base
+
+
+@pytest.mark.parametrize("seed", [3, 7, 11])
+def test_a_card_requested_at_l1_comes_from_the_stabilization_whitelist(seed: int) -> None:
+    result = _open(seed).turn("活着好累，直接给我一个方法吧")
+    assert result.crisis_level is CrisisLevel.L1
+    assert result.reply_kind is ReplyKind.CARD and _whitelisted(result.action_id)
+
+
+def test_an_arousal_retreat_from_empower_offers_a_stabilization_card() -> None:
+    session = _open(3)
+    session.turn("最近工作压力有点大")
+    assert session.turn("给我一个方法吧").stage is HelpStage.S_EMPOWER
+    result = session.turn("心慌得要命，喘不上气，手一直在抖")
+    assert result.inspect["reason"] == Reason.EMPOWER_AROUSAL_RETREAT.value
+    assert result.reply_kind is ReplyKind.CARD and _whitelisted(result.action_id)

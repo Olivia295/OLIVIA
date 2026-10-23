@@ -490,6 +490,7 @@ class Session:
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
+        self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
         self._contra = SessionContraindications(tax, profile.contraindications)
@@ -713,6 +714,8 @@ class Session:
         )
         if no_pending or forget:
             transition = self._held(transition)
+        # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
+        self._stabilization_only = transition.stabilization_only
         spectrum = dominant_spectrum(perception.distress_vector)
         reason = transition.reason.value
         if self._reopens(transition, signals, follow, perception, spectrum) and not (
@@ -808,7 +811,15 @@ class Session:
                 rendered = self._offer(stage, perception, flags, spectrum, mirror_text, now)
         elif (
             stage is HelpStage.S_EXPLORE
-            and perception.arousal >= self._somatic
+            and (
+                perception.arousal >= self._somatic
+                # A safety retreat from S_empower (F2a) brings stabilization along; a retreat
+                # for aversion does not push another card.
+                or (
+                    transition.offer_stabilization
+                    and transition.reason is not Reason.EMPOWER_AVERSION
+                )
+            )
             and not transition.state.pure_listening_locked
             and feedback is None
             and not (pending is not None and pending.stage is HelpStage.S_EXPLORE)
@@ -1282,11 +1293,16 @@ class Session:
         flags: frozenset[str],
         shelved: frozenset[str],
     ) -> AllowedSet:
+        if self._stabilization_only:
+            # An L1 turn (ruling 5): the stabilization pool, with every mask still applied.
+            stage, arousal = HelpStage.S_EXPLORE, max(perception.arousal, self._somatic)
+        else:
+            arousal = perception.arousal
         return allowed_actions(
             self._tax,
             SolverInput(
                 stage=stage,
-                arousal=perception.arousal,
+                arousal=arousal,
                 active_red_flags=flags,
                 active_contraindications=self._context.contraindications,
                 situation_codes=self._context.situations,
