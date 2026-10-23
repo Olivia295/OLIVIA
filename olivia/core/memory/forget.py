@@ -12,8 +12,10 @@ written and nothing is exported.
 ``olivia forget`` (:func:`run_forget`) removes one of five things, picked from a numbered
 menu or by a flag (:class:`Target`):
 
-1. one ledger entry, by the number ``olivia memory`` shows: that one file is removed and
-   the ledger's data key stays (the other entries still need it);
+1. one ledger entry, by the number ``olivia memory`` shows: ``Ledger.forget_entry``
+   re-keys the ledger (the other entries are re-sealed under a fresh key through a
+   staging store, the old key is shredded), so the entry's old ciphertext never opens
+   again; entries that no longer open are dropped and counted;
 2. every chat record: the ledger (``Ledger.shred``) and the care marker (``CareStore.shred``);
 3. the kit and the method preferences (``StateStore.shred``);
 4. the safety plan (``SafetyPlanStore.shred``);
@@ -22,7 +24,7 @@ menu or by a flag (:class:`Target`):
    removed (:data:`DATA_FILES`, :data:`DATA_DIRS`, stray temporary files), the profile
    and its snapshots included, so the next ``olivia chat`` starts onboarding afresh.
 
-Options 2-4 crypto-shred: the store's data key is destroyed and the master key rotated
+Options 1-4 crypto-shred: the store's data key is destroyed and the master key rotated
 (``Vault.shred``), so a copy of the old ciphertext, or of the old key file, never opens
 again. They need the keychain to answer, so while it is locked nothing is changed. A
 store added later must register its files in :data:`DATA_FILES` or :data:`DATA_DIRS`
@@ -31,7 +33,8 @@ left).
 
 Every deletion asks for the typed confirmation word unless ``assume_yes``; end of input
 cancels. An age-gate refusal record (a declared minor, ruling 22) holds no personal data
-and is kept, so forgetting never reopens onboarding there. All wording is in
+and is kept, so forgetting never reopens onboarding there; ``--all`` removes anything
+else and says in one line that this record stays and why. All wording is in
 ``olivia/data/templates/forget.yaml`` (G-0 draft). Nothing here logs.
 """
 
@@ -130,6 +133,7 @@ _FORGET_KEYS: Final = (
     "confirm_word",
     "cancelled",
     "done_entry",
+    "done_entry_dropped",
     "done_ledger",
     "done_kit",
     "done_safety_plan",
@@ -142,6 +146,9 @@ _FORGET_KEYS: Final = (
     "nothing_all",
     "locked",
     "adults_only",
+    "about_all_minor",
+    "done_all_minor",
+    "kept_minor",
 )
 
 Ask = Callable[[], str | None]
@@ -384,10 +391,9 @@ def run_memory(say: Say, stores: DataStores, text: ForgetText | None = None) -> 
 
 
 def _shred_ledger(ledger: Ledger) -> None:
-    try:
+    """``Ledger.shred``; the key file and the entry files go even if the keychain fails."""
+    with contextlib.suppress(LedgerUnavailableError):
         ledger.shred()
-    except LedgerUnavailableError:
-        ledger.shred()  # the key file is gone already; this removes the entry files
 
 
 def _quietly(shred: Callable[[], None]) -> None:
@@ -435,10 +441,11 @@ def _remove_dirs(base: Path) -> None:
                 path.rmdir()
 
 
-def forget_all(stores: DataStores) -> bool:
-    """Destroy every key, then remove every file; False when the keychain item remains
-    (the keychain did not answer: the files are gone and nothing left opens, but the
-    master key could not be deleted yet)."""
+def forget_all(stores: DataStores, *, keep: frozenset[Path] = frozenset()) -> bool:
+    """Destroy every key, then remove every file except ``keep`` (plaintext files only:
+    the age-gate refusal record); False when the keychain item remains (the keychain
+    did not answer: the files are gone and nothing left opens, but the master key could
+    not be deleted yet)."""
     cleared = True
     try:
         stores.vault.shred_all()
@@ -447,7 +454,8 @@ def forget_all(stores: DataStores) -> bool:
     except KeychainUnavailableError:
         cleared = False
     for path in list(_owned_paths(stores.base)):
-        remove_file(path)
+        if path not in keep:
+            remove_file(path)
     _remove_dirs(stores.base)
     return cleared
 
@@ -482,6 +490,8 @@ class _Command:
     def run(self, target: Target | None, entry: int | None, assume_yes: bool) -> int:
         _, profile = _profile_quietly(self.stores)
         if profile is not None and profile.is_age_gate_refusal:
+            if target is Target.ALL:
+                return self._all_minor(assume_yes)
             self.say(self.f["adults_only"])
             return 0
         if entry is not None:
@@ -558,8 +568,14 @@ class _Command:
             return 1
         if not self._confirmed(_fill(self.f["about_entry"], n=number), assume_yes):
             return 0
-        self.stores.ledger.remove_entry(entries[number - 1].entry_id)
+        try:
+            dropped = self.stores.ledger.forget_entry(entries[number - 1].entry_id)
+        except LedgerUnavailableError:
+            self.say(self.f["locked"])
+            return 1
         self.say(_fill(self.f["done_entry"], n=number))
+        if dropped:
+            self.say(_fill(self.f["done_entry_dropped"], count=dropped))
         return 0
 
     def _all(self, assume_yes: bool) -> int:
@@ -575,6 +591,23 @@ class _Command:
             return 0
         self.say(self.f["keychain_left"])
         return 1
+
+    def _all_minor(self, assume_yes: bool) -> int:
+        """``--all`` on a device holding the age-gate refusal record (ruling 22): remove
+        anything else, keep that one record, and say why in one line."""
+        record = self.stores.profile.path
+        others = [p for p in _owned_paths(self.stores.base) if p != record and p.exists()]
+        code = 0
+        if others:
+            if not self._confirmed(self.f["about_all_minor"], assume_yes):
+                return 0
+            if forget_all(self.stores, keep=frozenset({record})):
+                self.say(self.f["done_all_minor"])
+            else:
+                self.say(self.f["keychain_left"])
+                code = 1
+        self.say(self.f["kept_minor"])
+        return code
 
     def _confirmed(self, about: str, assume_yes: bool) -> bool:
         if assume_yes:

@@ -39,8 +39,9 @@ writing the same session twice replaces its entry instead of adding one.
 
 Without a usable keychain the ledger is disabled: nothing is written, and operations
 raise :class:`LedgerUnavailableError`. :meth:`Ledger.shred` crypto-shreds the ``ledger``
-data key (``Vault.shred``) and deletes the entry files; :meth:`Ledger.remove_entry`
-deletes one entry file and keeps the key (``olivia forget``, step B5).
+data key (``Vault.shred``) and deletes the entry files; :meth:`Ledger.forget_entry`
+crypto-shreds one entry by re-keying the rest through a staging store (``olivia forget``,
+step B5).
 
 Entries that fail to decrypt or parse are skipped (``Ledger.skipped`` counts them);
 nothing here logs, and errors never carry entry text.
@@ -75,6 +76,8 @@ from olivia.core.models import CrisisLevel, HelpStage
 from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
 
 LEDGER_STORE: Final = "ledger"
+REKEY_STORE: Final = "ledger_rekey"
+"""The staging store a single-entry forget re-seals the surviving entries under."""
 LEDGER_DIRNAME: Final = "ledger"
 FORMAT_VERSION: Final = 1
 NOTE_MAX_CHARS: Final = 500
@@ -83,6 +86,8 @@ SELF_RATING_RANGE: Final = range(0, 11)
 _SUFFIX: Final = ".olv"
 _ID: Final = re.compile(r"[0-9a-f]{24}")
 _NOTICE_FILE: Final = ".memory-unavailable-told"
+_STAGING: Final = ".rekey"
+_COMPLETE: Final = "complete"
 _DELIMITER: Final = "---\n"
 _SUMMARY_KEYS: Final = frozenset(
     {
@@ -335,6 +340,10 @@ class Ledger:
         """
         if since is not None:
             _aware(since, "since")
+        try:
+            self._finish_rekey()
+        except KeychainUnavailableError as exc:
+            raise _unavailable(exc) from exc
         found: list[LedgerEntry] = []
         skipped = 0
         for path in self.entry_paths():
@@ -388,21 +397,69 @@ class Ledger:
 
     # -- forgetting ------------------------------------------------------------------------
 
-    def remove_entry(self, entry_id: str) -> None:
-        """Delete one entry file (``olivia forget --entry``); the ledger key is kept."""
+    def forget_entry(self, entry_id: str) -> int:
+        """Crypto-shred one entry (``olivia forget --entry``) by re-keying the ledger.
+
+        Returns how many *other* entries could not be opened or parsed and were dropped
+        on the way. Order, so that an interruption never leaves an entry readable under
+        neither key:
+
+        1. open every other entry and re-seal it under the staging store
+           :data:`REKEY_STORE` into ``ledger/.rekey/`` (atomic writes);
+        2. write the empty ``.rekey/complete`` marker: the commit point;
+        3. ``Vault.shred`` the ``ledger`` key (the master key rotates, so neither the
+           old key file nor the chosen entry's ciphertext opens again);
+        4. delete every live entry file, the chosen one included;
+        5. re-seal the staged entries under a fresh ``ledger`` key and write them back;
+        6. remove the marker, shred :data:`REKEY_STORE` and delete the staging files.
+
+        Interrupted before step 2, the staging is discarded and the ledger is unchanged;
+        from step 2 on, the next :meth:`entries`, write or forget finishes steps 3-6 from
+        the staged copies (:meth:`_finish_rekey`), each step being safe to repeat.
+        """
         if not _ID.fullmatch(entry_id):
             raise ValueError("not a ledger entry id")
-        remove_file(self.directory / f"{entry_id}{_SUFFIX}")
+        try:
+            self._finish_rekey()
+            kept: list[tuple[str, bytes]] = []
+            dropped = 0
+            for path in self.entry_paths():
+                if path.stem == entry_id:
+                    continue
+                try:
+                    document = self.read_markdown(path.stem)
+                    _parse(document, path.stem)
+                except (KeyMissingError, DecryptionError, UnicodeDecodeError, ValueError):
+                    dropped += 1
+                    continue
+                kept.append((path.stem, document.encode("utf-8")))
+            self._discard_staging()
+            staging = self.directory / _STAGING
+            staging.mkdir(mode=0o700, parents=True, exist_ok=True)
+            for kept_id, document_bytes in kept:
+                blob = self.vault.seal(REKEY_STORE, document_bytes, label=_label(kept_id))
+                atomic_write_bytes(staging / f"{kept_id}{_SUFFIX}", blob, snapshot=False)
+            atomic_write_bytes(staging / _COMPLETE, b"", snapshot=False)
+            self._apply_rekey(kept)
+        except KeychainUnavailableError as exc:
+            raise _unavailable(exc) from exc
+        return dropped
 
     def shred(self) -> None:
-        """Crypto-shred the ledger key, then delete every entry file."""
-        if self.vault.has_data_key(LEDGER_STORE):
-            try:
+        """Crypto-shred the ledger key, then delete every entry file (and any staging
+        left by an interrupted :meth:`forget_entry`)."""
+        try:
+            if self.vault.has_data_key(LEDGER_STORE):
                 self.vault.shred(LEDGER_STORE)
-            except KeychainUnavailableError as exc:
-                raise _unavailable(exc) from exc
-        for path in self.entry_paths():
-            remove_file(path)
+        except KeychainUnavailableError as exc:
+            raise _unavailable(exc) from exc
+        finally:
+            for path in self.entry_paths():
+                remove_file(path)
+        try:
+            self._discard_staging()
+        except KeychainUnavailableError as exc:
+            raise _unavailable(exc) from exc
         if self.directory.is_dir():
             for stray in self.directory.glob(f".*{_SUFFIX}.*.tmp"):
                 with contextlib.suppress(OSError):
@@ -416,9 +473,52 @@ class Ledger:
             if os.name != "nt":
                 self.directory.chmod(0o700)
 
+    def _finish_rekey(self) -> None:
+        """Complete or discard a :meth:`forget_entry` that was interrupted."""
+        staging = self.directory / _STAGING
+        if not staging.is_dir():
+            return
+        if not (staging / _COMPLETE).is_file():
+            self._discard_staging()  # not committed: the live entries are authoritative
+            return
+        kept: list[tuple[str, bytes]] = []
+        for path in sorted(staging.iterdir()):
+            if path.suffix != _SUFFIX or not _ID.fullmatch(path.stem):
+                continue
+            try:
+                document = self.vault.open(REKEY_STORE, path.read_bytes(), label=_label(path.stem))
+            except (KeyMissingError, DecryptionError):
+                continue
+            kept.append((path.stem, document))
+        self._apply_rekey(kept)
+
+    def _apply_rekey(self, kept: list[tuple[str, bytes]]) -> None:
+        """Steps 3-6 of :meth:`forget_entry`; every step is safe to repeat."""
+        if self.vault.has_data_key(LEDGER_STORE):
+            self.vault.shred(LEDGER_STORE)
+        for path in self.entry_paths():
+            remove_file(path)
+        for kept_id, document in kept:
+            blob = self.vault.seal(LEDGER_STORE, document, label=_label(kept_id))
+            atomic_write_bytes(self.directory / f"{kept_id}{_SUFFIX}", blob, snapshot=False)
+        self._discard_staging()
+
+    def _discard_staging(self) -> None:
+        """Remove the commit marker first, then the staging key and files."""
+        staging = self.directory / _STAGING
+        remove_file(staging / _COMPLETE)
+        if self.vault.has_data_key(REKEY_STORE):
+            self.vault.shred(REKEY_STORE)
+        if staging.is_dir():
+            for path in staging.iterdir():
+                remove_file(path)
+            with contextlib.suppress(OSError):
+                staging.rmdir()
+
     def _write(self, entry: LedgerEntry) -> None:
         document = self.render(entry).encode("utf-8")
         try:
+            self._finish_rekey()
             blob = self.vault.seal(LEDGER_STORE, document, label=_label(entry.entry_id))
         except KeychainUnavailableError as exc:
             raise _unavailable(exc) from exc

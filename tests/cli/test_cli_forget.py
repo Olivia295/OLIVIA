@@ -269,15 +269,43 @@ def test_each_option_shreds_its_store_and_keeps_the_rest(
             SafetyPlanStore(data_home, Vault(data_home)).load()
 
 
-def test_one_entry_by_number(run_cli, data_home):
+def test_one_entry_by_number_is_crypto_shredded(run_cli, data_home, tmp_path):
     _populate(data_home)
+    (note,) = Ledger(data_home, Vault(data_home)).notes()
+    note_file = f"{LEDGER_DIRNAME}/{note.entry_id}.olv"
+    aside = tmp_path / "aside"
+    _copy(data_home, [note_file, _key(LEDGER_STORE)], aside)
+
     run = run_cli(["forget", "--entry", "2", "--yes"])
     assert run.code == 0 and run.lines == [F["done_entry"].replace("{n}", "2")]
+    assert not (data_home / note_file).exists()
     entries = Ledger(data_home, Vault(data_home)).entries()
     assert len(entries) == 2 and not any(isinstance(e, NoteEntry) for e in entries)
-    assert (data_home / _key(LEDGER_STORE)).is_file()  # the other entries still need it
     _assert_state_readable(data_home)
     _assert_plan_readable(data_home)
+    _assert_profile_readable(data_home)
+    assert CareStore(data_home, Vault(data_home)).take(NOW) is not None
+
+    # The note's old ciphertext, copied back, does not open under the new ledger key ...
+    shutil.copy2(aside / note_file, data_home / note_file)
+    assert _entries(data_home) == (2, 1)
+    # ... nor with the old key file: the master key that wrapped it is gone.
+    _restore(data_home, aside)
+    readable = Ledger(data_home, Vault(data_home)).entries()
+    assert not any(isinstance(e, NoteEntry) for e in readable)
+
+
+def test_entries_that_no_longer_open_are_dropped_and_counted(run_cli, data_home):
+    _populate(data_home)
+    junk = data_home / LEDGER_DIRNAME / f"{'ab' * 12}.olv"
+    junk.write_bytes(b"not a sealed entry")
+    run = run_cli(["forget", "--entry", "1", "--yes"])
+    assert run.code == 0
+    assert run.lines == [
+        F["done_entry"].replace("{n}", "1"),
+        F["done_entry_dropped"].replace("{count}", "1"),
+    ]
+    assert not junk.exists() and _entries(data_home) == (2, 0)
 
 
 def test_one_entry_from_the_menu(run_cli, data_home):
@@ -377,12 +405,28 @@ def test_all_without_a_keychain(run_cli, data_home, keychain):
     assert files_under(data_home) == []
 
 
-def test_an_age_gate_refusal_record_is_kept(run_cli, data_home):
+def test_an_age_gate_refusal_record_is_kept_and_said_so(run_cli, data_home):
     run_cli(["chat"], ["1", "2"])
     before = files_under(data_home)
-    run = run_cli(["forget", "--all", "--yes"])
-    assert run.code == 0 and run.lines == [F["adults_only"]]
+    run = run_cli(["forget", "--all"], [])
+    assert run.code == 0 and run.lines == [F["kept_minor"]]
     assert files_under(data_home) == before
+    other = run_cli(["forget", "--kit"])
+    assert other.code == 0 and other.lines == [F["adults_only"]]
+
+
+def test_all_beside_a_refusal_record_removes_the_rest(run_cli, data_home, keychain):
+    run_cli(["chat"], ["1", "2"])
+    SafetyPlanStore(data_home).mark_suggested()
+    StateStore(data_home).save(CarriedState(BANDIT))
+    assert keychain.items
+    run = run_cli(["forget", "--all"], [YES])
+    assert run.code == 0
+    assert F["about_all_minor"] in run.lines
+    assert run.lines[-2:] == [F["done_all_minor"], F["kept_minor"]]
+    assert files_under(data_home) == [data_home / "profile.json"]
+    assert ProfileStore(data_home).load().is_age_gate_refusal
+    assert keychain.items == {}
 
 
 # -- confirmation -----------------------------------------------------------------------------
