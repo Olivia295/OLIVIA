@@ -113,15 +113,24 @@ def _fsync_directory(directory: Path) -> None:
 
 def atomic_write_text(path: Path, text: str) -> None:
     """Write ``text`` (UTF-8) to ``path`` without ever losing the previous version."""
+    atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def atomic_write_bytes(path: Path, data: bytes, *, snapshot: bool = True) -> None:
+    """Write ``data`` to ``path`` atomically; ``snapshot=False`` keeps no older version.
+
+    Key files use ``snapshot=False``: a snapshot of a wrapped data key would survive
+    crypto-shredding.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
+    if snapshot and path.exists():
         _take_snapshot(path)
     # mkstemp creates the file 0o600 and uniquely named; os.replace carries that mode over.
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
-            handle.write(text.encode("utf-8"))
+            handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, path)
@@ -129,6 +138,19 @@ def atomic_write_text(path: Path, text: str) -> None:
         with contextlib.suppress(OSError):
             tmp.unlink()
         raise
+    _fsync_directory(path.parent)
+
+
+def remove_file(path: Path) -> None:
+    """Delete ``path`` if present and make the removal durable.
+
+    On SSDs and copy-on-write file systems the old blocks may survive until reused;
+    this is why secrets on disk are only ever ciphertext (see ``olivia.core.crypto``).
+    """
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
     _fsync_directory(path.parent)
 
 

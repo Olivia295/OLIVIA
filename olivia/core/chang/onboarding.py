@@ -1,17 +1,21 @@
-"""First-visit onboarding (PRD ONB-01..05, 07, 08; SOP 1; roadmap rulings 22-24).
+"""First-visit onboarding (PRD ONB-01..08; SOP 1; roadmap rulings 22-24, 28).
 
 The flow is pure logic over a :class:`ProfileStore`: the caller shows ``prompt()``,
 passes the user's reply to ``answer()``, and repeats until it gets :class:`Completed`
 or :class:`Refused`. All wording lives in ``olivia/data/templates/onboarding.yaml``.
 
-Order: disclaimer (explicit acceptance) -> 18+ gate -> both names -> persona (R1 offers
-only ``GENTLE_HOLDING``, decision Q8) -> taboo topics -> region -> timezone -> optional
-clinical-history consent (last, ruling 23) -> one atomic save (ONB-08). The age gate
-comes before anything personal is asked, so nothing is ever collected from a minor
+Order: disclaimer (explicit acceptance) -> 18+ gate -> at-rest encryption switch (ONB-06,
+default off: only health information is encrypted, ruling 28) -> both names -> persona
+(R1 offers only ``GENTLE_HOLDING``, decision Q8) -> taboo topics -> region -> timezone ->
+optional clinical-history consent (last, ruling 23) -> one atomic save (ONB-08). The age
+gate comes before anything personal is asked, so nothing is ever collected from a minor
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
 launch shows the refusal again instead of restarting; a declined disclaimer saves nothing.
-ONB-06 (at-rest encryption) is P5 and is not asked here.
+
+Without a usable OS keychain nothing sensitive can be encrypted, so the encryption
+switch and the clinical-history questions are skipped, no health information is
+stored, and the closing text starts with ``outcomes.health_not_saved``.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import re
 import unicodedata
 import zoneinfo
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from importlib import resources
@@ -31,7 +35,7 @@ from typing import Any, Final
 
 import yaml
 
-from olivia.core.chang.profile import ProfileStore
+from olivia.core.chang.profile import ProfileLockedError, ProfileStore
 from olivia.core.models import (
     NAME_MAX_LEN,
     UNKNOWN_COUNTRY,
@@ -115,6 +119,7 @@ _IANA_NAME: Final = re.compile(
 _PROMPT_KEYS: Final = (
     "disclaimer",
     "age_gate",
+    "encryption",
     "user_name",
     "agent_name",
     "persona",
@@ -135,7 +140,7 @@ _HINT_KEYS: Final = (
     "consent_unrecognized",
     "clinical_unknown",
 )
-_OUTCOME_KEYS: Final = ("completed", "disclaimer_declined", "under_18")
+_OUTCOME_KEYS: Final = ("completed", "health_not_saved", "disclaimer_declined", "under_18")
 _SLOTS: Final = frozenset(
     {"user_name", "agent_name", "max_len", "max_count", "consent_sentence", "tokens"}
 )
@@ -153,6 +158,7 @@ class OnboardingFinishedError(RuntimeError):
 class Step(StrEnum):
     DISCLAIMER = "disclaimer"
     AGE_GATE = "age_gate"
+    ENCRYPTION = "encryption"
     USER_NAME = "user_name"
     AGENT_NAME = "agent_name"
     PERSONA = "persona"
@@ -202,7 +208,8 @@ class OnboardingText:
     consent_sentence: str
     prompts: Mapping[str, str]
     choices: Mapping[str, tuple[Choice, Choice]]
-    """``disclaimer`` and ``age_gate`` as ``(accept, decline)``."""
+    """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``encryption`` as
+    ``(keep_off, encrypt_all)``, the first being the default."""
     persona_label: str
     region_labels: Mapping[str, str]
     region_aliases: Mapping[str, tuple[str, ...]]
@@ -241,10 +248,14 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
     choices_raw = _section(doc, "choices")
     choices = {
         step: (
-            _choice(_section(choices_raw, step), "accept", f"choices.{step}"),
-            _choice(_section(choices_raw, step), "decline", f"choices.{step}"),
+            _choice(_section(choices_raw, step), first, f"choices.{step}"),
+            _choice(_section(choices_raw, step), second, f"choices.{step}"),
         )
-        for step in ("disclaimer", "age_gate")
+        for step, first, second in (
+            ("disclaimer", "accept", "decline"),
+            ("age_gate", "accept", "decline"),
+            ("encryption", "keep_off", "encrypt_all"),
+        )
     }
     for where, texts in (("prompts", prompts), ("hints", hints), ("outcomes", outcomes)):
         for key, value in texts.items():
@@ -313,6 +324,9 @@ class OnboardingFlow:
         self._taboo: tuple[str, ...] = ()
         self._country = UNKNOWN_COUNTRY
         self._timezone = FALLBACK_TIMEZONE
+        self._protected = False
+        """Whether sensitive data can be encrypted here (checked once the user is an adult)."""
+        self._encrypt_all = False
         self._outcome: Completed | Refused | None = None
         existing = store.load()
         if existing is not None:
@@ -343,6 +357,7 @@ class OnboardingFlow:
         handler = {
             Step.DISCLAIMER: self._on_disclaimer,
             Step.AGE_GATE: self._on_age_gate,
+            Step.ENCRYPTION: self._on_encryption,
             Step.USER_NAME: self._on_user_name,
             Step.AGENT_NAME: self._on_agent_name,
             Step.PERSONA: self._on_persona,
@@ -360,7 +375,7 @@ class OnboardingFlow:
     def _question(self) -> tuple[str, tuple[str, ...]]:
         prompts = self._text.prompts
         match self._step:
-            case Step.DISCLAIMER | Step.AGE_GATE:
+            case Step.DISCLAIMER | Step.AGE_GATE | Step.ENCRYPTION:
                 accept, decline = self._text.choices[self._step.value]
                 return prompts[self._step.value], (accept.label, decline.label)
             case Step.AGENT_NAME:
@@ -398,7 +413,8 @@ class OnboardingFlow:
     def _on_age_gate(self, text: str) -> None:
         adult = self._binary_choice(text)
         if adult is True:
-            self._step = Step.USER_NAME
+            self._protected = self._store.can_protect_sensitive()
+            self._step = Step.ENCRYPTION if self._protected else Step.USER_NAME
         elif adult is False:
             # Ruling 22: keep a refusal record (no user data) so a later launch stays refused.
             self._store.save(
@@ -410,6 +426,18 @@ class OnboardingFlow:
                 )
             )
             self._outcome = self._refusal(RefusalReason.UNDER_18)
+
+    def _on_encryption(self, text: str) -> None:
+        keep_off, encrypt_all = self._text.choices[Step.ENCRYPTION.value]
+        reply = _fold(text)
+        if reply in {"", "1", *(_fold(n) for n in (keep_off.label, *keep_off.aliases))}:
+            self._encrypt_all = False
+        elif reply in {"2", *(_fold(n) for n in (encrypt_all.label, *encrypt_all.aliases))}:
+            self._encrypt_all = True
+        else:
+            self._hint = self._text.hints["unrecognized"]
+            return
+        self._step = Step.USER_NAME
 
     def _on_user_name(self, text: str) -> None:
         name = self._name(text, DEFAULT_USER_NAME)
@@ -457,7 +485,7 @@ class OnboardingFlow:
                     self._step = Step.TIMEZONE
                 else:
                     self._timezone = default
-                    self._step = Step.CLINICAL_CONSENT
+                    self._after_location()
                 return
         self._hint = self._text.hints["unrecognized"]
 
@@ -475,7 +503,7 @@ class OnboardingFlow:
             self._hint = self._text.hints["timezone_invalid"]
             return
         self._timezone = zone
-        self._step = Step.CLINICAL_CONSENT
+        self._after_location()
 
     def _on_clinical_consent(self, text: str) -> None:
         if _fold(text) in self._skip_words():
@@ -502,8 +530,19 @@ class OnboardingFlow:
 
     # -- helpers ---------------------------------------------------------------------
 
+    def _after_location(self) -> None:
+        """The optional clinical-history consent, or the end when it cannot be protected."""
+        if self._protected:
+            self._step = Step.CLINICAL_CONSENT
+        else:
+            self._finish(())
+
     def _finish(self, clinical_history: tuple[str, ...]) -> None:
-        """ONB-08: the one write of an adult's onboarding, atomic via the store."""
+        """ONB-08: the one write of an adult's onboarding, atomic via the store.
+
+        Health information is never stored unencrypted (ruling 28): if the keychain
+        fails at this last moment, the profile is saved without it and the switch off.
+        """
         profile = PersonaProfile(
             age_confirmed_18_plus=True,
             created_at=self._now,
@@ -514,9 +553,19 @@ class OnboardingFlow:
             taboo_topics=self._taboo,
             region=UserRegion(country_code=self._country, timezone=self._timezone),
             clinical_history=clinical_history,
+            enable_at_rest_encryption=self._encrypt_all,
         )
-        self._store.save(profile)
-        self._outcome = Completed(profile, self._render(self._text.outcomes["completed"]))
+        protected = self._protected
+        try:
+            self._store.save(profile)
+        except ProfileLockedError:
+            profile = replace(profile, clinical_history=(), enable_at_rest_encryption=False)
+            self._store.save(profile)
+            protected = False
+        text = self._render(self._text.outcomes["completed"])
+        if not protected:
+            text = f"{self._text.outcomes['health_not_saved']}\n\n{text}"
+        self._outcome = Completed(profile, text)
 
     def _refusal(self, reason: RefusalReason) -> Refused:
         return Refused(reason, self._text.outcomes[reason.value])

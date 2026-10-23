@@ -26,6 +26,8 @@ dependencies = [
     "PyYAML>=6.0",
     "platformdirs>=4.0",
     "cryptography>=42",
+    # The at-rest master key lives in the OS keychain (decision Q7, B1).
+    "keyring>=25",
     # The perception student's forward pass (SDD §9: NumPy static weights, no DL framework).
     "numpy>=1.26",
     # Windows ships no IANA time-zone database; zoneinfo reads it from tzdata there.

@@ -1,4 +1,4 @@
-"""First-visit onboarding flow (ONB-01..05, 07, 08; rulings 22-24)."""
+"""First-visit onboarding flow (ONB-01..08; rulings 22-24, 28)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from olivia.core.chang.onboarding import (
     load_onboarding_text,
 )
 from olivia.core.chang.profile import ProfileStore
+from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.models import PersonaProfile, PersonaSpectrum, UserRegion
 from olivia.core.taxonomy import load_taxonomy
 
@@ -59,7 +60,7 @@ def _walk(flow: OnboardingFlow, answers: list[str]) -> Prompt | Completed | Refu
 
 
 def _to_region(flow: OnboardingFlow) -> None:
-    _walk(flow, ["1", "1", "", "", "", ""])
+    _walk(flow, ["1", "1", "", "", "", "", ""])
     assert flow.step is Step.REGION
 
 
@@ -73,13 +74,14 @@ def test_full_happy_path_mainland(tmp_path):
     assert first.options == ("我已阅读并同意", "我不同意")
 
     steps = []
-    for reply in ["1", "1", " 小林 ", "阿柳", "", "考试、前任，体重", "1", "跳过"]:
+    for reply in ["1", "1", "", " 小林 ", "阿柳", "", "考试、前任，体重", "1", "跳过"]:
         steps.append(flow.step)
         result = flow.answer(reply)
 
     assert steps == [
         Step.DISCLAIMER,
         Step.AGE_GATE,
+        Step.ENCRYPTION,
         Step.USER_NAME,
         Step.AGENT_NAME,
         Step.PERSONA,
@@ -96,6 +98,7 @@ def test_full_happy_path_mainland(tmp_path):
     assert p.taboo_topics == ("考试", "前任", "体重")
     assert p.region == UserRegion(country_code="CN", timezone="Asia/Shanghai")
     assert p.clinical_history == ()
+    assert p.enable_at_rest_encryption is False
     assert p.created_at == p.updated_at == NOW
     assert "小林" in result.text and "阿柳" in result.text
     assert ProfileStore(tmp_path).load() == p
@@ -125,7 +128,7 @@ def test_happy_path_with_timezone_choice_and_clinical_consent(tmp_path):
 
 def test_defaults_on_empty_answers(tmp_path):
     flow = _flow(tmp_path)
-    result = _walk(flow, ["同意", "是", "", "", "", "", "1", ""])
+    result = _walk(flow, ["同意", "是", "", "", "", "", "", "1", ""])
     assert isinstance(result, Completed)
     p = result.profile
     assert (p.user_name, p.agent_name, p.taboo_topics) == ("朋友", "Olivia", ())
@@ -141,7 +144,8 @@ def test_full_width_digits_are_accepted(tmp_path):
 
 def test_no_file_written_before_completion(tmp_path):
     flow = _flow(tmp_path)
-    answers = ["1", "1", "小林", "阿柳", "1", "前任", "9", "Europe/Paris", TEXT.consent_sentence]
+    answers = ["1", "1", "2", "小林", "阿柳", "1", "前任", "9", "Europe/Paris"]
+    answers.append(TEXT.consent_sentence)
     for reply in answers:
         flow.answer(reply)
         assert flow.outcome is None
@@ -149,7 +153,7 @@ def test_no_file_written_before_completion(tmp_path):
     assert flow.step is Step.CLINICAL_HISTORY
     result = flow.answer("1")
     assert isinstance(result, Completed)
-    assert [p.name for p in _files(tmp_path)] == ["profile.json"]
+    assert sorted(p.name for p in _files(tmp_path)) == ["profile.json", "profile.key"]
 
 
 # -- ONB-01 disclaimer ---------------------------------------------------------------
@@ -233,7 +237,7 @@ def test_adult_profile_already_saved_finishes_immediately(tmp_path):
 
 def test_name_length_validation(tmp_path):
     flow = _flow(tmp_path)
-    _walk(flow, ["1", "1"])
+    _walk(flow, ["1", "1", ""])
     too_long = flow.answer("一二三四五六七八九十一二三")
     assert isinstance(too_long, Prompt) and too_long.step is Step.USER_NAME
     assert "12" in too_long.text.split("\n\n")[0]
@@ -253,7 +257,7 @@ def test_name_length_validation(tmp_path):
 
 def test_persona_offers_only_gentle_holding(tmp_path):
     flow = _flow(tmp_path)
-    prompt = _walk(flow, ["1", "1", "", ""])
+    prompt = _walk(flow, ["1", "1", "", "", ""])
     assert isinstance(prompt, Prompt) and prompt.step is Step.PERSONA
     assert prompt.options == (TEXT.persona_label,)
     assert flow.answer("2").step is Step.PERSONA
@@ -262,7 +266,7 @@ def test_persona_offers_only_gentle_holding(tmp_path):
 
 def test_taboo_parsing_and_limits(tmp_path):
     flow = _flow(tmp_path)
-    _walk(flow, ["1", "1", "", "", ""])
+    _walk(flow, ["1", "1", "", "", "", ""])
     assert flow.answer("、".join(f"话题{i}" for i in range(21))).step is Step.TABOO
     assert flow.answer("一" * 21).step is Step.TABOO
     flow.answer("前夫 体重,体重；高考")
@@ -274,7 +278,7 @@ def test_taboo_parsing_and_limits(tmp_path):
 @pytest.mark.parametrize("reply", ["", "无", "没有", " 跳过 "])
 def test_taboo_may_be_empty(tmp_path, reply):
     flow = _flow(tmp_path)
-    result = _walk(flow, ["1", "1", "", "", "", reply, "1", ""])
+    result = _walk(flow, ["1", "1", "", "", "", "", reply, "1", ""])
     assert isinstance(result, Completed) and result.profile.taboo_topics == ()
 
 
@@ -417,6 +421,85 @@ def test_invalid_red_flag_code_rejected(tmp_path, bad):
     result = flow.answer("1")
     assert isinstance(result, Completed)
     assert result.profile.clinical_history == (next(iter(TAX.red_flags())),)
+
+
+# -- ONB-06 at-rest encryption switch (ruling 28) ------------------------------------
+
+
+def _profile_bytes(tmp_path: Path) -> list[bytes]:
+    return [p.read_bytes() for p in _files(tmp_path)]
+
+
+def test_encryption_question_comes_right_after_the_age_gate(tmp_path):
+    flow = _flow(tmp_path)
+    prompt = _walk(flow, ["1", "1"])
+    assert isinstance(prompt, Prompt) and prompt.step is Step.ENCRYPTION
+    keep_off, encrypt_all = TEXT.choices["encryption"]
+    assert prompt.options == (keep_off.label, encrypt_all.label)
+    again = flow.answer("也许")
+    assert again.step is Step.ENCRYPTION and again.text.startswith(TEXT.hints["unrecognized"])
+    assert flow.answer("").step is Step.USER_NAME
+
+
+@pytest.mark.parametrize(
+    ("reply", "whole"), [("", False), ("1", False), ("2", True), ("全部加密", True)]
+)
+def test_encryption_switch_choice_is_saved(tmp_path, reply, whole):
+    flow = _flow(tmp_path)
+    result = _walk(flow, ["1", "1", reply, "小林", "", "", "", "1", ""])
+    assert isinstance(result, Completed)
+    assert result.profile.enable_at_rest_encryption is whole
+    assert TEXT.outcomes["health_not_saved"] not in result.text
+    raw = b"".join(_profile_bytes(tmp_path))
+    assert ("小林".encode() in raw) is not whole
+    assert ProfileStore(tmp_path).load() == result.profile
+
+
+@pytest.mark.parametrize("encryption", ["", "2"])
+def test_clinical_history_is_encrypted_whatever_the_switch(tmp_path, encryption):
+    flow = _flow(tmp_path)
+    code = next(iter(TAX.red_flags()))
+    result = _walk(flow, ["1", "1", encryption, "", "", "", "", "1", TEXT.consent_sentence, "1"])
+    assert isinstance(result, Completed) and result.profile.clinical_history == (code,)
+    for raw in _profile_bytes(tmp_path):
+        assert code.encode() not in raw and b"clinical_history" not in raw
+    assert ProfileStore(tmp_path).load() == result.profile
+
+
+@pytest.mark.parametrize("error", [NoKeychainError("none"), KeychainUnavailableError("locked")])
+def test_without_keychain_health_questions_are_skipped_and_the_user_told(tmp_path, keychain, error):
+    keychain.broken = error
+    flow = _flow(tmp_path)
+    steps = []
+    result: Prompt | Completed | Refused = flow.prompt()
+    for reply in ["1", "1", "小林", "", "", "", "1"]:
+        steps.append(flow.step)
+        result = flow.answer(reply)
+    assert Step.ENCRYPTION not in steps and steps[-1] is Step.REGION
+    assert isinstance(result, Completed)
+    assert result.text.startswith(TEXT.outcomes["health_not_saved"])
+    assert "小林" in result.text
+    p = result.profile
+    assert p.clinical_history == () and p.enable_at_rest_encryption is False
+    assert [f.name for f in _files(tmp_path)] == ["profile.json"]
+    keychain.broken = None
+    assert ProfileStore(tmp_path).load() == p
+
+
+def test_keychain_failing_at_the_final_save_drops_health_information(tmp_path, keychain):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "1", "2", "", "", "", "", "1", TEXT.consent_sentence])
+    keychain.broken = KeychainUnavailableError("locked")
+    result = flow.answer("1")
+    assert isinstance(result, Completed)
+    assert result.text.startswith(TEXT.outcomes["health_not_saved"])
+    assert result.profile.clinical_history == ()
+    assert result.profile.enable_at_rest_encryption is False
+    code = next(iter(TAX.red_flags()))
+    for raw in _profile_bytes(tmp_path):
+        assert code.encode() not in raw
+    keychain.broken = None
+    assert ProfileStore(tmp_path).load() == result.profile
 
 
 # -- construction and text file ------------------------------------------------------
