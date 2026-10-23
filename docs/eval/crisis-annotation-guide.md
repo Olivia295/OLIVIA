@@ -153,11 +153,11 @@ C-SSRS（哥伦比亚自杀严重程度评估量表，Posner et al., 2011）是�
    - 格式选 **CSV UTF-8（逗号分隔）**，否则中文可能变成乱码；
    - 句子里有逗号、引号也没关系，表格软件会自动处理；
    - 不要在单元格里换行，两句话写在同一格里即可。
-4. 写完后**另存为** `docs/eval/fresh_eval.csv`（注意是下划线），模板文件保持空白不变。
+4. 写完后**另存为** `build/eval/fresh_eval.csv`（注意是下划线；`build/` 不进 git，仓库公开后评估集不能提交，否则就不再“独立”），模板文件保持空白不变。
 5. 告诉开发者文件已经写好。开发者会运行：
 
    ```bash
-   .venv/bin/python training/colab/export_olivia_data.py --fresh-eval docs/eval/fresh_eval.csv
+   .venv/bin/python training/colab/export_olivia_data.py --fresh-eval build/eval/fresh_eval.csv
    ```
 
 6. 交付之后，请不要再根据 App 的评测结果回头修改句子。如果发现某句标错了，告诉开发者，由开发者记录修改原因。

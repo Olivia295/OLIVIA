@@ -12,3 +12,7 @@ build/
 .superpowers/
 .coverage
 .coverage.*
+
+# Evaluation sets written by people never go into git (the repo is public).
+docs/eval/fresh_eval.csv
+docs/eval/volunteer_*.csv
