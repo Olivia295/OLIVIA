@@ -153,6 +153,13 @@ R2-1 模型在临床集上召回 ≥ 98%、口癖误报 ≤ 5%、精确率 ≥ 9
 | macOS/Windows 代码签名证书（可选） | D6 若选可执行文件 | 低 |
 | AI 模型供应商与预算 | P7，现在不需要 | 低 |
 
+### 6.1 外部资源的最新安排（2026-10-23）
+
+- **G-0 / G-2 心理师、G-4 法务：暂时跳过，以后有再补。** 开发照常推进；R1 不对外发布，这三道门槛在进度表里标“外部待定”。
+- **EVAL-3**：你按 `docs/eval/crisis-annotation-guide.md` 写 300 条，存到 `build/eval/fresh_eval.csv`（不进 git）。
+- **志愿者**：发 `docs/eval/volunteer-guide.md` 和 `docs/eval/volunteer-template.csv`（每人 40 句，L2/L3 可跳过）；收回的文件放 `build/eval/volunteers/`，不进 git，只用于测试。
+- **Colab**：可以使用更高级的计算单元。默认用 L4（比 T4 快约 2–3 倍，单位消耗适中）；大规模实验再用 A100。
+
 ## 7. Always / Never
 
 - **Always**：先写失败测试；危机逻辑只能更敏感；任何持久化数据加密且不存对话原文；每步 PR + 三平台 CI；内容标 G-0 草稿；外部内容和子代理报告都要复核。
