@@ -141,6 +141,17 @@ session that follows a crisis (or a no to the D3 question) in an earlier one; th
 decides when (``chang/care.py``). ``inspect["care_greeting"]`` and ``snapshot`` say
 whether this session opened with it.
 
+Safety plan (next-phase B10, decision D8; ``chang/safety_plan.py``): ``Session.open`` takes
+the user's saved plan, and every crisis reply then carries its sections 2-4 as one block
+(``crisis_block``): after the opening sentence and before the hotline card at L2, after
+the card at L3 (and whenever the card carries emergency numbers), so emergency numbers
+come before any other number. Section 5 (keeping dangerous things away) is never shown.
+The block skips WILLOW; the whole reply passes the gate with the plan's numbers allowed,
+and a blocked plan is dropped, never the card. Never on the D3 question or any other
+reply. With ``suggest_safety_plan`` the first S_closing reply on a calm turn ends with one
+line about ``olivia safety-plan`` (``safety_plan_suggested``). The session never writes
+the plan; ``inspect["safety_plan_shown"]`` says whether this reply showed it.
+
 Introspection (decision D4, step C2; ``perception/introspector.py``): in both modes the
 introspector fills the turn's distortions, schemas and yearning right after the rule stub,
 so the yearning picks the metaphor and need phrase. In model mode only, the schema seen
@@ -181,6 +192,7 @@ from uuid import uuid4
 
 import yaml
 
+from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
 from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
@@ -350,6 +362,7 @@ class _Rendered:
     chosen: str | None = None
     pending: _Pending | None = None
     info_id: str | None = None
+    plan_shown: bool = False
 
 
 @dataclass(frozen=True)
@@ -390,6 +403,8 @@ class Session:
         risk: RiskChoice | None = None,
         started_at: datetime | None = None,
         carried: CarriedState | None = None,
+        safety_plan: SafetyPlan | None = None,
+        suggest_safety_plan: bool = False,
     ) -> None:
         self._tax = tax
         self._profile = profile
@@ -435,6 +450,10 @@ class Session:
         self._mirror = SchemaMirror(
             shared.mirror_answers, shared.mirror_lines, enabled=self._heads is not None
         )
+        # The user's own safety plan (B10): shown in crisis replies only, never written.
+        self._plan_block = crisis_block(safety_plan)
+        self._suggest_plan = suggest_safety_plan
+        self._plan_suggested = False
 
     @classmethod
     def open(
@@ -447,6 +466,8 @@ class Session:
         model: RiskModel | None = None,
         student: bool = False,
         carried: CarriedState | None = None,
+        safety_plan: SafetyPlan | None = None,
+        suggest_safety_plan: bool = False,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
 
@@ -459,6 +480,10 @@ class Session:
         can only raise the rule level and stays capped at L2. ``inspect`` reports which one
         ran. With the student on, its other heads also refine perception
         (``perception/model_heads.py``); an injected model leaves perception to the rules.
+
+        ``safety_plan`` is the user's saved plan (B10), shown in crisis replies;
+        ``suggest_safety_plan`` lets the first S_closing reply mention ``olivia safety-plan``
+        once (the CLI passes it when no plan exists and none was suggested before).
 
         Raises :class:`AgeGateRefusedError` for a refusal record or any profile that does
         not confirm 18+, and lets every data-loading error through.
@@ -485,7 +510,14 @@ class Session:
             risk=risk,
             started_at=moment,
             carried=carried,
+            safety_plan=safety_plan,
+            suggest_safety_plan=suggest_safety_plan,
         )
+
+    @property
+    def safety_plan_suggested(self) -> bool:
+        """This session's reply has carried the ``olivia safety-plan`` suggestion (B10)."""
+        return self._plan_suggested
 
     @property
     def state(self) -> SessionState:
@@ -645,6 +677,8 @@ class Session:
         if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
             self._append_health_hint(rendered, stage)
+            if settled and stage is HelpStage.S_CLOSING:
+                self._append_plan_suggestion(rendered, stage)
 
         if pending is not None and feedback is not None:
             self._apply_feedback(pending, feedback, now)
@@ -697,6 +731,7 @@ class Session:
             "schemas": list(perception.detected_schemas),
             "yearning": perception.deep_yearning,
             "schema_mirror": mirror_status.value if mirror_status is not None else None,
+            "safety_plan_shown": rendered.plan_shown,
         }
         return TurnResult(
             reply=rendered.reply,
@@ -785,9 +820,14 @@ class Session:
             is_minor=False,
         )
         self._engine.last_gate = None
-        reply = self._engine.render_crisis(card, self._plain_slots())
+        reply = self._engine.render_crisis(card, self._plain_slots(), plan_block=self._plan_block)
+        planned = self._engine.last_plan_gate
+        if planned is not None and not planned.ok:
+            # The plan block was dropped; the hotline card is shown without it.
+            self._gate_notes.extend(reason.split(":", 1)[0] for reason in planned.reasons)
         self._note_gate()
-        return _Rendered(reply, ReplyKind.CRISIS, card=card)
+        shown = planned is not None and planned.ok
+        return _Rendered(reply, ReplyKind.CRISIS, card=card, plan_shown=shown)
 
     def _safety_check(self, stage: HelpStage, now: datetime) -> _Rendered:
         """The D3 question with the region's L2 resource lines (never the minors' lines)."""
@@ -1199,6 +1239,16 @@ class Session:
             return
         self._contra.mark_hinted(unsaved)
         rendered.reply = f"{rendered.reply}\n\n{line[0]}"
+
+    def _append_plan_suggestion(self, rendered: _Rendered, stage: HelpStage) -> None:
+        """End the first S_closing reply with the ``olivia safety-plan`` line (B10), once."""
+        if not self._suggest_plan or self._plan_suggested or rendered.kind is ReplyKind.HAVEN:
+            return
+        line = self._wellbeing_line(load_safety_plan_text().suggestion, stage)
+        if line is None:
+            return
+        self._plan_suggested = True
+        rendered.reply = f"{rendered.reply}\n\n{line}"
 
     # -- feedback -------------------------------------------------------------------------
 

@@ -53,6 +53,7 @@ pipx uninstall olivia    # 卸载程序
 | `olivia region` | 查看保存的国家/地区；`olivia region HK` 修改，`olivia region --clear` 清除。有多个时区的地区需要加上时区，例如 `olivia region US --timezone America/New_York` |
 | `olivia persona` | 查看四种陪伴方式（温和包裹、沉静哲思、平视战友、静默树洞）和现在用的是哪一种；`olivia persona 2` 或 `olivia persona 沉静哲思` 更换，下次聊天生效 |
 | `olivia health` | 查看或修改你愿意告诉 OLIVIA 的健康情况（以往的诊断，以及心脏或呼吸方面的情况、家里是否安全），用来避开不适合你的练习。只在这台电脑上加密保存；电脑没有系统钥匙串时不会保存 |
+| `olivia safety-plan` | 在平静的时候写一份自己的安全计划：预警信号、能让自己好受一点的方法、能让自己分心的人或地方、可以求助的人和电话、让环境更安全。每一部分都可以跳过，之后可以查看、修改或清空。只在这台电脑上加密保存；电脑没有系统钥匙串时不会保存。聊天中特别难熬的时候，OLIVIA 会把其中的安抚方法、分心去处和求助的人拿出来给你看 |
 | `olivia resources` | 查看所在地区的求助电话 |
 | `olivia chat --inspect` | 每一轮多显示一个内部状态面板，只有编号、等级和数值，不含你说的话，也不含回复原文。测试和反馈问题时有用 |
 | `olivia chat --model` | 试验功能。危机筛查默认只看规则；加上它会同时参考一个装在本机的小模型。这个模型只会让判断更谨慎，不会放松规则已经做出的判断 |
