@@ -248,11 +248,11 @@ def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_
     )
     assert run.code == 0
     files = files_under(data_home)
-    # Besides the profile, only the sealed care marker and its key (step A3).
+    # Besides the profile: the sealed care marker (A3), the encrypted ledger (B2) and the
+    # wrapped keys, nothing else.
     assert {p.name for p in files if p.parent == data_home} == {PROFILE_FILENAME, CARE_FILENAME}
-    assert {p.relative_to(data_home).as_posix() for p in files if p.parent != data_home} == {
-        "keys/care.key"
-    }
+    assert {p.parent.name for p in files if p.parent != data_home} == {"ledger", "keys"}
+    assert (data_home / "keys" / "care.key").exists()
     for path in files:
         raw = path.read_bytes()
         # Ciphertext is random bytes, so only fragments long enough never to occur by chance.

@@ -431,6 +431,46 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{Atomic Rename} \to \text{Persistent Ledger}$$
 并保留最近 3 个版本的容灾备份快照，确保数据 100% 具备容错自愈能力。
 
+**实现（B2，决定 D1）**：`olivia/core/memory/`（`ledger.py`、`notes.py`、`recorder.py`、`text.py`；文案 `olivia/data/templates/memory.yaml`，“记住”线索 `olivia/data/lexicons/memory.yaml`）。
+
+*只记两类条目*，其余用户说的话一概不存：
+
+| 条目 | 内容 | 何时写 |
+| :--- | :--- | :--- |
+| 会话摘要 `summary` | 首末轮时间；阶段路径（相邻重复合并，如 `S_ready → S_explore → S_empower → S_closing`）；主要困扰谱系 id（最多 3 个，按出现次数）；展示过的练习卡 id 与各自反馈（`HELPFUL` / `NOT_NOW` / `UNHELPFUL` / 无）；是否进入危机流程（只记标志与等级）；会话前后 0–10 自评（字段已留，B6 填写）；显著标记（裁定 29：当轮 ≥ L2 或用户标记）与 `marked_by_user` | 会话结束时：状态机 S_closing → S_ready（之后若继续聊，算新的一段、另记一条），或 `/exit`、输入结束、Ctrl-C。按“会话 id + 段号”定条目 id，重复关闭不会多出条目；没有任何一轮的段不写 |
+| 笔记 `note` | 用户明确要求记住的话：消息**开头**是「记住：」「帮我记一下」「请记得」等线索时，线索之后的文字原样保存（≤ 500 字），回复末尾简短确认、不复述内容 | 当轮。当轮在危机流程中、筛查 ≥ L1、或是意图确认（D3）时一律不记，也不确认——危机处理优先，显著标记已足够；“我记住了他说的话”这类不在开头或不带分隔符的说法不是请求 |
+
+*格式*：每个条目是一份带 YAML 头的 Markdown。头部是记录本身；正文是由头部生成的简短中文小结（阶段、谱系与反馈都用日常说法，不用病名），笔记的正文就是笔记原文：
+
+```
+---
+olivia_ledger: 1
+id: 3f9c0e5d2b7a41c8a9e6d012
+kind: summary
+started_at: '2026-10-22T23:31:00+08:00'
+ended_at: '2026-10-22T23:52:00+08:00'
+stage_path: [S_ready, S_explore, S_empower, S_closing]
+spectra: ['02', '05']
+methods:
+- {id: '12:tipp_breathing', feedback: HELPFUL}
+crisis: {entered: false, level: null}
+self_rating: {before: null, after: null}
+significant: false
+marked_by_user: false
+---
+## 2026-10-22 的一次聊天
+- 时间：23:31 – 23:52
+- 经过：开始 → 倾听 → 小练习 → 收尾
+- 主要聊到：低落和没劲、累和耗尽
+- 试过的小练习：……（有帮助）
+```
+
+*存储*：**始终加密**，与 ONB-06 开关无关。每个条目一个文件 `<数据目录>/ledger/<id>.olv`，用 `ledger` 数据密钥（§6.6）以 AES-256-GCM 封装，标签 `e_<id>`，所以改名或挪到别的 id 上就打不开。选“每条一个文件”而不是“整本一个密文”：追加只是一次小写入，不需要读出、解密、改写整本历史，崩溃或写坏只可能影响正在写的那一条；每次写入仍走 `storage.atomic_write_bytes`（临时文件 → fsync → 原子改名）。条目只写一次（同一会话段重写时原地替换），不存在可回退的旧明文，所以不做快照。读不开或解析不了的条目跳过并计数（`Ledger.skipped`），不报出内容。文件 0600、目录 0700。
+
+*没有钥匙串*：账本停用，什么都不写；每台电脑在聊天开场温和告知一次（`ledger/.memory-unavailable-told` 标记，空文件，不含用户数据）；用户要求记住时，每次都回答“这句我先不记了”。钥匙串中途被锁导致小结没写进去时，告别前说一句。
+
+*遗忘*：`Ledger.shred()` 先加密擦除 `ledger` 数据密钥（`Vault.shred`，随后轮换主密钥），再删除全部条目文件；命令行入口在 B5。
+
 ### 6.6 本地静态加密：密钥层级与加密擦除 (B1)
 
 实现：`olivia/core/crypto/`（`aead.py`、`keychain.py`、`vault.py`）与 `olivia/core/chang/profile.py`。决定 Q6（`cryptography` 的 AES-256-GCM）、Q7（主密钥存系统钥匙串，经 `keyring`）、裁定 28。
@@ -593,7 +633,8 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 3.2 萨提亚冰山内省器** | 认知扭曲、渴望与图式镜像 | 模块待定 [待实现 / C2（决定 D4）] | — |
 | **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
 | **§ 3.3 / § 6.6 静态加密与加密擦除** | 钥匙串主密钥、AES-256-GCM 文件信封、按存储数据密钥、加密擦除 | `olivia/core/crypto/` [已实现 / B1]；`olivia/core/chang/profile.py` | `seal_bytes(key, plaintext, *, store, label='')`, `open_bytes(...)`, `KeyBackend`, `KeyringBackend`, `Vault(base_dir, backend=None)` 及 `.available/.seal/.open/.shred/.shred_all/.rotate_master_key`, `ProfileStore(base_dir=None, vault=None)`, `SENSITIVE_FIELDS`, `ProfileLockedError`, `CryptoError` 族 |
-| **§ 3.3 透明账本与 3D 检索** | 会话摘要账本、跨会话状态、3D 艾宾浩斯检索 | `olivia/core/memory/ledger.py`、`retrieval.py` [待实现 / B2–B4] | 接口待定 |
+| **§ 3.3 / § 6.5 透明账本** | 加密的会话摘要与用户要求记住的笔记（决定 D1） | `olivia/core/memory/ledger.py`、`notes.py`、`recorder.py`、`text.py` [已实现 / B2] | `Ledger(base_dir: Path \| None = None, vault: Vault \| None = None, *, text=None, method_titles: Mapping[str, str] \| None = None)`: `.available() -> bool`, `.append_summary(summary: SessionSummary, *, key: str) -> str`（同一 key 原地替换）, `.add_note(text: str, *, now: datetime \| None = None) -> str`, `.entries(since: datetime \| None = None) -> tuple[LedgerEntry, ...]`（旧到新）, `.notes() -> tuple[NoteEntry, ...]`, `.read_markdown(entry_id) -> str`, `.render(entry) -> str`, `.shred() -> None`, `.take_unavailable_notice() -> bool`, `.skipped`; `SessionSummary`（`.entered_crisis`, `.significant`）, `MethodRecord`, `SummaryEntry`, `NoteEntry`, `LedgerEntry`, `LedgerUnavailableError(permanent)`, `NOTE_MAX_CHARS`; `SessionRecorder(ledger, session_id, now)`: `.observe(message, result: TurnResult) -> TurnResult`（可能追加笔记确认）, `.close() -> bool`, `.enabled`; `load_note_cues() -> NoteCues`（`.find(message) -> str \| None`）, `load_memory_text() -> MemoryText` |
+| **§ 3.3 跨会话状态与 3D 检索** | Thompson 后验、锦囊与关怀标记持久化；3D 艾宾浩斯检索 | `olivia/core/memory/`、`retrieval.py` [待实现 / B3–B4] | 接口待定（建立在 `Ledger.entries()` 之上） |
 | **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/machine.py`（由 `olivia/core/fsm/__init__.py` 导出）[已实现 / P3-2、P3-5] | `step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition`（纯函数，不修改入参）; `close_session(state: SessionState) -> Transition`; `TurnInput(perception, crisis: CrisisStatus, signals: TurnSignals, persona)`, `Transition(previous, state, reason)`, `Reason` |
 | **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；另有 `active_contraindications(tax, inp)`, `banned_actions(tax, flags)`, `M0_ACTION_ID`, `M0_SITUATIONS`；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
 | **§ 6.3 Thompson 采样** | Beta-Bernoulli 后验、三档反馈、软衰减、高唤醒只利用 | `olivia/core/methods/bandit.py` [已实现 / P3-4；跨会话持久化待实现 / B3] | `ThompsonSampler(tax, state: Mapping[str, object] \| None = None)`: `.choose(candidates, spectrum, arousal, rng, now) -> str`, `.update(action_id, spectrum, feedback: Feedback, now) -> None`, `.posterior(action_id, spectrum, now) -> tuple[float, float]`, `.to_dict()`; `Feedback`（`HELPFUL` / `UNHELPFUL` / `NOT_NOW`） |

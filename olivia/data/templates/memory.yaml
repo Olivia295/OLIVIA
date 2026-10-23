@@ -1,0 +1,59 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-22-remaining-roadmap.md R1-4）
+#
+# 记忆账本的文案（决定 D1，步骤 B2）。
+#
+# replies：会话里说的话，单段，不带槽位，不出现诊断词、号码与方法名（测试用 WILLOW 与输出网关检查）。
+#   note_saved          用户说“记住：……”后，在回复末尾简短确认（不复述内容）。
+#   note_too_long       要记的内容超过 500 字，没有保存。
+#   note_unavailable    这台电脑不能加密保存，所以这句没有记。
+#   memory_unavailable  同上原因，整个记忆功能不可用；每台电脑只在开场说一次。
+#   summary_not_saved   会话结束时小结没能写入（例如钥匙串中途被锁）。
+#
+# summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
+#   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after}
+# stages / spectra / feedback：阶段、困扰谱系与反馈的日常说法，不用病名。
+version: 1
+replies:
+  note_saved: "这句我记下了。"
+  note_too_long: "这段有点长，我先没有记下。可以挑最想留住的一两句，再用「记住：」开头告诉我。"
+  note_unavailable: "这台电脑上暂时没办法把记忆加密保存，所以这句我先不记了。"
+  memory_unavailable: "先告诉你一件事：这台电脑上暂时没办法把记忆加密保存，所以我不会记下我们聊过什么。其他的一切都照常。"
+  summary_not_saved: "这次聊天的小结没能保存下来，下次再试试。"
+summary:
+  heading: "## {date} 的一次聊天"
+  time: "- 时间：{start} – {end}"
+  path: "- 经过：{path}"
+  spectra: "- 主要聊到：{spectra}"
+  methods: "- 试过的小练习：{methods}"
+  no_methods: "- 这次没有试小练习。"
+  crisis: "- 这次聊天里有过很难熬的时刻，我们一起看了可以求助的电话。"
+  self_rating: "- 自评：开始时 {before}，结束时 {after}"
+  significant: "- 这次聊天很重要，会一直留着。"
+  none: "没有"
+  joiner: "、"
+  arrow: " → "
+stages:
+  S_ready: 开始
+  S_explore: 倾听
+  S_clarify: 梳理
+  S_empower: 小练习
+  S_haven: 安静陪着
+  S_closing: 收尾
+  S_crisis: 先顾安全
+spectra:
+  "01": 紧张和不安
+  "02": 低落和没劲
+  "03": 反复想同一件事
+  "04": 对自己很苛刻
+  "05": 累和耗尽
+  "06": 经历过的难事和失去
+  "07": 关系里的牵挂
+  "08": 睡眠和身体的不舒服
+  "09": 情绪起伏很大
+  "10": 停不下来的冲动
+  "11": 关于意义的困惑
+feedback:
+  HELPFUL: 有帮助
+  NOT_NOW: 先收进锦囊
+  UNHELPFUL: 不太合适
+  none: 还没有反馈
