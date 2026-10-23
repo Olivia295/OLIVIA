@@ -47,7 +47,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | EVAL-1 [S] | 写危机分级标注规范（L0–L3 定义、C-SSRS 对照、口癖与否定说明，**不含任何词表短语或用例原句**）与评估集模板（300 条配额）；写给你的编写说明 | 你能照着开始写 | `docs/eval/crisis-annotation-guide.md`、`docs/eval/fresh-eval-template.csv` | 计划批准 |
 | EVAL-2 [S] | 过渡评估集：由一个**看不到**用例、词表、探针与训练数据的子代理按规范盲写 300 条；只用于开发跟踪 | 导出脚本 `--fresh-eval` 能读入；与训练集近似重复为 0 | `build/eval/interim_fresh.csv`（不入库） | EVAL-1 |
-| EVAL-3 [你] | 你按规范编写正式评估集 300 条（L3 60、L2 80、L1 60、L0 100，其中口癖 40）；写之前不看词表、用例和合成数据 | **确认步骤**：收到文件后检查条数、配额与格式 | `docs/eval/fresh_eval.csv`（不进训练） | EVAL-1 |
+| EVAL-3 [你] | 你按规范编写正式评估集 300 条（L3 60、L2 80、L1 60、L0 100，其中口癖 40）；写之前不看词表、用例和合成数据 | **确认步骤**：收到文件后检查条数、配额与格式 | `build/eval/fresh_eval.csv`（不进 git、不进训练；仓库公开后由 `docs/eval/` 改到这里） | EVAL-1 |
 
 ### 阶段 2：P3 状态机与动作求解（关键路径）
 
@@ -218,7 +218,7 @@ Q1 合并方式；Q2 训练数据生成方式；Q3 评估集作者；Q4 模型�
 | SAFE-1 / SAFE-2 | 已合并 | #3、#2 |
 | EVAL-1 | 已合并 | #4 |
 | EVAL-2 | 完成（不入库） | `build/eval/interim_fresh.csv`；规则模式在其上：L3 判为 L3 1/60、≥L2 3/60，L2 ≥L2 24/80，L1 0/60，L0 误报 3/100 |
-| EVAL-3 | 等你编写 | `docs/eval/fresh_eval.csv`（300 条，见 Q9） |
+| EVAL-3 | 等你编写 | `build/eval/fresh_eval.csv`（300 条，见 Q9；写法见 `docs/eval/crisis-annotation-guide.md` §6） |
 | SPEC-1 | 已合并 | #5 |
 | HOUSE-1 | 完成 | 远端只剩 main |
 | P2-1 热线核验 | 已合并 | #14 |
