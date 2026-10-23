@@ -100,8 +100,16 @@ never on a crisis turn (the tracker's crisis or an L2/L3 screen) or an L1 screen
 * A kit recall ("锦囊里那个再给我看看") outside a crisis acts as a direct request and
   re-offers the most recently shelved action the solver allows now, which leaves the
   kit until it is shelved again; with an empty kit the reply is ``followups.kit_empty``
-  (not in S_haven). The kit is the session's ``user_shelved_actions``; keeping it across
-  sessions waits for P5.
+  (not in S_haven). The kit is the kit carried in from earlier sessions followed by this
+  session's ``user_shelved_actions`` (newest last).
+
+Cross-session state (next-phase B3, ``memory/state.py``): ``Session.open(carried=...)``
+seeds the sampler's posteriors and the kit from an earlier session; ``carried_state()``
+is what to keep for the next one. Only this session's shelved actions are masked out of
+sampling ("shelved for the session"); a carried kit entry can still be sampled, and a kit
+card shown again, recalled or sampled, leaves the kit until it is shelved again. Kit
+entries the solver does not allow now or that have no card are skipped, as within a
+session. Opened without ``carried``, a session starts from the priors with an empty kit.
 * In S_closing a whole-message yes ("好", "可以") confirms the implementation intention
   like an ``intent_confirmed`` phrase; a no ("不用了") gets ``followups.closing_declined``
   and the session stays in S_closing.
@@ -179,7 +187,8 @@ from olivia.core.language.data import ContentKind, LanguageData, load_language_d
 from olivia.core.language.engine import LanguageEngine, Slots
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
-from olivia.core.methods.bandit import Feedback, ThompsonSampler
+from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
+from olivia.core.methods.bandit import Feedback
 from olivia.core.methods.contraindications import ActiveContext, SessionContraindications
 from olivia.core.methods.solver import (
     M0_ACTION_ID,
@@ -380,6 +389,7 @@ class Session:
         now: Callable[[], datetime],
         risk: RiskChoice | None = None,
         started_at: datetime | None = None,
+        carried: CarriedState | None = None,
     ) -> None:
         self._tax = tax
         self._profile = profile
@@ -394,7 +404,12 @@ class Session:
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
         self._contra = SessionContraindications(tax, profile.contraindications)
         self._context = ActiveContext()
-        self._sampler = ThompsonSampler(tax)
+        self._sampler = restore_sampler(tax, carried.bandit if carried is not None else None)
+        # The kit from earlier sessions (oldest first); this session's shelves live in
+        # ``SessionState.user_shelved_actions``. ``_shelved_at`` keeps when each was shelved.
+        kit = carried.kit if carried is not None else ()
+        self._carried_kit: list[str] = list(dict.fromkeys(e.action_id for e in kit))
+        self._shelved_at: dict[str, datetime] = {e.action_id: e.shelved_at for e in kit}
         # The profile's persona picks the reply templates and word windows (ONB-03, D-1).
         language = shared.language.for_persona(profile.persona_spectrum)
         self._engine = LanguageEngine(tax, rng=rng, data=language)
@@ -413,6 +428,7 @@ class Session:
         self._last_spectrum: str | None = None
         self._lens_shown = False
         start = started_at if started_at is not None else now()
+        self._started_at = start
         zone = profile.region.timezone if profile.region is not None else None
         self._wellbeing = Wellbeing(tax, zone, start)
         # The schema mirror (decision D4) asks only in model mode.
@@ -430,8 +446,12 @@ class Session:
         now: Callable[[], datetime],
         model: RiskModel | None = None,
         student: bool = False,
+        carried: CarriedState | None = None,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
+
+        ``carried`` (``memory/state.py``, B3) seeds the sampler and the kit from an earlier
+        session; without it the session starts from the priors with an empty kit.
 
         The crisis screen's Stage 2 uses ``model`` when given; ``student=True`` uses the
         packaged perception student (``perception/student.py``); otherwise, or when the
@@ -455,7 +475,17 @@ class Session:
             if risk.model is None
             else SafetyScreen(tax, shared.lexicons, risk.model, model_plan_evidence=False)
         )
-        return cls(tax, profile, shared, screen, rng=rng, now=now, risk=risk, started_at=moment)
+        return cls(
+            tax,
+            profile,
+            shared,
+            screen,
+            rng=rng,
+            now=now,
+            risk=risk,
+            started_at=moment,
+            carried=carried,
+        )
 
     @property
     def state(self) -> SessionState:
@@ -714,6 +744,17 @@ class Session:
             "bandit": self._sampler.to_dict(),
         }
 
+    def kit(self) -> tuple[KitEntry, ...]:
+        """The kit, oldest first: entries carried in, then this session's shelves."""
+        shelved = self._state.user_shelved_actions
+        ids = [a for a in self._carried_kit if a not in shelved] + list(shelved)
+        return tuple(KitEntry(a, self._shelved_at.get(a, self._started_at)) for a in ids)
+
+    def carried_state(self) -> CarriedState:
+        """What the next session starts from: the posteriors (``snapshot()["bandit"]``)
+        and the newest :data:`KIT_MAX` kit entries. Ids, numbers and times only."""
+        return CarriedState(self._sampler.to_dict(), self.kit()[-KIT_MAX:])
+
     def care_greeting(self, *, light: bool = False) -> str:
         """The opening line after a crisis in an earlier session (PRD §9, step A3).
 
@@ -817,12 +858,17 @@ class Session:
         allowed = self._allowed(stage, perception, flags, frozenset(shelved))
         if recall:
             unmasked = self._allowed(stage, perception, flags, frozenset())
-            kit = [a for a in reversed(shelved) if a in unmasked.candidates and a in deck]
+            kit = [
+                a
+                for a in reversed([*self._carried_kit, *shelved])
+                if a in unmasked.candidates and a in deck
+            ]
             if kit:
                 chosen = kit[0]
-                remaining = [a for a in shelved if a != chosen]
-                self._state = replace(self._state, user_shelved_actions=remaining)
-                allowed = self._allowed(stage, perception, flags, frozenset(remaining))
+                if chosen in shelved:
+                    remaining = [a for a in shelved if a != chosen]
+                    self._state = replace(self._state, user_shelved_actions=remaining)
+                    allowed = self._allowed(stage, perception, flags, frozenset(remaining))
         renderable = [aid for aid in allowed.candidates if aid in deck]
         if chosen is None and renderable:
             chosen = self._sampler.choose(renderable, bucket, perception.arousal, self._rng, now)
@@ -875,6 +921,9 @@ class Session:
         if chosen is not None and chosen in shelved and rendered.action_id != chosen:
             # A recalled card that could not be shown stays in the kit.
             self._state = replace(self._state, user_shelved_actions=list(shelved))
+        if rendered.kind is ReplyKind.CARD and rendered.action_id in self._carried_kit:
+            # A carried kit card shown again leaves the kit until it is shelved again.
+            self._carried_kit.remove(rendered.action_id)
 
         rendered.candidates = allowed.candidates
         rendered.chosen = chosen
@@ -1195,7 +1244,7 @@ class Session:
                 clarify = True
         recall = kit_empty = False
         if phrases and signals.kit_recall and source is None and not clarify:
-            if self._state.user_shelved_actions:
+            if self._state.user_shelved_actions or self._carried_kit:
                 signals = replace(signals, direct_request=True)
                 recall = True
             else:
@@ -1237,6 +1286,9 @@ class Session:
                 self._state = replace(
                     self._state, user_shelved_actions=[*shelved, pending.action_id]
                 )
+                self._shelved_at[pending.action_id] = now
+            if pending.action_id in self._carried_kit:
+                self._carried_kit.remove(pending.action_id)
         self._sampler.update(pending.action_id, pending.spectrum, feedback, now)
 
     # -- helpers --------------------------------------------------------------------------

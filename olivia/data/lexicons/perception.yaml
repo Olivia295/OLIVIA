@@ -929,7 +929,10 @@ intent_confirmed:
 
 # The user asks to see a method they shelved earlier (roadmap R-7b, PRD SOP 4 "应急锦囊").
 # The session re-offers the most recent shelved card that the solver still allows; the
-# kit lives in the session until P5 persists it.
+# kit is kept across sessions (next-phase B3), so "上次存的那个" works in a new session.
+# "上次存的" / "之前收起来的" alone also name money, photos or clothes ("上次存的钱",
+# "之前收起来的衣服"), so these forms need the card after them (那个 / 练习 / 方法), and a
+# bare "存的那个" ("我存的那个视频") needs the time word in front.
 kit_recall:
   - 锦囊里那个
   - 锦囊里的
@@ -941,14 +944,23 @@ kit_recall:
   - 收进锦囊的
   - 放进锦囊的
   - 存进锦囊的
-  - 上次存的
-  - 刚才存的
-  - 之前存的
-  - 上次收起来的
-  - 刚才收起来的
-  - 之前收起来的
+  - 上次存的那个
+  - 上次存的练习
+  - 上次存的方法
+  - 上回存的那个
+  - 之前存的那个
+  - 之前存的练习
+  - 刚才存的那个
+  - 刚才存的练习
   - 存起来的那个
+  - 存起来的练习
   - 收起来的那个
+  - 收起来的练习
+  - 上次没做的那个
+  - 上次没做的练习
+  - 上次先放着的那个
+  - 上次先放下的那个
+  - 上次留着的那个
 
 # Natural-language feedback on a card that waits for it (roadmap R-7b). The stub
 # matches these on the message with punctuation and symbols removed, so "试过了，没用"
