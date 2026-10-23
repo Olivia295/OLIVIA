@@ -204,9 +204,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         kit_recall=phrases["kit_recall"],
         therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
         therapy_question_cues=phrases["therapy_question_cues"],
-        situation_cues=MappingProxyType(
-            _keyed_cues(doc.get("situation_cues"), "situation_cues", tax.situation_codes())
-        ),
+        situation_cues=MappingProxyType(_situation_cues(tax, doc.get("situation_cues"))),
         contraindication_cues=MappingProxyType(
             _keyed_cues(
                 doc.get("contraindication_cues"),
@@ -367,6 +365,21 @@ def _keyed_cues(node: Any, where: str, known: tuple[str, ...]) -> dict[str, tupl
             raise PerceptionLexiconError(f"{_FILE}: {where}: {key!r} is not a taxonomy id")
         cues[key] = _phrases(raw, f"{where}.{key}")
     _check_distinct(cues, where)
+    return cues
+
+
+def _situation_cues(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
+    """``situation_cues``: situation code -> phrases; a red-flag code is not allowed.
+
+    The seven red-flag dossiers are read by the red-flag detector (``red_flags.yaml``)
+    and lead to a referral; a situation cue for one would bypass that path.
+    """
+    cues = _keyed_cues(node, "situation_cues", tax.situation_codes())
+    flagged = sorted(code for code in cues if code in tax.red_flags())
+    if flagged:
+        raise PerceptionLexiconError(
+            f"{_FILE}: situation_cues: {flagged} is a red-flag code (red_flags.yaml reads it)"
+        )
     return cues
 
 

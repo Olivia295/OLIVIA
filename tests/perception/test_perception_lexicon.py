@@ -203,7 +203,8 @@ def test_malformed_yaml_is_a_lexicon_error(
 def test_situation_and_contraindication_cues_borrow_no_crisis_wording(tax: Taxonomy) -> None:
     """A1: these cues never stand in for a crisis cue, so none repeats a risk.yaml phrase."""
     lex = load_perception_lexicon(tax)
-    assert set(lex.situation_cues) == {"SIT-06-04", "SIT-11-01"}
+    # A1 wired the two m0 situations; D-2 adds the other dossiers (test_situation_cues.py).
+    assert {"SIT-06-04", "SIT-11-01"} <= set(lex.situation_cues)
     assert set(lex.contraindication_cues) == {
         "TOXIC_SHAME_SPIRAL",
         "CARDIORESPIRATORY_INSTABILITY",
