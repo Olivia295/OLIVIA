@@ -26,6 +26,11 @@ Implementation intention. A turn whose signals carry ``intent_confirmed`` ("实�
 turn, so it is counted like any other turn. The caller writes the session summary and
 ledger on that reason exactly as on ``Reason.CLOSING_TO_READY``.
 
+Core belief. A turn whose signals carry ``core_belief_confirmed`` (the session's reading
+of a yes to the schema mirror question, model mode only, decision D4) in S_clarify moves
+to S_empower without waiting for the auto-advance count (PRD C_2 "核心信念识别"); the
+lock, persona and battery gates are the same.
+
 Turn counts follow SDD 4.2: ``stage_turn_count`` counts turns in the current stage, the
 turn that enters a stage is its first turn, and the gates read the count from before the
 turn (so "stage_turn_count >= 2" means two turns have already been spent in the stage).
@@ -71,6 +76,9 @@ class Reason(StrEnum):
     """S_explore -> S_clarify: enough turns, arousal below the somatic line, no lock, battery."""
     CLARIFY_TO_EMPOWER = "CLARIFY_TO_EMPOWER"
     """S_clarify -> S_empower: auto-advance after N clarify turns, no lock, not SILENT_ANCHOR."""
+    CLARIFY_CORE_BELIEF = "CLARIFY_CORE_BELIEF"
+    """S_clarify -> S_empower: the user affirmed the schema mirror question (PRD C_2
+    "核心信念识别", decision D4), with the auto-advance's lock, persona and battery gates."""
     EMPOWER_AROUSAL_RETREAT = "EMPOWER_AROUSAL_RETREAT"
     """S_empower -> S_explore: ΔArousal or absolute arousal spike (COLBO-04)."""
     EMPOWER_AVERSION = "EMPOWER_AVERSION"
@@ -215,13 +223,15 @@ def _route(
         and battery >= gates.clarify_battery
     ):
         return HelpStage.S_CLARIFY, Reason.EXPLORE_TO_CLARIFY
+    confirmed = inp.signals.core_belief_confirmed
     if previous is HelpStage.S_CLARIFY and (
-        state.stage_turn_count >= gates.auto_advance_turns
+        (confirmed or state.stage_turn_count >= gates.auto_advance_turns)
         and not locked
         and inp.persona is not PersonaSpectrum.SILENT_ANCHOR
         and battery >= gates.empower_battery
     ):
-        return HelpStage.S_EMPOWER, Reason.CLARIFY_TO_EMPOWER
+        reason = Reason.CLARIFY_CORE_BELIEF if confirmed else Reason.CLARIFY_TO_EMPOWER
+        return HelpStage.S_EMPOWER, reason
     if previous is HelpStage.S_HAVEN and battery >= gates.haven_exit:
         return HelpStage.S_EXPLORE, Reason.HAVEN_EXIT
     if previous is HelpStage.S_CLOSING and inp.signals.intent_confirmed:

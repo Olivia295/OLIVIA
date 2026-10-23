@@ -171,6 +171,48 @@ def test_row_clarify_to_empower_gates(turns, locked, persona, battery):
     assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
 
 
+def test_row_clarify_to_empower_on_a_confirmed_core_belief():
+    # PRD C_2 "核心信念识别" (decision D4): no need to wait for the auto-advance count.
+    t = run(state(S.S_CLARIFY, turns=1), turn(core_belief_confirmed=True))
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.CLARIFY_CORE_BELIEF
+    assert t.state.stage_turn_count == 1
+
+
+def test_confirmed_core_belief_wins_the_reason_over_the_auto_advance():
+    t = run(state(S.S_CLARIFY, turns=5), turn(core_belief_confirmed=True))
+    assert t.reason is Reason.CLARIFY_CORE_BELIEF
+
+
+@pytest.mark.parametrize(
+    "locked,persona,battery",
+    [
+        (True, PersonaSpectrum.GENTLE_HOLDING, 0.6),
+        (False, PersonaSpectrum.SILENT_ANCHOR, 0.6),
+        (False, PersonaSpectrum.GENTLE_HOLDING, 0.39),
+    ],
+)
+def test_confirmed_core_belief_keeps_the_c2_gates(locked, persona, battery):
+    t = run(
+        state(S.S_CLARIFY, turns=1, locked=locked, battery=battery),
+        turn(persona=persona, core_belief_confirmed=True),
+    )
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
+
+
+@pytest.mark.parametrize("stage", [S.S_EXPLORE, S.S_CLOSING])
+def test_confirmed_core_belief_means_nothing_outside_clarify(stage):
+    t = run(state(stage, turns=1), turn(core_belief_confirmed=True))
+    assert t.state.current_stage is stage and t.reason is Reason.STAY
+
+
+def test_crisis_wins_over_a_confirmed_core_belief():
+    t = run(
+        state(S.S_CLARIFY, turns=1),
+        turn(status=crisis(in_crisis=True), core_belief_confirmed=True),
+    )
+    assert t.state.current_stage is S.S_CRISIS
+
+
 @pytest.mark.parametrize(
     "entry,arousal",
     [
@@ -455,7 +497,7 @@ def test_walkthrough_with_aversion_and_intent():
 
 
 def test_reason_has_one_member_per_row_plus_stay():
-    assert len(Reason) == 15 and Reason.STAY in Reason
+    assert len(Reason) == 16 and Reason.STAY in Reason
 
 
 def test_turn_thresholds_must_be_whole_numbers():

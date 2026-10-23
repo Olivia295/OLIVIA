@@ -179,6 +179,24 @@ def test_inspect_panel_shows_the_perception_fields(run_cli, data_home, mode_flag
         assert (data["stance"], data["readiness"]) == ("CONGRUENT", 0.5)
 
 
+@pytest.mark.parametrize("mode_flags", [[], ["--model"]], ids=["rules", "model"])
+def test_inspect_panel_shows_the_introspection_ids(run_cli, data_home, mode_flags):
+    # Decision D4, step C2: ids only, never the matched words.
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect", *mode_flags], ["都是我的错，我一无是处"])
+    (result,) = run.results
+    data = result.inspect
+    assert data["distortions"] == ["PERSONALIZATION"]
+    assert data["schemas"] == ["DEFECTIVENESS"]
+    assert data["yearning"] == "ACCEPTANCE"
+    assert data["schema_mirror"] is None
+    line = "│ 认知扭曲 PERSONALIZATION · 图式 DEFECTIVENESS · 渴望 ACCEPTANCE"
+    assert line in run.panel
+    panel = "\n".join(run.panel)
+    for forbidden in ("我的错", "一无是处", "图式镜像"):
+        assert forbidden not in panel
+
+
 def test_rules_only_by_default_and_says_so(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法"])

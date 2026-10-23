@@ -128,6 +128,18 @@ session that follows a crisis (or a no to the D3 question) in an earlier one; th
 decides when (``chang/care.py``). ``inspect["care_greeting"]`` and ``snapshot`` say
 whether this session opened with it.
 
+Introspection (decision D4, step C2; ``perception/introspector.py``): in both modes the
+introspector fills the turn's distortions, schemas and yearning right after the rule stub,
+so the yearning picks the metaphor and need phrase. In model mode only, the schema seen
+most on calm turns (no crisis, no L1 screen, arousal below the somatic line) is mirrored
+once per session as a gentle question that replaces the closing question of an S_clarify
+reply, never on a turn with a red flag active, the listening lock, the D3 question or its
+answer, an information card or a follow-up. A yes on the next turn (still in S_clarify,
+calm) sets ``core_belief_confirmed`` and the state machine moves to S_empower
+(``CLARIFY_CORE_BELIEF``); a no or anything else leaves the flow as it is.
+``inspect`` carries ``distortions``, ``schemas``, ``yearning`` (ids) and ``schema_mirror``
+(``asked``, ``confirmed``, ``declined`` or None).
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -135,7 +147,7 @@ only, and gate reasons are reduced to their check names.
 from __future__ import annotations
 
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -166,6 +178,15 @@ from olivia.core.models import (
     PerceptionContext,
     PersonaProfile,
     SessionState,
+)
+from olivia.core.perception.introspector import (
+    Introspector,
+    MirrorAnswer,
+    MirrorAnswers,
+    MirrorStatus,
+    SchemaMirror,
+    load_introspection_lexicon,
+    load_mirror_lines,
 )
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.model_heads import ModelHeads
@@ -256,11 +277,15 @@ class _Shared:
     hotline_source: str
     hotline_reason: str | None
     """Why the built-in hotline data was used instead of an override (``None``: override)."""
+    introspector: Introspector
+    mirror_answers: MirrorAnswers
+    mirror_lines: Mapping[str, tuple[str, ...]]
 
 
 @lru_cache(maxsize=4)
 def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
     lexicons = load_safety_lexicons(tax)
+    introspection = load_introspection_lexicon(tax)
     bundle = load_hotlines_bytes(None, today=datetime.fromisoformat(today_iso).date())
     return _Shared(
         lexicons=lexicons,
@@ -271,6 +296,9 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         store=parse_store(yaml.safe_load(bundle.data)),
         hotline_source=bundle.source,
         hotline_reason=bundle.reason,
+        introspector=Introspector(introspection),
+        mirror_answers=introspection.answers,
+        mirror_lines=load_mirror_lines(tax),
     )
 
 
@@ -364,6 +392,10 @@ class Session:
         start = started_at if started_at is not None else now()
         zone = profile.region.timezone if profile.region is not None else None
         self._wellbeing = Wellbeing(tax, zone, start)
+        # The schema mirror (decision D4) asks only in model mode.
+        self._mirror = SchemaMirror(
+            shared.mirror_answers, shared.mirror_lines, enabled=self._heads is not None
+        )
 
     @classmethod
     def open(
@@ -414,6 +446,7 @@ class Session:
         assessment, answer = self._answer_safety_check(text, assessment)
         model_level, model_score = self._risk.take_turn()
         perception, signals = self._shared.stub.perceive(text, assessment)
+        perception = self._shared.introspector.apply(text, perception)
         status = self._tracker.observe(assessment, text, perception.valence)
         self._last_status = status
         if self._heads is not None:
@@ -427,6 +460,25 @@ class Session:
         elif answer is not None:
             signals = replace(signals, answer=None)
         self._asking = ask
+        # A turn calm enough for the schema mirror: no crisis, no L1 screen, below the
+        # somatic line, not the D3 question or its answer. The L1 test is the rule screen's
+        # call, as for the D3 answer: a model's score band alone does not make "是的" L1.
+        shared_screen = self._shared.screen
+        rules = assessment if self._screen is shared_screen else shared_screen.assess(text)
+        calm = (
+            not status.in_crisis
+            and rules.level < CrisisLevel.L1
+            and perception.arousal < self._somatic
+            and not ask
+            and answer is None
+        )
+        mirror_answer = self._mirror.answer(
+            text, readable=calm and self._state.current_stage is HelpStage.S_CLARIFY
+        )
+        mirror_status = None if mirror_answer is None else MirrorStatus(mirror_answer.value)
+        if mirror_answer is MirrorAnswer.CONFIRMED:
+            signals = replace(signals, core_belief_confirmed=True)
+        self._mirror.observe(perception.detected_schemas, counts=calm)
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
@@ -452,6 +504,15 @@ class Session:
             and feedback is None
             and transition.previous is pending.stage
             and stage is pending.stage
+        )
+
+        mirror_schema = (
+            self._mirror.choose()
+            if stage is HelpStage.S_CLARIFY
+            and calm
+            and not flags
+            and not transition.state.pure_listening_locked
+            else None
         )
 
         templates = self._engine.data.templates
@@ -497,19 +558,28 @@ class Session:
             and not (pending is not None and pending.stage is HelpStage.S_EXPLORE)
         ):
             rendered = self._offer(stage, perception, flags, spectrum, mirror_text, now)
+        elif mirror_schema is not None:
+            schema: str = mirror_schema
+            rendered = self._with_taboo_filter(
+                lambda: self._compose_mirror(stage, perception, spectrum, mirror_text, schema),
+                stage,
+            )
+            if rendered.kind is ReplyKind.NORMAL:
+                self._mirror.mark_asked()
+                mirror_status = MirrorStatus.ASKED
         else:
             rendered = self._with_taboo_filter(
                 lambda: self._compose(stage, perception, spectrum, mirror_text), stage
             )
             ordinary = True
 
-        calm = not status.in_crisis and assessment.level < CrisisLevel.L1
+        settled = not status.in_crisis and assessment.level < CrisisLevel.L1
         plain = rendered.kind is ReplyKind.NORMAL or stage is HelpStage.S_HAVEN
         prompted = self._wellbeing.prompt(
             rendered.reply,
             now=now,
             stage=stage,
-            eligible=ordinary and calm and plain,
+            eligible=ordinary and settled and plain,
             locked=transition.state.pure_listening_locked,
             templates=templates,
             render=lambda variant: self._wellbeing_line(variant, stage),
@@ -564,6 +634,10 @@ class Session:
             "reminder": prompted.reminder.value,
             "real_support_share": round(self._wellbeing.real_support_share, 4),
             "care_greeting": self._care_greeting,
+            "distortions": list(perception.detected_distortions),
+            "schemas": list(perception.detected_schemas),
+            "yearning": perception.deep_yearning,
+            "schema_mirror": mirror_status.value if mirror_status is not None else None,
         }
         return TurnResult(
             reply=rendered.reply,
@@ -607,6 +681,7 @@ class Session:
             "awaiting_safety_check": self._asking,
             "gentle_care": self._gentle_care,
             "care_greeting": self._care_greeting,
+            "schema_mirror": self._mirror.status.value if self._mirror.status else None,
             "bandit": self._sampler.to_dict(),
         }
 
@@ -899,6 +974,34 @@ class Session:
         if not self._note_gate():
             return None
         return text, slots.mirror
+
+    def _compose_mirror(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        spectrum: str | None,
+        mirror_text: str,
+        schema: str,
+    ) -> tuple[str, str] | None:
+        """The S_clarify reply with its closing question replaced by the schema mirror.
+
+        The mirror line passes WILLOW and the gate on its own (``_plain_line``), and the
+        joined reply passes the gate once more.
+        """
+        composed = self._compose(stage, perception, spectrum, mirror_text)
+        if composed is None:
+            return None
+        line = self._plain_line(self._mirror.lines(schema), stage)
+        if line is None:
+            return None
+        head = composed[0].rsplit("\n\n", 1)[0]
+        result = self._engine.gate.check(
+            f"{head}\n\n{line[0]}", kind=ContentKind.NORMAL, stage=stage
+        )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text, composed[1]
 
     def _compose_stabilization(
         self,

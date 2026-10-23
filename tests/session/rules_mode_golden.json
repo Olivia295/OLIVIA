@@ -42,7 +42,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -93,7 +97,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -139,7 +147,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -185,7 +197,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -231,7 +247,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -277,7 +297,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1667,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -323,7 +347,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1429,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -374,7 +402,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.125,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -420,7 +452,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1111,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -503,7 +539,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -551,7 +591,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0909,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -601,7 +645,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0833,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -651,7 +699,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0769,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -699,7 +751,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0714,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -747,7 +803,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0667,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -795,7 +855,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.125,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -841,7 +905,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -892,7 +960,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -938,7 +1010,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -984,7 +1060,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1030,7 +1110,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1076,7 +1160,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1667,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1122,7 +1210,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1429,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1173,7 +1265,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.125,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1219,7 +1315,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1111,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1302,7 +1402,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.1,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1350,7 +1454,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0909,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1400,7 +1508,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0833,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1450,7 +1562,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0769,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1498,7 +1614,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0714,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1546,7 +1666,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.0667,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  },
  {
@@ -1594,7 +1718,11 @@
    "safety_check": null,
    "reminder": "none",
    "real_support_share": 0.125,
-   "care_greeting": false
+   "care_greeting": false,
+   "distortions": [],
+   "schemas": [],
+   "yearning": "SAFETY",
+   "schema_mirror": null
   }
  }
 ]
