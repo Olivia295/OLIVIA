@@ -126,6 +126,11 @@ def test_happy_path_with_timezone_choice_and_clinical_consent(tmp_path):
     checklist = flow.answer(f"{flags[2].code.lower()}，1  {flags[2].code}")
     assert isinstance(checklist, Prompt) and checklist.step is Step.CONTRAINDICATIONS
     assert checklist.options == tuple(TEXT.disclosure_labels[c] for c in PROFILE_CONTRAINDICATIONS)
+    assert PROFILE_CONTRAINDICATIONS == (
+        "CARDIORESPIRATORY_INSTABILITY",
+        "INTERPERSONAL_SAFETY_HAZARD",
+        "RED_FLAG_PSYCHOSIS",
+    )
     result = flow.answer("２")
     assert isinstance(result, Completed)
     assert result.profile.region == UserRegion(country_code="US", timezone="America/Los_Angeles")
@@ -481,10 +486,10 @@ def test_checklist_rejects_unknown_numbers_and_keeps_the_clinical_answer(tmp_pat
     flow = _flow(tmp_path)
     _to_region(flow)
     _walk(flow, ["1", TEXT.consent_sentence, "2"])
-    again = flow.answer("3")
+    again = flow.answer("4")
     assert isinstance(again, Prompt) and again.step is Step.CONTRAINDICATIONS
-    assert "「3」" in again.text and _files(tmp_path) == []
-    result = flow.answer("1、2")
+    assert "「4」" in again.text and _files(tmp_path) == []
+    result = flow.answer("1、2、3")
     assert isinstance(result, Completed)
     assert result.profile.clinical_history == (tuple(TAX.red_flags())[1],)
     assert result.profile.contraindications == PROFILE_CONTRAINDICATIONS
@@ -549,14 +554,15 @@ def test_encryption_switch_choice_is_saved(tmp_path, reply, whole):
 def test_clinical_history_is_encrypted_whatever_the_switch(tmp_path, encryption):
     flow = _flow(tmp_path)
     code = next(iter(TAX.red_flags()))
-    answers = ["1", "1", encryption, "", "", "", "", "1", TEXT.consent_sentence, "1", "1"]
+    answers = ["1", "1", encryption, "", "", "", "", "1", TEXT.consent_sentence, "1", "1，3"]
     result = _walk(flow, answers)
     assert isinstance(result, Completed) and result.profile.clinical_history == (code,)
-    disclosed = PROFILE_CONTRAINDICATIONS[0]
-    assert result.profile.contraindications == (disclosed,)
+    disclosed = (PROFILE_CONTRAINDICATIONS[0], "RED_FLAG_PSYCHOSIS")
+    assert result.profile.contraindications == disclosed
     for raw in _profile_bytes(tmp_path):
         assert code.encode() not in raw and b"clinical_history" not in raw
-        assert disclosed.encode() not in raw and b"contraindications" not in raw
+        assert b"contraindications" not in raw and b"PSYCHOSIS" not in raw
+        assert disclosed[0].encode() not in raw
     assert ProfileStore(tmp_path).load() == result.profile
 
 

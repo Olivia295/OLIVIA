@@ -16,9 +16,9 @@ from olivia.core.taxonomy import load_taxonomy
 TEXT = load_onboarding_text()
 HEALTH = TEXT.health
 FLAGS = tuple(load_taxonomy().red_flags())
-CARDIO, SAFETY = PROFILE_CONTRAINDICATIONS
-# 1-based numbers in the list: the red flags first, then the two disclosures.
-CARDIO_NO, SAFETY_NO = len(FLAGS) + 1, len(FLAGS) + 2
+CARDIO, SAFETY, PSYCHOSIS = PROFILE_CONTRAINDICATIONS
+# 1-based numbers in the list: the red flags first, then the three disclosures.
+CARDIO_NO, SAFETY_NO, PSYCHOSIS_NO = len(FLAGS) + 1, len(FLAGS) + 2, len(FLAGS) + 3
 LATER = datetime(2026, 10, 23, 9, 0, tzinfo=NOW.tzinfo)
 
 
@@ -57,6 +57,24 @@ def test_the_list_shows_labels_and_what_is_recorded(run_cli, data_home):
     assert f"  {CARDIO_NO}. {TEXT.disclosure_labels[CARDIO]}" in run.lines
     assert f"  1. {FLAGS[0]} {names[FLAGS[0]].name_zh}" in run.lines
     assert _load(data_home).contraindications == (CARDIO,)
+
+
+def test_the_list_offers_the_three_disclosures_last(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["health"], [""])
+    numbers = (CARDIO_NO, SAFETY_NO, PSYCHOSIS_NO)
+    for number, cid in zip(numbers, PROFILE_CONTRAINDICATIONS, strict=True):
+        assert f"  {number}. {TEXT.disclosure_labels[cid]}" in run.lines
+    assert not [line for line in run.lines if line.startswith(f"  {PSYCHOSIS_NO + 1}. ")]
+
+
+def test_the_psychosis_disclosure_is_saved_encrypted(run_cli, data_home):
+    save_profile(data_home, contraindications=(CARDIO,))
+    run = run_cli(["health"], [f"{CARDIO_NO}，{PSYCHOSIS_NO}"], now=LATER)
+    assert run.code == 0 and run.lines[-1] == HEALTH["saved"]
+    assert _load(data_home).contraindications == (CARDIO, PSYCHOSIS)
+    raw = _raw(data_home)
+    assert PSYCHOSIS.encode() not in raw and CARDIO.encode() not in raw
 
 
 def test_changing_an_existing_record_needs_no_second_consent(run_cli, data_home):
@@ -137,6 +155,15 @@ def test_onboarding_checklist_is_saved_and_used_by_the_session(run_cli, data_hom
     assert _load(data_home).contraindications == (SAFETY,)
     assert SAFETY in run.results[0].inspect["contraindications"]
     assert f"│ 禁忌 {SAFETY} · 情境 -" in run.panel
+
+
+def test_the_third_checklist_item_records_psychosis_for_the_session(run_cli, data_home):
+    answers = [*ONBOARD_CN[:-1], TEXT.consent_sentence, "", "3"]
+    run = run_cli(["chat", "--inspect"], [*answers, "[80%] 给我一个方法"])
+    assert run.code == 0
+    assert _load(data_home).contraindications == (PSYCHOSIS,)
+    assert run.results[0].inspect["contraindications"] == [PSYCHOSIS]
+    assert "olivia health" not in run.results[0].reply
 
 
 def test_a_disclosure_in_chat_is_never_written_to_the_profile(run_cli, data_home):

@@ -42,6 +42,9 @@ TAX_FILE = Path(__file__).resolve().parents[2] / "olivia/data/taxonomy.yaml"
 ENUMS = TAX.values("contraindication_enums")
 STUB = RuleStub(TAX, load_perception_lexicon(TAX))
 NO_FLAGS: frozenset[str] = frozenset()
+PSYCHOSIS = "RED_FLAG_PSYCHOSIS"
+# The taxonomy's methods that list it under contraindications; no registry action does.
+PSYCHOSIS_BLOCKS = {"01", "02", "10", "11", "14", "16", "44", "66"}
 
 # The taxonomy names these red-flag codes in the sources (RED_FLAG_DETECTOR (SIT-..)).
 RED_FLAG_LINKS = {
@@ -227,7 +230,7 @@ def test_unsaved_disclosures_are_reported_once():
 
 
 def test_every_enum_has_a_source_that_sets_it():
-    """All 13 enums are reachable, except RED_FLAG_PSYCHOSIS (its source names no code)."""
+    """All 13 enums are reachable; RED_FLAG_PSYCHOSIS only through the profile."""
     reached: set[str] = set()
     tracker = _fresh(PROFILE_CONTRAINDICATIONS)
     for text in ("我奶奶刚去世", "我就是个废物"):
@@ -243,8 +246,35 @@ def test_every_enum_has_a_source_that_sets_it():
         battery=0.8,
     )
     reached |= active_contraindications(TAX, inp)
-    assert set(ENUMS) - reached == {"RED_FLAG_PSYCHOSIS"}
+    assert reached == set(ENUMS)
     assert OVERLOAD_CONTRAINDICATION in reached
+
+
+# -- RED_FLAG_PSYCHOSIS: a profile disclosure only ---------------------------------------
+
+
+def test_psychosis_is_a_profile_disclosure_with_no_conversation_source():
+    assert PSYCHOSIS in PROFILE_CONTRAINDICATIONS
+    links = source_links(TAX)
+    linked = (*links.red_flags.values(), *links.situations.values())
+    assert not [ids for ids in linked if PSYCHOSIS in ids]
+    assert PSYCHOSIS not in load_perception_lexicon(TAX).contraindication_cues
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我总听到有人在跟我说话",
+        "我觉得有人一直在监视我",
+        "我有幻觉",
+        "医生说我有妄想",
+        "脑子里有声音",
+    ],
+)
+def test_no_conversation_text_sets_psychosis(text):
+    tracker = _fresh()
+    assert PSYCHOSIS not in _observe(tracker, text)[0]
+    assert PSYCHOSIS not in tracker.unsaved_disclosures()
 
 
 # -- the solver never offers a contraindicated action ----------------------------------
@@ -284,6 +314,24 @@ def test_a_contraindicated_action_is_never_a_candidate(enum_id, stage, arousal):
     with_enum = set(allowed_actions(TAX, _input(stage, arousal, frozenset({enum_id}))).candidates)
     assert not with_enum & blocked
     assert with_enum == without - blocked
+
+
+@pytest.mark.parametrize(
+    ("stage", "arousal"), [(HelpStage.S_EMPOWER, 0.3), (HelpStage.S_EXPLORE, 0.8)]
+)
+def test_the_psychosis_disclosure_masks_exactly_its_taxonomy_methods(stage, arousal):
+    blocked = {aid for aid in (*TAX.methods(), *TAX.action_registry()) if PSYCHOSIS in _own(aid)}
+    assert blocked == PSYCHOSIS_BLOCKS
+    active, _ = _observe(_fresh((PSYCHOSIS,)))
+    assert active == {PSYCHOSIS}
+    without = set(allowed_actions(TAX, _input(stage, arousal, frozenset())).candidates)
+    with_disclosure = set(allowed_actions(TAX, _input(stage, arousal, active)).candidates)
+    assert with_disclosure == without - PSYCHOSIS_BLOCKS
+
+
+def test_the_psychosis_disclosure_has_candidates_to_remove():
+    inp = _input(HelpStage.S_EMPOWER, 0.3, frozenset())
+    assert set(allowed_actions(TAX, inp).candidates) & PSYCHOSIS_BLOCKS
 
 
 def test_substance_withdrawal_blocks_no_action_of_its_own():
