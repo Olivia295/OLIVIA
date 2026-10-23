@@ -1353,3 +1353,99 @@ negation:
     - 埋没
     - 出没
     - 要不
+
+# Grade B/C therapies the user may ask about by name (roadmap next-phase A4; PRD §8.1:
+# Grade B is explained only in S_clarify, Grade C only when the user asks). Keys are the
+# taxonomy method ids (quoted); every Grade B and Grade C method is listed, and no Grade A
+# method is, since only B/C methods have an information card. Each list starts with the
+# taxonomy name_zh (split at " / "), then common short names. A phrase of Latin letters
+# only counts as a whole word ("eft" in "left" is not EFT). Generic names that fit several
+# methods (家庭治疗, 认知行为疗法, 正念) are left out on purpose. A name counts as a
+# question only together with a therapy_question_cues phrase in the same message.
+therapy_names:
+  # Grade B (26)
+  "09": [认知行为分析系统心理治疗, 认知行为分析系统, CBASP]
+  "19": [图式疗法, 图式治疗, 图式心理治疗]
+  "20": [功能分析心理治疗, 功能分析疗法]
+  "33": [心智化基础疗法, 心智化疗法, 心智化治疗, MBT]
+  "35": [客体关系与依恋取向心理治疗, 客体关系, 依恋取向心理治疗]
+  "36": [自体心理学治疗, 自体心理学, 科胡特]
+  "37": [荣格分析心理学与自性化/积极想象技术, 荣格分析心理学, 分析心理学, 荣格心理学, 积极想象]
+  "38": [阿德勒个体心理学疗法, 阿德勒心理学, 个体心理学, 课题分离]
+  "39": [以人为中心疗法, 来访者中心疗法, 以人为中心治疗]
+  "40": [情绪聚焦疗法, 情绪聚焦治疗, EFT]
+  "41": [存在主义心理治疗, 存在主义疗法, 存在主义治疗]
+  "43": [格式塔疗法, 完形疗法, 格式塔治疗, 完形治疗]
+  "45": [加速体验动力学心理治疗, AEDP]
+  "47": [内在家庭系统疗法, 内在家庭系统, IFS]
+  "48": [萨提亚转化式系统家庭治疗与冰山模型, 萨提亚, 冰山模型]
+  "49": [人际心理治疗与人际社会节律疗法, 人际心理治疗, 人际社会节律疗法, IPT, IPSRT]
+  "53": [戈特曼伴侣治疗法, 戈特曼, Gottman]
+  "54": [交互分析疗法, 沟通分析, 交互分析]
+  "56": [叙事疗法, 叙事治疗]
+  "58": [复杂性哀伤疗法与双程应对模型, 复杂性哀伤疗法, 双程应对模型]
+  "60": [一致性疗法与记忆再巩固技术, 一致性疗法, 记忆再巩固]
+  "63": [心理剧疗法, 心理剧]
+  "64": [沙盘游戏与表达性艺术治疗, 沙盘游戏, 沙盘疗法, 沙盘治疗, 表达性艺术治疗, 艺术治疗]
+  "67": [亚隆人际团体心理治疗与11个疗效因子, 亚隆, 团体心理治疗, 团体治疗]
+  "68": [哈科米正念躯体心理治疗, 哈科米, Hakomi]
+  "73": [疾病焦虑与躯体症状认知行为疗法]
+  # Grade C (17)
+  "04": [暴露与反应阻止疗法, 暴露与反应阻止, 暴露反应阻止, ERP疗法, ERP治疗]
+  "05": [系统脱敏与分级暴露疗法, 系统脱敏, 分级暴露, 暴露疗法]
+  "21": [眼动脱敏与再加工疗法, 眼动脱敏, 眼动疗法, EMDR]
+  "22": [认知加工疗法, 认知处理疗法, CPT]
+  "23": [延长暴露疗法, 延长暴露, 长程暴露疗法]
+  "24": [躯体体验疗法, 躯体经验疗法]
+  "25": [感官运动心理治疗, 感觉运动心理治疗, 感觉运动疗法]
+  "26": [叙事暴露疗法]
+  "27": [创伤聚焦认知行为疗法与意象重构, 创伤聚焦认知行为疗法, 创伤聚焦认知行为治疗, 意象重构, TF-CBT]
+  "31": [经典精神分析与自由联想/释梦/防御分析, 精神分析, 自由联想]
+  "32": [短程心理动力学心理治疗与时间限定动力治疗, 短程心理动力学, 时间限定动力治疗, STPP, ISTDP]
+  "34": [移情焦点心理治疗, 移情焦点治疗, 移情焦点疗法, TFP]
+  "50": [鲍温家庭系统理论与自我分化治疗, 鲍温家庭系统, 自我分化]
+  "51": [结构派与策略派家庭治疗, 结构派家庭治疗, 策略派家庭治疗, 结构式家庭治疗]
+  "52": [米兰系统派家庭治疗与循环提问, 米兰系统派, 米兰学派, 循环提问]
+  "59": [进食障碍强化认知行为疗法, CBT-E]
+  "71": [依恋取向家庭治疗, ABFT]
+
+# The user is asking about the named therapy: what it is, whether it works, whether it
+# fits. Negation applies as everywhere ("不想了解" is not a question).
+therapy_question_cues:
+  - 是什么
+  - 是啥
+  - 什么是
+  - 啥是
+  - 什么意思
+  - 啥意思
+  - 有用吗
+  - 有没有用
+  - 有效吗
+  - 有没有效
+  - 管用吗
+  - 靠谱吗
+  - 有帮助吗
+  - 能帮到
+  - 能帮我
+  - 怎么样
+  - 好不好
+  - 适合我吗
+  - 适不适合
+  - 介绍一下
+  - 介绍下
+  - 讲讲
+  - 讲一下
+  - 说说
+  - 说一下
+  - 科普
+  - 想了解
+  - 了解一下
+  - 你知道
+  - 听说过
+  - 是干嘛的
+  - 是做什么的
+  - 怎么回事
+  - 原理
+  - 有什么用
+  - 有什么区别
+  - "?"

@@ -62,7 +62,10 @@ Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None witho
 phrases match, the later one in the message wins, since a turn cannot both set and
 release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
 reads them in different stages (S_empower, S_closing). ``kit_recall`` when a non-negated
-kit-recall phrase matched.
+kit-recall phrase matched. ``therapy_question``: the method id of the first non-negated
+``therapy_names`` hit, when a non-negated ``therapy_question_cues`` phrase matched too; a
+name whose first or last character is a Latin letter or digit counts only when the text
+next to it is not one ("eft" inside "left" is no hit).
 
 Natural-language feedback (roadmap R-7b), only on a turn that is not a slash command:
 
@@ -132,6 +135,8 @@ _LOCK_OFF: Final = "lock_off"
 _AVERSION: Final = "aversion"
 _INTENT: Final = "intent_confirmed"
 _RECALL: Final = "kit_recall"
+_THERAPY: Final = "therapy"
+_THERAPY_CUE: Final = "therapy_cue"
 # Labels of the feedback matcher: a command, or a kit recall (matched only to win
 # containment over a feedback phrase inside it).
 _FeedbackLabel = Command | str
@@ -205,6 +210,9 @@ class RuleStub:
         add(_REFERRAL, _REFERRAL, lexicon.referral_cues)
         add(_STABILIZATION, _STABILIZATION, lexicon.stabilization_cues)
         add(_ACUTE, _ACUTE, lexicon.acute_arousal_cues)
+        for method_id, phrases in lexicon.therapy_names.items():
+            add(_THERAPY, method_id, phrases)
+        add(_THERAPY_CUE, _THERAPY_CUE, lexicon.therapy_question_cues)
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
 
@@ -305,6 +313,7 @@ class RuleStub:
             feedback_unclear=unclear,
             answer=answer,
             kit_recall=_RECALL in labels,
+            therapy_question=_therapy_question(body, hits),
         )
         return context, turn
 
@@ -412,6 +421,26 @@ def _outermost(items: list[tuple[_L, Match]]) -> list[tuple[_L, Match]]:
             kept.append((label, match))
             furthest = match.end
     return kept
+
+
+def _therapy_question(body: str, hits: Mapping[str, list[tuple[str, Match]]]) -> str | None:
+    """The first named Grade B/C therapy, when the message also asks about it."""
+    if not hits.get(_THERAPY_CUE):
+        return None
+    named = [(m.start, label) for label, m in hits.get(_THERAPY, ()) if _whole_word(body, m)]
+    return min(named)[1] if named else None
+
+
+def _whole_word(body: str, match: Match) -> bool:
+    """False when a Latin-letter or digit edge of the hit runs into more of the same."""
+    first, last = body[match.start], body[match.end - 1]
+    before = body[match.start - 1] if match.start > 0 else ""
+    after = body[match.end] if match.end < len(body) else ""
+    return not (_latin(first) and _latin(before)) and not (_latin(last) and _latin(after))
+
+
+def _latin(char: str) -> bool:
+    return char.isascii() and char.isalnum()
 
 
 def _lock(signals: list[tuple[str, Match]]) -> tuple[bool, bool]:

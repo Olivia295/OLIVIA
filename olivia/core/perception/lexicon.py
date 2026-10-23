@@ -15,6 +15,10 @@ within the whole-message group (unclear, affirm, decline) a phrase may appear on
 
 Emotion keys may be TAX emotion aliases; they are folded into the canonical id, and the
 key order is kept as the tie-break priority between emotions (first key wins).
+
+``therapy_names`` maps every Grade B and Grade C taxonomy method id, and nothing else, to
+the names a user may ask about it by; a name belongs to one method only.
+``therapy_question_cues`` are the words that make a named therapy a question.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from typing import Any, Final
 
 import yaml
 
+from olivia.core.models import SafetyGrade
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy, TaxonomyError
 
@@ -45,6 +50,7 @@ _PHRASE_SECTIONS: Final = (
     "stabilization_cues",
     "acute_arousal_cues",
     "kit_recall",
+    "therapy_question_cues",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -55,6 +61,7 @@ _SECTIONS: Final = frozenset(
         "negation",
         "feedback",
         "answers",
+        "therapy_names",
         *_PHRASE_SECTIONS,
     }
 )
@@ -71,6 +78,7 @@ _SIGNAL_GROUP: Final = (
 )
 _FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
 _ANSWER_KEYS: Final = ("affirm", "decline")
+_INFO_GRADES: Final = frozenset({SafetyGrade.GRADE_B, SafetyGrade.GRADE_C})
 
 
 class PerceptionLexiconError(Exception):
@@ -111,6 +119,10 @@ class PerceptionLexicon:
     """Whole-message no ("不用了"), marks stripped."""
     kit_recall: tuple[str, ...]
     """The user asks to see a shelved method again ("锦囊里那个再给我看看")."""
+    therapy_names: Mapping[str, tuple[str, ...]]
+    """Grade B/C method id -> folded names, every such method present, in taxonomy order."""
+    therapy_question_cues: tuple[str, ...]
+    """Words that make a named therapy a question ("是什么", "有用吗")."""
 
 
 def strip_marks(text: str) -> str:
@@ -178,6 +190,8 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         answer_affirm=answers["affirm"],
         answer_decline=answers["decline"],
         kit_recall=phrases["kit_recall"],
+        therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
+        therapy_question_cues=phrases["therapy_question_cues"],
     )
 
 
@@ -302,6 +316,24 @@ def _spectrum_cues(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
     _check_distinct(spectra, "spectrum_cues")
     # Taxonomy order, whatever the file order, so the distress vector is stable.
     return {sid: spectra[sid] for sid in known}
+
+
+def _therapy_names(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
+    methods = tax.methods()
+    section = _mapping(node, "therapy_names")
+    names: dict[str, tuple[str, ...]] = {}
+    for key, raw in section.items():
+        method = methods.get(key) if isinstance(key, str) else None
+        if method is None or method.grade not in _INFO_GRADES:
+            raise PerceptionLexiconError(
+                f"{_FILE}: therapy_names key {key!r} is not a Grade B or C method id (quote it)"
+            )
+        names[key] = _phrases(raw, f"therapy_names.{key}")
+    missing = [mid for mid, m in methods.items() if m.grade in _INFO_GRADES and mid not in names]
+    if missing:
+        raise PerceptionLexiconError(f"{_FILE}: therapy_names has no entry for {missing}")
+    _check_distinct(names, "therapy_names")
+    return {mid: names[mid] for mid in methods if mid in names}
 
 
 def _negation(node: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:

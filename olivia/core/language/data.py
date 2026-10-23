@@ -175,6 +175,13 @@ class RenderText:
     info_what_label: str
     info_how_label: str
     info_who_label: str
+    info_ask_intro: str
+    """Leads an information card the user asked for by name."""
+    info_lens_intro: str
+    """Leads a Grade B card that S_clarify offers as a perspective."""
+    info_b_closing: str
+    info_c_closing: str
+    """Ends a Grade C card: not for trying alone; see a professional."""
     referral_intro: str
     referral_destinations: Mapping[str, str]
     referral_closing: str
@@ -197,6 +204,8 @@ class LanguageData:
     templates: Templates
     cards: CardDeck
     info: Mapping[str, InfoEntry]
+    info_lenses: Mapping[str, tuple[str, ...]]
+    """Spectrum id -> the Grade B explainers S_clarify may offer for it (draft, G-0)."""
 
 
 # -- entry point --------------------------------------------------------------------------
@@ -205,6 +214,8 @@ class LanguageData:
 def load_language_data(tax: Taxonomy, root: Path | None = None) -> LanguageData:
     """Load and validate every language file from ``root`` (default: packaged ``olivia/data``)."""
     willow = _parse_willow(_read(root, "language/willow.yaml"))
+    info_doc = _read(root, "cards/grade_bc_info.yaml")
+    info = _parse_info(info_doc, tax)
     return LanguageData(
         willow=willow,
         metaphors=_parse_metaphors(_read(root, "language/metaphors.yaml"), tax),
@@ -212,7 +223,8 @@ def load_language_data(tax: Taxonomy, root: Path | None = None) -> LanguageData:
         render=_parse_render(_read(root, "language/render.yaml"), tax),
         templates=_parse_templates(_read(root, "templates/gentle_holding.yaml")),
         cards=_parse_cards(_read(root, "cards/grade_a.yaml"), tax),
-        info=_parse_info(_read(root, "cards/grade_bc_info.yaml"), tax),
+        info=info,
+        info_lenses=_parse_lenses(info_doc, info, tax),
     )
 
 
@@ -311,7 +323,19 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
     if slots_of(duration) != {"minutes"}:
         raise LanguageDataError(f"{where} card.duration must carry exactly the {{minutes}} slot")
     info = _map(data["info"], f"{where} info")
-    _keys(info, {"what_label", "how_label", "who_label"}, f"{where} info")
+    _keys(
+        info,
+        {
+            "what_label",
+            "how_label",
+            "who_label",
+            "ask_intro",
+            "lens_intro",
+            "b_closing",
+            "c_closing",
+        },
+        f"{where} info",
+    )
     ref = _map(data["referral"], f"{where} referral")
     _keys(ref, {"intro", "destinations", "closing"}, f"{where} referral")
     dest_raw = _map(ref["destinations"], f"{where} referral.destinations")
@@ -353,6 +377,10 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         info_what_label=_str(info["what_label"], f"{where} info.what_label"),
         info_how_label=_str(info["how_label"], f"{where} info.how_label"),
         info_who_label=_str(info["who_label"], f"{where} info.who_label"),
+        info_ask_intro=_str(info["ask_intro"], f"{where} info.ask_intro"),
+        info_lens_intro=_str(info["lens_intro"], f"{where} info.lens_intro"),
+        info_b_closing=_str(info["b_closing"], f"{where} info.b_closing"),
+        info_c_closing=_str(info["c_closing"], f"{where} info.c_closing"),
         referral_intro=_str(ref["intro"], f"{where} referral.intro"),
         referral_destinations=MappingProxyType(
             {code: _str(dest_raw[code], f"{where} {code}") for code in tax.red_flags()}
@@ -542,7 +570,7 @@ def _card_sources(tax: Taxonomy) -> dict[str, tuple[str, int, int]]:
 
 def _parse_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntry]:
     where = "grade_bc_info.yaml"
-    _keys(data, {"entries"}, where)
+    _keys(data, {"entries", "clarify_lenses"}, where)
     grades = {"B": SafetyGrade.GRADE_B, "C": SafetyGrade.GRADE_C}
     entries: dict[str, InfoEntry] = {}
     for raw in _list(data["entries"], f"{where} entries"):
@@ -577,6 +605,26 @@ def _parse_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntr
     if set(entries) != expected:
         raise LanguageDataError(f"{where}: entries must cover exactly the Grade B/C methods")
     return MappingProxyType(entries)
+
+
+def _parse_lenses(
+    data: Mapping[str, Any], info: Mapping[str, InfoEntry], tax: Taxonomy
+) -> Mapping[str, tuple[str, ...]]:
+    """``clarify_lenses``: spectrum id -> distinct Grade B ids that have an entry."""
+    where = "grade_bc_info.yaml clarify_lenses"
+    raw = _map(data["clarify_lenses"], where)
+    _keys(raw, set(), where, optional=set(tax.spectrum_ids()))
+    lenses: dict[str, tuple[str, ...]] = {}
+    for spectrum in tax.spectrum_ids():
+        if spectrum not in raw:
+            continue
+        ids = _unique(_strs(raw[spectrum], f"{where}.{spectrum}"), f"{where}.{spectrum}")
+        for mid in ids:
+            entry = info.get(mid)
+            if entry is None or entry.grade is not SafetyGrade.GRADE_B:
+                raise LanguageDataError(f"{where}.{spectrum}: {mid} is not a Grade B method")
+        lenses[spectrum] = ids
+    return MappingProxyType(lenses)
 
 
 # -- primitives ----------------------------------------------------------------------------

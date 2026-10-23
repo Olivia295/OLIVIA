@@ -56,6 +56,9 @@ class TurnSignals:
     gives it a meaning."""
     kit_recall: bool = False
     """The user asks to see a method they shelved earlier ("锦囊里那个再给我看看")."""
+    therapy_question: str | None = None
+    """The Grade B/C method the user asks about by name ("EMDR 有用吗" -> ``"21"``), as a
+    taxonomy method id; None when the turn asks about none (roadmap next-phase A4)."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

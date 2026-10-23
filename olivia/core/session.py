@@ -49,10 +49,25 @@ the profile, or newly detected in the text) appends ``render_referral`` for it, 
 flag per session. A plan in S_empower or a stabilization card also appends the referral
 for its plan's flags every time, since the solver requires the card with every plan.
 
+Grade B/C information cards (PRD §8.1, roadmap next-phase A4), never on a crisis turn
+(the tracker's crisis or an L1-L3 screen), with feedback for a waiting card, or with a
+direct request; the solver's ``info_cards`` applies the red-flag closure, bans, arousal
+gate and stage rules, so a red-flag user only ever gets the referral card:
+
+* asked: a Grade B/C therapy named in a question (``TurnSignals.therapy_question``) gets
+  ``render_info_reply(lens=False)`` as the whole reply, Grade C in any ordinary stage and
+  Grade B in S_clarify only. A card waiting for feedback keeps waiting.
+* lens: once per session, an S_clarify turn without the listening lock appends one Grade
+  B explainer (``render_info_reply(lens=True)``) to the S_clarify reply, drawn from the
+  ``clarify_lenses`` entry of the most recent spectrum the conversation showed.
+
+A card whose text names one of the profile's taboo topics, or that the gate blocks, is
+not shown and the turn is handled as if nothing had been asked.
+
 Reply kinds: CRISIS for the crisis path; CARD when an exercise card is shown; REFERRAL
-when a referral card is shown and no exercise card; HAVEN for S_haven and for any reply
-the gate or the taboo filter replaced with the haven line; NORMAL otherwise. INFO is
-reserved for the Grade B/C information path, which no R1 stage uses yet.
+when a referral card is shown and no exercise card; INFO when a Grade B/C information
+card is shown; HAVEN for S_haven and for any reply the gate or the taboo filter replaced
+with the haven line; NORMAL otherwise.
 
 Taboo topics (ruling 21) are a hard filter on every non-CRISIS, non-REFERRAL text: a hit
 outside the mirrored user words recomposes the reply with fresh template draws, up to
@@ -130,6 +145,7 @@ from olivia.core.methods.solver import (
     SolverInput,
     allowed_actions,
     build_plan,
+    info_cards,
 )
 from olivia.core.models import (
     CrisisLevel,
@@ -264,6 +280,7 @@ class _Rendered:
     candidates: tuple[str, ...] = ()
     chosen: str | None = None
     pending: _Pending | None = None
+    info_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -326,6 +343,8 @@ class Session:
         self._gentle_care = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
+        self._last_spectrum: str | None = None
+        self._lens_shown = False
 
     @classmethod
     def open(
@@ -403,6 +422,11 @@ class Session:
         # A command is not something to mirror back.
         mirror_text = "" if signals.command is not None else text
         feedback = self._feedback_for(pending, transition, signals)
+        if spectrum is not None:
+            self._last_spectrum = spectrum
+        info = self._info_choice(
+            stage, perception, flags, signals, status, assessment.level, feedback, transition
+        )
         # The waiting card is still on screen, in the stage it was shown in.
         still_waiting = (
             pending is not None
@@ -427,6 +451,8 @@ class Session:
             rendered = self._offer(
                 stage, perception, flags, spectrum, mirror_text, now, recall=True
             )
+        elif info is not None:
+            rendered = self._info(info, stage, perception, spectrum, mirror_text)
         elif stage is HelpStage.S_EMPOWER:
             # A card still waiting for feedback is not replaced: staying in S_empower, or
             # asking for a method right after an S_explore stabilization card, gets the
@@ -487,6 +513,7 @@ class Session:
             "red_flags": sorted(flags),
             "candidates": list(rendered.candidates),
             "chosen": rendered.chosen,
+            "info": rendered.info_id,
             "feedback": feedback.value if feedback is not None else None,
             "feedback_source": (
                 follow.source.value if feedback is not None and follow.source is not None else None
@@ -695,6 +722,76 @@ class Session:
         # stabilization card it backs; S_explore companionship relies on the new-flag rule.
         if stage is HelpStage.S_EMPOWER or rendered.action_id is not None:
             rendered.referral_flags = plan.referral_flags
+        return rendered
+
+    def _info_choice(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        flags: frozenset[str],
+        signals: TurnSignals,
+        status: CrisisStatus,
+        assessed: CrisisLevel,
+        feedback: Feedback | None,
+        transition: Transition,
+    ) -> tuple[str, str, bool] | None:
+        """(method id, card text, lens) for a Grade B/C card to show, or None."""
+        if (
+            status.in_crisis
+            or assessed >= CrisisLevel.L1
+            or feedback is not None
+            or signals.direct_request
+        ):
+            return None
+        inp = SolverInput(
+            stage=stage,
+            arousal=perception.arousal,
+            active_red_flags=flags,
+            active_contraindications=frozenset(),
+            situation_codes=frozenset(),
+            shelved_actions=frozenset(),
+        )
+        asked = signals.therapy_question
+        if asked is not None:
+            chosen, lens = (asked if info_cards(self._tax, inp, asked) else None), False
+        elif (
+            stage is HelpStage.S_CLARIFY
+            and not self._lens_shown
+            and not transition.state.pure_listening_locked
+        ):
+            fits = self._engine.data.info_lenses.get(self._last_spectrum or "", ())
+            pool = [mid for mid in info_cards(self._tax, inp) if mid in fits]
+            chosen, lens = (self._rng.choice(pool) if pool else None), True
+        else:
+            return None
+        if chosen is None:
+            return None
+        self._engine.last_gate = None
+        text = self._engine.render_info_reply(chosen, lens=lens)
+        if not self._note_gate() or self._has_taboo(text, ""):
+            return None
+        return chosen, text, lens
+
+    def _info(
+        self,
+        info: tuple[str, str, bool],
+        stage: HelpStage,
+        perception: PerceptionContext,
+        spectrum: str | None,
+        mirror_text: str,
+    ) -> _Rendered:
+        """The information card alone, or after the S_clarify reply for a lens."""
+        method_id, text, lens = info
+        if not lens:
+            return _Rendered(text, ReplyKind.INFO, info_id=method_id)
+        rendered = self._with_taboo_filter(
+            lambda: self._compose(stage, perception, spectrum, mirror_text), stage
+        )
+        if rendered.kind is ReplyKind.NORMAL:
+            rendered.reply = f"{rendered.reply}\n\n{text}"
+            rendered.kind = ReplyKind.INFO
+            rendered.info_id = method_id
+            self._lens_shown = True
         return rendered
 
     def _allowed(

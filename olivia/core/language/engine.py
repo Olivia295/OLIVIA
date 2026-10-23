@@ -25,6 +25,7 @@ from typing import Final
 from olivia.core.language.data import (
     ContentKind,
     ExerciseCard,
+    InfoEntry,
     LanguageData,
     load_language_data,
     slots_of,
@@ -276,13 +277,34 @@ class LanguageEngine:
         entry = self._data.info.get(method_id)
         if entry is None:
             raise ValueError(f"{method_id} has no Grade B/C information card")
-        kind = (
-            ContentKind.GRADE_B_INFO
-            if entry.grade is SafetyGrade.GRADE_B
-            else ContentKind.GRADE_C_INFO
-        )
+        kind = _info_kind(entry)
+        text = apply_willow(self._info_body(entry), kind, self._data.willow)
+        return self._checked(text, kind, HelpStage.S_CLARIFY)
+
+    def render_info_reply(self, method_id: str, *, lens: bool) -> str:
+        """The framed information card (roadmap next-phase A4).
+
+        The lead is ``info.lens_intro`` when S_clarify offers a Grade B perspective
+        (``lens``) and ``info.ask_intro`` when the user asked; the closing is
+        ``info.b_closing`` for Grade B (a way of seeing, nothing to do) or
+        ``info.c_closing`` for Grade C (not for trying alone; see a professional). The
+        whole reply goes through WILLOW and the gate as the card's grade. Raises
+        ``ValueError`` for an id with no Grade B/C card.
+        """
+        entry = self._data.info.get(method_id)
+        if entry is None:
+            raise ValueError(f"{method_id} has no Grade B/C information card")
+        kind = _info_kind(entry)
         r = self._data.render
-        text = "\n".join(
+        lead = r.info_lens_intro if lens else r.info_ask_intro
+        closing = r.info_b_closing if kind is ContentKind.GRADE_B_INFO else r.info_c_closing
+        text = f"{lead}\n\n{self._info_body(entry)}\n\n{closing}"
+        text = apply_willow(text, kind, self._data.willow)
+        return self._checked(text, kind, HelpStage.S_CLARIFY)
+
+    def _info_body(self, entry: InfoEntry) -> str:
+        r = self._data.render
+        return "\n".join(
             [
                 f"「{entry.title}」",
                 f"{r.info_what_label}{entry.what_it_is}",
@@ -290,8 +312,6 @@ class LanguageEngine:
                 f"{r.info_who_label}{entry.who_offers_it}",
             ]
         )
-        text = apply_willow(text, kind, self._data.willow)
-        return self._checked(text, kind, HelpStage.S_CLARIFY)
 
     def render_referral(self, flags: Iterable[str]) -> str:
         """The specialist referral card for active red-flag codes (taxonomy order)."""
@@ -407,6 +427,12 @@ class LanguageEngine:
 
 def _numbers(card: ResourceCard) -> list[str]:
     return [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+
+
+def _info_kind(entry: InfoEntry) -> ContentKind:
+    if entry.grade is SafetyGrade.GRADE_B:
+        return ContentKind.GRADE_B_INFO
+    return ContentKind.GRADE_C_INFO
 
 
 def _fill(template: str, values: dict[str, str]) -> str:
