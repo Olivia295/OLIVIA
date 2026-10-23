@@ -165,6 +165,18 @@ in S_clarify, calm) sets ``core_belief_confirmed`` and the state machine moves t
 ``inspect`` carries ``distortions``, ``schemas``, ``yearning`` (ids) and ``schema_mirror``
 (``asked``, ``confirmed``, ``declined`` or None).
 
+Narrative externalization (PRD 特性四, step C3; ``perception/externalize.py``): under the
+mirror's gates, never on the mirror's turn or the turn reading its answer and not after a
+no to the mirror, an inner-critic pattern gets one offer per session to name it, which
+replaces the closing question of an S_clarify reply. A number or an offered name on the
+next turn accepts, a clear no declines, anything else is no answer; the turn is otherwise
+an ordinary message. On that turn and, once accepted, on later calm turns where the pattern
+shows up again (at most once every three turns), an ordinary S_explore or S_clarify reply
+without a red flag swaps its middle paragraph (image or need) for the acknowledgement or a
+line that uses the name. ``inspect["externalize"]`` is ``offered``, ``accepted``,
+``declined`` or None for this turn; ``inspect["externalize_name"]`` is the accepted name's
+id (template names only, never user text). Session-only.
+
 Contraindications and situations (roadmap next-phase A1, decision D2): every solver call
 gets the turn's ``active_contraindications`` and ``situation_codes`` from
 ``methods/contraindications.py`` (profile disclosures, red flags, crisis status and the
@@ -218,6 +230,12 @@ from olivia.core.models import (
     PersonaProfile,
     PersonaSpectrum,
     SessionState,
+)
+from olivia.core.perception.externalize import (
+    Externalizer,
+    ExternalizeStatus,
+    ExternalizeText,
+    load_externalize_text,
 )
 from olivia.core.perception.introspector import (
     Introspector,
@@ -320,6 +338,7 @@ class _Shared:
     introspector: Introspector
     mirror_answers: MirrorAnswers
     mirror_lines: Mapping[str, tuple[str, ...]]
+    externalize: ExternalizeText
 
 
 @lru_cache(maxsize=4)
@@ -339,6 +358,7 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         introspector=Introspector(introspection),
         mirror_answers=introspection.answers,
         mirror_lines=load_mirror_lines(tax),
+        externalize=load_externalize_text(tax),
     )
 
 
@@ -450,6 +470,11 @@ class Session:
         self._mirror = SchemaMirror(
             shared.mirror_answers, shared.mirror_lines, enabled=self._heads is not None
         )
+        # Externalization naming (C3) offers only where the mirror could ask.
+        self._externalize = Externalizer(
+            shared.externalize, shared.mirror_answers, enabled=self._heads is not None
+        )
+        self._mirror_turn: int | None = None
         # The user's own safety plan (B10): shown in crisis replies only, never written.
         self._plan_block = crisis_block(safety_plan)
         self._suggest_plan = suggest_safety_plan
@@ -558,13 +583,19 @@ class Session:
             and not ask
             and answer is None
         )
-        mirror_answer = self._mirror.answer(
-            text, readable=calm and self._state.current_stage is HelpStage.S_CLARIFY
+        readable = calm and self._state.current_stage is HelpStage.S_CLARIFY
+        mirror_answer = self._mirror.answer(text, readable=readable)
+        naming = self._externalize.answer(
+            text, readable=readable, stub_declined=signals.answer is Answer.DECLINE
         )
+        naming_status = None if naming is None else naming.status
         mirror_status = None if mirror_answer is None else MirrorStatus(mirror_answer.value)
         if mirror_answer is MirrorAnswer.CONFIRMED:
             signals = replace(signals, core_belief_confirmed=True)
         self._mirror.observe(perception.detected_schemas, counts=calm)
+        self._externalize.observe(
+            perception.detected_schemas, perception.detected_distortions, counts=calm
+        )
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
@@ -576,8 +607,8 @@ class Session:
         self._state = transition.state
         stage = transition.state.current_stage
         spectrum = dominant_spectrum(perception.distress_vector)
-        # A command is not something to mirror back.
-        mirror_text = "" if signals.command is not None else text
+        # A command, or a pick from the naming offer (C3), is not something to mirror back.
+        mirror_text = "" if signals.command is not None or naming is not None else text
         feedback = self._feedback_for(pending, transition, signals)
         if spectrum is not None:
             self._last_spectrum = spectrum
@@ -592,15 +623,23 @@ class Session:
             and stage is pending.stage
         )
 
-        mirror_schema = (
-            self._mirror.choose()
-            if stage is HelpStage.S_CLARIFY
+        reflective = (
+            stage is HelpStage.S_CLARIFY
             and calm
             and not flags
             and not transition.state.pure_listening_locked
             # SILENT_ANCHOR asks no questions and its reply is one paragraph (plan D-1).
             and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
-            else None
+        )
+        mirror_schema = self._mirror.choose() if reflective else None
+        turn_no = transition.state.global_turn_count
+        # The mirror first: never on its turn or its answer's, and not after a no to it.
+        offer_naming = (
+            reflective
+            and mirror_schema is None
+            and self._mirror.status is not MirrorStatus.DECLINED
+            and (self._mirror_turn is None or turn_no > self._mirror_turn + 1)
+            and self._externalize.due()
         )
 
         templates = self._engine.data.templates
@@ -655,10 +694,19 @@ class Session:
             if rendered.kind is ReplyKind.NORMAL:
                 self._mirror.mark_asked()
                 mirror_status = MirrorStatus.ASKED
+                self._mirror_turn = turn_no
+        elif offer_naming:
+            rendered = self._offer_naming(stage, perception, spectrum, mirror_text)
+            if self._externalize.status is ExternalizeStatus.OFFERED:
+                naming_status = ExternalizeStatus.OFFERED
         else:
+            named = self._naming_line(stage, perception, calm and not flags, naming_status)
             rendered = self._with_taboo_filter(
-                lambda: self._compose(stage, perception, spectrum, mirror_text), stage
+                lambda: self._compose_swapped(stage, perception, spectrum, mirror_text, named),
+                stage,
             )
+            if named is not None and named in rendered.reply:
+                self._externalize.mark_named()
             ordinary = True
 
         settled = not status.in_crisis and assessment.level < CrisisLevel.L1
@@ -731,6 +779,8 @@ class Session:
             "schemas": list(perception.detected_schemas),
             "yearning": perception.deep_yearning,
             "schema_mirror": mirror_status.value if mirror_status is not None else None,
+            "externalize": naming_status.value if naming_status is not None else None,
+            "externalize_name": self._externalize.name,
             "safety_plan_shown": rendered.plan_shown,
         }
         return TurnResult(
@@ -776,6 +826,8 @@ class Session:
             "gentle_care": self._gentle_care,
             "care_greeting": self._care_greeting,
             "schema_mirror": self._mirror.status.value if self._mirror.status else None,
+            "externalize": self._externalize.status.value if self._externalize.status else None,
+            "externalize_name": self._externalize.name,
             "bandit": self._sampler.to_dict(),
         }
 
@@ -1135,6 +1187,84 @@ class Session:
         result = self._engine.gate.check(
             f"{head}\n\n{line[0]}", kind=ContentKind.NORMAL, stage=stage
         )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text, composed[1]
+
+    def _offer_naming(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        spectrum: str | None,
+        mirror_text: str,
+    ) -> _Rendered:
+        """The S_clarify reply with its closing question replaced by the naming offer (C3)."""
+        offers = self._externalize.text.offers
+        chosen = [offers[0]]
+
+        def compose() -> tuple[str, str] | None:
+            chosen[0] = self._rng.choice(offers)
+            return self._compose_swapped(
+                stage, perception, spectrum, mirror_text, chosen[0].line, index=-1
+            )
+
+        rendered = self._with_taboo_filter(compose, stage)
+        if chosen[0].line in rendered.reply:
+            self._externalize.mark_offered(chosen[0])
+        return rendered
+
+    def _naming_line(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        settled: bool,
+        answered: ExternalizeStatus | None,
+    ) -> str | None:
+        """The acknowledgement on the answer turn, or a line that uses the accepted name
+        when the pattern shows up again (C3); None when this reply carries neither."""
+        if stage not in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY) or not settled:
+            return None
+        ext = self._externalize
+        text = ext.text
+        if answered is ExternalizeStatus.DECLINED:
+            return self._rng.choice(text.declined)
+        if ext.name is None:
+            return None
+        if answered is ExternalizeStatus.ACCEPTED:
+            return text.fill(self._rng.choice(text.accepted), ext.name)
+        if ext.callback_due(perception.detected_schemas, perception.detected_distortions):
+            return text.fill(self._rng.choice(text.callbacks), ext.name)
+        return None
+
+    def _compose_swapped(
+        self,
+        stage: HelpStage,
+        perception: PerceptionContext,
+        spectrum: str | None,
+        mirror_text: str,
+        line: str | None,
+        *,
+        index: int = 1,
+    ) -> tuple[str, str] | None:
+        """A composed reply with paragraph ``index`` replaced by ``line`` (C3).
+
+        The line passes WILLOW and the gate on its own and the joined reply once more; a
+        reply that is not three paragraphs, or a line naming a taboo topic, keeps the
+        reply's own text.
+        """
+        composed = self._compose(stage, perception, spectrum, mirror_text)
+        if composed is None or line is None or self._has_taboo(line, ""):
+            return composed
+        parts = composed[0].split("\n\n")
+        if len(parts) != 3:
+            return composed
+        line = apply_willow(line, ContentKind.NORMAL, self._engine.data.willow)
+        self._engine.last_gate = self._engine.gate.check(line, kind=ContentKind.NORMAL, stage=stage)
+        if not self._note_gate():
+            return None
+        parts[index] = line
+        result = self._engine.gate.check("\n\n".join(parts), kind=ContentKind.NORMAL, stage=stage)
         self._engine.last_gate = result
         if not self._note_gate():
             return None
