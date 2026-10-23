@@ -1,22 +1,107 @@
 {
-  "format_version": 1,
-  "student_fingerprint": "0e1d7d34e63564bf",
-  "teacher_fingerprint": "3ddaaaebefa4f934",
+  "format_version": 2,
+  "variant": "cnn_ensemble3",
+  "architecture": {
+    "type": "ensemble",
+    "members": 3,
+    "array_prefix": "m{i}_",
+    "member": {
+      "type": "cnn",
+      "embed_dim": 64,
+      "kernels": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "filters": 160,
+      "hidden": 192,
+      "layer_list": [
+        {
+          "op": "embedding",
+          "arrays": [
+            "m{i}_embedding"
+          ]
+        },
+        {
+          "op": "conv1d_valid",
+          "kernel": 2,
+          "then": "relu → 全局最大池化（时间维）",
+          "arrays": [
+            "m{i}_conv2_weight",
+            "m{i}_conv2_bias"
+          ]
+        },
+        {
+          "op": "conv1d_valid",
+          "kernel": 3,
+          "then": "relu → 全局最大池化（时间维）",
+          "arrays": [
+            "m{i}_conv3_weight",
+            "m{i}_conv3_bias"
+          ]
+        },
+        {
+          "op": "conv1d_valid",
+          "kernel": 4,
+          "then": "relu → 全局最大池化（时间维）",
+          "arrays": [
+            "m{i}_conv4_weight",
+            "m{i}_conv4_bias"
+          ]
+        },
+        {
+          "op": "conv1d_valid",
+          "kernel": 5,
+          "then": "relu → 全局最大池化（时间维）",
+          "arrays": [
+            "m{i}_conv5_weight",
+            "m{i}_conv5_bias"
+          ]
+        },
+        {
+          "op": "concat",
+          "order": "kernels 顺序"
+        },
+        {
+          "op": "linear",
+          "then": "relu",
+          "arrays": [
+            "m{i}_dense_weight",
+            "m{i}_dense_bias"
+          ]
+        },
+        {
+          "op": "linear",
+          "then": "按 heads 切片",
+          "arrays": [
+            "m{i}_heads_weight",
+            "m{i}_heads_bias"
+          ]
+        }
+      ],
+      "forward": "embedding → 每个 k：conv{k}（valid 卷积）→ ReLU → 全局最大池化；按 kernels 顺序拼接 → dense → ReLU → heads"
+    },
+    "combine": {
+      "class": "log(mean_i softmax(z_i))（之后照常 softmax(z / temperature)）",
+      "tanh": "atanh(clip(mean_i tanh(z_i), -1 + 1e-06, 1 - 1e-06))",
+      "sigmoid": "logit(clip(mean_i sigmoid(z_i), 1e-06, 1 - 1e-06))（bce 头同）"
+    },
+    "forward": "每个成员按 member 的 CNN 前向得到原始输出 z_i（数组名前缀 m0_、m1_ …），再按 combine 逐头合并成一个原始输出",
+    "conventions": {
+      "linear": "y = x @ weight.T + bias（weight 为 PyTorch 的 (输出, 输入)）",
+      "conv1d": "weight (输出通道, 输入通道, k)；滑动窗口 (位置, 输入通道, k) 展平后乘 weight.reshape(输出通道, -1).T",
+      "dtype": "数组存为 float16，加载后转 float32 计算"
+    }
+  },
+  "variant_fingerprint": "9f1148b39d28bb2c",
+  "teacher_fingerprint": "5c146223232bfe31",
+  "targets_fingerprint": "e344d9c5f6554fb0",
   "preprocess": "html.unescape → NBSP 换为空格 → 连续空白合并为一个空格 → 去掉首尾空白；按字（Unicode 码位）切分，不在字表中的字记为 UNK",
   "max_len": 160,
   "head_chars": 48,
   "min_len": 5,
   "truncation": "超过 max_len 时保留开头 head_chars 个字和结尾 max_len - head_chars 个字；不足 min_len 时右侧补 PAD",
-  "embed_dim": 64,
-  "kernels": [
-    2,
-    3,
-    4,
-    5
-  ],
-  "filters": 96,
-  "hidden": 128,
-  "forward": "embedding → 每个 k：conv{k}（valid 卷积）→ ReLU → 全局最大池化；按 kernels 顺序拼接 → dense → ReLU → heads",
   "heads": [
     {
       "name": "valence",
@@ -140,71 +225,252 @@
     }
   ],
   "temperatures": {
-    "emotion": 0.9672850441057115,
-    "intent": 1.1569877141940326,
-    "risk": 1.1567032006998204,
-    "stance": 0.9973124329219644,
-    "dominant_spectrum": 0.9751070098904084
+    "emotion": 0.8037413830796607,
+    "intent": 0.8490963295983402,
+    "risk": 0.8828851789899173,
+    "stance": 0.9571378807290598,
+    "dominant_spectrum": 0.780711701648376
   },
   "risk": {
-    "threshold_ge2": 0.22830908000469208,
-    "threshold_l3": 0.3408520221710205,
+    "threshold_ge2": 0.3697343170642853,
+    "threshold_l3": 0.27992698550224304,
     "rule": "level = argmax P；P(L2)+P(L3) ≥ threshold_ge2 时至少 L2；P(L3) ≥ threshold_l3 时为 L3",
     "threshold_l3_used_only_with_model_plan_evidence": true,
     "target_recall_ge2": 0.95,
     "target_recall_l3": 0.95
   },
   "arrays": {
-    "embedding": [
-      1999,
+    "m0_embedding": [
+      2138,
       64
     ],
-    "conv2_weight": [
-      96,
+    "m0_conv2_weight": [
+      160,
       64,
       2
     ],
-    "conv2_bias": [
-      96
+    "m0_conv2_bias": [
+      160
     ],
-    "conv3_weight": [
-      96,
+    "m0_conv3_weight": [
+      160,
       64,
       3
     ],
-    "conv3_bias": [
-      96
+    "m0_conv3_bias": [
+      160
     ],
-    "conv4_weight": [
-      96,
+    "m0_conv4_weight": [
+      160,
       64,
       4
     ],
-    "conv4_bias": [
-      96
+    "m0_conv4_bias": [
+      160
     ],
-    "conv5_weight": [
-      96,
+    "m0_conv5_weight": [
+      160,
       64,
       5
     ],
-    "conv5_bias": [
-      96
+    "m0_conv5_bias": [
+      160
     ],
-    "dense_weight": [
-      128,
-      384
+    "m0_dense_weight": [
+      192,
+      640
     ],
-    "dense_bias": [
-      128
+    "m0_dense_bias": [
+      192
     ],
-    "heads_weight": [
+    "m0_heads_weight": [
       47,
-      128
+      192
     ],
-    "heads_bias": [
+    "m0_heads_bias": [
+      47
+    ],
+    "m1_embedding": [
+      2138,
+      64
+    ],
+    "m1_conv2_weight": [
+      160,
+      64,
+      2
+    ],
+    "m1_conv2_bias": [
+      160
+    ],
+    "m1_conv3_weight": [
+      160,
+      64,
+      3
+    ],
+    "m1_conv3_bias": [
+      160
+    ],
+    "m1_conv4_weight": [
+      160,
+      64,
+      4
+    ],
+    "m1_conv4_bias": [
+      160
+    ],
+    "m1_conv5_weight": [
+      160,
+      64,
+      5
+    ],
+    "m1_conv5_bias": [
+      160
+    ],
+    "m1_dense_weight": [
+      192,
+      640
+    ],
+    "m1_dense_bias": [
+      192
+    ],
+    "m1_heads_weight": [
+      47,
+      192
+    ],
+    "m1_heads_bias": [
+      47
+    ],
+    "m2_embedding": [
+      2138,
+      64
+    ],
+    "m2_conv2_weight": [
+      160,
+      64,
+      2
+    ],
+    "m2_conv2_bias": [
+      160
+    ],
+    "m2_conv3_weight": [
+      160,
+      64,
+      3
+    ],
+    "m2_conv3_bias": [
+      160
+    ],
+    "m2_conv4_weight": [
+      160,
+      64,
+      4
+    ],
+    "m2_conv4_bias": [
+      160
+    ],
+    "m2_conv5_weight": [
+      160,
+      64,
+      5
+    ],
+    "m2_conv5_bias": [
+      160
+    ],
+    "m2_dense_weight": [
+      192,
+      640
+    ],
+    "m2_dense_bias": [
+      192
+    ],
+    "m2_heads_weight": [
+      47,
+      192
+    ],
+    "m2_heads_bias": [
       47
     ]
   },
-  "npz_bytes": 542678
+  "npz_bytes": 2488000,
+  "training_options": {
+    "loss_balance": "gradnorm",
+    "kd_source": "ensemble",
+    "kd_teachers": 6,
+    "hard_negative_weight": 2.0,
+    "train": {
+      "epochs": 15,
+      "batch_size": 64,
+      "lr": 0.002,
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.05
+    }
+  },
+  "selection": {
+    "rule": {
+      "max_dev_l0_false_alarm": 0.1,
+      "max_holdout_l0_false_alarm": 0.06,
+      "parity_tolerance": 0.002,
+      "latency_p99_ms": 45.0,
+      "max_bytes": 4194304,
+      "objective": "dev L2+L3 → ≥L2 hits (rules + student, current arbitration)",
+      "ties": [
+        "smaller npz_bytes",
+        "lower p99_ms"
+      ]
+    },
+    "target_recall_ge2": 0.95,
+    "dev": {
+      "L2+L3 判为 ≥L2": {
+        "hit": 131,
+        "n": 140,
+        "ci95": [
+          0.882341165073077,
+          0.9658140278613732
+        ]
+      },
+      "L3 判为 L3": {
+        "hit": 1,
+        "n": 60,
+        "ci95": [
+          0.002948083860873682,
+          0.08855338226779477
+        ]
+      },
+      "L0 误报为 ≥L2": {
+        "hit": 7,
+        "n": 100,
+        "ci95": [
+          0.034318824364064096,
+          0.13749671006529757
+        ]
+      },
+      "L1 判为 L1": {
+        "hit": 33,
+        "n": 60,
+        "ci95": [
+          0.42491714548981496,
+          0.6690654614623918
+        ]
+      },
+      "L1 判为 ≥L2": {
+        "hit": 8,
+        "n": 60,
+        "ci95": [
+          0.06914026978309641,
+          0.24165394590072103
+        ]
+      }
+    },
+    "holdout_l0_false_alarm": {
+      "hit": 34,
+      "n": 812,
+      "rate": 0.04187192118226601,
+      "ci95": [
+        0.030116456803192797,
+        0.057941813331598056
+      ]
+    },
+    "parity": 0.00034256107925800805,
+    "latency_p99_ms": 2.7803586399772935
+  }
 }

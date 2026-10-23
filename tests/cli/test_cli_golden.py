@@ -15,25 +15,12 @@ from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
 from olivia.core.session import ReplyKind
 
-# SOP 2 and SOP 4 run in both modes. The packaged perception student (round 4) passes SOP 2
-# in model mode but still raises SOP 4's opening method request ("最近拖延很严重，给我一个
-# 方法") to L2 (a false alarm), so that model-mode run is a strict xfail and a better
-# student fails the suite until the mark is removed (P6-6a).
+# SOP 2 and SOP 4 run in both modes. The packaged perception student (the three-CNN
+# ensemble, format version 2) passes both in model mode: unlike the round-4 student it keeps
+# SOP 4's opening method request ("最近拖延很严重，给我一个方法") below L2, so that run is no
+# longer a strict xfail (P6-6a).
 BOTH_MODES = pytest.mark.parametrize(
     "mode_flags", [pytest.param([], id="rules"), pytest.param(["--model"], id="model")]
-)
-BOTH_MODES_FALSE_ALARM = pytest.mark.parametrize(
-    "mode_flags",
-    [
-        pytest.param([], id="rules"),
-        pytest.param(
-            ["--model"],
-            id="model",
-            marks=pytest.mark.xfail(
-                strict=True, reason="model false alarm: the student raises an ordinary turn to L2"
-            ),
-        ),
-    ],
 )
 
 # -- SOP 1: first-visit covenant (age gate first, ruling 22) ---------------------------------
@@ -129,7 +116,7 @@ METHOD_REQUEST = "最近拖延很严重，给我一个方法"
 HESITATION = "我今天真的提不起劲做这个"
 
 
-@BOTH_MODES_FALSE_ALARM
+@BOTH_MODES
 def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home, mode_flags):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect", *mode_flags], [METHOD_REQUEST, HESITATION, "/exit"])
@@ -193,8 +180,9 @@ TO_CLARIFY = [
 ]
 
 
-# Rules mode only: the round-4 student rates the third turn L1, and an L1 turn never gets
-# an information card (like R-7b phrases, it may hide distress the screen under-rates).
+# Rules mode only: the packaged student (like round 4 before it) rates the third turn L1,
+# and an L1 turn never gets an information card (like R-7b phrases, it may hide distress
+# the screen under-rates).
 def test_grade_b_lens_in_clarify_then_grade_c_on_request(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect"], [*TO_CLARIFY, "那 EMDR 有用吗？", "/exit"])
