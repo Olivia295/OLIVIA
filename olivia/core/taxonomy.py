@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import time
 from importlib import resources
 from itertools import pairwise
 from pathlib import Path
@@ -30,6 +32,9 @@ _ID_LIST_SECTIONS: frozenset[str] = frozenset(
         "contraindication_enums",
     }
 )
+
+# A 24-hour wall-clock time such as "00:00" or "05:00".
+_HHMM_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
 _LABEL_KINDS: dict[str, tuple[str, str]] = {
     # kind -> (canonical id section, alias section)
@@ -600,6 +605,17 @@ class Taxonomy:
         """Two-digit spectrum ids ("01".."11"), the keys of ``distress_category_mapping``."""
         section = _mapping(self._data.get("distress_category_mapping"), "distress_category_mapping")
         return tuple(str(key) for key in section)
+
+    def late_night_window(self) -> tuple[time, time]:
+        """``late_night`` start and end as local wall-clock times ("HH:MM", end exclusive)."""
+        section = _mapping(self._data.get("late_night"), "late_night")
+        bounds: list[time] = []
+        for key in ("start", "end"):
+            raw = _str(section.get(key), f"late_night.{key}")
+            if not _HHMM_RE.fullmatch(raw):
+                raise TaxonomyError(f"late_night.{key} must be HH:MM, got {raw!r}")
+            bounds.append(time(int(raw[:2]), int(raw[3:])))
+        return bounds[0], bounds[1]
 
     # -- clinical views ------------------------------------------------------------
 

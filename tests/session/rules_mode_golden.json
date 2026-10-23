@@ -39,7 +39,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -87,7 +89,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -130,7 +134,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -173,7 +179,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -216,11 +224,13 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
-  "reply": "读到这里，我心里也跟着轻轻一紧。你感到想聊聊你和室友的事情，那份平静安详想必很沉很沉，谢谢你没有把它默默藏起来，而是说给我听。\n\n我想把晨光照进山谷，一点点变暖这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n能和我讲讲吗，这样的时刻通常会在什么时候出现，那时你身边又是什么样子？想到哪里就说到哪里，没有对错，我都愿意听。",
+  "reply": "读到这里，我心里也跟着轻轻一紧。你感到想聊聊你和室友的事情，那份平静安详想必很沉很沉，谢谢你没有把它默默藏起来，而是说给我听。\n\n我想把晨光照进山谷，一点点变暖这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n在你身边，有没有哪位朋友、家人或同事，是你愿意和他说说这些的？哪怕只是一个名字浮上来，也可以告诉我。",
   "kind": "NORMAL",
   "stage": "S_explore",
   "crisis_level": "L0",
@@ -259,7 +269,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1667
   }
  },
  {
@@ -302,7 +314,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1429
   }
  },
  {
@@ -350,7 +364,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.125
   }
  },
  {
@@ -393,7 +409,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1111
   }
  },
  {
@@ -473,7 +491,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1
   }
  },
  {
@@ -518,7 +538,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0909
   }
  },
  {
@@ -565,7 +587,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0833
   }
  },
  {
@@ -612,7 +636,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0769
   }
  },
  {
@@ -657,7 +683,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0714
   }
  },
  {
@@ -702,11 +730,13 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0667
   }
  },
  {
-  "reply": "朋友，听起来你感到嗯。我能感觉到那份平静安详，它不吵也不闹，却一直沉沉地在那里，让人有点喘不过气来。\n\n我想把一盏灯在窗边，静静亮着这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n朋友，在这些经历里，有没有哪一部分，是你一直很想说、却还没有机会说出口的？我在这里，你可以慢慢来，不用着急。",
+  "reply": "朋友，听起来你感到嗯。我能感觉到那份平静安详，它不吵也不闹，却一直沉沉地在那里，让人有点喘不过气来。\n\n我想把一盏灯在窗边，静静亮着这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n朋友，这些心事，除了在这里，你还会和谁说起吗？比如一位信得过的朋友或家人，没有也完全没关系，我在听。",
   "kind": "NORMAL",
   "stage": "S_explore",
   "crisis_level": "L0",
@@ -747,7 +777,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.125
   }
  },
  {
@@ -790,7 +822,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -838,7 +872,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -881,7 +917,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -924,7 +962,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
@@ -967,11 +1007,13 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0
   }
  },
  {
-  "reply": "从你的话里，我感觉到你感到想聊聊你和室友的事情。那份平静安详好像一直悄悄跟着你，忙的时候先搁在一边，等安静下来，才一点点浮上来。\n\n我想把云在天上走，不急也不赶这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n如果把心里的感觉分成好几层，最上面那一层是什么，再往下一点又是什么？你说到哪里，我们就停在哪里，不用勉强自己往深处走。",
+  "reply": "从你的话里，我感觉到你感到想聊聊你和室友的事情。那份平静安详好像一直悄悄跟着你，忙的时候先搁在一边，等安静下来，才一点点浮上来。\n\n我想把云在天上走，不急也不赶这个画面轻轻放在这里。它不催你往前走，也不要求你变得更好，只是陪着你，在原地多待一会儿也没关系。\n\n在你身边，有没有哪位朋友、家人或同事，是你愿意和他说说这些的？哪怕只是一个名字浮上来，也可以告诉我。",
   "kind": "NORMAL",
   "stage": "S_explore",
   "crisis_level": "L0",
@@ -1010,7 +1052,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1667
   }
  },
  {
@@ -1053,7 +1097,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1429
   }
  },
  {
@@ -1101,7 +1147,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.125
   }
  },
  {
@@ -1144,7 +1192,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1111
   }
  },
  {
@@ -1224,7 +1274,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.1
   }
  },
  {
@@ -1269,7 +1321,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0909
   }
  },
  {
@@ -1316,7 +1370,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0833
   }
  },
  {
@@ -1363,7 +1419,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0769
   }
  },
  {
@@ -1408,7 +1466,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0714
   }
  },
  {
@@ -1453,11 +1513,13 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.0667
   }
  },
  {
-  "reply": "我慢慢读了你写下的每一句话。你感到嗯，这里面有很真实的平静安详。不用急着把它理清楚，它可以先在这里安心待一会儿。\n\n小溪绕过石头，继续向前，是我此刻想到的画面。风雨来的时候，它不和谁较劲，只是待在自己的位置上，安安静静地，慢慢等着天色变亮。\n\n如果你愿意，可以再多说一点：这件事里，最让你放不下的，是哪一个瞬间？说多说少都可以，停下来也可以，我会一直在这里陪着你。",
+  "reply": "我慢慢读了你写下的每一句话。你感到嗯，这里面有很真实的平静安详。不用急着把它理清楚，它可以先在这里安心待一会儿。\n\n小溪绕过石头，继续向前，是我此刻想到的画面。风雨来的时候，它不和谁较劲，只是待在自己的位置上，安安静静地，慢慢等着天色变亮。\n\n朋友，这些心事，除了在这里，你还会和谁说起吗？比如一位信得过的朋友或家人，没有也完全没关系，我在听。",
   "kind": "NORMAL",
   "stage": "S_explore",
   "crisis_level": "L0",
@@ -1498,7 +1560,9 @@
    "risk_model_reason": null,
    "model_level": null,
    "model_score": null,
-   "safety_check": null
+   "safety_check": null,
+   "reminder": "none",
+   "real_support_share": 0.125
   }
  }
 ]

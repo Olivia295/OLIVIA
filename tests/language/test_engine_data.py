@@ -145,6 +145,14 @@ def _followup_without_plain_variant(d: dict[str, Any]) -> None:
     d["followups"]["closing_declined"] = ["{user_name}，不用定也没关系。"]
 
 
+def _wellbeing_missing(d: dict[str, Any]) -> None:
+    del d["wellbeing"]["late_night"]
+
+
+def _wellbeing_with_mirror(d: dict[str, Any]) -> None:
+    d["wellbeing"]["real_support"].append("{mirror}，身边有谁可以说说吗？")
+
+
 def _bad_version(d: dict[str, Any]) -> None:
     d["version"] = 2
 
@@ -158,6 +166,8 @@ def _bad_version(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _followup_missing),
         ("templates/gentle_holding.yaml", _followup_with_mirror),
         ("templates/gentle_holding.yaml", _followup_without_plain_variant),
+        ("templates/gentle_holding.yaml", _wellbeing_missing),
+        ("templates/gentle_holding.yaml", _wellbeing_with_mirror),
         ("language/needs.yaml", _missing_need),
         ("language/needs.yaml", _bad_version),
         ("cards/grade_a.yaml", _extra_card_step),
