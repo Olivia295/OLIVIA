@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export the project's safety cases as one CSV for the crisis feasibility notebook.
 
-Rows have one of three roles:
+Rows have one of four roles:
 
 - ``train``: cases.yaml, the ho* reviewer probes, and the known limitations other than
   kl_fr*, all written or tuned by the same author;
@@ -9,17 +9,23 @@ Rows have one of three roles:
   known_false_positives.yaml). Its model results were seen on 2026-10-22, so it is no
   longer an independent test: report it, but never choose thresholds or settings by it;
 - ``fresh``: an optional independent evaluation set (``--fresh-eval``), a CSV with columns
-  id, text, level (L0-L3) written by someone who has not seen the cases or the lexicon.
+  id, text, level (L0-L3) written by someone who has not seen the cases or the lexicon;
+- ``exclude``: sentences that are never trained on and never scored by the notebook, only
+  used to drop near-duplicates from training (level and rule_level -1). Always every user
+  turn of the G-5 red-team cases (tests/redteam/cases.yaml: the red-team runner is the
+  release gate for step C5, so its inputs must not leak into training), plus any CSV with
+  a ``text`` column given with ``--exclude-csv`` (e.g. build/eval/redteam_texts.csv).
 
 Test sentences must never be trained on, so train rows that duplicate or nearly duplicate
-a probe or fresh sentence are dropped and reported.
+a probe, fresh or exclude sentence are dropped and reported.
 
 Each row also carries ``rule_level``, what today's rules-mode SafetyScreen returns for it,
 and ``category``, the cases.yaml category (empty for other sources).
 
 Run from the repository root with the project's venv:
 
-    .venv/bin/python training/colab/export_olivia_data.py [--fresh-eval path/to/fresh.csv]
+    .venv/bin/python training/colab/export_olivia_data.py [--fresh-eval path/to/fresh.csv] \
+        [--exclude-csv build/eval/redteam_texts.csv]
 """
 
 from __future__ import annotations
@@ -39,11 +45,14 @@ from olivia.core.taxonomy import load_taxonomy
 
 ROOT = Path(__file__).resolve().parents[2]
 SAFETY_TESTS = ROOT / "tests" / "safety"
+REDTEAM_CASES = ROOT / "tests" / "redteam" / "cases.yaml"
 PROBE_SIZE = 52
 NEAR_DUPLICATE_JACCARD = 0.8
 LEVELS = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
-ROLES = ("train", "probe", "fresh")
+ROLES = ("train", "probe", "fresh", "exclude")
 TEST_ROLES = ("probe", "fresh")
+EXCLUDE_ROLE = "exclude"
+HELD_OUT_ROLES = (*TEST_ROLES, EXCLUDE_ROLE)
 
 
 def _load(name: str) -> list[dict]:
@@ -90,6 +99,31 @@ def load_fresh(path: Path) -> list[dict]:
     return rows
 
 
+def collect_exclusions(extra: list[Path]) -> list[dict]:
+    """Exclude-only rows: every distinct red-team user turn, then each ``--exclude-csv`` row."""
+    rows, seen = [], set()
+
+    def add(row_id: str, text: str, source: str, category: str) -> None:
+        if text.strip() and text not in seen:
+            seen.add(text)
+            rows.append({"id": row_id, "text": text, "level": None, "role": EXCLUDE_ROLE,
+                         "source": source, "category": category})
+
+    with open(REDTEAM_CASES, encoding="utf-8") as f:
+        cases = yaml.safe_load(f)
+    for case in cases:
+        for turn_no, turn in enumerate(case["turns"], 1):
+            add(f"{case['id']}_t{turn_no}", turn, "redteam", case["category"])
+    for path in extra:
+        with open(path, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if "text" not in (reader.fieldnames or []):
+                raise SystemExit(f"{path}: an exclude CSV needs a text column")
+            for n, r in enumerate(reader, 1):
+                add(r.get("id") or f"{path.stem}_{n}", r["text"], f"exclude:{path.stem}", "")
+    return rows
+
+
 def _bigrams(text: str) -> set[str]:
     return {text[i:i + 2] for i in range(len(text) - 1)} or {text}
 
@@ -99,12 +133,12 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 
 def drop_test_overlap(rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Remove train rows that equal or nearly equal a test sentence after normalization."""
-    test_grams = [_bigrams(normalize(r["text"])) for r in rows if r["role"] in TEST_ROLES]
+    """Remove train rows that equal or nearly equal a test or exclude sentence after normalization."""
+    test_grams = [_bigrams(normalize(r["text"])) for r in rows if r["role"] in HELD_OUT_ROLES]
     kept, dropped = [], []
     seen_train: set[str] = set()
     for row in rows:
-        if row["role"] in TEST_ROLES:
+        if row["role"] in HELD_OUT_ROLES:
             kept.append(row)
             continue
         norm = normalize(row["text"])
@@ -124,6 +158,9 @@ def main() -> None:
                         help="output directory (default: build/colab_data, git-ignored)")
     parser.add_argument("--fresh-eval", type=Path, default=None,
                         help="optional independent evaluation CSV (id, text, level)")
+    parser.add_argument("--exclude-csv", type=Path, action="append", default=[],
+                        help="CSV with a text column: never trained on, never scored "
+                             "(the red-team turns are always excluded)")
     args = parser.parse_args()
 
     rows = collect_rows()
@@ -132,11 +169,15 @@ def main() -> None:
         raise SystemExit(f"expected {PROBE_SIZE} fresh-author probe sentences, found {probe_count}")
     if args.fresh_eval is not None:
         rows += load_fresh(args.fresh_eval)
+    rows += collect_exclusions(args.exclude_csv)
     rows, dropped = drop_test_overlap(rows)
 
     tax = load_taxonomy()
     screen = SafetyScreen(tax, load_safety_lexicons(tax))
     for row in rows:
+        if row["role"] == EXCLUDE_ROLE:
+            row["level"] = row["rule_level"] = -1
+            continue
         row["level"] = LEVELS[row["level"]]
         row["rule_level"] = int(screen.assess(row["text"]).level)
 
@@ -156,8 +197,12 @@ def main() -> None:
         "by_role_and_level": {
             role: {lvl: sum(r["role"] == role and r["level"] == n for r in rows)
                    for lvl, n in LEVELS.items()}
-            for role in ROLES
+            for role in TEST_ROLES + ("train",)
         },
+        "exclude_rows": {source: sum(r["role"] == EXCLUDE_ROLE and r["source"] == source
+                                     for r in rows)
+                         for source in sorted({r["source"] for r in rows
+                                               if r["role"] == EXCLUDE_ROLE})},
         "dropped_train_rows": [{"id": r["id"], "text": r["text"]} for r in dropped],
     }
     with open(args.out / "manifest.json", "w", encoding="utf-8") as f:
@@ -165,6 +210,7 @@ def main() -> None:
 
     print(f"wrote {csv_path} ({len(rows)} rows, git {commit})")
     print(json.dumps(manifest["by_role_and_level"], ensure_ascii=False))
+    print("exclude-only rows:", json.dumps(manifest["exclude_rows"], ensure_ascii=False))
     print(f"dropped {len(dropped)} train rows that duplicate a test or train sentence")
     for r in dropped:
         print(f"  - {r['id']}: {r['text']}")

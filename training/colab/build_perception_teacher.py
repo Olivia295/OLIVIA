@@ -42,7 +42,7 @@ md(r"""
 
 1. **教师模型**：`hfl/chinese-roberta-wwm-ext` + 9 个输出头（SDD §3.1 的 8 个头，加上 `dominant_spectrum` 辅助头）。
    5 折交叉验证得到每条训练数据的 OOF（训练时没见过的）预测；在 OOF 上为每个分类头拟合一个温度，再按可行性实验 v2 的方法定风险阈值；最后用全部训练数据训练最终教师。
-2. **学生模型**：字符级 CNN，用 0.5 × 硬标签 + 0.5 × 蒸馏训练；训练池留出 15%（按风险等级分层）不参与学生训练，用来拟合学生自己的温度与阈值。
+2. **学生模型**：字符级 CNN，用 0.5 × 硬标签 + 0.5 × 蒸馏训练（蒸馏目标默认取 6 个教师的平均，难负例在风险头上加权，见“C5 选项”）；训练池留出 15%（按风险等级分层）不参与学生训练，用来拟合学生自己的温度与阈值。
    导出为 float16 的 NumPy 静态权重（SDD §9，开发计划 P6 要求 < 4 MB），并验证纯 NumPy 前向与 PyTorch 一致、测单条推理时延（SDD §10.1：P99 ≤ 45 ms）。
 3. **测试**：独立评估集（`fresh`）与 52 句探针（`probe`，模型结果已看过，只作参考）各只测一次。
 
@@ -61,7 +61,26 @@ md(r"""
 | `dominant_spectrum` | 12 类（`01`–`11`、`none`） | 交叉熵 | 合成数据 |
 
 - 每行只对它有标签的头计算损失：项目用例只有风险等级，其余头对这些行屏蔽。
-- 各头权重 λ 相同（都为 1）。SDD §3.1 写的 GradNorm 动态平衡留作后续工作：先看各头的 OOF 指标，确有某个头被压制时再引入。
+- 教师各头的权重 λ 由 `LOSS_BALANCE` 决定：`"gradnorm"`（默认，SDD §3.1 的 GradNorm 动态平衡，见下节）或 `"equal"`（都为 1，与第四轮相同）。学生模型各头 λ 始终为 1。
+
+## C5 选项（步骤 C5，2026-10-24）
+
+目标：“诉苦 + 要方法”等重而不危的句子不再被学生抬到 L2（红队非危机句进危机流程 ≤ 5，危机补漏不降）。每项都由配置区的一个常量开关，默认值即正式运行的取值；全部关掉（`"equal"`、`"base"`、`"final"`、`1.0`）就回到第四轮的做法。
+
+| 常量 | 默认 | 含义 |
+| :--- | :--- | :--- |
+| `LOSS_BALANCE` | `"gradnorm"` | 教师 9 个头的损失平衡。GradNorm（Chen et al. 2018）：每步在**最后一个共享层**（编码器最后一层 FFN 输出的 `dense` 权重）上量出各头加权损失的梯度范数 G_i，让 G_i 向“平均范数 ×（该头相对训练进度）^α”靠拢，用单独的 Adam 更新各头权重，更新后截断到下限并重新归一化使总和 = 头数 9。`"equal"`：各头 λ = 1，代码路径与第四轮相同，结果可复现。 |
+| `GRADNORM_ALPHA` | `1.5` | 恢复力 α：越大，越强地把训练进度落后（损失下降慢）的头拉回来；α = 0 时只让各头梯度范数相等。论文多数任务取 0.5–2.0，NYUv2 用 1.5。 |
+| `GRADNORM_LR` | `0.025` | 头权重自己的 Adam 学习率（论文取值）。 |
+| `GRADNORM_MIN_WEIGHT` | `0.05` | 每步更新后的权重下限，防止某个头被完全关掉。 |
+| `STUDENT_WIDTH` | `"wide"` | 学生宽度：`"wide"` = 每种卷积核 160 个、共享层 192 维；`"base"` = 96 / 128（第四轮）。训练前按字表大小算出 `student.npz` 的字节数并断言 < 4 MB；产品端按数组形状加载，不需要改代码。 |
+| `KD_SOURCE` | `"ensemble"` | 蒸馏目标：`"ensemble"` = 5 个折教师 + 最终教师各自的软目标取平均（分类头平均概率，连续头平均输出值；各折教师训练完立即对学生训练文本做预测并存进 `fold_*.npz`，不另存折模型）；`"final"` = 只用最终教师（第四轮）。 |
+| `HARD_NEGATIVE_WEIGHT` | `2.0` | 学生**风险头硬标签损失**中，难负例行乘的权重；1.0 即关闭。难负例 = 轮次（取自 `source`）与槽位（顶层 `slot`）在 `HARD_NEGATIVE_SLOTS` 里、真实等级为 L0 的合成数据行（第四轮与第六轮的全部 L0 槽位：问药、问诊断、要练习、红线话题、日常反刍、重度诉苦要方法、主动说病史要练习、丧亲与受虐倾诉、诉苦夹问药、口癖与自嘲）。只加在硬标签上、不加在蒸馏项上，免得放大教师自己的误报。 |
+
+另外两处改动不是开关：
+
+- **按槽位的误报率**：教师 OOF 报告与学生留出集报告各多一张表，按合成数据的“轮次:配额槽位”（项目用例按类别）列出真实 L0 行被判为 ≥L2 的比例，“阈值前”只取最大概率等级，“阈值后”再加上 ge2 / L3 阈值（产品的判定）。难负例槽位标 ★。
+- **排除集**：`olivia_cases.csv` 中 `role=exclude` 的行（红队全部用户输入，及导出时 `--exclude-csv` 给的文件）只用于从训练池剔除近似重复，从不训练、也不评估。
 
 ## 风险等级怎么从概率得到
 
@@ -73,14 +92,15 @@ md(r"""
 
 | 文件（放在 `DRIVE_ROOT/raw/` 下） | 来源 | 用途 |
 | :--- | :--- | :--- |
-| `synthetic/round1.jsonl` | `training/data_gen/validate_batches.py` 合并后的合成数据（`label_schema.json` 的字段 + `source`） | 全部进训练池，9 个头都有标签 |
-| `olivia/olivia_cases.csv` | 本地运行 `training/colab/export_olivia_data.py` 生成 | `role=train`：进训练池，只有风险标签；`role=probe`：52 句探针（已看过）；`role=fresh`：独立评估集 |
+| `synthetic/round1.jsonl` | `training/data_gen/validate_batches.py` 合并后的合成数据（`label_schema.json` 的字段 + `source` = `synthetic:<批次>`，第三、四、六轮另有顶层 `slot`） | 全部进训练池，9 个头都有标签；`slot`（连同 `source` 里的轮次）用于按槽位的报告与难负例加权；没有 `slot` 的行（第一、二轮）照常训练，只是槽位为空 |
+| `olivia/olivia_cases.csv` | 本地运行 `training/colab/export_olivia_data.py` 生成 | `role=train`：进训练池，只有风险标签；`role=probe`：52 句探针（已看过）；`role=fresh`：独立评估集；`role=exclude`：红队输入等，只用于泄露剔除 |
 
 ## 运行
 
 1. 本地仓库根目录：
    - 合并合成数据：`python training/data_gen/validate_batches.py <批次 JSONL 所在目录> --out round1.jsonl --test-csv build/colab_data/olivia_cases.csv --test-csv <独立评估集.csv>`（用法见该脚本说明）；
-   - 导出用例：`.venv/bin/python training/colab/export_olivia_data.py --fresh-eval <独立评估集.csv>`；
+   - 按标注规范 v0.2 处理第三、四轮：`python training/data_gen/relabel_v02.py <合并文件> --out round1.jsonl [--include-mixed 4:L0_med_self_adjust ...]`（问药问诊断三个槽位都混有决定与知识问题，默认不改，只报告；整槽改须明确指定）；
+   - 导出用例：`.venv/bin/python training/colab/export_olivia_data.py --fresh-eval <独立评估集.csv> --exclude-csv build/eval/redteam_texts.csv`（红队 `tests/redteam/cases.yaml` 的全部用户输入总会作为 `exclude` 行导出）；
    - 上传到 Drive：`round1.jsonl` → `OLIVIA_perception/raw/synthetic/`，`olivia_cases.csv` → `OLIVIA_perception/raw/olivia/`。
 2. Colab：运行时类型选 GPU，“运行时 → 全部运行”。教师 5 折 + 最终模型是主要耗时（数据约 4,000 条时 T4 上约 1 小时），学生模型几分钟。
 3. 断开后重新“全部运行”是安全的：已完成的折、最终教师、学生模型在配置与数据未变时直接复用；每个测试集只测一次（除非 `FORCE_RETEST = True`）。
@@ -90,13 +110,13 @@ md(r"""
 | 路径 | 内容 |
 | :--- | :--- |
 | `models/perception_teacher/model.pt`、`train_config.json` | 最终教师模型与配置 |
-| `models/cv_folds/fold_*.npz` | 各折对留出部分的原始输出 |
+| `models/cv_folds/fold_*.npz` | 各折对留出部分的原始输出；GradNorm 每轮末的头权重；`KD_SOURCE = "ensemble"` 时还有该折教师对学生训练文本的原始输出 |
 | `configs/teacher_calibration.json` | 教师的温度、阈值与 OOF 指标 |
-| `reports/oof_predictions.csv`、`teacher_cv_report.md` / `.json` | 每条训练数据的 OOF 预测；按头的交叉验证报告 |
+| `reports/oof_predictions.csv`、`teacher_cv_report.md` / `.json` | 每条训练数据的 OOF 预测；按头的交叉验证报告、按槽位的误报率、GradNorm 头权重 |
 | `models/perception_student/student.npz`、`vocab.json`、`student_config.json` | **产品用的学生模型**：float16 权重、字表、头顺序 / 标签 / 温度 / 阈值 / 长度 |
 | `models/student_checkpoint/student.pt` | 学生模型训练检查点（用于续跑，不进产品） |
-| `cache/teacher_targets.npz` | 教师对学生训练文本的输出（蒸馏目标） |
-| `reports/student_report.md` / `.json` | 学生在留出集上的指标、权重大小、NumPy 一致性与时延 |
+| `cache/teacher_targets.npz` | 最终教师对学生训练文本的输出（蒸馏目标） |
+| `reports/student_report.md` / `.json` | 学生在留出集上的指标（含按槽位的误报率）、权重大小、NumPy 一致性与时延 |
 | `reports/{probe,fresh}_predictions.csv`、`_summary.md`、`_summary.json` | 各测试集逐条结果与汇总 |
 
 ## 不要做的事
@@ -196,6 +216,27 @@ STUDENT = {
     "warmup_ratio": 0.05,
 }
 STUDENT_MAX_BYTES = 4 * 1024 * 1024  # 开发计划 P6：NumPy 静态权重 < 4 MB
+
+# ---- C5 选项（每项单独开关；全部取第二个值即回到第四轮的做法，含义见开头“C5 选项”） ----
+LOSS_BALANCE = "gradnorm"     # 教师各头损失平衡："gradnorm" | "equal"
+GRADNORM_ALPHA = 1.5          # GradNorm 恢复力 α（Chen et al. 2018；NYUv2 取 1.5）
+GRADNORM_LR = 0.025           # 头权重的 Adam 学习率（论文取值）
+GRADNORM_MIN_WEIGHT = 0.05    # 每步更新后的权重下限；之后重新归一化，使 9 个权重之和 = 9
+STUDENT_WIDTH = "wide"        # 学生宽度："wide" | "base"（96 / 128，第四轮）
+STUDENT_WIDE = {"filters": 160, "hidden": 192}
+KD_SOURCE = "ensemble"        # 蒸馏目标："ensemble"（5 折教师 + 最终教师取平均）| "final"（只用最终教师）
+HARD_NEGATIVE_WEIGHT = 2.0    # 学生风险头硬标签损失中难负例行的权重；1.0 = 关闭
+HARD_NEGATIVE_SLOTS = {        # 难负例槽位 {轮次: 槽位}（轮次取自 source = synthetic:r<轮>b..；只取真实等级为 L0 的行）
+    4: ("L0_med_self_adjust", "L0_diagnosis_question", "L0_technique_request", "L0_redflag_topic_request",
+        "L0_everyday_rumination"),                                                # quota_round4.yaml 的全部 L0 槽位
+    6: ("L0_heavy_vent_request", "L0_redflag_history_request", "L0_loss_abuse_family", "L0_med_diag_with_venting",
+        "L0_hyperbole_dark_humor"),                                               # quota_round6.yaml 的全部 L0 槽位
+}
+HARD_NEGATIVE_KEYS = {f"r{r}:{slot}" for r, slots in HARD_NEGATIVE_SLOTS.items() for slot in slots}
+assert LOSS_BALANCE in ("gradnorm", "equal") and STUDENT_WIDTH in ("wide", "base") and KD_SOURCE in ("ensemble", "final")
+if STUDENT_WIDTH == "wide":
+    STUDENT.update(STUDENT_WIDE)
+
 PARITY_TEXTS = 200
 PARITY_TOL = 2e-3                    # NumPy 与 PyTorch 学生的概率最大绝对差
 LATENCY_RUNS = 1000
@@ -234,7 +275,7 @@ for _name, _kind, _labels in HEADS:
     HEAD_SLICES[_name] = slice(_offset, _offset + _size)
     _offset += _size
 OUT_DIM = _offset  # 9 个头的输出拼成一个向量，切片见 HEAD_SLICES
-LOSS_WEIGHTS = {name: 1.0 for name in HEAD_NAMES}  # 各头 λ 相同；GradNorm 留作后续工作
+LOSS_WEIGHTS = {name: 1.0 for name in HEAD_NAMES}  # 固定的各头 λ：学生模型，以及 LOSS_BALANCE = "equal" 时的教师
 LABEL_COLUMNS = [f"y_{name}" for name in HEAD_NAMES]
 
 PROBE_SIZE = 52
@@ -269,14 +310,17 @@ PATHS["student_report"] = os.path.join(PATHS["reports"], "student_report")
 SMOKE_POOL_ROWS = 64
 if SMOKE_TEST:  # 只验证流程：极小的编码器与学生、2 折、1 轮、64 条训练数据
     EPOCHS, BATCH_SIZE, MAX_LEN, HEAD_TOKENS, CV_FOLDS = 1, 8, 64, 16, 2
-    STUDENT.update(embed_dim=16, filters=8, hidden=16, epochs=1, batch_size=16, max_len=MAX_LEN,
-                   head_chars=HEAD_TOKENS)
+    wide = STUDENT_WIDTH == "wide"  # 冒烟测试里“加宽”只按比例放大极小的学生，验证流程
+    STUDENT.update(embed_dim=16, filters=12 if wide else 8, hidden=24 if wide else 16, epochs=1, batch_size=16,
+                   max_len=MAX_LEN, head_chars=HEAD_TOKENS)
     LATENCY_RUNS = 200
 
 for key in ("teacher_dir", "fold_dir", "student_dir", "student_ckpt_dir", "cache", "reports", "configs"):
     os.makedirs(PATHS[key], exist_ok=True)
 set_seed(SEED)
 print("DRIVE_ROOT:", DRIVE_ROOT, "| SMOKE_TEST:", SMOKE_TEST, "| 输出维度:", OUT_DIM)
+print(f"C5 选项：LOSS_BALANCE={LOSS_BALANCE}（α={GRADNORM_ALPHA}）| STUDENT_WIDTH={STUDENT_WIDTH}"
+      f"（filters {STUDENT['filters']}，hidden {STUDENT['hidden']}）| KD_SOURCE={KD_SOURCE} | HARD_NEGATIVE_WEIGHT={HARD_NEGATIVE_WEIGHT}")
 """)
 
 md("## 3. 数据：读取、校验、泄露检查与分折")
@@ -287,8 +331,31 @@ def clean_text(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
+EXCLUDE_ROLE = "exclude"  # olivia_cases.csv 中只用于泄露剔除的行（红队输入等）
+
+
+def source_round(source):
+    # synthetic:r4b02 → "r4"；第一轮 synthetic:b01 → "r1"；其余 → ""
+    batch = str(source).removeprefix("synthetic:")
+    match = re.match(r"r(\d+)b", batch)
+    return f"r{match.group(1)}" if match else ("r1" if re.match(r"b\d+", batch) else "")
+
+
+def slot_keys(frame):
+    # 按槽位报告用的分组名：合成数据为“轮次:槽位”（没有槽位时为“轮次:无槽位”），项目用例取类别或来源
+    return np.array([(f"{source_round(src)}:{s}" if s else f"{source_round(src) or '合成'}:无槽位") if g == "synthetic"
+                     else f"用例:{c or src}"
+                     for s, c, src, g in zip(frame["slot"], frame["category"], frame["source"], frame["group"])])
+
+
+def hard_negative_mask(frame):
+    # 难负例：轮次与槽位在 HARD_NEGATIVE_SLOTS 里、真实等级为 L0 的合成数据行
+    return ((frame["group"] == "synthetic").to_numpy() & np.isin(slot_keys(frame), list(HARD_NEGATIVE_KEYS))
+            & (frame["y_risk"] == 0).to_numpy())
+
+
 def load_synthetic(path):
-    # 每行一条 label_schema.json 记录，外加 source（合并脚本写入）；未合并的批次文件用 meta.batch 代替
+    # 每行一条 label_schema.json 记录，外加 source（合并脚本写入）与可选的顶层 slot；未合并的批次文件用 meta.batch / meta.slot 代替
     if not os.path.exists(path):
         raise FileNotFoundError(f"找不到 {path}：先在本地用 validate_batches.py 合并合成数据并上传到这里")
     rows = []
@@ -300,9 +367,11 @@ def load_synthetic(path):
             missing = [key for key in ("text", *HEAD_NAMES) if key not in record]
             if missing:
                 raise ValueError(f"{path}:{line_no} 缺少字段 {missing}")
-            source = record.get("source") or "synthetic:" + str(record.get("meta", {}).get("batch", "unknown"))
+            meta = record.get("meta") or {}
+            source = record.get("source") or "synthetic:" + str(meta.get("batch", "unknown"))
             row = {"id": f"syn_{line_no}", "text": clean_text(record["text"]), "role": "train",
-                   "source": source, "group": "synthetic", "category": "", "level": -1, "rule_level": -1}
+                   "source": source, "group": "synthetic", "category": "", "slot": str(record.get("slot") or meta.get("slot") or ""),
+                   "level": -1, "rule_level": -1}
             for name, kind, labels in HEADS:
                 value = record[name]
                 if kind == "class":
@@ -331,20 +400,27 @@ def load_cases(path):
         raise ValueError(f"olivia_cases.csv 缺少列：{sorted(missing)}（请用最新的 export_olivia_data.py 重新导出）")
     if "category" not in df.columns:
         df["category"] = ""
-    if not df["level"].isin([0, 1, 2, 3]).all() or not df["role"].isin(["train", *TEST_SETS]).all():
-        raise ValueError("olivia_cases.csv 的 level 或 role 取值非法")
+    if not df["role"].isin(["train", *TEST_SETS, EXCLUDE_ROLE]).all():
+        raise ValueError("olivia_cases.csv 的 role 取值非法")
+    # exclude 行（红队输入等）只用于泄露剔除：不训练、不评估，等级记为 -1
+    excluded = df[df["role"] == EXCLUDE_ROLE]
+    df = df[df["role"] != EXCLUDE_ROLE].copy()
+    if not df["level"].isin([0, 1, 2, 3]).all():
+        raise ValueError("olivia_cases.csv 的 level 取值非法")
     if (df["role"] == "probe").sum() != PROBE_SIZE:
         raise ValueError(f"探针应为 {PROBE_SIZE} 条，实际 {(df['role'] == 'probe').sum()} 条")
     df["text"] = df["text"].map(clean_text)
     df["group"] = "cases"
+    df["slot"] = ""
     # 项目用例只有风险等级：其余头的标签记为缺失（分类头 -1，连续头 NaN），训练时屏蔽
     for name, kind, _ in HEADS:
         df[f"y_{name}"] = df["level"].astype(int) if name == "risk" else (-1 if kind == "class" else np.nan)
-    return df
+    return df, excluded["text"].map(clean_text)
 
 
 def tidy(frame):
-    frame = frame[["id", "text", "role", "source", "group", "category", "level", "rule_level", *LABEL_COLUMNS]].copy()
+    frame = frame[["id", "text", "role", "source", "group", "category", "slot", "level", "rule_level",
+                   *LABEL_COLUMNS]].copy()
     for name, kind, _ in HEADS:
         column = f"y_{name}"
         frame[column] = frame[column].fillna(-1).astype(int) if kind == "class" else frame[column].astype(float)
@@ -381,17 +457,20 @@ def assign_folds(frame, folds, seed):
 
 
 synthetic = load_synthetic(PATHS["synthetic"])
-cases = load_cases(PATHS["cases_csv"])
+cases, exclude_texts = load_cases(PATHS["cases_csv"])
 tests = {role: tidy(cases[cases["role"] == role]) for role in TEST_SETS}
 pool = pd.concat([synthetic, cases[cases["role"] == "train"]], ignore_index=True)
 if SMOKE_TEST:
     pool = pd.concat([g.sample(min(len(g), SMOKE_POOL_ROWS // 2), random_state=SEED) for _, g in pool.groupby("group")])
 
-print("泄露检查：")
-pool = tidy(drop_test_leaks(pool, pd.concat([t["text"] for t in tests.values()])))
+print(f"泄露检查（测试集 {sum(len(t) for t in tests.values())} 条 + 排除集 {len(exclude_texts)} 条）：")
+pool = tidy(drop_test_leaks(pool, pd.concat([*(t["text"] for t in tests.values()), exclude_texts])))
 pool["fold"] = assign_folds(pool, CV_FOLDS, SEED)
 
 print("\n训练池（来源 × 风险等级）：", pool.groupby(["group", "y_risk"]).size().to_dict())
+syn_slots = pool.loc[pool["group"] == "synthetic", "slot"]
+print(f"合成数据有槽位的行：{int((syn_slots != '').sum())}/{len(syn_slots)}；"
+      f"难负例行（轮次与槽位在 HARD_NEGATIVE_SLOTS 且为 L0）：{int(hard_negative_mask(pool).sum())}")
 print("各头有标签的行数：", {name: int((pool[f"y_{name}"] >= 0).sum() if HEAD_KIND[name] == "class"
                                     else pool[f"y_{name}"].notna().sum()) for name in HEAD_NAMES})
 print("每折条数：", pool["fold"].value_counts().sort_index().to_dict())
@@ -402,9 +481,60 @@ DATA_FINGERPRINT = hashlib.sha256(pool[["text", *LABEL_COLUMNS, "fold"]].to_csv(
 """)
 
 md(r"""
+### 3b. 学生训练集（在教师训练前确定）
+
+- 训练池按风险等级分层留出 15%，学生训练不使用它们（也不使用它们的增强副本）；它们只用来拟合学生的温度与阈值。
+- 学生训练集 = 其余 85% 的原句 + 每句 2 份增强副本（第 1 份随机删去 10% 的字，第 2 份交换约 10% 的相邻字对），增强副本沿用原句的标签与槽位。
+- 放在教师训练之前，是因为 `KD_SOURCE = "ensemble"` 时每个折教师训练完就要对这些文本做预测（折模型不保存）。划分只取决于训练池与固定种子，与教师无关。
+""")
+
+code(r"""
+def stratified_holdout(frame, fraction, seed):
+    rng = np.random.default_rng(seed)
+    held = np.zeros(len(frame), dtype=bool)
+    for _, idx in frame.groupby("y_risk").indices.items():
+        idx = rng.permutation(idx)
+        held[idx[:int(round(fraction * len(idx)))]] = True
+    return held
+
+
+def char_dropout(text, rng, p):
+    kept = "".join(ch for ch in text if rng.random() >= p)
+    return kept or text
+
+
+def adjacent_swap(text, rng, p):
+    chars = list(text)
+    if len(chars) < 2:
+        return text
+    for _ in range(max(1, int(round(p * len(chars))))):
+        i = int(rng.integers(0, len(chars) - 1))
+        chars[i], chars[i + 1] = chars[i + 1], chars[i]
+    return "".join(chars)
+
+
+held_mask = stratified_holdout(pool, STUDENT["holdout_fraction"], SEED + 1)
+student_holdout = pool[held_mask].reset_index(drop=True)
+base = pool[~held_mask].reset_index(drop=True)
+aug_rng = np.random.default_rng(SEED + 2)
+copies = [base.assign(copy=0)]
+for c in range(1, STUDENT["aug_copies"] + 1):
+    op = char_dropout if c % 2 == 1 else adjacent_swap
+    copies.append(base.assign(text=[op(t, aug_rng, STUDENT["aug_rate"]) for t in base["text"]], copy=c))
+student_train = pd.concat(copies, ignore_index=True)
+# 学生训练文本的指纹：各折教师对这些文本的预测（集成蒸馏目标）按它复用
+STUDENT_TEXTS_HASH = hashlib.sha256("\n".join(student_train["text"]).encode("utf-8")).hexdigest()[:16]
+print(f"学生训练集 {len(student_train)} 条（原句 {len(base)} × {1 + STUDENT['aug_copies']}），留出 {len(student_holdout)} 条；"
+      f"其中难负例 {int(hard_negative_mask(student_train).sum())} 条（含增强副本）")
+print("留出集风险等级：", student_holdout["y_risk"].map(dict(enumerate(LEVEL_NAMES))).value_counts().sort_index().to_dict())
+""")
+
+md(r"""
 ## 4. 共用部分：带屏蔽的多头损失、输出换算、校准与指标
 
-- 损失只在有标签的行上计算（分类头标签为 -1、连续头为 NaN 的行跳过）；各头取平均后按 λ = 1 相加。
+- 损失只在有标签的行上计算（分类头标签为 -1、连续头为 NaN 的行跳过）；各头取平均后按 λ 相加（`"equal"` 与学生：λ = 1；`"gradnorm"`：λ 为 GradNorm 每步更新的权重，总损失里视为常数）。
+- 学生风险头的难负例加权保持类别加权交叉熵的约简方式：Σ(类别权重 × 行权重 × nll) / Σ(类别权重 × 行权重)，行权重全为 1 时与原来相同。
+- 按槽位的误报率只看真实 L0 的行；“阈值前”是最大概率等级，“阈值后”是产品实际的判定（加 ge2 / L3 阈值）。
 - 温度只改变分类头概率的“自信程度”，不改变排序；阈值在温度校准后的概率上按召回目标确定。
 - 按类别的误报率只在**真实等级为 L0** 的行上计算（v2 可行性实验把非 L0 行也算进了类别误报率，这里已改正）。
 """)
@@ -430,17 +560,24 @@ def value_activation(z, kind):
     return torch.tanh(z) if kind == "tanh" else torch.sigmoid(z)
 
 
-def supervised_loss(raw, labels, risk_weight):
-    # raw：(批大小, OUT_DIM) 原始输出；labels：每个头一列标签，缺失的行不计
+def head_losses(raw, labels, risk_weight, risk_row_weight=None):
+    # raw：(批大小, OUT_DIM) 原始输出；labels：每个头一列标签，缺失的行不计。返回 {头名: 该头的平均损失}，没有标签的头不出现
+    # risk_row_weight：每行的风险头权重（难负例加权）；None 时与第四轮完全相同
     raw = raw.float()
-    total = raw.new_zeros(())
+    parts = {}
     for name, kind, _ in HEADS:
         z, y = raw[:, HEAD_SLICES[name]], labels[name]
         if kind == "class":
             has = y >= 0
             if not has.any():
                 continue
-            part = F.cross_entropy(z[has], y[has], weight=risk_weight if name == "risk" else None)
+            if name == "risk" and risk_row_weight is not None:
+                # 与带类别权重的 mean 约简一致：Σ(w_类 × w_行 × nll) / Σ(w_类 × w_行)
+                row = risk_row_weight[has]
+                nll = F.cross_entropy(z[has], y[has], weight=risk_weight, reduction="none")
+                part = (nll * row).sum() / (risk_weight[y[has]] * row).sum()
+            else:
+                part = F.cross_entropy(z[has], y[has], weight=risk_weight if name == "risk" else None)
         else:
             has = ~torch.isnan(y)
             if not has.any():
@@ -451,8 +588,61 @@ def supervised_loss(raw, labels, risk_weight):
                 part = (weight * F.binary_cross_entropy_with_logits(z, y, reduction="none")).mean()
             else:
                 part = F.mse_loss(value_activation(z, kind), y)
+        parts[name] = part
+    return parts
+
+
+def supervised_loss(raw, labels, risk_weight, risk_row_weight=None):
+    # 固定权重 LOSS_WEIGHTS 下的总损失（学生，及 LOSS_BALANCE = "equal" 时的教师）
+    total = raw.new_zeros((), dtype=torch.float)
+    for name, part in head_losses(raw, labels, risk_weight, risk_row_weight).items():
         total = total + LOSS_WEIGHTS[name] * part
     return total
+
+
+class GradNorm:
+    # GradNorm（Chen et al. 2018, ICML）：让各头在最后一个共享层上的加权梯度范数 G_i = w_i‖∇_W L_i‖
+    # 向 mean(G) × r_i^α 靠拢，r_i = (L_i / L_i(0)) / 各头该比值的均值（训练进度落后的头 r_i > 1，权重被抬高）。
+    # 头权重用单独的 Adam 更新；目标值视为常数；更新后截断到下限并重新归一化，使总和 = 头数。
+    # 某批里没有标签的头不参与这一步（项目用例行只有风险标签）。
+    def __init__(self, names, alpha=GRADNORM_ALPHA, lr=GRADNORM_LR, min_weight=GRADNORM_MIN_WEIGHT):
+        self.names, self.alpha, self.min_weight = list(names), alpha, min_weight
+        self.w = torch.ones(len(self.names), device=DEVICE, requires_grad=True)
+        self.optimizer = torch.optim.Adam([self.w], lr=lr)
+        self.initial = [None] * len(self.names)  # L_i(0)：该头第一次有标签那一步的损失
+        self.skipped = 0
+
+    def weights(self):
+        return {name: round(float(v), 4) for name, v in zip(self.names, self.w.detach().cpu())}
+
+    def total(self, parts):
+        w = self.w.detach().clone()  # 复制：本步稍后会原地更新 self.w
+        return sum(w[i] * parts[name] for i, name in enumerate(self.names) if name in parts)
+
+    def step(self, parts, shared, scaler):
+        active = [i for i, name in enumerate(self.names) if name in parts]
+        if len(active) < 2:
+            return
+        scale = scaler.get_scale() if scaler.is_enabled() else 1.0  # float16 AMP：在放大后的损失上求梯度，防止下溢
+        norms = torch.stack([torch.autograd.grad(parts[self.names[i]] * scale, shared, retain_graph=True)[0].float().norm()
+                             for i in active]) / scale
+        losses = torch.stack([parts[self.names[i]].detach().float() for i in active])
+        if not (torch.isfinite(norms).all() and torch.isfinite(losses).all()):
+            self.skipped += 1
+            return
+        for j, i in enumerate(active):
+            if self.initial[i] is None:
+                self.initial[i] = max(float(losses[j]), 1e-8)
+        ratio = losses / torch.tensor([self.initial[i] for i in active], device=losses.device)
+        progress = ratio / ratio.mean()
+        g = self.w[active] * norms
+        target = (g.mean() * progress ** self.alpha).detach()
+        self.optimizer.zero_grad()
+        (g - target).abs().sum().backward()
+        self.optimizer.step()
+        with torch.no_grad():
+            self.w.clamp_(min=self.min_weight)
+            self.w.mul_(len(self.names) / self.w.sum())
 
 
 def softmax(z):
@@ -625,6 +815,32 @@ def metrics_report(title, frame, outputs, cal, groups):
 def pool_groups(frame):
     group = frame["group"].to_numpy()
     return {"全部": np.ones(len(frame), dtype=bool), "合成数据": group == "synthetic", "项目用例": group == "cases"}
+
+
+def slot_false_alarms(title, frame, p_risk, cal):
+    # 只在真实等级为 L0 的行上，按槽位统计被判为 ≥L2 的比例。
+    # 阈值前：只取最大概率等级；阈值后：再加上 ge2 / L3 阈值（model_levels，产品的判定）。返回 (markdown 行, json)
+    y = frame["y_risk"].to_numpy()
+    keys = slot_keys(frame)
+    before, after = p_risk.argmax(1), model_levels(p_risk, cal)
+    result = {}
+    for key in sorted(set(keys[y == 0])):
+        mask = (y == 0) & (keys == key)
+        result[key] = {"before_threshold": rate(mask, before >= 2), "after_threshold": rate(mask, after >= 2),
+                       "hard_negative": key in HARD_NEGATIVE_KEYS}
+    order = sorted(result, key=lambda k: (-result[k]["after_threshold"]["rate"], k))
+    lines = [f"### {title}：按槽位的 L0 误报为 ≥L2（★ = 难负例槽位；区间为 Wilson 95%）", "",
+             "| 槽位 | L0 行数 | 阈值前 | 阈值后 |", "| :--- | ---: | :---: | :---: |"]
+    for key in order:
+        r = result[key]
+        lines.append(f"| {key}{' ★' if r['hard_negative'] else ''} | {r['after_threshold']['n']} | "
+                     f"{fmt_rate(r['before_threshold'])} | {fmt_rate(r['after_threshold'])} |")
+    hard = (y == 0) & np.isin(keys, list(HARD_NEGATIVE_KEYS))
+    totals = {"难负例槽位合计": hard, "其余 L0 合计": (y == 0) & ~hard}
+    for label, mask in totals.items():
+        lines.append(f"| **{label}** | {int(mask.sum())} | {fmt_rate(rate(mask, before >= 2))} | {fmt_rate(rate(mask, after >= 2))} |")
+        result[label] = {"before_threshold": rate(mask, before >= 2), "after_threshold": rate(mask, after >= 2)}
+    return lines, result
 """)
 
 md("## 5. 教师模型：共享编码器 + 9 个头")
@@ -693,10 +909,21 @@ TRAIN_CONFIG = {
     "gamma_pos": GAMMA_POS, "loss_weights": LOSS_WEIGHTS,
     "heads": [[name, kind, labels] for name, kind, labels in HEADS], "data_fingerprint": DATA_FINGERPRINT,
 }
+if LOSS_BALANCE == "gradnorm":  # "equal" 不加这一项，配置指纹与第四轮的写法相同
+    TRAIN_CONFIG["loss_balance"] = {"method": "gradnorm", "alpha": GRADNORM_ALPHA, "lr": GRADNORM_LR,
+                                    "min_weight": GRADNORM_MIN_WEIGHT, "shared_layer": "encoder.layer[-1].output.dense.weight"}
 CONFIG_FINGERPRINT = hashlib.sha256(json.dumps(TRAIN_CONFIG, sort_keys=True).encode()).hexdigest()[:16]
+# 折教师对学生训练文本的预测（集成蒸馏）按这个指纹复用
+FOLD_KD_FINGERPRINT = hashlib.sha256(f"{CONFIG_FINGERPRINT}:{STUDENT_TEXTS_HASH}".encode()).hexdigest()[:16]
+
+
+def gradnorm_shared_layer(model):
+    # GradNorm 的“最后一个共享层”：编码器最后一层 FFN 输出的 dense 权重（各头之前最后一个有参数的共享线性层）
+    return model.encoder.encoder.layer[-1].output.dense.weight
 
 
 def train_teacher(frame, seed, tag):
+    # 返回 (模型, GradNorm 每轮末的头权重列表；"equal" 时为空列表)
     set_seed(seed)
     model = build_teacher().to(DEVICE)
     risk_weight = risk_class_weights(frame)
@@ -704,14 +931,22 @@ def train_teacher(frame, seed, tag):
     steps = EPOCHS * math.ceil(len(frame) / BATCH_SIZE)
     scheduler = get_linear_schedule_with_warmup(optimizer, int(WARMUP_RATIO * steps), steps)
     scaler = torch.amp.GradScaler("cuda", enabled=AMP_DTYPE == torch.float16)
+    balance = GradNorm(HEAD_NAMES) if LOSS_BALANCE == "gradnorm" else None
+    history = []
     for epoch in range(1, EPOCHS + 1):
         model.train()
         started, total = time.time(), 0.0
         for ids, mask, labels in batches(frame, BATCH_SIZE, shuffle=True, seed=seed + epoch):
             with torch.autocast(DEVICE.type, dtype=AMP_DTYPE, enabled=AMP_DTYPE is not None):
                 raw = model(ids, mask)
-            batch_loss = supervised_loss(raw, labels, risk_weight)
-            optimizer.zero_grad()
+            if balance is None:
+                batch_loss = supervised_loss(raw, labels, risk_weight)
+                optimizer.zero_grad()
+            else:
+                parts = head_losses(raw, labels, risk_weight)
+                batch_loss = balance.total(parts)  # 用本步更新前的权重
+                optimizer.zero_grad()
+                balance.step(parts, gradnorm_shared_layer(model), scaler)
             scaler.scale(batch_loss).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -720,7 +955,10 @@ def train_teacher(frame, seed, tag):
             scheduler.step()
             total += batch_loss.item()
         print(f"  [{tag}] epoch {epoch}/{EPOCHS} train_loss {total:.3f} ({time.time() - started:.0f}s)")
-    return model
+        if balance is not None:
+            history.append({"epoch": epoch, "weights": balance.weights(), "skipped_steps": balance.skipped})
+            print(f"  [{tag}] GradNorm 头权重：" + "，".join(f"{k} {v:.2f}" for k, v in balance.weights().items()))
+    return model, history
 
 
 @torch.no_grad()
@@ -739,21 +977,37 @@ def release(model):
         torch.cuda.empty_cache()
 
 
-# ---- 交叉验证：每折训练一个模型，只预测留出的那一折 ----
+# ---- 交叉验证：每折训练一个模型，只预测留出的那一折（集成蒸馏时另预测学生训练文本） ----
 oof_raw = np.full((len(pool), OUT_DIM), np.nan, dtype=np.float32)
+fold_student_raw, GRADNORM_HISTORY = [], {}
 for k in range(CV_FOLDS):
     fold_path = os.path.join(PATHS["fold_dir"], f"fold_{k}.npz")
     held = np.flatnonzero(pool["fold"].to_numpy() == k)
     if os.path.exists(fold_path) and not FORCE_RETRAIN:
         saved = np.load(fold_path)
-        if str(saved["fingerprint"]) == CONFIG_FINGERPRINT and np.array_equal(saved["index"], held):
+        current = str(saved["fingerprint"]) == CONFIG_FINGERPRINT and np.array_equal(saved["index"], held)
+        has_kd = "kd_fingerprint" in saved.files and str(saved["kd_fingerprint"]) == FOLD_KD_FINGERPRINT
+        if current and (KD_SOURCE != "ensemble" or has_kd):
             oof_raw[held] = saved["raw"]
+            if KD_SOURCE == "ensemble":
+                fold_student_raw.append(saved["kd_raw"])
+            if "gradnorm" in saved.files:
+                GRADNORM_HISTORY[f"fold {k}"] = json.loads(str(saved["gradnorm"]))
             print(f"第 {k} 折已完成，复用。")
             continue
+        if current:
+            print(f"第 {k} 折缺少集成蒸馏所需的学生训练文本预测（折模型未保存），重新训练。")
     print(f"第 {k} 折：训练 {len(pool) - len(held)} 条，预测 {len(held)} 条")
-    model = train_teacher(pool.drop(index=held), SEED + 100 * (k + 1), f"fold {k}")
+    model, history = train_teacher(pool.drop(index=held), SEED + 100 * (k + 1), f"fold {k}")
     raw = predict_raw(model, pool.iloc[held])
-    np.savez(fold_path, fingerprint=CONFIG_FINGERPRINT, index=held, raw=raw)
+    extra = {"gradnorm": json.dumps(history)} if history else {}
+    if KD_SOURCE == "ensemble":
+        kd_raw = predict_raw(model, student_train)
+        fold_student_raw.append(kd_raw)
+        extra.update(kd_fingerprint=FOLD_KD_FINGERPRINT, kd_raw=kd_raw)
+    np.savez(fold_path, fingerprint=CONFIG_FINGERPRINT, index=held, raw=raw, **extra)
+    if history:
+        GRADNORM_HISTORY[f"fold {k}"] = history
     oof_raw[held] = raw
     release(model)
 assert not np.isnan(oof_raw).any()
@@ -770,14 +1024,20 @@ def teacher_is_current():
 
 if teacher_is_current():
     print("最终教师已训练完成且配置一致，复用。")
+    with open(PATHS["teacher_config"], encoding="utf-8") as f:
+        final_history = json.load(f).get("gradnorm_history", [])
 else:
     with open(PATHS["teacher_config"], "w", encoding="utf-8") as f:
         json.dump({**TRAIN_CONFIG, "config_fingerprint": CONFIG_FINGERPRINT, "training_complete": False}, f, ensure_ascii=False, indent=2)
-    model = train_teacher(pool, SEED, "final")
+    model, final_history = train_teacher(pool, SEED, "final")
     torch.save({"state_dict": model.state_dict(), "config_fingerprint": CONFIG_FINGERPRINT}, PATHS["teacher"])
     release(model)
+    extra = {"gradnorm_history": final_history} if final_history else {}
     with open(PATHS["teacher_config"], "w", encoding="utf-8") as f:
-        json.dump({**TRAIN_CONFIG, "config_fingerprint": CONFIG_FINGERPRINT, "training_complete": True}, f, ensure_ascii=False, indent=2)
+        json.dump({**TRAIN_CONFIG, "config_fingerprint": CONFIG_FINGERPRINT, "training_complete": True, **extra},
+                  f, ensure_ascii=False, indent=2)
+if final_history:
+    GRADNORM_HISTORY["final"] = final_history
 
 teacher = build_teacher().to(DEVICE)
 teacher.load_state_dict(torch.load(PATHS["teacher"], map_location=DEVICE)["state_dict"])
@@ -789,12 +1049,29 @@ md(r"""
 ## 7. 教师校准与交叉验证报告
 
 温度与阈值只用 OOF 预测确定。最终教师用全部数据训练，它的校准与各折模型相近但不完全相同，这是交叉验证定阈值的通常近似。
+
+报告末尾另有按槽位的 L0 误报表，以及 `LOSS_BALANCE = "gradnorm"` 时各折与最终教师每轮末学到的头权重。
 """)
 
 code(r"""
 TEACHER_CAL = {"config_fingerprint": CONFIG_FINGERPRINT, **calibrate(oof_raw, pool)}
 oof_out = outputs_from_raw(oof_raw, TEACHER_CAL["temperatures"])
 cv_lines, cv_json = metrics_report(f"教师 {CV_FOLDS} 折交叉验证（OOF）", pool, oof_out, TEACHER_CAL, pool_groups(pool))
+slot_lines, slot_json = slot_false_alarms("教师 OOF", pool, oof_out["risk"], TEACHER_CAL)
+cv_lines += [""] + slot_lines
+cv_json["slot_false_alarms"] = slot_json
+if GRADNORM_HISTORY:
+    cv_lines += ["", f"### GradNorm 各头权重（每轮末；α = {GRADNORM_ALPHA}，总和 = {len(HEAD_NAMES)}）", "",
+                 "| 模型 | 轮 | " + " | ".join(HEAD_NAMES) + " |", "| :--- | ---: | " + " | ".join("---:" for _ in HEAD_NAMES) + " |"]
+    for tag, history in GRADNORM_HISTORY.items():
+        for entry in history:
+            cv_lines.append(f"| {tag} | {entry['epoch']} | " + " | ".join(f"{entry['weights'][n]:.2f}" for n in HEAD_NAMES) + " |")
+    skipped = {tag: h[-1]["skipped_steps"] for tag, h in GRADNORM_HISTORY.items() if h and h[-1]["skipped_steps"]}
+    if skipped:
+        cv_lines.append(f"\n梯度非有限而跳过的 GradNorm 步数：{skipped}")
+    cv_json["gradnorm"] = GRADNORM_HISTORY
+else:
+    cv_lines += ["", "各头权重 λ 固定为 1（`LOSS_BALANCE = \"equal\"`）。"]
 TEACHER_CAL["oof"] = cv_json
 with open(PATHS["teacher_calibration"], "w", encoding="utf-8") as f:
     json.dump(TEACHER_CAL, f, ensure_ascii=False, indent=2)
@@ -819,56 +1096,40 @@ print("\n".join(header + cv_lines))
 """)
 
 md(r"""
-## 8. 学生模型：数据准备（留出集、字表、增强、教师蒸馏目标）
+## 8. 学生模型：字表、大小检查与蒸馏目标
 
-- 训练池按风险等级分层留出 15%，学生训练不使用它们（也不使用它们的增强副本）；它们只用来拟合学生的温度与阈值。
-- 学生训练集 = 其余 85% 的原句 + 每句 2 份增强副本（第 1 份随机删去 10% 的字，第 2 份交换约 10% 的相邻字对），增强副本沿用原句的标签。
-- 蒸馏目标由最终教师对学生训练集的**实际文本**（含增强副本）计算：分类头取 `softmax(z / (教师温度 × 2))`，连续头取教师的输出值。
+- 字表：训练池中出现 ≥ 2 次的字，另加 PAD、UNK。训练前按字表大小与学生配置算出 `student.npz` 的字节数（float16，每个数组另加约 260 字节的 npz 头），断言 < 4 MB；导出后再按实际文件大小断言一次。
+- 蒸馏目标按学生训练集的**实际文本**（含增强副本）计算：分类头取 `softmax(z / (教师温度 × 2))`，连续头取教师的输出值。
+  `KD_SOURCE = "ensemble"` 时对 5 个折教师与最终教师各算一份再取平均（6 个教师权重相同，都用 OOF 上拟合的教师温度）；`"final"` 时只用最终教师。
 """)
 
 code(r"""
-def stratified_holdout(frame, fraction, seed):
-    rng = np.random.default_rng(seed)
-    held = np.zeros(len(frame), dtype=bool)
-    for _, idx in frame.groupby("y_risk").indices.items():
-        idx = rng.permutation(idx)
-        held[idx[:int(round(fraction * len(idx)))]] = True
-    return held
-
-
-def char_dropout(text, rng, p):
-    kept = "".join(ch for ch in text if rng.random() >= p)
-    return kept or text
-
-
-def adjacent_swap(text, rng, p):
-    chars = list(text)
-    if len(chars) < 2:
-        return text
-    for _ in range(max(1, int(round(p * len(chars))))):
-        i = int(rng.integers(0, len(chars) - 1))
-        chars[i], chars[i + 1] = chars[i + 1], chars[i]
-    return "".join(chars)
-
-
-held_mask = stratified_holdout(pool, STUDENT["holdout_fraction"], SEED + 1)
-student_holdout = pool[held_mask].reset_index(drop=True)
-base = pool[~held_mask].reset_index(drop=True)
-aug_rng = np.random.default_rng(SEED + 2)
-copies = [base.assign(copy=0)]
-for c in range(1, STUDENT["aug_copies"] + 1):
-    op = char_dropout if c % 2 == 1 else adjacent_swap
-    copies.append(base.assign(text=[op(t, aug_rng, STUDENT["aug_rate"]) for t in base["text"]], copy=c))
-student_train = pd.concat(copies, ignore_index=True)
-
 char_counts = Counter(ch for text in pool["text"] for ch in text)
 VOCAB = ["<PAD>", "<UNK>"] + sorted(ch for ch, n in char_counts.items() if n >= STUDENT["min_char_freq"])
 CHAR_INDEX = {ch: i for i, ch in enumerate(VOCAB)}
-print(f"学生训练集 {len(student_train)} 条（原句 {len(base)} × {1 + STUDENT['aug_copies']}），留出 {len(student_holdout)} 条；"
-      f"字表 {len(VOCAB)} 个（含 PAD、UNK）")
-print("留出集风险等级：", student_holdout["y_risk"].map(dict(enumerate(LEVEL_NAMES))).value_counts().sort_index().to_dict())
 
-# ---- 教师对学生训练文本的输出（蒸馏目标；配置与文本未变时复用缓存） ----
+
+def student_param_count(vocab_size, cfg):
+    kernels, e, f, h = cfg["kernels"], cfg["embed_dim"], cfg["filters"], cfg["hidden"]
+    return (vocab_size * e + sum(f * e * k + f for k in kernels)
+            + len(kernels) * f * h + h + h * OUT_DIM + OUT_DIM)
+
+
+def student_npz_estimate(vocab_size, cfg):
+    # float16 每个参数 2 字节；npz 每个数组另有约 260 字节的 zip 与 .npy 头（第四轮实测 255）（数组数 = 1 + 2 × 卷积核种数 + 4）
+    return 2 * student_param_count(vocab_size, cfg) + 260 * (1 + 2 * len(cfg["kernels"]) + 4)
+
+
+STUDENT_BYTES_ESTIMATE = student_npz_estimate(len(VOCAB), STUDENT)
+print(f"字表 {len(VOCAB)} 个（含 PAD、UNK）；学生 {student_param_count(len(VOCAB), STUDENT):,} 个参数，"
+      f"student.npz 预计 {STUDENT_BYTES_ESTIMATE / 1024:.1f} KB（上限 {STUDENT_MAX_BYTES / 1024 / 1024:.0f} MB）")
+for label, cfg in (("base 96/128", {**STUDENT, "embed_dim": 64, "filters": 96, "hidden": 128}),
+                   ("wide 160/192", {**STUDENT, "embed_dim": 64, **STUDENT_WIDE})):
+    sizes = "，".join(f"字表 {v}：{student_npz_estimate(v, cfg) / 1024:.0f} KB" for v in (2000, 4000, 8000))
+    print(f"  正式配置 {label}（嵌入 64）：{sizes}")
+assert STUDENT_BYTES_ESTIMATE < STUDENT_MAX_BYTES, f"学生配置预计 {STUDENT_BYTES_ESTIMATE} 字节，超过 {STUDENT_MAX_BYTES}"
+
+# ---- 最终教师对学生训练文本的输出（配置与文本未变时复用缓存） ----
 TARGETS_FINGERPRINT = hashlib.sha256(
     (CONFIG_FINGERPRINT + "\n" + "\n".join(student_train["text"])).encode("utf-8")).hexdigest()[:16]
 teacher_train_raw = None
@@ -881,20 +1142,34 @@ if teacher_train_raw is None:
     teacher_train_raw = predict_raw(teacher, student_train)
     np.savez(PATHS["teacher_targets"], fingerprint=TARGETS_FINGERPRINT, raw=teacher_train_raw)
 
-kd_targets = np.zeros_like(teacher_train_raw, dtype=np.float32)
-for name, kind, _ in HEADS:
-    z = teacher_train_raw[:, HEAD_SLICES[name]].astype(np.float64)
-    if kind == "class":
-        kd_targets[:, HEAD_SLICES[name]] = softmax(z / (TEACHER_CAL["temperatures"][name] * STUDENT["kd_temperature"]))
-    else:
-        kd_targets[:, HEAD_SLICES[name]] = (np.tanh(z) if kind == "tanh" else sigmoid(z))
+
+def soft_targets(raw):
+    out = np.zeros_like(raw, dtype=np.float32)
+    for name, kind, _ in HEADS:
+        z = raw[:, HEAD_SLICES[name]].astype(np.float64)
+        if kind == "class":
+            out[:, HEAD_SLICES[name]] = softmax(z / (TEACHER_CAL["temperatures"][name] * STUDENT["kd_temperature"]))
+        else:
+            out[:, HEAD_SLICES[name]] = (np.tanh(z) if kind == "tanh" else sigmoid(z))
+    return out
+
+
+kd_teachers = [teacher_train_raw] + (fold_student_raw if KD_SOURCE == "ensemble" else [])
+kd_targets = np.mean([soft_targets(raw) for raw in kd_teachers], axis=0).astype(np.float32)
+if KD_SOURCE == "ensemble":
+    risk = HEAD_SLICES["risk"]
+    spread = np.std([soft_targets(raw)[:, risk][:, 2:].sum(1) for raw in kd_teachers], axis=0)
+    print(f"集成蒸馏：{len(kd_teachers)} 个教师（最终 + {len(fold_student_raw)} 折）；"
+          f"各教师 P(L2)+P(L3)（蒸馏温度下）的标准差：均值 {spread.mean():.3f}，最大 {spread.max():.3f}")
 """)
 
 md(r"""
 ## 9. 学生模型：字符级 CNN 与蒸馏训练
 
 字嵌入 → 卷积核 2/3/4/5 各若干个（ReLU，全局最大池化，只在文本内的窗口上取最大）→ dropout → 共享全连接（ReLU）→ 9 个头。
-损失 = 0.5 × 硬标签（与教师相同的屏蔽损失）+ 0.5 × 蒸馏（分类头：T = 2 的 KL × T²；连续头：与教师输出的 MSE）。
+宽度由 `STUDENT_WIDTH` 决定（`"wide"`：每种卷积核 160 个、共享层 192 维；`"base"`：96 / 128）。
+损失 = 0.5 × 硬标签（与教师相同的屏蔽损失，各头 λ = 1）+ 0.5 × 蒸馏（分类头：T = 2 的 KL × T²；连续头：与教师输出的 MSE）。
+`HARD_NEGATIVE_WEIGHT ≠ 1` 时，硬标签项中风险头对难负例行（含其增强副本）乘这个权重；蒸馏项不加权。
 """)
 
 code(r"""
@@ -966,6 +1241,14 @@ def distill_loss(raw, kd):
 STUDENT_CONFIG = {**STUDENT, "teacher_fingerprint": CONFIG_FINGERPRINT, "targets_fingerprint": TARGETS_FINGERPRINT,
                   "vocab_hash": hashlib.sha256("".join(VOCAB).encode("utf-8")).hexdigest()[:16],
                   "holdout_hash": hashlib.sha256(student_holdout["id"].str.cat(sep="\n").encode("utf-8")).hexdigest()[:16]}
+# C5 选项只在打开时写进指纹（全部关闭时与第四轮的写法相同）
+if KD_SOURCE == "ensemble":
+    STUDENT_CONFIG["kd_source"] = {"method": "ensemble", "teachers": 1 + len(fold_student_raw),
+                                   "fold_kd_fingerprint": FOLD_KD_FINGERPRINT}
+HARD_NEGATIVE_ROWS = hard_negative_mask(student_train)
+if HARD_NEGATIVE_WEIGHT != 1.0:
+    STUDENT_CONFIG["hard_negative"] = {"weight": HARD_NEGATIVE_WEIGHT, "slots": sorted(HARD_NEGATIVE_KEYS),
+                                       "rows": int(HARD_NEGATIVE_ROWS.sum())}
 STUDENT_FINGERPRINT = hashlib.sha256(json.dumps(STUDENT_CONFIG, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -975,6 +1258,10 @@ def train_student():
     encoded = [encode_chars(t) for t in student_train["text"]]
     targets = torch.tensor(kd_targets, dtype=torch.float)
     risk_weight = risk_class_weights(student_train)
+    row_weight = None
+    if HARD_NEGATIVE_WEIGHT != 1.0:
+        row_weight = torch.tensor(np.where(HARD_NEGATIVE_ROWS, HARD_NEGATIVE_WEIGHT, 1.0), dtype=torch.float)
+        print(f"  难负例加权：{int(HARD_NEGATIVE_ROWS.sum())}/{len(student_train)} 行，风险头硬标签损失 × {HARD_NEGATIVE_WEIGHT}")
     optimizer = torch.optim.AdamW(model.parameters(), lr=STUDENT["lr"], weight_decay=STUDENT["weight_decay"])
     steps = STUDENT["epochs"] * math.ceil(len(student_train) / STUDENT["batch_size"])
     scheduler = get_linear_schedule_with_warmup(optimizer, int(STUDENT["warmup_ratio"] * steps), steps)
@@ -988,7 +1275,8 @@ def train_student():
             ids, lengths = char_batch([encoded[i] for i in chunk], DEVICE)
             raw = model(ids, lengths)
             labels = label_tensors(student_train.iloc[chunk], DEVICE)
-            loss = ((1 - alpha) * supervised_loss(raw, labels, risk_weight)
+            rows = None if row_weight is None else row_weight[chunk].to(DEVICE)
+            loss = ((1 - alpha) * supervised_loss(raw, labels, risk_weight, rows)
                     + alpha * distill_loss(raw, targets[chunk].to(DEVICE)))
             optimizer.zero_grad()
             loss.backward()
@@ -1030,6 +1318,9 @@ STUDENT_CAL = {"student_fingerprint": STUDENT_FINGERPRINT, **calibrate(holdout_r
 holdout_out = outputs_from_raw(holdout_raw, STUDENT_CAL["temperatures"])
 student_lines, student_json = metrics_report("学生模型：留出集（学生训练时没见过；教师训练时见过）", student_holdout,
                                              holdout_out, STUDENT_CAL, pool_groups(student_holdout))
+slot_lines, slot_json = slot_false_alarms("学生留出集", student_holdout, holdout_out["risk"], STUDENT_CAL)
+student_lines += [""] + slot_lines
+student_json["slot_false_alarms"] = slot_json
 
 # ---- 导出：float16 权重、字表、配置 ----
 state = {k: v.detach().cpu().float().numpy() for k, v in student.state_dict().items()}
@@ -1042,6 +1333,7 @@ arrays.update(dense_weight=state["dense.weight"], dense_bias=state["dense.bias"]
 np.savez(PATHS["student_npz"], **{k: v.astype(np.float16) for k, v in arrays.items()})
 npz_bytes = os.path.getsize(PATHS["student_npz"])
 assert npz_bytes < STUDENT_MAX_BYTES, f"student.npz {npz_bytes} 字节，超过 {STUDENT_MAX_BYTES}"
+print(f"student.npz 实际 {npz_bytes} 字节，训练前预计 {STUDENT_BYTES_ESTIMATE} 字节")
 
 with open(PATHS["student_vocab"], "w", encoding="utf-8") as f:
     json.dump({"chars": VOCAB, "pad": 0, "unk": 1}, f, ensure_ascii=False)
@@ -1064,6 +1356,9 @@ EXPORT_CONFIG = {
              "threshold_l3_used_only_with_model_plan_evidence": True,
              "target_recall_ge2": STUDENT_TARGET_RECALL_GE2, "target_recall_l3": TARGET_RECALL_L3},
     "arrays": {k: list(v.shape) for k, v in arrays.items()}, "npz_bytes": npz_bytes,
+    # 训练选项只作记录，产品端不读
+    "training_options": {"loss_balance": LOSS_BALANCE, "student_width": STUDENT_WIDTH, "kd_source": KD_SOURCE,
+                         "hard_negative_weight": HARD_NEGATIVE_WEIGHT},
 }
 with open(PATHS["student_config"], "w", encoding="utf-8") as f:
     json.dump(EXPORT_CONFIG, f, ensure_ascii=False, indent=2)
@@ -1173,6 +1468,7 @@ verdict = "达标" if latency["p99_ms"] <= LATENCY_TARGET_MS else "未达标"
 print(f"NumPy 单条时延：P50 {latency['p50_ms']:.2f} ms，P99 {latency['p99_ms']:.2f} ms（目标 ≤ {LATENCY_TARGET_MS:.0f} ms，{verdict}）")
 
 STUDENT_REPORT = {"student_fingerprint": STUDENT_FINGERPRINT, "params": n_params, "npz_bytes": npz_bytes,
+                  "training_options": EXPORT_CONFIG["training_options"],
                   "calibration": STUDENT_CAL, "holdout": student_json,
                   "parity": {"texts": len(parity_texts), "max_abs_diff": parity_max, "per_head": parity,
                              "implementation_only": parity_impl, "tolerance": PARITY_TOL},
@@ -1181,6 +1477,8 @@ temps = "，".join(f"{name} {t:.2f}" for name, t in STUDENT_CAL["temperatures"].
 header = ["# 感知学生模型（字符级 CNN）", "",
           f"{n_params:,} 个参数；`student.npz` {npz_bytes / 1024:.1f} KB（上限 4 MB）。指纹 `{STUDENT_FINGERPRINT}`，教师 `{CONFIG_FINGERPRINT}`。",
           f"温度（留出集拟合）：{temps}。",
+          f"C5 选项：教师 `{LOSS_BALANCE}`，学生 `{STUDENT_WIDTH}`（filters {STUDENT['filters']}，hidden {STUDENT['hidden']}），"
+          f"蒸馏 `{KD_SOURCE}`（{len(kd_teachers)} 个教师），难负例权重 {HARD_NEGATIVE_WEIGHT}（{int(HARD_NEGATIVE_ROWS.sum())} 行）。",
           f"NumPy 对 PyTorch 概率最大绝对差 {parity_max:.2e}（{len(parity_texts)} 条，容差 {PARITY_TOL}）。",
           f"NumPy 单条时延（单线程，{latency['cpu']}）：P50 {latency['p50_ms']:.2f} ms，P99 {latency['p99_ms']:.2f} ms（目标 ≤ {LATENCY_TARGET_MS:.0f} ms，{verdict}）。", ""]
 with open(PATHS["student_report"] + ".md", "w", encoding="utf-8") as f:

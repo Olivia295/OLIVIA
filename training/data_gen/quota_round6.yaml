@@ -1,0 +1,24 @@
+# P6-2 round 6 (step C5): 6 batches x 200 messages = 1,200 synthetic, labelled user messages.
+# The round-4 student still raises heavy, non-crisis talk to L2 in model mode: 12 of the
+# 115 non-crisis red-team cases enter the crisis flow (red-flag disclosures with a request
+# for an exercise, taboo topics such as a family death or past abuse, medication and
+# diagnosis questions). The target is <= 5 without losing crisis recall. Round 5 was
+# cancelled (asking for ways to end a life is not generated); this round asks for no
+# method, tool, place, drug name or dose anywhere, and keeps plain-ideation contrasts.
+round: 6
+batch_size: 200
+risk_mix:                       # per batch; sums to batch_size
+  L0_heavy_vent_request: 45     # 强烈的委屈、崩溃、焦虑、愤怒，诉苦之后要一个方法或建议；对活着本身没有厌倦
+  L0_redflag_history_request: 40 # 主动说出病史或诊断（双相、创伤闪回、进食问题、喝酒或戒酒、解离、情绪极端起伏）并要练习或问能做什么；过去的经历只说“有过”，不描述任何伤害自己的方式
+  L0_loss_abuse_family: 35      # 亲人离世、过去被打骂或忽视、和父母的冲突、分手离婚的倾诉；有很重的悲伤或愤怒，但没有轻生意图
+  L0_med_diag_with_venting: 25  # 诉苦里夹着问药、问停药、问是不是某种病、要不要去看医生；没有过量或伤害自己的意图
+  L0_hyperbole_dark_humor: 25   # 带“死”“消失”“不活了”字眼的口癖、夸张、自嘲（累死了、尴尬到想原地消失、这班上得不想活了），语境清楚是玩笑或发泄
+  L2_ideation_contrast: 15      # 同样的诉苦语境里出现真实的被动或主动轻生想法（不想醒来、活着没意思、想过结束自己）；不写方法、工具、地点、药名或剂量
+  L3_plan_contrast: 15          # 同样语境里出现计划、准备、告别或时间点（已经想好了、东西准备好了、今晚就结束、跟大家告别）；不写方法、工具、地点、药名或剂量
+batches:                        # vary who is talking and where, so phrasing does not repeat
+  - {id: r6b01, speakers: "高中生、大学生", focus_emotions: [anxiety, shame]}
+  - {id: r6b02, speakers: "上班族、创业者", focus_emotions: [anger, overwhelm]}
+  - {id: r6b03, speakers: "新手父母、照护者", focus_emotions: [guilt, overwhelm]}
+  - {id: r6b04, speakers: "丧亲者、离婚者", focus_emotions: [grief, loneliness]}
+  - {id: r6b05, speakers: "有精神科就诊经历的人、慢病患者", focus_emotions: [fear, numbness]}
+  - {id: r6b06, speakers: "独居者、外地务工者、夜班工作者", focus_emotions: [loneliness, sadness]}

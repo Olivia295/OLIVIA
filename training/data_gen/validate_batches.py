@@ -10,7 +10,9 @@ Each batch is a JSONL file of records matching label_schema.json, plus a `meta` 
 4. drops any record that equals or nearly equals a test sentence, so the evaluation sets
    (the fresh-author probe, the interim set and, once written, the owner's set) are never
    trained on;
-5. writes the merged, de-duplicated records to the output file and prints a report.
+5. writes the merged, de-duplicated records to the output file (each keeps its quota slot
+   as a top-level ``slot``, so the notebook can report and weight per slot) and prints a
+   report.
 
 Run with an interpreter that has PyYAML and jsonschema (the training venv, not the
 project's runtime):
@@ -94,6 +96,8 @@ def main() -> None:
                 report["dropped_duplicate"] += 1
                 continue
             record["source"] = f"synthetic:{meta.get('batch', path.stem)}"
+            if meta.get("slot"):
+                record["slot"] = meta["slot"]
             kept.append(record)
             kept_grams.append(grams)
             report["kept"] += 1

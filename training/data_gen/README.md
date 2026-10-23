@@ -10,6 +10,8 @@
 
 第五轮已取消（2026-10-23）：生成“打听结束生命方法”的提问会被安全系统拦下，这一类改由危机规则处理（路线图 R-MS，借口式询问方法一律至少 L2）。只生成借口相同、但不问方法的 L0 句子而没有 L2 对照，会让模型学成“有借口就安全”，所以这一轮整体不做。
 
+第六轮（`quota_round6.yaml`，步骤 C5）补重度诉苦要方法、主动说病史要练习、丧亲与受虐倾诉、诉苦夹问药、口癖自嘲，标为 L0；另含同样语境下的 L2/L3 对照。训练前用 `relabel_v02.py` 按标注规范 v0.2（4.4 节：只有医生能给的判断或处置归 `REFERRAL`）处理第三、四轮的问药问诊断槽位（`L0_medical_request`、`L0_med_self_adjust`、`L0_diagnosis_question`）。这三个槽位都混有“要医生才能给的决定”（转介）和一般知识问题（仍为 INFORMATION），只凭槽位分不开，所以脚本默认不改、只报告每个槽位会动多少条；确定要整槽改时用 `--include-mixed 轮:槽位`。`validate_batches.py` 合并时把每条记录的配额槽位写成顶层 `slot`，训练 notebook 用它（连同 `source` 里的轮次）按槽位报告误报并给难负例加权。
+
 ## 流程
 
 1. **生成**：每个批次一个子代理，按 `quota.yaml` 的风险配比和该批次的谱系、情绪重点写 200 条用户消息，并按 `docs/eval/perception-annotation-guide.md` 标注八个头和 `dominant_spectrum`。输出 JSONL，每行一条符合 `label_schema.json` 的记录，外加 `meta: {batch, slot}`。
