@@ -117,6 +117,8 @@ def _all_metaphors(metaphors: dict[str, Any]) -> list[str]:
     phrases = [
         p for cell in metaphors["by_spectrum_yearning"].values() for v in cell.values() for p in v
     ]
+    # Plan D-2: the dossier imagery per situation obeys the same rules.
+    phrases += [p for images in metaphors.get("by_situation", {}).values() for p in images]
     return phrases + list(metaphors["fallback"])
 
 

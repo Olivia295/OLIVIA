@@ -59,8 +59,10 @@ gate and stage rules, so a red-flag user only ever gets the referral card:
   Grade B in S_clarify only. A card waiting for feedback keeps waiting.
 * lens: once per session, an S_clarify turn without the listening lock appends one Grade
   B explainer (``render_info_reply(lens=True)``) to the S_clarify reply, drawn from the
-  ``clarify_lenses`` entry of the most recent spectrum the conversation showed. Not for
-  SILENT_ANCHOR, which only listens.
+  Grade B methods the active situations' dossiers name (``situation_lenses``, plan D-2)
+  when the masks leave one, else from the ``clarify_lenses`` entry of the most recent
+  spectrum the conversation showed (``language/dossiers.py``). Not for SILENT_ANCHOR,
+  which only listens.
 
 Persona (PRD ONB-03, plan D-1): the profile's ``persona_spectrum`` picks the reply
 templates and word windows (``LanguageData.for_persona``); crisis resource lines and the
@@ -185,7 +187,10 @@ home-safety disclosure heard in the conversation, and not in the profile, adds o
 ``followups.health_hint`` line (once per disclosure) to the first reply that is not a
 crisis, D3, haven or gate-fallback reply; the profile is never written.
 ``inspect["contraindications"]`` (arousal overload included) and
-``inspect["situations"]`` list the ids.
+``inspect["situations"]`` list the ids. Situations also pick the wording (plan D-2): the
+``{metaphor}`` slot prefers the active situations' dossier imagery, and the S_clarify
+lens their dossier's Grade B methods (``language/dossiers.py``); neither reaches crisis
+replies, the referral card or the m0 rule.
 
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
@@ -208,6 +213,7 @@ from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_
 from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
+from olivia.core.language.dossiers import lens_pool
 from olivia.core.language.engine import LanguageEngine, Slots
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
@@ -1063,8 +1069,13 @@ class Session:
             # SILENT_ANCHOR only listens (SDD §6.1): no unasked perspective.
             and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
         ):
-            fits = self._engine.data.info_lenses.get(self._last_spectrum or "", ())
-            pool = [mid for mid in info_cards(self._tax, inp) if mid in fits]
+            data = self._engine.data
+            pool = lens_pool(
+                info_cards(self._tax, inp),
+                data.situation_lenses,
+                self._context.situations,
+                data.info_lenses.get(self._last_spectrum or "", ()),
+            )
             chosen, lens = (self._rng.choice(pool) if pool else None), True
         else:
             return None
@@ -1155,6 +1166,7 @@ class Session:
             yearning_id=perception.deep_yearning,
             spectrum_id=spectrum,
             card_title=card_title,
+            situations=self._context.situations,
         )
         if not slots.mirror:
             slots = replace(slots, mirror=FALLBACK_MIRROR)

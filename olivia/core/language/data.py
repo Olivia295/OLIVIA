@@ -4,14 +4,16 @@ Ten files feed the language engine:
 
 * ``language/willow.yaml``: didactic rewrites, diagnosis terms, depathologizing
   replacements, protected terms and per-filter exemptions;
-* ``language/metaphors.yaml``: spectrum x yearning nature images and a fallback list;
+* ``language/metaphors.yaml``: spectrum x yearning nature images, a fallback list and
+  the dossier imagery per situation code (``by_situation``, plan D-2);
 * ``language/needs.yaml``: need phrases per Satir yearning;
 * ``language/render.yaml``: labels and fixed sentences around cards;
 * ``templates/<persona>.yaml``: per-stage reply templates, one file per persona
   (``PERSONA_TEMPLATE_FILES``, PRD ONB-03); all four are loaded and checked, and
   ``LanguageData.templates`` is the chosen one;
 * ``cards/grade_a.yaml``: Grade A follow-along cards;
-* ``cards/grade_bc_info.yaml``: Grade B/C psychoeducation entries.
+* ``cards/grade_bc_info.yaml``: Grade B/C psychoeducation entries, the spectrum lenses and
+  the Grade B methods each dossier names (``situation_lenses``, plan D-2).
 
 Every file is checked against the taxonomy when loaded. A missing or unknown key, a wrong
 type, an unknown slot or a coverage gap raises :class:`LanguageDataError`; nothing is
@@ -22,7 +24,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -136,10 +138,16 @@ class WillowData:
         return kind in self.exemptions[filter_name]
 
 
+def _empty() -> Mapping[str, tuple[str, ...]]:
+    return MappingProxyType({})
+
+
 @dataclass(frozen=True)
 class MetaphorData:
     by_spectrum_yearning: Mapping[str, Mapping[str, tuple[str, ...]]]
     fallback: tuple[str, ...]
+    by_situation: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
+    """Situation code -> images drawn from its dossier (plan D-2; ``language/dossiers.py``)."""
 
 
 @dataclass(frozen=True)
@@ -263,6 +271,8 @@ class LanguageData:
     """Spectrum id -> the Grade B explainers S_clarify may offer for it (draft, G-0)."""
     personas: Mapping[PersonaSpectrum, Templates]
     """Every persona's templates; ``templates`` is one of them."""
+    situation_lenses: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
+    """Situation code -> the Grade B methods its dossier names (plan D-2, draft, G-0)."""
 
     def for_persona(self, persona: PersonaSpectrum) -> LanguageData:
         """The same data speaking with ``persona``'s templates (PRD ONB-03, plan D-1)."""
@@ -309,6 +319,7 @@ def load_language_data(
         info=info,
         info_lenses=_parse_lenses(info_doc, info, tax),
         personas=MappingProxyType(personas),
+        situation_lenses=_parse_situation_lenses(info_doc, info, tax),
     )
 
 
@@ -368,7 +379,7 @@ def _parse_willow(data: Mapping[str, Any]) -> WillowData:
 
 def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
     where = "metaphors.yaml"
-    _keys(data, {"version", "by_spectrum_yearning", "fallback"}, where)
+    _keys(data, {"version", "by_spectrum_yearning", "fallback"}, where, optional={"by_situation"})
     _version(data, where)
     grid_raw = _map(data["by_spectrum_yearning"], f"{where} by_spectrum_yearning")
     spectra = set(tax.spectrum_ids())
@@ -381,7 +392,37 @@ def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
         grid[sid] = MappingProxyType(
             {yid: _strs(cell[yid], f"{where} {sid}.{yid}") for yid in sorted(yearnings)}
         )
-    return MetaphorData(MappingProxyType(grid), _strs(data["fallback"], f"{where} fallback"))
+    return MetaphorData(
+        MappingProxyType(grid),
+        _strs(data["fallback"], f"{where} fallback"),
+        _parse_situation_images(data.get("by_situation", {}), tax),
+    )
+
+
+def _situation_keys(raw: Mapping[str, Any], tax: Taxonomy, where: str) -> list[str]:
+    """The keys of a per-situation table: taxonomy situation codes, none a red flag.
+
+    The seven red-flag dossiers belong to the red-flag referral path, never to the
+    dossier layer. Returned in taxonomy order.
+    """
+    codes = tax.situation_codes()
+    _keys(raw, set(), where, optional=set(codes))
+    flagged = sorted(code for code in raw if code in tax.red_flags())
+    if flagged:
+        raise LanguageDataError(f"{where}: {flagged} is a red-flag code")
+    return [code for code in codes if code in raw]
+
+
+def _parse_situation_images(node: Any, tax: Taxonomy) -> Mapping[str, tuple[str, ...]]:
+    """``by_situation``: situation code -> distinct dossier images (plan D-2)."""
+    where = "metaphors.yaml by_situation"
+    raw = _map(node, where) if node else {}
+    return MappingProxyType(
+        {
+            code: _unique(_strs(raw[code], f"{where}.{code}"), f"{where}.{code}")
+            for code in _situation_keys(raw, tax, where)
+        }
+    )
 
 
 def _parse_needs(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, tuple[str, ...]]:
@@ -686,7 +727,7 @@ def _card_sources(tax: Taxonomy) -> dict[str, tuple[str, int, int]]:
 
 def _parse_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntry]:
     where = "grade_bc_info.yaml"
-    _keys(data, {"entries", "clarify_lenses"}, where)
+    _keys(data, {"entries", "clarify_lenses"}, where, optional={"situation_lenses"})
     grades = {"B": SafetyGrade.GRADE_B, "C": SafetyGrade.GRADE_C}
     entries: dict[str, InfoEntry] = {}
     for raw in _list(data["entries"], f"{where} entries"):
@@ -740,6 +781,27 @@ def _parse_lenses(
             if entry is None or entry.grade is not SafetyGrade.GRADE_B:
                 raise LanguageDataError(f"{where}.{spectrum}: {mid} is not a Grade B method")
         lenses[spectrum] = ids
+    return MappingProxyType(lenses)
+
+
+def _parse_situation_lenses(
+    data: Mapping[str, Any], info: Mapping[str, InfoEntry], tax: Taxonomy
+) -> Mapping[str, tuple[str, ...]]:
+    """``situation_lenses``: situation code -> distinct Grade B ids the dossier names.
+
+    Grade C stays out: it is shown only when the user asks about it by name.
+    """
+    where = "grade_bc_info.yaml situation_lenses"
+    node = data.get("situation_lenses", {})
+    raw = _map(node, where) if node else {}
+    lenses: dict[str, tuple[str, ...]] = {}
+    for code in _situation_keys(raw, tax, where):
+        ids = _unique(_strs(raw[code], f"{where}.{code}"), f"{where}.{code}")
+        for mid in ids:
+            entry = info.get(mid)
+            if entry is None or entry.grade is not SafetyGrade.GRADE_B:
+                raise LanguageDataError(f"{where}.{code}: {mid} is not a Grade B method")
+        lenses[code] = ids
     return MappingProxyType(lenses)
 
 
