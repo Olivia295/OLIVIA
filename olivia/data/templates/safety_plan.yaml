@@ -1,0 +1,78 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-23-next-phase.md B10，决定 D8）
+#
+# 个人安全计划（Stanley-Brown 安全计划）的文字。由 olivia/core/chang/safety_plan.py 读取；
+# 步骤顺序、条数与长度上限、校验都在代码里，这里只放文字。
+#
+# 填写只在 olivia safety-plan 命令里进行；聊天里从不记录用户的话。计划始终加密保存，
+# 没有系统钥匙串时什么都不保存。
+# 危机回复里只展示第 2、3、4 部分（以 crisis.intro 开头）；第 5 部分（让环境更安全）
+# 只在 olivia safety-plan 里显示，从不出现在危机回复里。
+#
+# 槽位（只允许下列几个，加载时校验）：
+#   {n} {total}                   当前部分或当前联系人的序号、部分总数
+#   {title}                       部分标题
+#   {name}                        用户刚写下的联系人称呼
+#   {max_chars} {max_entries}     长度与条数上限（只用于提示）
+#
+# 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
+# 不说教（不用“应该/必须/一定要”）、不用感叹号、不写任何电话号码。
+version: 1
+
+# 五个部分的顺序固定：warning_signs, coping, distraction, people, environment。
+sections:
+  warning_signs:
+    title: 我的预警信号
+    prompt: 当事情开始变得难熬时，你通常会先注意到什么？可以是一些念头、心情、身体的感觉，或者自己会做的事。
+  coping:
+    title: 我自己能做的安抚方法
+    prompt: 一个人的时候，有哪些小事能让你稍微好受一点？比如听一首喜欢的歌、洗个热水澡、出门走一走。
+  distraction:
+    title: 能让我分心的人或地方
+    prompt: 有哪些人或地方，能让你暂时从难受里抽离出来一会儿？比如一位聊得来的朋友、一家常去的小店、楼下的公园。
+  people:
+    title: 我可以求助的人
+    prompt: 难熬的时候，你愿意联系谁？写下名字或称呼，再写电话，可以写好几位。
+  environment:
+    title: 让环境更安全
+    prompt: 在难熬的时候，有哪些东西你愿意先让它离自己远一点，或者交给信任的人保管？
+
+command:
+  intro: |-
+    安全计划是你在平静的时候，写给难熬时的自己的一份小清单。
+    一共五个部分，每一部分都可以跳过。写下的内容只加密保存在这台电脑上。
+    如果有一天聊天时你特别难熬，我会把第 2、3、4 部分拿出来给你看；第 5 部分只在这里显示。
+  section_heading: "（{n}/{total}）{title}"
+  entry_help: 一行写一条，最多 {max_entries} 条。写完了直接回车，想跳过这一部分也直接回车。
+  rewrite_help: 重新写这一部分：一行写一条，最多 {max_entries} 条。第一行就直接回车，会保留原来的内容；输入 0 清空这一部分。
+  current_heading: 现在写的是：
+  entry_too_long: 这一条有点长，可以缩短到 {max_chars} 个字以内，再写一次。
+  section_full: 这一部分已经写满 {max_entries} 条了。
+  person_name: 第 {n} 位：名字或称呼（写完了直接回车）
+  person_phone: "{name}的电话（可以不填，直接回车）"
+  phone_invalid: 这个号码没有认出来。可以只写数字、空格、短横线或加号，再写一次；不想填就直接回车。
+  show_heading: 你的安全计划：
+  empty_section: （还没有写）
+  menu: 想做什么？直接回车就保持不变。
+  menu_edit: 修改其中一部分
+  menu_clear: 清空整份计划
+  menu_unknown: 没有认出这个选择，可以输入 1 或 2，直接回车就保持不变。
+  pick_section: 想修改哪一部分？输入序号 1 到 5，直接回车结束。
+  pick_unknown: 没有认出这个序号，可以输入 1 到 5 之间的数字，直接回车结束。
+  clear_confirm: 确定要清空整份安全计划吗？清空后就找不回来了。输入 1 确认，直接回车取消。
+  saved: 好，已经加密保存在这台电脑上了。之后想看或者修改，再运行 olivia safety-plan 就好。
+  unchanged: 好，计划保持不变。
+  cleared: 好，安全计划已经清空了。
+  nothing_saved: 这次什么都没有写，所以没有保存。想写的时候，随时回来。
+  left: 这次先不保存了。想写的时候，随时回来。
+  no_keychain: 这台电脑上没有可用的系统钥匙串，安全计划没办法加密保存，所以这里不会保存它。也可以把这几个问题写在纸上，放在容易找到的地方。
+  locked: 加密保存的安全计划现在打不开：系统钥匙串没有响应，或者钥匙已经不在这台电脑上了。你的文件我没有改动。
+  damaged: 之前保存的安全计划读不出来了。可以重新写一份，新的会替换掉它。
+  not_onboarded: 还没有完成第一次设置。先运行 olivia chat，之后就可以写安全计划了。
+  adults_only: 这里的陪伴只为成年人设计，所以不会保存安全计划。需要的时候，可以运行 olivia resources 查看求助电话。
+
+crisis:
+  # 危机回复里用户自己的计划之前的固定一句（第 2、3、4 部分，不经过 WILLOW 和隐喻）。
+  intro: 这是你之前给自己写下的计划：
+
+# 一次会话里第一次 S_closing 回复的末尾，提示一次（这台电脑上只提示一次，没有计划时）。
+suggestion: 如果愿意，可以在平静的时候运行 olivia safety-plan，给难熬时的自己写一份小小的安全计划。

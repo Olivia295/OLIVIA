@@ -32,7 +32,7 @@ from olivia.core.language.data import (
     slots_of,
 )
 from olivia.core.language.filters import apply_willow
-from olivia.core.language.gate import GateResult, OutputGate
+from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
 from olivia.core.language.mirror import FALLBACK_MIRROR, mirror
 from olivia.core.models import ActionSkeleton, CrisisLevel, HelpStage, SafetyGrade
 from olivia.core.resources.card import CardMode, ResourceCard
@@ -88,6 +88,9 @@ class LanguageEngine:
         self._data = data if data is not None else load_language_data(tax)
         self._gate = OutputGate(tax, self._data)
         self.last_gate: GateResult | None = None
+        # The verdict on the last crisis reply with the user's safety plan in it (B10);
+        # None when no plan block was offered.
+        self.last_plan_gate: GateResult | None = None
 
     @property
     def data(self) -> LanguageData:
@@ -340,12 +343,20 @@ class LanguageEngine:
 
     # -- crisis ----------------------------------------------------------------------------
 
-    def render_crisis(self, card: ResourceCard, slots: Slots) -> str:
+    def render_crisis(self, card: ResourceCard, slots: Slots, *, plan_block: str = "") -> str:
         """S_crisis wording plus the card's numbers: emergency first, stale entries marked.
 
         Exempt from word windows and metaphors. If the gate ever blocks the full card, the
         reply falls back to a minimal card that still lists every number, never to a line
         without numbers.
+
+        ``plan_block`` is the user's own safety plan (B10, ``chang/safety_plan.py``). It
+        skips WILLOW and goes after the opening sentence when the card carries no
+        emergency numbers (an L2 card with a regional line), otherwise after the card, so
+        emergency numbers come before any other number. The whole reply passes the gate
+        with the plan's own digit runs allowed for this reply only; if it is blocked, the
+        plan block is dropped and the reply is the one without it (minimal-card fallback
+        included). :attr:`last_plan_gate` keeps the verdict on the reply with the plan.
         """
         if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
             raise ValueError("render_crisis needs a CRISIS-mode card at L2 or L3")
@@ -353,9 +364,30 @@ class LanguageEngine:
         usable = [t for t in self._data.templates.crisis if all(values[s] for s in slots_of(t))]
         if not usable:
             raise ValueError("no S_crisis variant can be filled from these slots")
-        blocks = [_fill(self._rng.choice(usable), values), *self._resource_blocks(card)]
-        text = apply_willow("\n\n".join(blocks), ContentKind.CRISIS, self._data.willow)
+        opening = _fill(self._rng.choice(usable), values)
+        resources = self._resource_blocks(card)
         numbers = _numbers(card)
+        self.last_plan_gate = None
+        if plan_block.strip():
+            willow = self._data.willow
+            head = apply_willow(opening, ContentKind.CRISIS, willow)
+            card_text = apply_willow("\n\n".join(resources), ContentKind.CRISIS, willow)
+            if card.emergency:
+                blocks = [head, card_text, plan_block]
+            else:
+                blocks = [head, plan_block, card_text]
+            planned = self._gate.check(
+                "\n\n".join(blocks),
+                kind=ContentKind.CRISIS,
+                stage=HelpStage.S_CRISIS,
+                allowed_numbers=[*numbers, *phone_like_runs(plan_block)],
+            )
+            self.last_plan_gate = planned
+            if planned.ok:
+                self.last_gate = planned
+                return planned.text
+        joined = "\n\n".join([opening, *resources])
+        text = apply_willow(joined, ContentKind.CRISIS, self._data.willow)
         result = self._gate.check(
             text, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
         )

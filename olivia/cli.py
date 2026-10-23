@@ -23,6 +23,11 @@
 ``olivia persona [CHOICE]``
     Show the four companion personas with the saved one marked, or switch to CHOICE (a
     number, short name or enum value; PRD JTBD 4, ONB-03). The next ``olivia chat`` uses it.
+``olivia safety-plan``
+    The personal safety plan (``chang/safety_plan.py``, B10): fill it in, or show the saved
+    one and edit a section or clear it, interactively with numbered choices; every section
+    can be skipped. It is always saved encrypted, and not at all without a keychain. A
+    crisis reply in ``chat`` shows its coping, distraction and people sections.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -38,11 +43,13 @@ opens with a gentle check-in and removes it (PRD §9, step A3). ``chat`` also ke
 bandit's posteriors and the kit between sessions (``memory/state.py``, step B3: action ids,
 numbers and times, always encrypted, saved after each turn that changes them and at every
 exit), so the next session's choices follow earlier feedback and "上次存的那个" finds the
-card shelved last time. Conversation text and perception output are never written
-anywhere; the ledger keeps only ids, levels and times, and the session summary is written
-at every exit (``/exit``, end of input, Ctrl-C) and whenever the session closes itself
-(S_closing -> S_ready). Without a keychain nothing is remembered, and the user is told so
-once per device.
+card shelved last time. ``chat`` reads the saved safety plan for its crisis replies and
+never writes it; when there is none, the first S_closing reply mentions
+``olivia safety-plan`` once per device (an empty marker file, step B10). Conversation text
+and perception output are never written anywhere; the ledger keeps only ids, levels and
+times, and the session summary is written at every exit (``/exit``, end of input, Ctrl-C)
+and whenever the session closes itself (S_closing -> S_ready). Without a keychain nothing
+is remembered, and the user is told so once per device.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -81,6 +88,7 @@ from olivia.core.chang.onboarding import (
     persona_from_reply,
 )
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
+from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.recorder import SessionRecorder
@@ -320,7 +328,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f" · 反馈 {_fmt(data.get('feedback'))}" + (f"（来源 {_fmt(origin)}）" if origin else ""),
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else "")
-        + (f" · 意图确认 {_fmt(check)}" if check else ""),
+        + (f" · 意图确认 {_fmt(check)}" if check else "")
+        + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else ""),
     ]
     model_reason = data.get("risk_model_reason")
     lines.append(
@@ -360,6 +369,8 @@ def _chat(
     local = _local_clock(clock, profile)
     # The posteriors and the kit from earlier sessions (B3); None starts fresh.
     state_store = StateStore(store.path.parent, store.vault)
+    plan_store = SafetyPlanStore(vault=store.vault)
+    plan = plan_store.load_quietly()
     session = Session.open(
         tax,
         profile,
@@ -367,6 +378,8 @@ def _chat(
         now=local,
         student=student,
         carried=state_store.load(),
+        safety_plan=plan,
+        suggest_safety_plan=plan is None and plan_store.should_suggest(),
     )
     state_recorder = StateRecorder(state_store, session.carried_state())
     ledger = Ledger(store.path.parent, store.vault, method_titles=_card_titles(tax))
@@ -392,6 +405,8 @@ def _chat(
             console.say(f"{profile.agent_name}：{result.reply}")
             care_recorder.observe(result, session.snapshot())
             state_recorder.observe(session.carried_state())  # feedback survives a crash
+            if session.safety_plan_suggested:
+                plan_store.mark_suggested()
             if inspect:
                 for panel_line in inspect_panel(result):
                     console.say(panel_line)
@@ -601,6 +616,24 @@ def _health(console: _Console, clock: Clock) -> int:
     return 0 if outcome.ok else 1
 
 
+# -- safety plan ------------------------------------------------------------------------------
+
+
+def _safety_plan(console: _Console) -> int:
+    """``olivia safety-plan``: the interactive exchange of ``chang/safety_plan.py``."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    command = load_safety_plan_text().command
+    if profile is None:
+        console.say(command["not_onboarded"])
+        return 1
+    if profile.is_age_gate_refusal:
+        console.say(command["adults_only"])
+        return 1
+    return run_command(lambda: console.ask(ANSWER_PROMPT), console.say, SafetyPlanStore())
+
+
 # -- persona ----------------------------------------------------------------------------------
 
 
@@ -676,6 +709,7 @@ def build_parser() -> argparse.ArgumentParser:
     region.add_argument("--timezone", help="IANA 时区，例如 America/New_York")
     region.add_argument("--clear", action="store_true", help="清除保存的地区和时区")
     commands.add_parser("health", help="查看或修改加密记录的健康信息")
+    commands.add_parser("safety-plan", help="填写、查看或修改加密保存的个人安全计划")
     persona = commands.add_parser("persona", help="查看或更换陪伴方式")
     persona.add_argument("choice", nargs="?", help="序号（1–4）或简称，例如 2 或 沉静哲思")
     return parser
@@ -716,6 +750,8 @@ def main(
             return _health(console, now)
         if args.command == "persona":
             return _persona(console, args.choice, now)
+        if args.command == "safety-plan":
+            return _safety_plan(console)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()
