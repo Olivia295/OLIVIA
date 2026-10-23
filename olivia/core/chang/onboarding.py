@@ -7,15 +7,18 @@ or :class:`Refused`. All wording lives in ``olivia/data/templates/onboarding.yam
 Order: disclaimer (explicit acceptance) -> 18+ gate -> at-rest encryption switch (ONB-06,
 default off: only health information is encrypted, ruling 28) -> both names -> persona
 (R1 offers only ``GENTLE_HOLDING``, decision Q8) -> taboo topics -> region -> timezone ->
-optional clinical-history consent (last, ruling 23) -> one atomic save (ONB-08). The age
+optional clinical-history consent (last, ruling 23) -> after consent, the clinical
+history and the D2 checklist of the profile's contraindication disclosures (heart or
+breathing, safety at home; step A1) -> one atomic save (ONB-08). The age
 gate comes before anything personal is asked, so nothing is ever collected from a minor
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
 launch shows the refusal again instead of restarting; a declined disclaimer saves nothing.
 
 Without a usable OS keychain nothing sensitive can be encrypted, so the encryption
-switch and the clinical-history questions are skipped, no health information is
-stored, and the closing text starts with ``outcomes.health_not_saved``.
+switch and the health questions (consent, clinical history, checklist) are skipped, no
+health information is stored, and the closing text starts with
+``outcomes.health_not_saved``. Skipping the consent skips the checklist too.
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ import yaml
 from olivia.core.chang.profile import ProfileLockedError, ProfileStore
 from olivia.core.models import (
     NAME_MAX_LEN,
+    PROFILE_CONTRAINDICATIONS,
     UNKNOWN_COUNTRY,
     PersonaProfile,
     PersonaSpectrum,
@@ -129,6 +133,7 @@ _PROMPT_KEYS: Final = (
     "timezone_free",
     "clinical_consent",
     "clinical_history",
+    "contraindications",
 )
 _HINT_KEYS: Final = (
     "unrecognized",
@@ -141,6 +146,19 @@ _HINT_KEYS: Final = (
     "clinical_unknown",
 )
 _OUTCOME_KEYS: Final = ("completed", "health_not_saved", "disclaimer_declined", "under_18")
+# ``olivia health`` (chang/health.py), kept here so every health wording is in one file.
+_HEALTH_KEYS: Final = (
+    "current",
+    "none_recorded",
+    "select",
+    "consent",
+    "saved",
+    "cleared",
+    "unchanged",
+    "no_keychain",
+    "not_onboarded",
+    "adults_only",
+)
 _SLOTS: Final = frozenset(
     {"user_name", "agent_name", "max_len", "max_count", "consent_sentence", "tokens"}
 )
@@ -167,6 +185,7 @@ class Step(StrEnum):
     TIMEZONE = "timezone"
     CLINICAL_CONSENT = "clinical_consent"
     CLINICAL_HISTORY = "clinical_history"
+    CONTRAINDICATIONS = "contraindications"
 
 
 class RefusalReason(StrEnum):
@@ -217,6 +236,10 @@ class OnboardingText:
     skip_words: frozenset[str]
     hints: Mapping[str, str]
     outcomes: Mapping[str, str]
+    disclosure_labels: Mapping[str, str]
+    """``PROFILE_CONTRAINDICATIONS`` id -> checklist label, in that order (D2)."""
+    health: Mapping[str, str]
+    """The ``olivia health`` wording (``health_command``)."""
 
 
 def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
@@ -234,6 +257,8 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
     prompts = _str_map(doc, "prompts", _PROMPT_KEYS)
     hints = _str_map(doc, "hints", _HINT_KEYS)
     outcomes = _str_map(doc, "outcomes", _OUTCOME_KEYS)
+    disclosure_labels = _str_map(doc, "disclosure_labels", PROFILE_CONTRAINDICATIONS)
+    health = _str_map(doc, "health_command", _HEALTH_KEYS)
     region_labels = _str_map(doc, "region_labels", SUPPORTED_REGIONS)
     zones = {zone for zones in TIMEZONE_CHOICES.values() for zone in zones}
     timezone_labels = _str_map(doc, "timezone_labels", tuple(sorted(zones)))
@@ -257,7 +282,12 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
             ("encryption", "keep_off", "encrypt_all"),
         )
     }
-    for where, texts in (("prompts", prompts), ("hints", hints), ("outcomes", outcomes)):
+    for where, texts in (
+        ("prompts", prompts),
+        ("hints", hints),
+        ("outcomes", outcomes),
+        ("health_command", health),
+    ):
         for key, value in texts.items():
             bad = sorted(set(_SLOT.findall(value)) - _SLOTS)
             if bad:
@@ -273,7 +303,25 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         skip_words=frozenset(_str_list(doc.get("skip_words"), "skip_words")),
         hints=MappingProxyType(hints),
         outcomes=MappingProxyType(outcomes),
+        disclosure_labels=MappingProxyType(disclosure_labels),
+        health=MappingProxyType(health),
     )
+
+
+def parse_choices(reply: str, keys: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(chosen keys in ``keys`` order, unrecognized tokens) for a list-selection reply.
+
+    A token is a 1-based position in ``keys`` or a key itself (case-insensitive);
+    tokens are split on commas, enumeration commas, semicolons, slashes and spaces.
+    """
+    by_token: dict[str, str] = {}
+    for index, key in enumerate(keys, start=1):
+        by_token[str(index)] = key
+        by_token[_fold(key)] = key
+    tokens = [t for t in _LIST_SPLIT.split(_fold(reply)) if t]
+    unknown = tuple(t for t in tokens if t not in by_token)
+    chosen = {by_token[t] for t in tokens if t in by_token}
+    return tuple(key for key in keys if key in chosen), unknown
 
 
 def canonical_timezone(raw: str) -> str | None:
@@ -327,6 +375,7 @@ class OnboardingFlow:
         self._protected = False
         """Whether sensitive data can be encrypted here (checked once the user is an adult)."""
         self._encrypt_all = False
+        self._clinical: tuple[str, ...] = ()
         self._outcome: Completed | Refused | None = None
         existing = store.load()
         if existing is not None:
@@ -366,6 +415,7 @@ class OnboardingFlow:
             Step.TIMEZONE: self._on_timezone,
             Step.CLINICAL_CONSENT: self._on_clinical_consent,
             Step.CLINICAL_HISTORY: self._on_clinical_history,
+            Step.CONTRAINDICATIONS: self._on_contraindications,
         }[self._step]
         handler(text)
         return self._outcome if self._outcome is not None else self.prompt()
@@ -397,6 +447,11 @@ class OnboardingFlow:
             case Step.CLINICAL_HISTORY:
                 return prompts["clinical_history"], tuple(
                     f"{flag.code} {flag.name_zh}" for flag in self._red_flags
+                )
+            case Step.CONTRAINDICATIONS:
+                labels = self._text.disclosure_labels
+                return prompts["contraindications"], tuple(
+                    labels[cid] for cid in PROFILE_CONTRAINDICATIONS
                 )
             case _:
                 return prompts[self._step.value], ()
@@ -514,19 +569,15 @@ class OnboardingFlow:
             self._hint = self._text.hints["consent_unrecognized"]
 
     def _on_clinical_history(self, text: str) -> None:
-        by_key: dict[str, str] = {}
-        for index, flag in enumerate(self._red_flags, start=1):
-            by_key[str(index)] = flag.code
-            by_key[_fold(flag.code)] = flag.code
-        tokens = [t for t in _LIST_SPLIT.split(_fold(text)) if t]
-        unknown = [t for t in tokens if t not in by_key]
-        if unknown:
-            self._hint = self._render(
-                self._text.hints["clinical_unknown"], tokens="、".join(unknown)
-            )
-            return
-        chosen = {by_key[t] for t in tokens}
-        self._finish(tuple(flag.code for flag in self._red_flags if flag.code in chosen))
+        chosen = self._choose(text, tuple(flag.code for flag in self._red_flags))
+        if chosen is not None:
+            self._clinical = chosen
+            self._step = Step.CONTRAINDICATIONS
+
+    def _on_contraindications(self, text: str) -> None:
+        chosen = self._choose(text, PROFILE_CONTRAINDICATIONS)
+        if chosen is not None:
+            self._finish(self._clinical, chosen)
 
     # -- helpers ---------------------------------------------------------------------
 
@@ -537,7 +588,19 @@ class OnboardingFlow:
         else:
             self._finish(())
 
-    def _finish(self, clinical_history: tuple[str, ...]) -> None:
+    def _choose(self, text: str, keys: tuple[str, ...]) -> tuple[str, ...] | None:
+        """The chosen keys, or None (with a hint) when a token is not in the list."""
+        chosen, unknown = parse_choices(text, keys)
+        if unknown:
+            self._hint = self._render(
+                self._text.hints["clinical_unknown"], tokens="、".join(unknown)
+            )
+            return None
+        return chosen
+
+    def _finish(
+        self, clinical_history: tuple[str, ...], contraindications: tuple[str, ...] = ()
+    ) -> None:
         """ONB-08: the one write of an adult's onboarding, atomic via the store.
 
         Health information is never stored unencrypted (ruling 28): if the keychain
@@ -553,13 +616,19 @@ class OnboardingFlow:
             taboo_topics=self._taboo,
             region=UserRegion(country_code=self._country, timezone=self._timezone),
             clinical_history=clinical_history,
+            contraindications=contraindications,
             enable_at_rest_encryption=self._encrypt_all,
         )
         protected = self._protected
         try:
             self._store.save(profile)
         except ProfileLockedError:
-            profile = replace(profile, clinical_history=(), enable_at_rest_encryption=False)
+            profile = replace(
+                profile,
+                clinical_history=(),
+                contraindications=(),
+                enable_at_rest_encryption=False,
+            )
             self._store.save(profile)
             protected = False
         text = self._render(self._text.outcomes["completed"])

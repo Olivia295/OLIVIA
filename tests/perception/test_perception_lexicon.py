@@ -9,6 +9,7 @@ from olivia.core.perception.lexicon import (
     PerceptionLexiconError,
     load_perception_lexicon,
 )
+from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 
 PACKAGED = Path(__file__).resolve().parents[2] / "olivia" / "data" / "lexicons" / "perception.yaml"
@@ -166,6 +167,16 @@ def _delete(path: tuple[Any, ...]) -> Callable[[dict[str, Any]], None]:
         (_set(("answers", "yes"), ["好"]), "answers: unknown keys"),
         (_set(("kit_recall",), []), "kit_recall"),
         (_append(("kit_recall",), "给我个方法"), "both direct_request and kit_recall"),
+        (_delete(("situation_cues",)), "situation_cues"),
+        (_set(("situation_cues", "SIT-99-01"), ["x"]), "'SIT-99-01' is not a taxonomy id"),
+        (_set(("situation_cues", "SIT-06-04"), []), "situation_cues.SIT-06-04"),
+        (_append(("situation_cues", "SIT-11-01"), "刚去世"), "both SIT-06-04 and SIT-11-01"),
+        (_delete(("contraindication_cues",)), "contraindication_cues"),
+        (_set(("contraindication_cues", "NOT_AN_ENUM"), ["x"]), "'NOT_AN_ENUM' is not"),
+        (
+            _append(("contraindication_cues", "TOXIC_SHAME_SPIRAL"), "家暴"),
+            "both TOXIC_SHAME_SPIRAL and INTERPERSONAL_SAFETY_HAZARD",
+        ),
     ],
 )
 def test_invalid_lexicons_are_rejected(
@@ -187,3 +198,32 @@ def test_malformed_yaml_is_a_lexicon_error(
     (tmp_path / "perception.yaml").write_text(text, encoding="utf-8")
     with pytest.raises(PerceptionLexiconError, match=message):
         load_perception_lexicon(tax, tmp_path)
+
+
+def test_situation_and_contraindication_cues_borrow_no_crisis_wording(tax: Taxonomy) -> None:
+    """A1: these cues never stand in for a crisis cue, so none repeats a risk.yaml phrase."""
+    lex = load_perception_lexicon(tax)
+    assert set(lex.situation_cues) == {"SIT-06-04", "SIT-11-01"}
+    assert set(lex.contraindication_cues) == {
+        "TOXIC_SHAME_SPIRAL",
+        "CARDIORESPIRATORY_INSTABILITY",
+        "INTERPERSONAL_SAFETY_HAZARD",
+    }
+    risk_doc = yaml.safe_load((PACKAGED.parent / "risk.yaml").read_text(encoding="utf-8"))
+    risk_phrases = {
+        normalize(p)
+        for section in risk_doc.values()
+        if isinstance(section, list)
+        for entry in section
+        if isinstance(entry, dict)
+        for p in entry.get("patterns", [])
+        if isinstance(p, str)
+    }
+    assert len(risk_phrases) > 100
+    cues = [
+        p
+        for group in (lex.situation_cues, lex.contraindication_cues)
+        for ps in group.values()
+        for p in ps
+    ]
+    assert not set(cues) & risk_phrases

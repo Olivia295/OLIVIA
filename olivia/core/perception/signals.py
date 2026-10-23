@@ -63,6 +63,12 @@ class TurnSignals:
     therapy_question: str | None = None
     """The Grade B/C method the user asks about by name ("EMDR 有用吗" -> ``"21"``), as a
     taxonomy method id; None when the turn asks about none (roadmap next-phase A4)."""
+    situation_codes: frozenset[str] = frozenset()
+    """Taxonomy situation codes the message reveals (``situation_cues``: "亲人刚走" ->
+    ``SIT-06-04``, "一切都没有意义" -> ``SIT-11-01``; roadmap next-phase A1)."""
+    contraindication_cues: frozenset[str] = frozenset()
+    """Contraindication enum ids the message reveals (``contraindication_cues``: "我有
+    心脏病" -> ``CARDIORESPIRATORY_INSTABILITY``; roadmap next-phase A1)."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

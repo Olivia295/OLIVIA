@@ -79,6 +79,17 @@ def test_canonical_action_id(tax: Taxonomy, raw: str, canonical: str) -> None:
 def test_canonical_action_id_unknown_raises_key_error(tax: Taxonomy) -> None:
     with pytest.raises(UnknownActionError):
         tax.canonical_action_id("REFERRAL_CARD")
+
+
+def test_situation_codes_and_contraindication_sources(tax: Taxonomy) -> None:
+    codes = tax.situation_codes()
+    assert len(codes) == len(set(codes)) and codes[0] == "SIT-01-01"
+    assert {"SIT-06-04", "SIT-11-01"} <= set(codes)
+    assert set(tax.red_flags()) <= set(codes)
+    sources = tax.contraindication_sources()
+    assert tuple(sources) == tax.values("contraindication_enums")
+    assert sources["CRISIS_ACTIVE_RISK"] == "CRISIS_DETECTOR"
+    assert "SIT-06-04" in sources["ACUTE_BEREAVEMENT_SHOCK"]
     assert issubclass(UnknownActionError, KeyError)
 
 

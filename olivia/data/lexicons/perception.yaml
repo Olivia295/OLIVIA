@@ -1848,3 +1848,93 @@ introspection:
       - 或许
       - 大概
       - 不好说
+
+# Situations and contraindications read from the conversation (roadmap next-phase A1,
+# decision D2). The session keeps every hit for the rest of the session and passes it
+# to the solver (methods/contraindications.py); none of it is ever written to the
+# profile. Negation applies as everywhere ("不是一切都没有意义" is no hit). Crisis wording
+# stays in risk.yaml: these cues never stand in for, or hide, a crisis cue.
+#
+# situation_cues: taxonomy situation codes whose presence routes to m0 (COLBO-06).
+#   SIT-06-04  a death that has just happened (acute bereavement); it also sets the
+#              ACUTE_BEREAVEMENT_SHOCK contraindication.
+#   SIT-11-01  extreme meaninglessness, kept below the crisis line: the "活着…" phrasing
+#              belongs to risk.yaml (L1) and is not repeated here.
+situation_cues:
+  "SIT-06-04":
+    - 亲人刚走
+    - 家人刚走
+    - 刚去世
+    - 刚刚去世
+    - 刚过世
+    - 刚刚过世
+    - 刚离世
+    - 去世才几天
+    - 走了才几天
+    - 走了没几天
+    - 葬礼刚办完
+    - 刚办完葬礼
+    - 刚办完丧事
+    - 丧事刚办完
+    - 刚火化
+    - 刚过头七
+    - 还没过头七
+  "SIT-11-01":
+    - 一切都没有意义
+    - 一切都毫无意义
+    - 什么都没有意义
+    - 做什么都没有意义
+    - 做什么都没意义
+    - 干什么都没意义
+    - 什么都无所谓
+    - 人生毫无意义
+    - 世界毫无意义
+    - 一切都是虚无
+    - 一切都是空的
+    - 一切都是徒劳
+
+# contraindication_cues: taxonomy contraindication enum ids.
+#   TOXIC_SHAME_SPIRAL             intense self-attack (its taxonomy source is the
+#                                  DEFECTIVENESS schema with strong self-blame; the
+#                                  schema half joins when the introspector lands, C2).
+#   CARDIORESPIRATORY_INSTABILITY  the user mentions a heart or breathing condition.
+#   INTERPERSONAL_SAFETY_HAZARD    the user mentions being hit or threatened at home.
+# The last two are profile disclosures (USER_PROFILE_DISCLOSURE): said in conversation
+# they hold for this session only, and the reply suggests `olivia health` once.
+contraindication_cues:
+  TOXIC_SHAME_SPIRAL:
+    - 我就是个废物
+    - 我真是个废物
+    - 我就是个垃圾
+    - 我恨我自己
+    - 我好恨自己
+    - 我讨厌我自己
+    - 我不配
+    - 我一无是处
+    - 我真恶心
+    - 我太恶心了
+    - 我是个失败者
+  CARDIORESPIRATORY_INSTABILITY:
+    - 心脏病
+    - 心脏不好
+    - 心脏不太好
+    - 心律不齐
+    - 心律失常
+    - 起搏器
+    - 心衰
+    - 有哮喘
+    - 哮喘又犯
+    - 哮喘发作
+    - 严重哮喘
+  INTERPERSONAL_SAFETY_HAZARD:
+    - 动手打我
+    - 他打我
+    - 她打我
+    - 打我耳光
+    - 被他打
+    - 被她打
+    - 家暴
+    - 家庭暴力
+    - 威胁要打我
+    - 掐我脖子
+    - 把我打伤

@@ -644,6 +644,25 @@ class Taxonomy:
     def red_flags(self) -> Mapping[str, RedFlag]:
         return MappingProxyType(self._views().red_flags)
 
+    def situation_codes(self) -> tuple[str, ...]:
+        """Every situation code (``SIT-NN-NN``) of ``distress_spectra``, in taxonomy order."""
+        codes: list[str] = []
+        for raw in self._section_list("distress_spectra"):
+            spectrum = _mapping(raw, "distress_spectra entry")
+            for item in _list(spectrum.get("items"), "distress_spectra items"):
+                entry = _mapping(item, "distress_spectra item")
+                codes.append(_str(entry.get("code"), "distress_spectra item code"))
+        return tuple(codes)
+
+    def contraindication_sources(self) -> Mapping[str, str]:
+        """Each contraindication enum id -> its ``detection_source`` text, in taxonomy order."""
+        sources: dict[str, str] = {}
+        for raw in self._section_list("contraindication_enums"):
+            item = _mapping(raw, "contraindication_enums entry")
+            cid = str(item.get("id"))
+            sources[cid] = _str(item.get("detection_source"), f"contraindication {cid} source")
+        return MappingProxyType(sources)
+
     def banned_tag_methods(self, tag: str) -> tuple[str, ...]:
         tags = self._views().tags
         if tag not in tags:

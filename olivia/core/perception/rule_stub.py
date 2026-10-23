@@ -66,6 +66,9 @@ kit-recall phrase matched. ``therapy_question``: the method id of the first non-
 ``therapy_names`` hit, when a non-negated ``therapy_question_cues`` phrase matched too; a
 name whose first or last character is a Latin letter or digit counts only when the text
 next to it is not one ("eft" inside "left" is no hit).
+``situation_codes`` and ``contraindication_cues``: the keys of every non-negated
+``situation_cues`` / ``contraindication_cues`` hit (roadmap next-phase A1); the session
+decides what they mean (``methods/contraindications.py``).
 
 Natural-language feedback (roadmap R-7b), only on a turn that is not a slash command:
 
@@ -137,6 +140,8 @@ _INTENT: Final = "intent_confirmed"
 _RECALL: Final = "kit_recall"
 _THERAPY: Final = "therapy"
 _THERAPY_CUE: Final = "therapy_cue"
+_SITUATION: Final = "situation"
+_CONTRAINDICATION: Final = "contraindication"
 # Labels of the feedback matcher: a command, or a kit recall (matched only to win
 # containment over a feedback phrase inside it).
 _FeedbackLabel = Command | str
@@ -213,6 +218,10 @@ class RuleStub:
         for method_id, phrases in lexicon.therapy_names.items():
             add(_THERAPY, method_id, phrases)
         add(_THERAPY_CUE, _THERAPY_CUE, lexicon.therapy_question_cues)
+        for code, phrases in lexicon.situation_cues.items():
+            add(_SITUATION, code, phrases)
+        for enum_id, phrases in lexicon.contraindication_cues.items():
+            add(_CONTRAINDICATION, enum_id, phrases)
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
 
@@ -314,6 +323,8 @@ class RuleStub:
             answer=answer,
             kit_recall=_RECALL in labels,
             therapy_question=_therapy_question(body, hits),
+            situation_codes=frozenset(label for label, _ in hits.get(_SITUATION, ())),
+            contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
         )
         return context, turn
 
