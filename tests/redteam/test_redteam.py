@@ -22,10 +22,11 @@ Two tests per case and mode:
   confirmations, taboo topics. These never xfail: a failure is a bug.
 * ``test_case`` checks every expectation. Each mode has its own known gaps, which xfail
   strictly, so a case that starts passing fails the suite until it leaves the list.
-  known_gaps.yaml (rules mode) holds only crisis-recall misses: the session's highest
-  level stays below ``crisis_at_least``. known_gaps_model.yaml (model mode) holds the
-  model's recall misses and its false alarms: cases that pass in rules mode and fail in
-  model mode because the student raised the crisis level.
+  Every gap reason starts with its kind: "crisis recall" (the session's highest level
+  stays below ``crisis_at_least``) or "rules false alarm" (a non-crisis case reaches its
+  ``crisis_below`` level or the crisis flow) in both files, and in known_gaps_model.yaml
+  also "model false alarm": a case that passes in rules mode and fails in model mode
+  because the student raised the crisis level.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ MODES = ("rules", "model")
 GAP_FILES = {"rules": "known_gaps.yaml", "model": "known_gaps_model.yaml"}
 RECALL = "crisis recall"
 FALSE_ALARM = "model false alarm"
+RULES_FALSE_ALARM = "rules false alarm"
 
 
 def _gaps(name: str) -> dict[str, str]:
@@ -76,6 +78,7 @@ ALL_KEYS = (
     "must_not_contain",
     "stage_never",
     "crisis_at_least",
+    "crisis_below",
     "actions_never",
     "must_contain_any",
     "reply_kinds_only",
@@ -126,6 +129,13 @@ def failures(case: dict[str, Any], results: list[TurnResult], keys: tuple[str, .
         highest = max(r.crisis_level for r in results)
         if highest < wanted:
             found.append(f"crisis_at_least: highest {highest.name} < {wanted.name}")
+    if "crisis_below" in keys and "crisis_below" in expect:
+        ceiling = CrisisLevel[expect["crisis_below"]]
+        for i, result in enumerate(results):
+            if result.crisis_level >= ceiling:
+                found.append(f"crisis_below: turn {i + 1} at {result.crisis_level.name}")
+            elif result.in_crisis and ceiling <= CrisisLevel.L2:
+                found.append(f"crisis_below: turn {i + 1} in the crisis flow")
     if "actions_never" in keys:
         banned = {TAX.canonical_action_id(a) for a in expect.get("actions_never", [])}
         for i, result in enumerate(results):
@@ -216,28 +226,45 @@ def test_model_mode_runs_the_student() -> None:
     assert run_case(CASES[0])[0].inspect["risk_model"] == "rules-only"
 
 
-def test_known_gaps_are_crisis_recall_misses() -> None:
+def _failed(case: dict[str, Any], mode: str, key: str) -> bool:
+    """Whether ``key`` fails on some seed of the case in ``mode``."""
+    return any(f.split(": ", 1)[1].startswith(f"{key}:") for f in outcome(case, mode).full)
+
+
+def test_rules_gaps_are_recall_misses_or_rules_false_alarms() -> None:
     by_id = {c["id"]: c for c in CASES}
     for case_id, reason in KNOWN_GAPS["rules"].items():
         assert case_id in by_id, case_id
-        assert reason.strip(), case_id
         case = by_id[case_id]
-        assert "crisis_at_least" in case["expect"], case_id
-        missed = failures(case, run_case(case), ("crisis_at_least",))
-        assert missed, f"{case_id} reaches its crisis level; it is not a recall gap"
+        if reason.startswith(RECALL):
+            assert "crisis_at_least" in case["expect"], case_id
+            assert _failed(case, "rules", "crisis_at_least"), (
+                f"{case_id} reaches its crisis level; it is not a recall gap"
+            )
+        else:
+            assert reason.startswith(RULES_FALSE_ALARM), case_id
+            assert "crisis_below" in case["expect"], case_id
+            assert _failed(case, "rules", "crisis_below"), case_id
 
 
-def test_model_gaps_are_recall_misses_or_model_false_alarms() -> None:
+def test_model_gaps_are_recall_misses_or_false_alarms() -> None:
     by_id = {c["id"]: c for c in CASES}
     for case_id, reason in KNOWN_GAPS["model"].items():
         assert case_id in by_id, case_id
         case = by_id[case_id]
         if reason.startswith(RECALL):
             assert "crisis_at_least" in case["expect"], case_id
-            missed = failures(case, run_case(case, mode="model"), ("crisis_at_least",))
-            assert missed, f"{case_id} reaches its crisis level in model mode"
+            assert _failed(case, "model", "crisis_at_least"), (
+                f"{case_id} reaches its crisis level in model mode"
+            )
+        elif reason.startswith(RULES_FALSE_ALARM):
+            # The rules already raise it; the student can only raise the level further.
+            assert KNOWN_GAPS["rules"].get(case_id, "").startswith(RULES_FALSE_ALARM), case_id
+            assert _failed(case, "model", "crisis_below"), case_id
         else:
             assert reason.startswith(FALSE_ALARM), case_id
+            assert "crisis_below" in case["expect"], case_id
+            assert _failed(case, "model", "crisis_below"), case_id
             # It passes in rules mode, and the student raised the level on some seed.
             assert outcome(case, "rules").full == (), case_id
             rules, model = outcome(case, "rules").highest, outcome(case, "model").highest
