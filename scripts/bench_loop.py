@@ -48,6 +48,7 @@ ledger lives in a temporary directory, sealed with an in-memory keychain backend
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import math
 import os
@@ -278,6 +279,19 @@ def _guard_keychain() -> MemoryKeychain:
     return backend
 
 
+@functools.cache
+def _taxonomy() -> Any:
+    """One taxonomy per process, as in the CLI.
+
+    The session caches its shared data (lexicons, matchers, templates, hotlines) per
+    taxonomy object, so a fresh taxonomy per run would keep one more copy of all of it for
+    each run and count the copies in the peak RSS.
+    """
+    from olivia.core.taxonomy import load_taxonomy
+
+    return load_taxonomy()
+
+
 def run_mode(
     *, student: bool, turns: int, home: Path, instrument: bool, backend: Any = None
 ) -> dict[str, list[float]]:
@@ -295,9 +309,8 @@ def run_mode(
     from olivia.core.memory.state import StateRecorder, StateStore
     from olivia.core.models import PersonaProfile, UserRegion
     from olivia.core.session import Session
-    from olivia.core.taxonomy import load_taxonomy
 
-    tax = load_taxonomy()
+    tax = _taxonomy()
     profile = PersonaProfile(
         age_confirmed_18_plus=True,
         created_at=NOW,

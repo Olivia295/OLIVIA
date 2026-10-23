@@ -8,8 +8,12 @@ model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performanc
 One budget is not met yet and is marked ``xfail(strict=True)``, so the suite records the
 gap and turns red once it closes (then drop the marker):
 
-* peak RSS (SDD §0, < 50 MB): about 63 MB after importing ``olivia.cli`` alone (the
-  interpreter, NumPy, cryptography, PyYAML) and 74-80 MB after a scripted run.
+* peak RSS (SDD §0, < 50 MB): about 58 MB after a rules-mode run on macOS. NumPy,
+  ``keyring`` and ``cryptography`` now load only where they are used (importing
+  ``olivia.cli`` alone is about 36 MB), but a chat seals its ledger with the OS keychain:
+  ``cryptography`` (about 4 MB) and ``keyring`` (about 11 MB, mostly ``urllib.request``
+  and the macOS frameworks behind it) are on the rules path, and the shared lexicons,
+  matchers and templates add about 6 MB.
 """
 
 from __future__ import annotations
@@ -101,7 +105,7 @@ def test_the_instrumented_run_times_every_step(tmp_path):
 
 @untraced
 @pytest.mark.skipif(sys.platform == "win32", reason="no resource module on Windows")
-@pytest.mark.xfail(strict=True, reason="peak RSS about 74 MB in rules mode (budget < 50 MB)")
+@pytest.mark.xfail(strict=True, reason="peak RSS about 58 MB in rules mode (budget < 50 MB)")
 def test_peak_rss_of_a_rules_mode_run_is_within_the_envelope():
     env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
     done = subprocess.run(

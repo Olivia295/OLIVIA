@@ -6,6 +6,7 @@ The data ships as ``olivia/data/resources/hotlines.yaml`` plus a detached signat
 built-in data only when its signature verifies and it was compiled after the built-in
 data; otherwise the built-in data is used and ``reason`` says why, for ``--inspect``.
 A built-in file that fails verification raises: unverified numbers are never shown.
+``cryptography`` is imported when a signature is first verified, not with this module.
 """
 
 from __future__ import annotations
@@ -19,8 +20,6 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from olivia.core.resources import keys
 
@@ -48,6 +47,9 @@ class LoadedBundle:
 
 def verify_signature(data: bytes, signature_b64: bytes, public_key_b64: str) -> bool:
     """True if ``signature_b64`` (base64 text, surrounding whitespace allowed) signs ``data``."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
     try:
         signature = base64.b64decode(signature_b64.strip(), validate=True)
         public_key = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))

@@ -8,18 +8,22 @@ file backends from ``keyrings.alt``) counts as no keychain at all, and every wri
 read back, so a backend that silently drops writes can never lose a master key.
 
 Tests never reach the real keychain: they replace :func:`default_backend`.
+
+``keyring`` is imported on the first keychain read, write or delete, not with this module:
+it pulls in ``urllib.request`` and, on macOS, the system frameworks behind it (about 20 MB
+of the SDD §0 50 MB envelope), and commands that never touch the vault do not need it.
+Resolving the backend still happens in the same place and the same order as before.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Final, Protocol
-
-import keyring
-from keyring.backend import KeyringBackend as _KeyringBase
-from keyring.errors import KeyringError, NoKeyringError
+from typing import TYPE_CHECKING, Final, Protocol
 
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
+
+if TYPE_CHECKING:
+    from keyring.backend import KeyringBackend as _KeyringBase
 
 SERVICE: Final = "olivia"
 _RECOMMENDED_PRIORITY: Final = 1
@@ -45,6 +49,9 @@ class KeyringBackend:
         self._service = service
 
     def _keyring(self) -> _KeyringBase:
+        import keyring
+        from keyring.errors import KeyringError
+
         try:
             backend = self._injected if self._injected is not None else keyring.get_keyring()
         except KeyringError as exc:
@@ -62,6 +69,8 @@ class KeyringBackend:
     def get(self, name: str) -> str | None:
         item = self._name(name)
         backend = self._keyring()
+        from keyring.errors import NoKeyringError
+
         try:
             return backend.get_password(self._service, item)
         except NoKeyringError as exc:
@@ -72,6 +81,8 @@ class KeyringBackend:
     def set(self, name: str, value: str) -> None:
         item = self._name(name)
         backend = self._keyring()
+        from keyring.errors import NoKeyringError
+
         try:
             backend.set_password(self._service, item, value)
         except NoKeyringError as exc:
@@ -84,6 +95,8 @@ class KeyringBackend:
     def delete(self, name: str) -> None:
         item = self._name(name)
         backend = self._keyring()
+        from keyring.errors import NoKeyringError
+
         try:
             backend.delete_password(self._service, item)
         except NoKeyringError as exc:
