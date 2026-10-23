@@ -10,7 +10,10 @@ pipeline in a fixed order (SDD §8.1), and no caller can skip or reorder a step:
    assessment and touches no session state; it runs here so the tracker gets the turn's
    valence for its "L1 with worsening valence" escalation (PRD §9.1).
 3. ``CrisisTracker.observe``, then ``SessionRedFlags.observe`` (profile
-   ``clinical_history`` codes are active from the start).
+   ``clinical_history`` codes are active from the start). In model mode the student's
+   perception heads then refine the rule context (``perception/model_heads.py``, roadmap
+   C1); the tracker has already read the rule valence, so crisis handling is the same in
+   both modes.
 4. ``fsm.step`` with the perception, the crisis status and the turn's signals.
 5. Stage handling and language rendering; the engine's output gate checks every
    rendered text.
@@ -124,6 +127,7 @@ from olivia.core.models import (
     SessionState,
 )
 from olivia.core.perception.lexicon import load_perception_lexicon
+from olivia.core.perception.model_heads import ModelHeads
 from olivia.core.perception.rule_stub import RuleStub, dominant_spectrum
 from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.perception.student import RiskChoice, choose_risk_model
@@ -287,6 +291,7 @@ class Session:
         self._shared = shared
         self._screen = screen
         self._risk = risk if risk is not None else choose_risk_model()
+        self._heads = None if self._risk.student is None else ModelHeads(tax, self._risk.student)
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
@@ -318,7 +323,8 @@ class Session:
         packaged perception student (``perception/student.py``); otherwise, or when the
         student fails to load, the rule model runs alone. An injected model or the student
         can only raise the rule level and stays capped at L2. ``inspect`` reports which one
-        ran.
+        ran. With the student on, its other heads also refine perception
+        (``perception/model_heads.py``); an injected model leaves perception to the rules.
 
         Raises :class:`AgeGateRefusedError` for a refusal record or any profile that does
         not confirm 18+, and lets every data-loading error through.
@@ -350,6 +356,8 @@ class Session:
         perception, signals = self._shared.stub.perceive(text, assessment)
         status = self._tracker.observe(assessment, text, perception.valence)
         self._last_status = status
+        if self._heads is not None:
+            perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
@@ -436,6 +444,11 @@ class Session:
             "previous_stage": transition.previous.value,
             "reason": transition.reason.value,
             "arousal": perception.arousal,
+            "valence": perception.valence,
+            "emotion": perception.fine_grained_emotion,
+            "intent": perception.empathy_intent,
+            "stance": perception.communication_stance,
+            "readiness": perception.readiness_to_change,
             "battery": transition.state.social_battery,
             "lock": transition.state.pure_listening_locked,
             "spectrum": spectrum,
