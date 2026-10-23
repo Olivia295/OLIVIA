@@ -27,6 +27,12 @@ jobs:
       - name: Quality gate
         shell: bash
         run: PY_BIN_DIR="$(dirname "$(which python)")" bash scripts/check.sh
+      # The G-3 report (per-step latency, peak RSS, size). Not blocking yet: two budgets are
+      # known to be missed (generation + gate, RSS; see tests/session/test_step_performance.py).
+      - name: G-3 benchmark (report)
+        continue-on-error: true
+        shell: bash
+        run: python scripts/bench_loop.py --turns 525
 
   dist:
     # What a tester gets: build the wheel, install it into a clean environment (a plain

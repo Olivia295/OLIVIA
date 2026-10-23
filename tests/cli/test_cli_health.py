@@ -47,6 +47,15 @@ def test_recording_asks_for_consent_and_saves_encrypted(run_cli, data_home):
     assert FLAGS[0].encode() not in raw and SAFETY.encode() not in raw
 
 
+def test_the_consent_comes_with_the_onboarding_notice(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["health"], [str(CARDIO_NO), "跳过"])
+    assert run.code == 0 and run.lines[-1] == HEALTH["unchanged"]
+    assert TEXT.sensitive_notice in run.out
+    assert run.out.index(TEXT.sensitive_notice) < run.out.index(TEXT.consent_sentence)
+    assert _load(data_home).contraindications == ()
+
+
 def test_the_list_shows_labels_and_what_is_recorded(run_cli, data_home):
     save_profile(data_home, clinical_history=(FLAGS[1],), contraindications=(CARDIO,))
     run = run_cli(["health"], [""])
