@@ -8,11 +8,13 @@ import os
 import socket
 import subprocess
 import sys
+from importlib import metadata
 from pathlib import Path
 
 import pytest
 from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
 
+import olivia
 from olivia import cli
 from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.language.data import ContentKind, load_language_data
@@ -285,6 +287,21 @@ def test_help_runs_as_a_module():
 def test_pyproject_declares_the_console_script():
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert '[project.scripts]\nolivia = "olivia.cli:main"' in text
+
+
+def test_version_prints_the_package_version(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"], stdout=io.StringIO())
+    assert exc.value.code == 0
+    assert capsys.readouterr().out == f"olivia {cli.package_version()}\n"
+
+
+def test_version_falls_back_to_the_source_tree(monkeypatch):
+    def not_installed(name: str) -> str:
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(metadata, "version", not_installed)
+    assert cli.package_version() == olivia.__version__
 
 
 @pytest.mark.parametrize("argv", [[], ["unknown"]])
