@@ -291,7 +291,9 @@ def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_
         "region",
         "enable_at_rest_encryption",
         "age_gate_refused_at",
+        "notifications",
     }
+    assert saved["notifications"] is False  # system reminders are off by default (B9, D5)
     profile = ProfileStore(data_home).load()
     assert profile is not None
     assert profile.region == UserRegion("CN", "Asia/Shanghai")

@@ -23,7 +23,9 @@ menu or by a flag (:class:`Target`):
 5. everything (:func:`forget_all`): ``Vault.shred_all`` destroys every wrapped data key
    and the master key in the OS keychain first, then every file this package writes is
    removed (:data:`DATA_FILES`, :data:`DATA_DIRS`, stray temporary files), the profile
-   and its snapshots included, so the next ``olivia chat`` starts onboarding afresh.
+   and its snapshots included, so the next ``olivia chat`` starts onboarding afresh;
+   first, the ``on_forget_all`` hooks run (the CLI passes the B9 one, which removes the
+   reminder job and its "last notified" file).
 
 Options 1-4 crypto-shred: the store's data key is destroyed and the master key rotated
 (``Vault.shred``), so a copy of the old ciphertext, or of the old key file, never opens
@@ -251,10 +253,17 @@ class DataStores:
     state: StateStore
     care: CareStore
     plan: SafetyPlanStore
+    on_forget_all: tuple[Callable[[], object], ...] = ()
+    """Run by ``forget --all`` before the files go: what lives outside the data
+    directory (the B9 reminder job). Each handles its own failures."""
 
     @classmethod
     def open(
-        cls, base_dir: Path | None = None, *, method_titles: Mapping[str, str] | None = None
+        cls,
+        base_dir: Path | None = None,
+        *,
+        method_titles: Mapping[str, str] | None = None,
+        on_forget_all: tuple[Callable[[], object], ...] = (),
     ) -> DataStores:
         base = app_data_dir() if base_dir is None else base_dir
         profile = ProfileStore(base)
@@ -267,6 +276,7 @@ class DataStores:
             state=StateStore(base, vault),
             care=CareStore(base, vault),
             plan=SafetyPlanStore(base, vault),
+            on_forget_all=on_forget_all,
         )
 
 
@@ -447,6 +457,8 @@ def forget_all(stores: DataStores, *, keep: frozenset[Path] = frozenset()) -> bo
     the age-gate refusal record); False when the keychain item remains (the keychain
     did not answer: the files are gone and nothing left opens, but the master key could
     not be deleted yet)."""
+    for hook in stores.on_forget_all:
+        hook()
     cleared = True
     try:
         stores.vault.shred_all()
@@ -581,6 +593,8 @@ class _Command:
 
     def _all(self, assume_yes: bool) -> int:
         if not _has_any(self.stores, Target.ALL):
+            for hook in self.stores.on_forget_all:
+                hook()  # the reminder job, should it outlive the data
             with contextlib.suppress(KeychainUnavailableError):
                 self.stores.vault.shred_all()  # a master key left behind, if any
             self.say(self.f["nothing_all"])

@@ -1,0 +1,57 @@
+# 草稿：待 G-0 两名注册心理师审核（docs/superpowers/plans/2026-10-23-next-phase.md B9，决定 D5；PRD SOP 5、RSK-07）
+#
+# 系统提醒（olivia/notify/）与 olivia settings 的文字。由 olivia/notify/text.py 读取；
+# 什么时候提醒、装什么定时任务都在代码里，这里只放文字。
+#
+# notifications：系统通知本身。只有这两种，每次最多一条，晚上 20:30 由定时任务检查：
+#   journal  周日，且这周的小结到期（滚动 7 天内会话 ≥ 2 次、7 天内没提过周记）；
+#   absence  7 天以上没有聊天，7 天内最多一次。
+#   通知里不出现任何聊天内容、称呼、数字、等级或感受（通知会显示在锁屏和通知中心，旁人可能看到）。
+# settings：olivia settings 的编号菜单。现在只有一项「系统提醒」，默认关闭；打开前说明要装什么、
+#   装在哪里，再确认一次；关闭即删除定时任务。
+# places：确认时说明定时任务装在哪里（{where} 是路径、任务名或 crontab 标记）。
+#
+# 槽位（只允许下列几个，加载时校验）：
+#   {state}  开 / 关（settings.state_on / state_off）
+#   {job}    places 里的一句
+#   {where}  路径、任务名或标记
+#
+# 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
+# 不说教（不用“应该/必须/一定要”）、不用感叹号、不写任何电话号码。
+version: 1
+
+notifications:
+  title: OLIVIA
+  journal: 这周的小结写好了，想看的时候运行 olivia chat。
+  absence: 很久没聊了，想说说话的时候我都在。
+
+settings:
+  heading: 设置：输入序号修改；直接回车，就先不改。
+  notifications_item: 系统提醒：{state}
+  state_on: 开
+  state_off: 关
+  unknown_choice: 没有认出这个序号，这次什么都没有改。
+  about_on: |-
+    打开以后，每天晚上 20:30，我会在这台电脑上看一眼，需要的时候发一条系统提醒，一次最多一条：周日这周的小结写好了，会提醒你一声；很久没聊的话，会轻轻问候一句，七天里最多一次。提醒里不会有任何聊天内容，也不会有你的名字。
+
+    为此我会在这台电脑上安装一个定时任务：{job}。它只做这一件事。想关的时候，再运行 olivia settings 选一次，这个定时任务就会被删掉。
+  confirm: 要打开系统提醒吗？
+  confirm_yes: 打开
+  confirm_no: 先不打开
+  cancelled: 好，这次什么都没有改。
+  turned_on: 系统提醒已经打开了。想关的时候，再运行 olivia settings 就好。
+  turned_off: 系统提醒已经关闭，定时任务也删掉了。
+  off_incomplete: 系统提醒已经关闭，之后不会再发提醒。只是那个定时任务这次没能删掉，它不会再做任何事；过一会儿可以再试一次：运行 olivia settings，打开后再关闭。
+  install_failed: 定时任务没能装上，所以系统提醒还是关着的，其他的都没有改动。
+  unsupported_system: 这台电脑的系统暂时用不了系统提醒，其他的都照常。
+  unsupported_notifier: 这台电脑上没有找到 notify-send，提醒没办法显示出来，所以先不打开。装好它（通常在 libnotify 软件包里）以后，可以再来打开。
+  unsupported_scheduler: 这台电脑上既没有 systemd 用户服务，也没有 crontab，没办法安排每天的检查，所以先不打开。
+  needs_keychain: 系统提醒要先看一眼加密保存的聊天记录，才知道什么时候该提醒；可现在系统钥匙串没有响应或者不可用，所以先不打开。
+  not_onboarded: 还没有完成第一次设置。先运行 olivia chat，之后就可以在这里修改设置了。
+  adults_only: 这里的陪伴只为成年人设计，所以没有可以修改的设置。
+
+places:
+  launchd: 一个 launchd 定时任务，文件在 {where}
+  schtasks: 一个 Windows 计划任务，名字叫 {where}
+  systemd: 一个 systemd 用户定时器，文件在 {where}
+  cron: 你的 crontab 里的一行，行尾带着「{where}」标记
