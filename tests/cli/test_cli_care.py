@@ -79,7 +79,8 @@ def test_an_ordinary_session_leaves_no_marker(run_cli, data_home):
     save_profile(data_home)
     run_cli(["chat"], ["今天上班好累", "给我一个方法吧", "/done"])
     assert not (data_home / CARE_FILENAME).exists()
-    assert not (data_home / "keys").exists()
+    # The ledger (B2) has its own key; no care key is made for an ordinary session.
+    assert not (data_home / "keys" / "care.key").exists()
     second = run_cli(["chat", "--inspect"], ["今天上班好累"])
     assert _greeting_lines(second.out) == []
     assert "关怀问候 否" in "\n".join(second.panel)
@@ -99,7 +100,8 @@ def test_no_keychain_writes_no_marker_and_says_nothing(run_cli, data_home, keych
     first = run_cli(["chat"], [L3_SENTENCE, "谢谢你"])
     assert first.code == 0 and first.results[0].reply_kind is ReplyKind.CRISIS
     assert not (data_home / CARE_FILENAME).exists()
-    assert not (data_home / "keys").exists()
+    # The ledger (B2) has its own key; no care key is made for an ordinary session.
+    assert not (data_home / "keys" / "care.key").exists()
     second = run_cli(["chat"], ["今天上班好累"])
     assert second.code == 0 and _greeting_lines(second.out) == []
 

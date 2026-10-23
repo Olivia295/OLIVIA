@@ -20,13 +20,18 @@
     The installed version, read from the package metadata.
 
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
-answers) through ``storage.atomic_write_text``, plus, once there is something to encrypt,
-its wrapped data key under ``keys/`` (``core/crypto``). Health information is always
-encrypted, the whole profile when the user chose that (ONB-06). After a crisis (or a no
-to the direct question about intent) ``chat`` also writes the care marker
-(``chang/care.py``): a time and a level, always encrypted, never written without a
-keychain. The next ``chat`` within seven days opens with a gentle check-in and removes it
-(PRD §9, step A3). Conversation text and perception output are never written anywhere.
+answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
+decision D1: one templated summary per session plus the notes the user asked to have
+remembered, always encrypted) and, once there is something to encrypt, the wrapped data
+keys under ``keys/`` (``core/crypto``). Health information is always encrypted, the whole
+profile when the user chose that (ONB-06). After a crisis (or a no to the direct question
+about intent) ``chat`` also writes the care marker (``chang/care.py``): a time and a level,
+always encrypted, never written without a keychain. The next ``chat`` within seven days
+opens with a gentle check-in and removes it (PRD §9, step A3). Conversation text and
+perception output are never written anywhere; the ledger keeps only ids, levels and times,
+and the session summary is written at every exit (``/exit``, end of input, Ctrl-C) and
+whenever the session closes itself (S_closing -> S_ready). Without a keychain nothing is
+remembered, and the user is told so once per device.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -63,6 +68,8 @@ from olivia.core.chang.onboarding import (
 )
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.language.data import load_language_data
+from olivia.core.memory.ledger import Ledger
+from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.models import UNKNOWN_COUNTRY, CrisisLevel, PersonaProfile, UserRegion
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
@@ -305,35 +312,50 @@ def _chat(
         console.say(HEALTH_NOT_SAVED)
     if profile is None:
         return 0
+    local = _local_clock(clock, profile)
     session = Session.open(
         tax,
         profile,
         rng=rng if rng is not None else random.Random(),
-        now=_local_clock(clock, profile),
+        now=local,
         student=student,
     )
+    ledger = Ledger(store.path.parent, store.vault, method_titles=_card_titles(tax))
+    recorder = SessionRecorder(ledger, session.state.session_id, local)
+    if not recorder.enabled and ledger.take_unavailable_notice():
+        console.say(ledger.text.replies["memory_unavailable"])
     console.say(CHAT_HINT)
     care = CareStore(vault=store.vault)
     marker = care.take(clock())
     if marker is not None:
         console.say(f"{profile.agent_name}：{session.care_greeting(light=marker.light)}")
         console.say()
-    recorder = CareRecorder(care, clock)
-    while True:
-        line = console.ask(USER_PROMPT)
-        if line is None or line.strip() == EXIT_COMMAND:
-            console.say(GOODBYE)
-            return 0
-        if not line.strip():
-            continue
-        result = session.turn(line)
-        # The reply (a crisis card included) is on screen before any keychain access.
-        console.say(f"{profile.agent_name}：{result.reply}")
-        recorder.observe(result, session.snapshot())
-        if inspect:
-            for panel_line in inspect_panel(result):
-                console.say(panel_line)
-        console.say()
+    care_recorder = CareRecorder(care, clock)
+    try:
+        while True:
+            line = console.ask(USER_PROMPT)
+            if line is None or line.strip() == EXIT_COMMAND:
+                break
+            if not line.strip():
+                continue
+            result = recorder.observe(line, session.turn(line))
+            # The reply (a crisis card included) is on screen before any keychain access.
+            console.say(f"{profile.agent_name}：{result.reply}")
+            care_recorder.observe(result, session.snapshot())
+            if inspect:
+                for panel_line in inspect_panel(result):
+                    console.say(panel_line)
+            console.say()
+    finally:  # Ctrl-C included: main() says goodbye after this
+        if not recorder.close():
+            console.say(ledger.text.replies["summary_not_saved"])
+    console.say(GOODBYE)
+    return 0
+
+
+def _card_titles(tax: Taxonomy) -> dict[str, str]:
+    """Action id -> the exercise card title the user saw, for the ledger's summaries."""
+    return {aid: card.title for aid, card in load_language_data(tax).cards.cards.items()}
 
 
 # -- resources and region ---------------------------------------------------------------------
