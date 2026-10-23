@@ -115,7 +115,9 @@ def test_the_state_machine_closing_asks_for_the_after_rating(run_cli, data_home)
     run = run_cli(["chat"], ["3", "给我一个方法", "/done", "我明天试试", "8", "今天上班好累"])
     assert [r.stage for r in run.results][2] is HelpStage.S_READY
     assert run.out.count(RATING) == 2  # the opening one and the one after S_ready
-    assert _ratings(data_home) == [(3, 8), (None, None)]
+    # The test clock stands still, so both segments start at the same moment and the
+    # ledger's order between them falls to their random ids; compare as a multiset.
+    assert sorted(_ratings(data_home), key=repr) == sorted([(3, 8), (None, None)], key=repr)
 
 
 def test_text_at_the_closing_rating_goes_on_as_the_conversation(run_cli, data_home):
