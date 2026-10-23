@@ -34,6 +34,7 @@ from olivia.core.memory.forget import DataStores, load_forget_text
 from olivia.core.memory.ledger import (
     LEDGER_DIRNAME,
     LEDGER_STORE,
+    JournalEntry,
     Ledger,
     MethodRecord,
     NoteEntry,
@@ -146,6 +147,22 @@ def test_memory_shows_entries_and_notes_and_only_names_of_the_rest(run_cli, data
         assert secret not in out, secret
     # Nothing written, nothing exported.
     assert {p: p.read_bytes() for p in files_under(data_home)} == before
+
+
+def test_memory_lists_journal_records_in_the_numbered_list(run_cli, data_home):
+    _populate(data_home)
+    Ledger(data_home, Vault(data_home)).record_journal(
+        NOW + timedelta(minutes=25), shown=True, helpful=True
+    )
+    run = run_cli(["memory"])
+    assert run.code == 0
+    assert f"4. {NOW.date().isoformat()} 的一周小结" in run.lines
+    assert "   - 看了这一周的小结。" in run.lines and "   - 觉得有帮助。" in run.lines
+    # ... and that number forgets it, by re-keying like any other entry.
+    forget = run_cli(["forget", "--entry", "4", "--yes"])
+    assert forget.code == 0 and forget.lines == [F["done_entry"].replace("{n}", "4")]
+    left = Ledger(data_home, Vault(data_home)).entries()
+    assert len(left) == 3 and not any(isinstance(e, JournalEntry) for e in left)
 
 
 def test_memory_counts_entries_that_do_not_open(run_cli, data_home):
@@ -334,6 +351,8 @@ def _use_everything(run_cli, home: Path) -> None:
     save_profile(home)
     chat = run_cli(["chat"], ["给我一个方法", "今天先不做了", f"记住：{NOTE}", L3_SENTENCE])
     assert chat.code == 0
+    assert run_cli(["journal"], []).code == 0  # shows the week, records the offer
+    assert any(isinstance(e, JournalEntry) for e in Ledger(home, Vault(home)).entries())
     save_profile(home, **HEALTH)  # after the chat: a recorded diagnosis allows no card
     assert run_cli(["persona", "2"]).code == 0  # later saves leave snapshots
     store = SafetyPlanStore(home)

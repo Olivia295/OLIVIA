@@ -1,8 +1,9 @@
 """Seeing and forgetting what OLIVIA remembers (next-phase step B5; PRD JTBD 4, MIYI-05).
 
 ``olivia memory`` (:func:`run_memory`) shows, on screen only, what this device holds: the
-ledger entries oldest first and numbered, each as its templated summary or, for a note,
-the user's words verbatim (``Ledger.body``), then the other data by name only (the
+ledger entries oldest first and numbered, each as its templated summary (a session, or a
+B6 journal record: offered, seen or declined, helpful or not) or, for a note, the
+user's words verbatim (``Ledger.body``), then the other data by name only (the
 profile, whether health information is filled in, whether a safety plan exists, how
 many cards the kit holds, whether method preferences were learned, whether a care
 marker waits). Health details and the plan itself are never printed here: they have
