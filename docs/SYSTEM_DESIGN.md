@@ -98,17 +98,17 @@
 │         │     ├─► 萨提亚冰山内省器与会话内核心信念判定 (拒绝跨会话未授权嗅探)                   │
 │         │     └─► 3D 艾宾浩斯记忆检索 (时间指数衰减 / 语义余弦 / 显著性资产保护)                │
 │         │                                                                                       │
-│         ├───► [子系统 II: C.O.L.B.O. 符号状态机与临床协议编排器] (olivia/core/fsm/*)            │
+│         ├───► [子系统 II: C.O.L.B.O. 符号状态机与临床协议编排器] (olivia/core/fsm/*、methods/solver.py) │
 │         │     ├─► 语境感知代词镜像重述引擎 (第一人称从句安全翻转)                                │
 │         │     ├─► A.L.I.C.E. 七状态门控自动机 (就绪/探索/理清/赋能/避风港/结束/危机，含回退/越级)    │
 │         │     └─► 32 种 A 级临床协议编排与动作骨架生成器 (含只陪伴基线 m_0 及禁忌硬掩码)        │
 │         │                                                                                       │
-│         ├───► [子系统 III: W.I.L.L.O.W. 温润内省言语与词汇意境重塑引擎]                         │
+│         ├───► [子系统 III: W.I.L.L.O.W. 温润内省言语与词汇意境重塑引擎] (olivia/core/language/*) │
 │         │     ├─► 去机械化语调塑形 (官腔/说教排比清单剔除与温润邀请式转换)                       │
 │         │     ├─► 概念隐喻意境织造 (柔韧柳枝 / 流水绕石 / 四季草木冬眠心理外化)                 │
 │         │     └─► 沉静呼吸留白控制 (黄金字数窗口 [140, 260] 阻尼与视觉舒缓断句)                 │
 │         │                                                                                       │
-│         └───► [子系统 IV: C.H.A.N.G. 人机协同演化与叙事成长中枢] (olivia/core/methods/*)       │
+│         └───► [子系统 IV: C.H.A.N.G. 人机协同演化与叙事成长中枢] (olivia/core/chang/*、methods/bandit.py) │
 │               ├─► 首访契约共创与四维人格光谱 (GENTLE_HOLDING / 哲思 / 战友 / 树洞，18+ 门禁)    │
 │               ├─► 「结构先行，语态后润」双通道网关与本地校验器 (降级不增加额外等待延迟)         │
 │               ├─► 真正贝叶斯自进化 (纯 Beta-Bernoulli Thompson 采样 / 探索安全门禁)             │
@@ -167,7 +167,7 @@ Type SessionState:
     pure_listening_locked: Boolean      # 纯倾听硬锁标识 (True 则阻断向后跃迁；用户明确说“只想说说/不要建议”一类话时开启)
     social_battery: Float               # 本次会话的心力电量 [0.0, 1.0] (电量前缀跨轮保留，直到下一次前缀或会话结束；从未给出时默认 0.6)
     current_risk_level: CrisisLevel     # L0 | L1 | L2 | L3
-    consecutive_l1_count: Integer       # 连续 L1 风险轮次计数
+    consecutive_l1_count: Integer       # 当前升级窗口内的 L1 轮数（镜像危机追踪器的计数：单个 L0 轮不打断，连续 3 轮 L0、任一 L2/L3 轮或危机退出时清零）
     user_shelved_actions: List<MethodKey> # 本次会话用户置入锦囊待执行的方法
 ```
 
@@ -554,30 +554,41 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 
 为了实现系统设计与工程代码实现的无缝对接，本设计规范各章节在逻辑实现层严格映射至核心模块接口规范：
 
+状态标注：`[已实现 / 步骤]` 表示代码已合并（步骤号见路线图 `docs/superpowers/plans/2026-10-22-remaining-roadmap.md` 或下一阶段计划 `2026-10-23-next-phase.md`）；`[待实现 / 步骤]` 表示计划中的模块，接口以实现时为准。本表于 2026-10-23（计划步骤 A5）按代码逐行核对。
+
 | 设计规范章节 | 领域逻辑职责 | 核心代码实现模块路径 | 核心导出接口与类型契约 |
 | :--- | :--- | :--- | :--- |
-| **§ 2 通用领域模型** | 全局类型与数据契约 | `olivia/core/models.py` [已实现 / P0] | `PersonaProfile`, `SessionState`, `PerceptionContext`, `ActionSkeleton`, `UserRegion`（枚举：`CrisisLevel`, `HelpStage`, `PersonaSpectrum`, `SafetyGrade`, `ActionType`） |
-| **§ 2.1 画像持久化** | 画像读写与快照恢复 | `olivia/core/chang/profile.py` [已实现 / P0] | `ProfileStore(base_dir: Path \| None = None)`: `.path`, `.load() -> PersonaProfile \| None`, `.save(profile: PersonaProfile) -> None`; `ProfileCorruptError` |
-| **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` [已实现 / P0] | `load_taxonomy(path: Path \| None = None) -> Taxonomy`; `Taxonomy.threshold(dotted_path) -> float`, `.values(name) -> tuple[str, ...]`, `.canonical_label(kind, label) -> str`, `.methods()`, `.grade_a_ids()`, `.action_registry()`, `.canonical_action_id(action_id) -> str`, `.red_flags()`, `.banned_tag_methods(tag)`, `.is_banned_tag(entry)`, `.stabilization_whitelist()`, `.crisis_level_for_score(score) -> CrisisLevel`, `.crisis_exit_safe_turns(level) -> int`; `TaxonomyError`, `UnknownActionError` |
+| **§ 2 通用领域模型** | 全局类型与数据契约 | `olivia/core/models.py` [已实现 / P0] | `PersonaProfile`, `SessionState`, `PerceptionContext`, `ActionSkeleton`, `UserRegion`（枚举：`CrisisLevel`, `HelpStage`, `PersonaSpectrum`, `SafetyGrade`, `ActionType`）；`SessionState.consecutive_l1_count` 只是 `CrisisTracker.consecutive_l1_count` 的镜像，由 `fsm.step` 每轮写入 |
+| **§ 2.1 画像持久化** | 画像读写与快照恢复 | `olivia/core/chang/profile.py` [已实现 / P0] | `ProfileStore(base_dir: Path \| None = None)`: `.path`, `.load() -> PersonaProfile \| None`, `.save(profile: PersonaProfile) -> None`; `ProfileCorruptError`（`clinical_history` 目前仍为明文，加密 [待实现 / B1]） |
+| **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` [已实现 / P0] | `load_taxonomy(path: Path \| None = None) -> Taxonomy`; `Taxonomy.version`, `.threshold(dotted_path) -> float`, `.values(name) -> tuple[str, ...]`, `.canonical_label(kind, label) -> str`, `.spectrum_ids()`, `.methods()`, `.grade_a_ids()`, `.action_registry()`, `.canonical_action_id(action_id) -> str`, `.red_flags()`, `.banned_tag_methods(tag)`, `.is_banned_tag(entry)`, `.stabilization_whitelist()`, `.emotion_profiles()`, `.emotion_name(emotion_id)`, `.bands(scale)`, `.band_of(scale, value)`, `.crisis_level_for_score(score) -> CrisisLevel`, `.crisis_exit_safe_turns(level) -> int`; `TaxonomyError`, `UnknownActionError` |
+| **§ 3.1 规则感知桩** | 规则模式下从词表与电量前缀填出 `PerceptionContext` 与本轮控制信号 | `olivia/core/perception/rule_stub.py`、`lexicon.py`、`signals.py` [已实现 / P3-1、P3-5、R-7b] | `RuleStub(tax, lexicon: PerceptionLexicon)`: `.perceive(text, assessment: CrisisAssessment) -> tuple[PerceptionContext, TurnSignals]`; `dominant_spectrum(distress_vector) -> str \| None`; `EmpathyIntent`; `load_perception_lexicon(tax, directory: Path \| None = None) -> PerceptionLexicon`, `strip_marks(text) -> str`, `PerceptionLexiconError`; `TurnSignals`（`battery`, `direct_request`, `listening_lock_on/off`, `aversion`, `intent_confirmed`, `command`, `feedback`, `feedback_unclear`, `answer` 等，只含标志与数值，不含原文）, `Command`, `Answer` |
+| **§ 3.1 / § 9 感知学生模型** | 纯 NumPy 字符级 CNN 学生模型的加载、校验与风险头推理（规则仍是底线） | `olivia/core/perception/student.py` [已实现 / P6-6a，默认关闭（R-P6a）]；其余感知头接入 [待实现 / C1] | `try_load_student(directory=None) -> StudentLoad`（不抛异常，失败给出原因）, `load_student(directory=None) -> StudentModel`, `default_student() -> StudentLoad`; `StudentModel.predict_heads(text)`, `.risk(text) -> tuple[CrisisLevel, float]`; `StudentRiskModel(student)`: `.predict(text) -> RiskPrediction`; `choose_risk_model(model: RiskModel \| None = None, *, student: bool = False) -> RiskChoice`; `StudentUnavailableError` |
+| **§ 3.2 萨提亚冰山内省器** | 认知扭曲、渴望与图式镜像 | 模块待定 [待实现 / C2（决定 D4）] | — |
 | **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
-| **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/engine.py` [待实现 / P3] | `advance_stage(state: SessionState, event: Event) -> HelpStage` |
-| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
-| **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7] | `validate_ai_response(response, skeleton) -> bool` |
-| **§ 8.2 危机资源签名包** | Ed25519 签名验证与内存存储 | `olivia/core/resources/bundle.py` [待实现 / P2] | `load_store_or_fallback(bundle_path, key) -> (HotlineStore, str)` |
-| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` | `resolve(store, region, level, *, mode, today, is_minor=False) -> ResourceCard` |
-| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/language/engine.py` | `LanguageEngine.render_crisis(card: ResourceCard, slots) -> str`（急救号码在前；被网关拦截时仍保留卡上全部号码） |
-| **§ 5.1–5.3 语言引擎** | 模板组合、隐喻、字数窗口 | `olivia/core/language/engine.py`、`data.py` | `LanguageEngine.compose(stage, slots)`、`render_card(skeleton)`、`render_info(method_id)`、`render_referral(flags)` |
-| **§ 4.1 代词镜像** | 代词安全镜像重述 | `olivia/core/language/mirror.py` | `mirror(user_text) -> str` |
-| **§ 5.1 WILLOW 过滤与输出审查网关** | 说教改写、去病理化、诊断词拦截、号码与越级方法名拦截 | `olivia/core/language/filters.py`、`gate.py` | `apply_willow(text, kind)`、`OutputGate.check(text, *, kind, stage, allowed_numbers)` |
-| **§ 8.3 属地行政区划索引** | 国标行政区划与国际城市库 | `olivia/core/resources/divisions.py`<br>`olivia/core/resources/world_cities.py` [待实现 / P2] | `DivisionIndex.from_csv(...)`<br>`WorldCityIndex.from_csv(...)` |
-| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/resolver.py` | R8：非大陆地区不显示大陆条目（按地区判断，澳门、台湾的 110 是当地号码）；未知或不支持的地区回落到 ZZ（求助目录 + 112） |
+| **§ 3.3 静态加密与加密擦除** | 钥匙串主密钥、AES-256-GCM 文件信封、按文件数据密钥 | `olivia/core/crypto/` [待实现 / B1] | 接口待定 |
+| **§ 3.3 透明账本与 3D 检索** | 会话摘要账本、跨会话状态、3D 艾宾浩斯检索 | `olivia/core/memory/ledger.py`、`retrieval.py` [待实现 / B2–B4] | 接口待定 |
+| **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/machine.py`（由 `olivia/core/fsm/__init__.py` 导出）[已实现 / P3-2、P3-5] | `step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition`（纯函数，不修改入参）; `close_session(state: SessionState) -> Transition`; `TurnInput(perception, crisis: CrisisStatus, signals: TurnSignals, persona)`, `Transition(previous, state, reason)`, `Reason` |
+| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；另有 `active_contraindications(tax, inp)`, `banned_actions(tax, flags)`, `M0_ACTION_ID`, `M0_SITUATIONS`；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
+| **§ 6.3 Thompson 采样** | Beta-Bernoulli 后验、三档反馈、软衰减、高唤醒只利用 | `olivia/core/methods/bandit.py` [已实现 / P3-4；跨会话持久化待实现 / B3] | `ThompsonSampler(tax, state: Mapping[str, object] \| None = None)`: `.choose(candidates, spectrum, arousal, rng, now) -> str`, `.update(action_id, spectrum, feedback: Feedback, now) -> None`, `.posterior(action_id, spectrum, now) -> tuple[float, float]`, `.to_dict()`; `Feedback`（`HELPFUL` / `UNHELPFUL` / `NOT_NOW`） |
+| **§ 6.1 首访角色契约** | 首访流程 ONB-01~05、07、08（18+ 门禁先于采集任何个人信息） | `olivia/core/chang/onboarding.py` [已实现 / P4-2] | `OnboardingFlow(tax, store: ProfileStore, now: datetime, text: OnboardingText \| None = None)`: `.prompt() -> Prompt`, `.answer(text) -> Prompt \| Completed \| Refused`, `.step`, `.outcome`; `load_onboarding_text(directory=None) -> OnboardingText`, `canonical_timezone(raw) -> str \| None`; `Step`, `RefusalReason`, `R1_PERSONA` |
+| **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7（裁定 35）] | `validate_ai_response(response, skeleton) -> bool`（草案） |
+| **§ 6.4 情绪周记与自评** | 滚动 7 天周记、会话前后自评 | `olivia/core/chang/journal.py` [待实现 / B6] | 接口待定 |
+| **§ 8.3 危机资源签名数据** | Ed25519 分离式签名校验与覆盖包选择（GEO-08） | `olivia/core/resources/bundle.py`、`keys.py` [已实现 / P2-3] | `load_hotlines_bytes(override_dir: Path \| None, *, today: date) -> LoadedBundle`（`LoadedBundle(data: bytes, source: "override" \| "builtin", reason: str \| None)`；内置数据验签失败抛 `BundleIntegrityError`）; `verify_signature(data: bytes, signature_b64: bytes, public_key_b64: str) -> bool`; `REASON_*` 常量; `keys.HOTLINE_PUBLIC_KEY_B64` |
+| **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` [已实现 / P2-1、P2-2] | `resolve(store, region, level, *, mode: CardMode, today, is_minor=False) -> ResourceCard`, `resolve_region_code(store, region) -> str`; `parse_store(data) -> ResourceStore`, `load_store(path=None) -> ResourceStore`, `ResourceDataError`; `ResourceCard.stale`, `.lines_by_kind()` |
+| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/language/engine.py` [已实现 / P4-3a] | `LanguageEngine.render_crisis(card: ResourceCard, slots) -> str`（急救号码在前；被网关拦截时仍保留卡上全部号码） |
+| **§ 5.1–5.3 语言引擎** | 模板组合、隐喻、字数窗口 | `olivia/core/language/engine.py`、`data.py` [已实现 / P4-3a；`render_info` 运行时接入待实现 / A4] | `LanguageEngine(tax, *, rng, data: LanguageData \| None = None)`: `.build_slots(...)`, `.compose(stage, slots, *, card="", returning_after_crisis=False)`, `.render_card(skeleton)`, `.render_info(method_id)`, `.render_referral(flags)`, `.window_penalty(stage, text)`; `load_language_data(tax, root=None) -> LanguageData`, `load_willow(root=None) -> WillowData`, `ContentKind` |
+| **§ 4.1 代词镜像** | 代词安全镜像重述 | `olivia/core/language/mirror.py` [已实现 / P4-3a] | `mirror(user_text) -> str` |
+| **§ 5.1 WILLOW 过滤与输出审查网关** | 说教改写、去病理化、诊断词拦截、号码与越级方法名拦截 | `olivia/core/language/filters.py`、`gate.py` [已实现 / P4-3a] | `apply_willow(text, kind)`、`OutputGate(tax, data)`: `.check(text, *, kind, stage, allowed_numbers=()) -> GateResult`, `.reasons(...)` |
+| ~~**§ 8.3 属地行政区划索引**~~ | ~~国标行政区划与国际城市库~~ | ~~`olivia/core/resources/divisions.py`、`world_cities.py`~~ **[已废弃，不实现]** | §8.3 只按国家/地区解析，大陆 12356 按来电地自动转接，不需要城市/省级路由或行政区划索引（2026-10-22 官方核验） |
+| **§ 8.3 规则仲裁与 R8 隔离** | 官方裁定规则与属地过滤 | `olivia/core/resources/resolver.py` [已实现 / P2-2] | R8：非大陆地区不显示大陆条目（按地区判断，澳门、台湾的 110 是当地号码）；未知或不支持的地区回落到 ZZ（求助目录 + 112） |
 | **§ 8.4 转介红线识别** | 7 处强制转介红线的文本识别与会话累积 | `olivia/core/safety/red_flags.py` [已实现 / P1] | `RedFlagDetector(tax: Taxonomy, lexicons: SafetyLexicons)`: `.detect(text: str) -> frozenset[str]`, `.profile_flags(clinical_history: Iterable[str]) -> frozenset[str]`; `SessionRedFlags(detector: RedFlagDetector, clinical_history: Iterable[str] = ())`: `.active -> frozenset[str]`, `.observe(text: str) -> frozenset[str]`; `UnknownRedFlagError` |
-| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/methods/solver.py` | 红线掩码在 `allowed_actions` 内完成：多个红线的 `allowed_actions` 取交集、禁用取并集；有任一红线时 `AllowedSet.referral_flags` 非空，必须呈现转介卡 |
+| **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | 红线掩码在 `allowed_actions` 内完成：多个红线的 `allowed_actions` 取交集、禁用取并集；有任一红线时 `AllowedSet.referral_flags` 非空，必须呈现转介卡 |
 | **§ 8.1 输入归一化与感知截断** | 风险匹配前的文本折叠（NFKC、大小写、繁体转简体、弯引号转直引号、去除空白与不可见字符）与感知窗口截取 | `olivia/core/safety/normalize.py` [已实现 / P1] | `normalize(text: str) -> str`, `clip_for_perception(text: str) -> str`, `PERCEPTION_HEAD = 128`, `PERCEPTION_TAIL = 256` |
 | **§ 8.1 多模式短语匹配** | 单遍扫描的 Aho-Corasick 短语匹配 | `olivia/core/safety/matcher.py` [已实现 / P1] | `PhraseMatcher(phrases: Mapping[str, str])`: `.find_all(text: str) -> list[Match]`; `Match(key: str, start: int, end: int)` |
 | **§ 8.1 安全词表加载** | 危机与红线词表的加载与校验 | `olivia/core/safety/lexicon.py` [已实现 / P1] | `load_safety_lexicons(tax: Taxonomy, directory: Path \| None = None) -> SafetyLexicons`; `SafetyLexicons.cues(section: RiskSection) -> tuple[RiskCue, ...]`; `RiskCue`, `RedFlagCue`, `LexiconError` |
-| **§ 8.1 单一会话入口** | 每轮按固定顺序串联安全筛查 → 感知 → 危机跟踪 → 红线 → 状态机 → 求解 → 语言与输出网关 → 反馈，调用方无法跳过 | `olivia/core/session.py` [已实现 / P4] | `Session.open(tax, profile, *, rng, now, model=None) -> Session`（18+ 门禁未过抛 `AgeGateRefusedError`）; `.turn(text) -> TurnResult`（`reply`, `reply_kind`, `stage`, `crisis_level`, `in_crisis`, `resource_card`, `action_id`, `referral_flags`, `inspect`）; `.snapshot() -> dict`（不含原文）; `ReplyKind` |
-| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None, model_plan_evidence: bool = False)`: `.assess(text: str) -> CrisisAssessment`（`model_plan_evidence` 见 §8.2，出厂关闭）; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
-| **§ 8.2 危机态进出追踪** | 会话级危机进入、升级与退出判定 | `olivia/core/safety/tracker.py` [已实现 / P1] | `CrisisTracker(tax: Taxonomy, lexicons: SafetyLexicons)`: `.observe(assessment: CrisisAssessment, text: str, valence: float \| None = None) -> CrisisStatus`; `CrisisStatus` |
+| **§ 8.1 单一会话入口** | 每轮按固定顺序串联安全筛查 → 感知 → 危机跟踪 → 红线 → 状态机 → 求解 → 语言与输出网关 → 反馈，调用方无法跳过 | `olivia/core/session.py` [已实现 / P4-3b] | `Session.open(tax, profile, *, rng, now, model: RiskModel \| None = None, student: bool = False) -> Session`（`student=True` 即 `olivia chat --model`，默认只用规则；18+ 门禁未过抛 `AgeGateRefusedError`）; `.turn(text) -> TurnResult`（`reply`, `reply_kind`, `stage`, `crisis_level`, `in_crisis`, `resource_card`, `action_id`, `referral_flags`, `inspect`）; `.state -> SessionState`（副本）; `.snapshot() -> dict`（不含原文）; `ReplyKind`, `FeedbackSource` |
+| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1、SAFE-2] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None, *, model_plan_evidence: bool = False)`: `.assess(text: str) -> CrisisAssessment`（`model_plan_evidence` 只能以关键字传入，见 §8.2，出厂关闭）; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
+| **§ 8.2 危机态进出追踪** | 会话级危机进入、升级与退出判定 | `olivia/core/safety/tracker.py` [已实现 / P1、SAFE-1] | `CrisisTracker(tax: Taxonomy, lexicons: SafetyLexicons)`: `.observe(assessment: CrisisAssessment, text: str, valence: float \| None = None) -> CrisisStatus`, `.consecutive_l1_count -> int`（只读，L1 计数的唯一来源）; `CrisisStatus`（含 `consecutive_l1_count`） |
+| **§ 10.2 命令行与观测面板** | `olivia chat [--inspect] [--model]`、`olivia resources`、`olivia region` | `olivia/cli.py` [已实现 / P2-4、P4-4] | `main(argv=None, *, stdin=None, stdout=None, clock=None, rng=None) -> int`, `build_parser()`, `inspect_panel(result: TurnResult) -> list[str]`（不显示原文与城市）, `render_browsing(card, tax) -> str` |
 
 本系统设计规范全面确立了 **O.L.I.V.I.A.** 四位一体的工程架构标准，具备高工业级鲁棒性与严谨临床心理伦理双重标准。
