@@ -170,6 +170,15 @@ def test_answers_need_the_whole_message(text: str) -> None:
         "锦囊里那个再给我看看",
         "收进锦囊的那个再给我看看",
         "打开锦囊吧",
+        # "上次..." in a new session (B3: the kit is kept across sessions).
+        "上次存的那个再给我看看",
+        "上回存的那个练习呢",
+        "之前存的那个练习还在吗",
+        "上次存的方法再给我看看",
+        "上次没做的那个再来一次",
+        "上次收起来的练习给我看看",
+        # The recall wins over the "先放着" (not now) inside it.
+        "上次先放着的那个现在想试试",
     ],
 )
 def test_kit_recall(text: str) -> None:
@@ -179,7 +188,25 @@ def test_kit_recall(text: str) -> None:
     assert signals.feedback is None
 
 
-@pytest.mark.parametrize("text", ["今天好累", "帮我收进锦囊", "给我一个方法"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "今天好累",
+        "帮我收进锦囊",
+        "给我一个方法",
+        # "上次..." that is not about the kit.
+        "上次存的钱都花光了",
+        "我上次存的照片找不到了",
+        "我存的那个视频找不到了",
+        "之前收起来的衣服找不到了",
+        "把钱存起来的方法",
+        "上次的事我不想再提",
+        "上次那个方法没用",
+        "上次我们聊到我妈",
+        # Negated.
+        "不要上次存的那个",
+    ],
+)
 def test_no_kit_recall_without_a_phrase(text: str) -> None:
     assert not _signals(text).kit_recall
 

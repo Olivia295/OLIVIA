@@ -34,11 +34,15 @@ keys under ``keys/`` (``core/crypto``). Health information is always encrypted, 
 profile when the user chose that (ONB-06). After a crisis (or a no to the direct question
 about intent) ``chat`` also writes the care marker (``chang/care.py``): a time and a level,
 always encrypted, never written without a keychain. The next ``chat`` within seven days
-opens with a gentle check-in and removes it (PRD §9, step A3). Conversation text and
-perception output are never written anywhere; the ledger keeps only ids, levels and times,
-and the session summary is written at every exit (``/exit``, end of input, Ctrl-C) and
-whenever the session closes itself (S_closing -> S_ready). Without a keychain nothing is
-remembered, and the user is told so once per device.
+opens with a gentle check-in and removes it (PRD §9, step A3). ``chat`` also keeps the
+bandit's posteriors and the kit between sessions (``memory/state.py``, step B3: action ids,
+numbers and times, always encrypted, saved after each turn that changes them and at every
+exit), so the next session's choices follow earlier feedback and "上次存的那个" finds the
+card shelved last time. Conversation text and perception output are never written
+anywhere; the ledger keeps only ids, levels and times, and the session summary is written
+at every exit (``/exit``, end of input, Ctrl-C) and whenever the session closes itself
+(S_closing -> S_ready). Without a keychain nothing is remembered, and the user is told so
+once per device.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -80,6 +84,7 @@ from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, P
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.recorder import SessionRecorder
+from olivia.core.memory.state import StateRecorder, StateStore
 from olivia.core.models import (
     UNKNOWN_COUNTRY,
     CrisisLevel,
@@ -353,13 +358,17 @@ def _chat(
     if profile is None:
         return 0
     local = _local_clock(clock, profile)
+    # The posteriors and the kit from earlier sessions (B3); None starts fresh.
+    state_store = StateStore(store.path.parent, store.vault)
     session = Session.open(
         tax,
         profile,
         rng=rng if rng is not None else random.Random(),
         now=local,
         student=student,
+        carried=state_store.load(),
     )
+    state_recorder = StateRecorder(state_store, session.carried_state())
     ledger = Ledger(store.path.parent, store.vault, method_titles=_card_titles(tax))
     recorder = SessionRecorder(ledger, session.state.session_id, local)
     if not recorder.enabled and ledger.take_unavailable_notice():
@@ -382,6 +391,7 @@ def _chat(
             # The reply (a crisis card included) is on screen before any keychain access.
             console.say(f"{profile.agent_name}：{result.reply}")
             care_recorder.observe(result, session.snapshot())
+            state_recorder.observe(session.carried_state())  # feedback survives a crash
             if inspect:
                 for panel_line in inspect_panel(result):
                     console.say(panel_line)
@@ -389,6 +399,7 @@ def _chat(
     finally:  # Ctrl-C included: main() says goodbye after this
         if not recorder.close():
             console.say(ledger.text.replies["summary_not_saved"])
+        state_recorder.observe(session.carried_state())
     console.say(GOODBYE)
     return 0
 
