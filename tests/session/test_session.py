@@ -195,6 +195,35 @@ def test_direct_request_shows_a_card_from_the_available_set(rules_only):
     assert "/done" in result.reply
 
 
+STABILIZATION = {"12:tipp_breathing", "28", "29", "29:pmr_release", "30:grounding"}
+LIGHT_START = "先从轻一点的开始"
+
+
+@BOTH_MODES
+def test_low_battery_direct_request_gets_a_light_stabilization_card(rules_only):
+    # COLBO-07: below Battery 0.40 the request is honoured in S_empower, left wing only.
+    for seed in range(12):
+        result = _open(seed, rules_only=rules_only).turn("[30%] 给我一个方法")
+        assert result.stage is HelpStage.S_EMPOWER
+        assert result.inspect["reason"] == "DIRECT_REQUEST"
+        assert result.inspect["battery"] == pytest.approx(0.30)
+        assert set(result.inspect["candidates"]) <= STABILIZATION
+        assert result.reply_kind is ReplyKind.CARD
+        assert result.action_id in STABILIZATION
+        assert LIGHT_START in result.reply.split("\n\n")[0]
+        assert "/done" in result.reply
+
+
+@BOTH_MODES
+def test_direct_request_at_ordinary_battery_gets_the_full_pool(rules_only):
+    for seed in range(6):
+        result = _open(seed, rules_only=rules_only).turn("[60%] 给我一个方法")
+        assert result.stage is HelpStage.S_EMPOWER
+        assert len(result.inspect["candidates"]) == 36
+        assert result.reply_kind is ReplyKind.CARD
+        assert LIGHT_START not in result.reply
+
+
 def test_bpd_profile_at_high_arousal_never_gets_cold_water():
     for seed in range(40):
         result = _open(seed, clinical_history=("SIT-09-01",)).turn(HIGH_AROUSAL_REQUEST)

@@ -153,6 +153,33 @@ def test_compose_refuses_crisis_and_cardless_empower(engine: LanguageEngine) -> 
         engine.compose(HelpStage.S_EMPOWER, slots)
 
 
+@pytest.mark.parametrize("seed", SEEDS)
+def test_light_empower_swaps_the_bridge_and_holds_the_window(
+    tax: Taxonomy, lang: LanguageData, seed: int
+) -> None:
+    engine = _engine(tax, lang, seed)
+    slots = _slots(engine, seed)
+    card = engine.render_card(_skeleton(tax, "30:grounding"))
+    text = engine.compose(HelpStage.S_EMPOWER, slots, card=card, light=True)
+    assert engine.last_gate is not None and engine.last_gate.ok, engine.last_gate
+    first = paragraphs(text)[0]
+    assert "先从轻一点的开始" in first
+    assert (
+        "先从轻一点的开始"
+        not in paragraphs(engine.compose(HelpStage.S_EMPOWER, slots, card=card))[0]
+    )
+    counted = text.replace(f"{card}\n\n", "")
+    low, high = lang.templates.normal_window
+    assert low <= count_cjk(counted) and count_all(counted) <= high, counted
+    for para in paragraphs(counted):
+        assert count_all(para) <= lang.templates.paragraph_max, para
+
+
+def test_light_is_only_for_empower(engine: LanguageEngine) -> None:
+    with pytest.raises(ValueError, match="light"):
+        engine.compose(HelpStage.S_EXPLORE, _slots(engine, 0), light=True)
+
+
 def test_compose_refuses_missing_slots(engine: LanguageEngine) -> None:
     with pytest.raises(ValueError, match="slots"):
         engine.compose(HelpStage.S_EXPLORE, Slots(user_name="小雨", agent_name="阿柳"))
@@ -210,7 +237,9 @@ def test_every_card_renders_verbatim_and_passes(
 
 
 def test_card_from_the_solver_plan(tax: Taxonomy, engine: LanguageEngine) -> None:
-    inp = SolverInput(HelpStage.S_EMPOWER, 0.3, frozenset(), frozenset(), frozenset(), frozenset())
+    inp = SolverInput(
+        HelpStage.S_EMPOWER, 0.3, frozenset(), frozenset(), frozenset(), frozenset(), 0.6
+    )
     allowed = allowed_actions(tax, inp)
     plan: ActionPlan = build_plan(tax, allowed.candidates[0], allowed)
     assert "「" in engine.render_card(plan.primary)

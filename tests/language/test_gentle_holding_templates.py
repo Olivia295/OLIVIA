@@ -314,6 +314,42 @@ def test_ready_lines_are_single_short_paragraphs() -> None:
         assert "metaphor" not in SLOT.findall(variant), variant
 
 
+# -- low-battery light bridge (COLBO-07) ----------------------------------------------------
+
+LIGHT_BRIDGE: list[str] = STAGES[HelpStage.S_EMPOWER]["light_bridge"]
+
+
+def test_light_bridge_says_we_start_light() -> None:
+    assert len(LIGHT_BRIDGE) >= 6 and len(set(LIGHT_BRIDGE)) == len(LIGHT_BRIDGE)
+    bridges = dict(_parts(HelpStage.S_EMPOWER))["bridge"]
+    for text in LIGHT_BRIDGE:
+        assert "先从轻一点的开始" in text, text
+        assert text not in bridges and "？" not in text, text
+
+
+@pytest.mark.parametrize("values", [TYPICAL, LONGEST])
+def test_light_bridge_replies_fit_the_normal_window(values: dict[str, str]) -> None:
+    rest = [variants for name, variants in _parts(HelpStage.S_EMPOWER) if name != "bridge"]
+    for combo in itertools.product(LIGHT_BRIDGE, *rest):
+        reply = _compose(combo, values)
+        for paragraph in _paragraphs(reply):
+            assert _all_chars(paragraph) <= PARAGRAPH_MAX, paragraph
+        assert _all_chars(reply) <= NORMAL[1], reply
+        if values is TYPICAL:
+            assert NORMAL[0] <= _cjk_chars(reply), reply
+
+
+def test_light_bridge_passes_willow_unchanged_and_the_output_gate() -> None:
+    tax = load_taxonomy()
+    data = load_language_data(tax)
+    gate = OutputGate(tax, data)
+    assert list(data.templates.light_bridge) == LIGHT_BRIDGE
+    for variant in LIGHT_BRIDGE:
+        text = _fill(variant, TYPICAL)
+        assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
+        assert gate.reasons(text, kind=ContentKind.NORMAL, stage=HelpStage.S_EMPOWER) == (), text
+
+
 # -- natural-language follow-ups (roadmap R-7b) ---------------------------------------------
 
 FOLLOWUPS: dict[str, list[str]] = DATA["followups"]

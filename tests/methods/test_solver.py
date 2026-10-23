@@ -50,8 +50,9 @@ def inp(
     contra: frozenset[str] = frozenset(),
     situations: frozenset[str] = frozenset(),
     shelved: frozenset[str] = frozenset(),
+    battery: float = 0.6,
 ) -> SolverInput:
-    return SolverInput(stage, arousal, flags, contra, situations, shelved)
+    return SolverInput(stage, arousal, flags, contra, situations, shelved, battery)
 
 
 # -- C_candidates: the stage pool ---------------------------------------------------------
@@ -81,6 +82,53 @@ def test_pre_empower_stages_offer_no_exercise_below_somatic_priority(
 def test_high_arousal_pool_is_the_stabilization_whitelist(tax: Taxonomy, stage: HelpStage) -> None:
     assert tax.threshold("arousal.thresholds.somatic_priority") == 0.80
     assert allowed_actions(tax, inp(stage, 0.80)).candidates == WHITELIST_AT_080
+
+
+# COLBO-07: the right wing (the Grade A pool) needs Battery >= 0.40 as well as low arousal.
+@pytest.mark.parametrize("battery", [0.0, 0.20, 0.21, 0.39])
+def test_empower_below_right_wing_battery_keeps_to_the_whitelist(
+    tax: Taxonomy, battery: float
+) -> None:
+    assert tax.threshold("battery.thresholds.empower_min") == 0.40
+    result = allowed_actions(tax, inp(arousal=0.3, battery=battery))
+    assert result.candidates == WHITELIST_AT_080
+    assert result.battery_gated and not result.use_m0
+
+
+@pytest.mark.parametrize("battery", [0.40, 0.41, 0.6, 1.0])
+def test_empower_at_right_wing_battery_gets_the_full_pool(tax: Taxonomy, battery: float) -> None:
+    result = allowed_actions(tax, inp(arousal=0.3, battery=battery))
+    assert set(result.candidates) == set(tax.grade_a_ids()) | set(SUB_ACTIONS)
+    assert not result.battery_gated
+
+
+def test_low_battery_at_overload_still_drops_method_28(tax: Taxonomy) -> None:
+    result = allowed_actions(tax, inp(arousal=0.9, battery=0.3))
+    assert result.candidates == ("12:tipp_breathing", "29", "29:pmr_release", "30:grounding")
+    assert result.battery_gated
+
+
+@pytest.mark.parametrize("stage", [HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_HAVEN])
+def test_battery_gate_is_only_for_empower(tax: Taxonomy, stage: HelpStage) -> None:
+    for arousal in (0.3, 0.9):
+        low = allowed_actions(tax, inp(stage, arousal, battery=0.1))
+        assert low == allowed_actions(tax, inp(stage, arousal, battery=0.9))
+        assert not low.battery_gated
+
+
+def test_low_battery_gate_keeps_red_flag_closure_and_referral(tax: Taxonomy) -> None:
+    result = allowed_actions(tax, inp(flags=frozenset({"SIT-06-01"}), battery=0.3))
+    assert result.candidates == ("30:grounding",)
+    assert result.referral_flags == ("SIT-06-01",) and result.battery_gated
+
+
+def test_right_wing_battery_comes_from_the_taxonomy() -> None:
+    data = _raw()
+    data["battery"]["thresholds"]["empower_min"] = 0.5
+    data["battery"]["empower_min"] = 0.5  # the deprecated mirror key must agree
+    synthetic = Taxonomy(data)
+    assert allowed_actions(synthetic, inp(battery=0.45)).candidates == WHITELIST_AT_080
+    assert len(allowed_actions(synthetic, inp(battery=0.5)).candidates) == 36
 
 
 @pytest.mark.parametrize("arousal", [0.85, 1.0])
@@ -254,6 +302,8 @@ def test_unknown_inputs_are_rejected(tax: Taxonomy) -> None:
     for bad in (-0.1, 1.1, math.nan):
         with pytest.raises(ValueError, match="arousal"):
             inp(arousal=bad)
+        with pytest.raises(ValueError, match="battery"):
+            inp(battery=bad)
 
 
 def test_allowed_set_ties_use_m0_to_an_empty_candidate_list() -> None:

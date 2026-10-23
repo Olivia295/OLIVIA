@@ -150,22 +150,30 @@ class LanguageEngine:
         slots: Slots,
         *,
         card: str = "",
+        light: bool = False,
         returning_after_crisis: bool = False,
     ) -> str:
         """A reply for a non-crisis stage.
 
         ``card`` is the rendered card body (:meth:`render_card`) that S_empower inserts
         between ``card_intro`` and ``after_card``; it is required there and not counted in
-        the word window. ``returning_after_crisis`` picks the S_ready greeting variant used
-        for the first session after a crisis. Raises ``ValueError`` for S_crisis (use
-        :meth:`render_crisis`) or when a needed slot is empty.
+        the word window. ``light`` swaps the S_empower ``bridge`` for ``light_bridge``
+        ("today we start with something light"), used when the solver cut the pool to the
+        stabilization whitelist for low battery (COLBO-07). ``returning_after_crisis`` picks
+        the S_ready greeting variant used for the first session after a crisis. Raises
+        ``ValueError`` for S_crisis (use :meth:`render_crisis`), for ``light`` outside
+        S_empower, or when a needed slot is empty.
         """
         if stage is HelpStage.S_CRISIS:
             raise ValueError("S_crisis replies are rendered by render_crisis")
         if stage is HelpStage.S_EMPOWER and not card.strip():
             raise ValueError("S_empower needs the rendered card body")
+        if light and stage is not HelpStage.S_EMPOWER:
+            raise ValueError("only S_empower has a light bridge")
         values = slots.values()
         pools = self._pools(stage, returning_after_crisis)
+        if light:
+            pools[0] = self._data.templates.light_bridge
         usable = [[v for v in pool if all(values[s] for s in slots_of(v))] for pool in pools]
         if any(not pool for pool in usable):
             raise ValueError(f"{stage}: no template variant can be filled from these slots")
