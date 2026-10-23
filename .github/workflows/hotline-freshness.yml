@@ -1,0 +1,28 @@
+name: Hotline freshness
+
+# Quarterly: fail when any hotline entry was last verified more than 90 days ago, so the
+# owner named in docs/resources/hotline-sources.md re-verifies and re-signs the data.
+on:
+  schedule:
+    - cron: "17 2 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        shell: bash
+        run: pip install -e .
+      - name: Check verification dates
+        shell: bash
+        run: python scripts/check_hotline_freshness.py --max-age-days 90
