@@ -39,7 +39,8 @@ writing the same session twice replaces its entry instead of adding one.
 
 Without a usable keychain the ledger is disabled: nothing is written, and operations
 raise :class:`LedgerUnavailableError`. :meth:`Ledger.shred` crypto-shreds the ``ledger``
-data key (``Vault.shred``) and deletes the entry files.
+data key (``Vault.shred``) and deletes the entry files; :meth:`Ledger.remove_entry`
+deletes one entry file and keeps the key (``olivia forget``, step B5).
 
 Entries that fail to decrypt or parse are skipped (``Ledger.skipped`` counts them);
 nothing here logs, and errors never carry entry text.
@@ -351,6 +352,15 @@ class Ledger:
     def notes(self) -> tuple[NoteEntry, ...]:
         return tuple(e for e in self.entries() if isinstance(e, NoteEntry))
 
+    def body(self, entry: LedgerEntry) -> str:
+        """The human-readable part of ``entry``: the templated summary or journal record,
+        or the note verbatim."""
+        if isinstance(entry, NoteEntry):
+            return entry.text
+        if isinstance(entry, JournalEntry):
+            return self._journal_body(entry)
+        return self._summary_body(entry.summary)
+
     def render(self, entry: LedgerEntry) -> str:
         """The Markdown document for ``entry`` (front-matter and body)."""
         if isinstance(entry, NoteEntry):
@@ -361,7 +371,6 @@ class Ledger:
                 "created_at": entry.created_at.isoformat(),
                 "significant": True,
             }
-            body = entry.text
         elif isinstance(entry, JournalEntry):
             front = {
                 "olivia_ledger": FORMAT_VERSION,
@@ -371,14 +380,19 @@ class Ledger:
                 "shown": entry.shown,
                 "helpful": entry.helpful,
             }
-            body = self._journal_body(entry)
         else:
             front = _summary_front(entry)
-            body = self._summary_body(entry.summary)
+        body = self.body(entry)
         head = yaml.safe_dump(front, allow_unicode=True, sort_keys=False, default_flow_style=None)
         return f"{_DELIMITER}{head}{_DELIMITER}{body}\n"
 
     # -- forgetting ------------------------------------------------------------------------
+
+    def remove_entry(self, entry_id: str) -> None:
+        """Delete one entry file (``olivia forget --entry``); the ledger key is kept."""
+        if not _ID.fullmatch(entry_id):
+            raise ValueError("not a ledger entry id")
+        remove_file(self.directory / f"{entry_id}{_SUFFIX}")
 
     def shred(self) -> None:
         """Crypto-shred the ledger key, then delete every entry file."""

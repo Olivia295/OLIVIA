@@ -31,6 +31,15 @@
 ``olivia journal``
     The weekly journal (``chang/journal.py``, B6): a read-only summary of the last seven
     days built from the ledger, then one optional "was it helpful" question.
+``olivia memory``
+    What this device remembers, on screen only (``memory/forget.py``, B5): the ledger
+    entries oldest first and numbered (templated summaries, notes verbatim), then the
+    other data by name only; never health details or the plan.
+``olivia forget [--entry N | --ledger | --kit | --safety-plan | --all] [--yes]``
+    Forget one entry, every chat record, the kit and method preferences, the safety plan,
+    or everything (crypto-shredding; ``--all`` also deletes the keychain item, so the
+    next ``chat`` starts onboarding afresh). Without a flag, a numbered menu; every
+    deletion asks for a typed confirmation unless ``--yes``.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -98,6 +107,7 @@ from olivia.core.chang.onboarding import (
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.language.data import load_language_data
+from olivia.core.memory.forget import DataStores, Target, run_forget, run_memory
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.memory.state import StateRecorder, StateStore
@@ -684,6 +694,39 @@ def _journal(console: _Console, clock: Clock) -> int:
     )
 
 
+# -- memory and forget ------------------------------------------------------------------------
+
+
+def _data_stores() -> DataStores:
+    return DataStores.open(method_titles=_card_titles(_taxonomy()))
+
+
+def _memory(console: _Console) -> int:
+    """``olivia memory``: what is stored on this device, on screen only (B5)."""
+    return run_memory(console.say, _data_stores())
+
+
+_FORGET_FLAGS: Final = (
+    ("ledger", Target.LEDGER),
+    ("kit", Target.KIT),
+    ("safety_plan", Target.SAFETY_PLAN),
+    ("all", Target.ALL),
+)
+
+
+def _forget(console: _Console, args: argparse.Namespace) -> int:
+    """``olivia forget``: the menu, or the target a flag names (B5)."""
+    target = next((t for flag, t in _FORGET_FLAGS if getattr(args, flag)), None)
+    return run_forget(
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        _data_stores(),
+        target=target,
+        entry=args.entry,
+        assume_yes=args.yes,
+    )
+
+
 # -- persona ----------------------------------------------------------------------------------
 
 
@@ -763,6 +806,17 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("journal", help="看看这一周的小结")
     persona = commands.add_parser("persona", help="查看或更换陪伴方式")
     persona.add_argument("choice", nargs="?", help="序号（1–4）或简称，例如 2 或 沉静哲思")
+    commands.add_parser("memory", help="查看 OLIVIA 在这台电脑上记得什么（只显示在屏幕上）")
+    forget = commands.add_parser("forget", help="让 OLIVIA 忘掉一条记录、一类数据或全部数据")
+    which = forget.add_mutually_exclusive_group()
+    which.add_argument(
+        "--entry", type=int, metavar="序号", help="忘掉一条记录（序号见 olivia memory）"
+    )
+    which.add_argument("--ledger", action="store_true", help="忘掉全部聊天记录")
+    which.add_argument("--kit", action="store_true", help="忘掉锦囊与方法偏好")
+    which.add_argument("--safety-plan", action="store_true", help="删掉个人安全计划")
+    which.add_argument("--all", action="store_true", help="忘掉全部数据，之后从头开始")
+    forget.add_argument("--yes", action="store_true", help="不再询问确认")
     return parser
 
 
@@ -805,6 +859,10 @@ def main(
             return _safety_plan(console)
         if args.command == "journal":
             return _journal(console, now)
+        if args.command == "memory":
+            return _memory(console)
+        if args.command == "forget":
+            return _forget(console, args)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()
