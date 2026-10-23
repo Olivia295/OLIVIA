@@ -142,7 +142,8 @@ def test_offered_at_most_once_per_session():
 @pytest.mark.parametrize(
     "text,stage",
     [
-        ("心慌得要命，手一直在抖，我很在意别人怎么看我", HelpStage.S_CLARIFY),  # high arousal
+        # High arousal leaves S_clarify for S_explore's stabilization channel (fix F2a).
+        ("心慌得要命，手一直在抖，我很在意别人怎么看我", HelpStage.S_EXPLORE),
         ("我想消失", HelpStage.S_CLARIFY),  # L1 screen
         ("[10%] 今天外面下雨了", HelpStage.S_HAVEN),
         ("我不想活了", HelpStage.S_CRISIS),
@@ -157,11 +158,22 @@ def test_never_on_a_risky_resting_or_listening_turn(text, stage):
     assert result.inspect["externalize"] is None and _offer_in(result) is None
 
 
-@pytest.mark.parametrize("text", ["心慌得要命，手一直在抖", "我想消失"], ids=["arousal", "l1"])
-def test_high_arousal_and_l1_only_postpone_the_offer(text):
+def test_l1_only_postpones_the_offer():
     session = _ready()
-    assert session.turn(text).inspect["externalize"] is None
+    assert session.turn("我想消失").inspect["externalize"] is None
     assert session.turn(CALM).inspect["externalize"] == "offered"
+
+
+def test_high_arousal_postpones_the_offer_until_back_in_clarify():
+    # The arousal retreat (fix F2a) goes back to S_explore with a stabilization card; the
+    # offer waits for the ordinary S_explore -> S_clarify advance.
+    session = _ready()
+    retreat = session.turn("心慌得要命，手一直在抖")
+    assert retreat.stage is HelpStage.S_EXPLORE and retreat.action_id is not None
+    assert retreat.inspect["externalize"] is None
+    assert session.turn(CALM).inspect["externalize"] is None
+    back = session.turn(CALM)
+    assert back.stage is HelpStage.S_CLARIFY and back.inspect["externalize"] == "offered"
 
 
 def test_never_on_the_d3_question_or_its_answer():

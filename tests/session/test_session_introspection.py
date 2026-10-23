@@ -207,13 +207,18 @@ def _clarify_then_enable() -> Session:
 
 def test_never_at_high_arousal():
     session = _clarify_then_enable()
-    for _ in range(3):
+    for i in range(3):
         hot = session.turn("心慌得要命，手一直在抖，我很在意别人怎么看我")
-        assert hot.stage is HelpStage.S_CLARIFY
+        # Fix F2a: the first hot turn leaves S_clarify for S_explore's stabilization channel.
+        assert hot.stage is HelpStage.S_EXPLORE
+        if i == 0:
+            assert hot.inspect["reason"] == "CLARIFY_AROUSAL_RETREAT"
         assert hot.inspect["arousal"] >= TAX.threshold("arousal.thresholds.somatic_priority")
         assert hot.inspect["schema_mirror"] is None and not _mirrored(hot)
-    # Calm again: now it may ask.
-    assert session.turn("今天外面下雨了").inspect["schema_mirror"] == "asked"
+    # Calm again: back in S_clarify it may ask.
+    calm = session.turn("今天外面下雨了")
+    assert calm.stage is HelpStage.S_CLARIFY
+    assert calm.inspect["schema_mirror"] == "asked"
 
 
 def test_evidence_from_high_arousal_turns_does_not_count():
