@@ -35,9 +35,15 @@ def _with_subs(ids: Iterable[str]) -> set[str]:
     return out
 
 
-def _stage_eligible(tax: Taxonomy, stage: HelpStage, arousal: float) -> set[str]:
+def _stage_eligible(
+    tax: Taxonomy, stage: HelpStage, arousal: float, battery: float = 0.6
+) -> set[str]:
     high = arousal >= tax.threshold("arousal.thresholds.somatic_priority")
     if high and stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER):
+        return _with_subs(tax.stabilization_whitelist())
+    # COLBO-07: the right wing needs Battery >= empower_min too.
+    low = battery < tax.threshold("battery.thresholds.empower_min")
+    if low and stage is HelpStage.S_EMPOWER:
         return _with_subs(tax.stabilization_whitelist())
     if stage is HelpStage.S_EMPOWER:
         return _with_subs(tax.grade_a_ids())
@@ -83,7 +89,13 @@ def test_red_flag_at_overload_in_explore_matches_taxonomy(code: str) -> None:
     result = allowed_actions(
         TAX,
         SolverInput(
-            HelpStage.S_EXPLORE, 0.85, frozenset({code}), frozenset(), frozenset(), frozenset()
+            HelpStage.S_EXPLORE,
+            0.85,
+            frozenset({code}),
+            frozenset(),
+            frozenset(),
+            frozenset(),
+            0.6,
         ),
     )
     expected = _expected_explore_high(code)
@@ -109,12 +121,17 @@ _arousal = st.one_of(
     st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
     st.sampled_from([0.0, 0.79, 0.8, 0.84, 0.85, 1.0]),
 )
+_battery = st.one_of(
+    st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    st.sampled_from([0.0, 0.2, 0.21, 0.39, 0.4, 1.0]),
+)
 
 
 @settings(max_examples=300, deadline=None)
 @given(
     stage=st.sampled_from(list(HelpStage)),
     arousal=_arousal,
+    battery=_battery,
     flags=st.frozensets(st.sampled_from(RED_FLAGS), max_size=3),
     contra=st.frozensets(st.sampled_from(ENUMS), max_size=4),
     situations=st.frozensets(st.sampled_from([*sorted(M0_SITUATIONS), "SIT-01-01"]), max_size=2),
@@ -123,13 +140,16 @@ _arousal = st.one_of(
 def test_candidates_never_escape_a_mask(
     stage: HelpStage,
     arousal: float,
+    battery: float,
     flags: frozenset[str],
     contra: frozenset[str],
     situations: frozenset[str],
     shelved: frozenset[str],
 ) -> None:
-    result = allowed_actions(TAX, SolverInput(stage, arousal, flags, contra, situations, shelved))
-    eligible = _stage_eligible(TAX, stage, arousal)
+    result = allowed_actions(
+        TAX, SolverInput(stage, arousal, flags, contra, situations, shelved, battery)
+    )
+    eligible = _stage_eligible(TAX, stage, arousal, battery)
     banned = _banned(flags)
     active = _active(arousal, contra)
     for aid in result.candidates:

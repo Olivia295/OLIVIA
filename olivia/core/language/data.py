@@ -120,6 +120,8 @@ class Templates:
     parts: Mapping[HelpStage, tuple[TemplatePart, ...]]
     """S_explore, S_clarify and S_empower: one variant per part, one paragraph each."""
     after_card: tuple[str, ...]
+    light_bridge: tuple[str, ...]
+    """S_empower ``bridge`` replacement below the right-wing battery (COLBO-07)."""
     haven: tuple[str, ...]
     crisis: tuple[str, ...]
     closing: tuple[str, ...]
@@ -390,7 +392,9 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
     parts: dict[HelpStage, tuple[TemplatePart, ...]] = {}
     for stage in _PART_STAGES:
         body = _map(stages[stage.value], f"{where} {stage}")
-        expected = {"parts", "after_card"} if stage is HelpStage.S_EMPOWER else {"parts"}
+        expected = (
+            {"parts", "after_card", "light_bridge"} if stage is HelpStage.S_EMPOWER else {"parts"}
+        )
         _keys(body, expected, f"{where} {stage}")
         raw_parts = _list(body["parts"], f"{where} {stage}.parts")
         built: list[TemplatePart] = []
@@ -440,6 +444,7 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         haven_window=_int_pair(window["haven"], f"{where} window.haven"),
         parts=MappingProxyType(parts),
         after_card=_templates(empower["after_card"], f"{where} S_empower.after_card"),
+        light_bridge=_templates(empower["light_bridge"], f"{where} S_empower.light_bridge"),
         haven=singles[HelpStage.S_HAVEN],
         crisis=singles[HelpStage.S_CRISIS],
         closing=singles[HelpStage.S_CLOSING],

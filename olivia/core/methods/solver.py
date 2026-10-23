@@ -9,11 +9,14 @@ through the action registry before any set operation, so aliases never produce a
 false empty set.
 
 * ``C_candidates`` is the stage's entry pool. ``S_empower`` below the somatic-priority
-  arousal threshold gets the 32 Grade A methods. ``S_explore``, ``S_clarify`` and
-  ``S_empower`` at or above that threshold get only the stabilization whitelist
-  (COLBO-02, the left wing). ``S_explore`` and ``S_clarify`` below it, and every other
-  stage, get nothing. A pool entry that is a method also admits that method's
-  registered sub-actions; each sub-action is then filtered on its own.
+  arousal threshold and at or above ``battery.thresholds.empower_min`` gets the 32
+  Grade A methods (COLBO-07, the right wing). ``S_explore``, ``S_clarify`` and
+  ``S_empower`` at or above that arousal threshold, and ``S_empower`` below that
+  battery threshold, get only the stabilization whitelist (COLBO-02, the left wing);
+  the battery case is reported as ``AllowedSet.battery_gated``. ``S_explore`` and
+  ``S_clarify`` below the arousal threshold, and every other stage, get nothing. A pool
+  entry that is a method also admits that method's registered sub-actions; each
+  sub-action is then filtered on its own.
 * ``A_allowed`` is the closed upper bound of the active red flags: the intersection
   of their ``allowed_actions``, or everything when no red flag is active.
 * ``B_banned`` is every active red flag's ``banned_methods`` with banned tags expanded
@@ -49,6 +52,8 @@ M0_SITUATIONS: Final[frozenset[str]] = frozenset({"SIT-06-04", "SIT-11-01"})
 OVERLOAD_CONTRAINDICATION: Final = "ACUTE_AROUSAL_OVERLOAD"
 
 _SOMATIC_PRIORITY_KEY: Final = "arousal.thresholds.somatic_priority"
+# COLBO-07: the right wing needs Battery >= 0.40 (the key that also gates S_clarify -> S_empower).
+_RIGHT_WING_BATTERY_KEY: Final = "battery.thresholds.empower_min"
 # The overload enum is defined as "Arousal >= 0.85"; cognitive_block is the TAX key at 0.85.
 _OVERLOAD_KEY: Final = "arousal.thresholds.cognitive_block"
 _STABILIZATION_STAGES: Final = frozenset(
@@ -64,10 +69,13 @@ class SolverInput:
     active_contraindications: frozenset[str]  # contraindication enum ids derived by the caller
     situation_codes: frozenset[str]  # detected SIT codes, may be empty
     shelved_actions: frozenset[str]  # actions the user shelved this session
+    battery: float  # the session's social battery after this turn's update
 
     def __post_init__(self) -> None:
         if math.isnan(self.arousal) or not 0.0 <= self.arousal <= 1.0:
             raise ValueError(f"arousal must be within [0.0, 1.0], got {self.arousal}")
+        if math.isnan(self.battery) or not 0.0 <= self.battery <= 1.0:
+            raise ValueError(f"battery must be within [0.0, 1.0], got {self.battery}")
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,8 @@ class AllowedSet:
     candidates: tuple[str, ...]  # canonical ids eligible for sampling, stable order
     use_m0: bool  # True when the fixed m0 rule applies (candidates then empty)
     referral_flags: tuple[str, ...]  # red-flag codes that require a referral card
+    # S_empower below the right-wing battery: the pool was cut to the stabilization whitelist.
+    battery_gated: bool = False
 
     def __post_init__(self) -> None:
         if self.use_m0 == bool(self.candidates):
@@ -101,7 +111,10 @@ def allowed_actions(tax: Taxonomy, inp: SolverInput) -> AllowedSet:
     if inp.stage is HelpStage.S_HAVEN or inp.situation_codes & M0_SITUATIONS:
         return AllowedSet((), True, referral)
 
-    pool = _stage_pool(tax, inp.stage, inp.arousal)
+    gated = inp.stage is HelpStage.S_EMPOWER and inp.battery < tax.threshold(
+        _RIGHT_WING_BATTERY_KEY
+    )
+    pool = _stage_pool(tax, inp.stage, inp.arousal, left_wing_only=gated)
     if flags:
         pool &= _red_flag_allowed(tax, flags)
     pool -= banned_actions(tax, flags)
@@ -110,7 +123,7 @@ def allowed_actions(tax: Taxonomy, inp: SolverInput) -> AllowedSet:
     pool -= {tax.canonical_action_id(aid) for aid in inp.shelved_actions}
 
     candidates = tuple(aid for aid in _ordered_ids(tax) if aid in pool)
-    return AllowedSet(candidates, not candidates, referral)
+    return AllowedSet(candidates, not candidates, referral, battery_gated=gated)
 
 
 def build_plan(tax: Taxonomy, chosen_id: str | None, allowed: AllowedSet) -> ActionPlan:
@@ -138,9 +151,12 @@ def _validate(tax: Taxonomy, inp: SolverInput) -> None:
         raise ValueError(f"unknown contraindication ids: {sorted(unknown_enums)}")
 
 
-def _stage_pool(tax: Taxonomy, stage: HelpStage, arousal: float) -> set[str]:
+def _stage_pool(
+    tax: Taxonomy, stage: HelpStage, arousal: float, *, left_wing_only: bool
+) -> set[str]:
     """``C_candidates``: the stage's entry pool, with each method's sub-actions."""
-    if stage in _STABILIZATION_STAGES and arousal >= tax.threshold(_SOMATIC_PRIORITY_KEY):
+    somatic = arousal >= tax.threshold(_SOMATIC_PRIORITY_KEY)
+    if stage in _STABILIZATION_STAGES and (somatic or left_wing_only):
         base: Iterable[str] = tax.stabilization_whitelist()
     elif stage is HelpStage.S_EMPOWER:
         base = tax.grade_a_ids()

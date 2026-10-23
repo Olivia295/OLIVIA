@@ -563,7 +563,13 @@ class Session:
             if stage is HelpStage.S_EMPOWER:
                 rendered = self._with_taboo_filter(
                     lambda: self._compose(
-                        stage, perception, spectrum, mirror_text, card_title=title, card=body
+                        stage,
+                        perception,
+                        spectrum,
+                        mirror_text,
+                        card_title=title,
+                        card=body,
+                        light=allowed.battery_gated,
                     ),
                     stage,
                 )
@@ -615,6 +621,7 @@ class Session:
                 active_contraindications=frozenset(),
                 situation_codes=frozenset(),
                 shelved_actions=shelved,
+                battery=self._state.social_battery,
             ),
         )
 
@@ -627,6 +634,7 @@ class Session:
         *,
         card_title: str = "",
         card: str = "",
+        light: bool = False,
     ) -> tuple[str, str] | None:
         """One composed reply and the mirror it used (taboo hits inside it are allowed)."""
         slots = self._engine.build_slots(
@@ -641,7 +649,7 @@ class Session:
         if not slots.mirror:
             slots = replace(slots, mirror=FALLBACK_MIRROR)
         self._engine.last_gate = None
-        text = self._engine.compose(stage, slots, card=card)
+        text = self._engine.compose(stage, slots, card=card, light=light)
         if not self._note_gate():
             return None
         return text, slots.mirror
