@@ -10,7 +10,8 @@ verdict is kept in :attr:`LanguageEngine.last_gate` for telemetry.
 Template choice is seeded through the injected ``random.Random``. For the composed stages
 the engine walks the variant combinations in an rng-shuffled order and takes the first one
 whose filtered text fits the stage's word window (WILLOW-03, SDD §5.3); if none fits, it
-takes the one with the smallest cadence penalty.
+takes the one with the smallest cadence penalty. Templates and windows are the persona's
+(``LanguageData.for_persona``).
 """
 
 from __future__ import annotations
@@ -201,11 +202,19 @@ class LanguageEngine:
         return self._checked(text, ContentKind.NORMAL, stage)
 
     def window_penalty(self, stage: HelpStage, text: str) -> float:
-        """SDD §5.3 cadence penalty (κ = 1) plus paragraph overflow; 0 means it fits."""
+        """SDD §5.3 cadence penalty (κ = 1) plus paragraph overflow; 0 means it fits.
+
+        The windows are the persona's (``window`` in its template file): GENTLE_HOLDING,
+        ZEN_PHILOSOPHER and RATIONAL_PEER use [140, 260] and S_haven [15, 40];
+        SILENT_ANCHOR uses [10, 30] (WILLOW-03). S_empower uses ``empower_window``.
+        """
         tpl = self._data.templates
         if stage is HelpStage.S_HAVEN:
             low, high = tpl.haven_window
             penalty = 0.0 if "\n" not in text else float(high) ** 2
+        elif stage is HelpStage.S_EMPOWER:
+            low, high = tpl.empower_window
+            penalty = 0.0
         elif stage in _NORMAL_STAGES:
             low, high = tpl.normal_window
             penalty = 0.0

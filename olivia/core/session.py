@@ -59,7 +59,12 @@ gate and stage rules, so a red-flag user only ever gets the referral card:
   Grade B in S_clarify only. A card waiting for feedback keeps waiting.
 * lens: once per session, an S_clarify turn without the listening lock appends one Grade
   B explainer (``render_info_reply(lens=True)``) to the S_clarify reply, drawn from the
-  ``clarify_lenses`` entry of the most recent spectrum the conversation showed.
+  ``clarify_lenses`` entry of the most recent spectrum the conversation showed. Not for
+  SILENT_ANCHOR, which only listens.
+
+Persona (PRD ONB-03, plan D-1): the profile's ``persona_spectrum`` picks the reply
+templates and word windows (``LanguageData.for_persona``); crisis resource lines and the
+D3 question are the same for every persona.
 
 A card whose text names one of the profile's taboo topics, or that the gate blocks, is
 not shown and the turn is handled as if nothing had been asked.
@@ -189,6 +194,7 @@ from olivia.core.models import (
     HelpStage,
     PerceptionContext,
     PersonaProfile,
+    PersonaSpectrum,
     SessionState,
 )
 from olivia.core.perception.introspector import (
@@ -388,7 +394,9 @@ class Session:
         self._contra = SessionContraindications(tax, profile.contraindications)
         self._context = ActiveContext()
         self._sampler = ThompsonSampler(tax)
-        self._engine = LanguageEngine(tax, rng=rng, data=shared.language)
+        # The profile's persona picks the reply templates and word windows (ONB-03, D-1).
+        language = shared.language.for_persona(profile.persona_spectrum)
+        self._engine = LanguageEngine(tax, rng=rng, data=language)
         self._state = SessionState(session_id=uuid4())
         self._last_status: CrisisStatus | None = None
         self._pending: _Pending | None = None
@@ -908,6 +916,8 @@ class Session:
             stage is HelpStage.S_CLARIFY
             and not self._lens_shown
             and not transition.state.pure_listening_locked
+            # SILENT_ANCHOR only listens (SDD §6.1): no unasked perspective.
+            and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
         ):
             fits = self._engine.data.info_lenses.get(self._last_spectrum or "", ())
             pool = [mid for mid in info_cards(self._tax, inp) if mid in fits]

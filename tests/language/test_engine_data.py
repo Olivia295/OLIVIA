@@ -12,6 +12,7 @@ import yaml
 
 from olivia.core.language import ContentKind, apply_willow
 from olivia.core.language.data import LanguageData, LanguageDataError, load_language_data
+from olivia.core.models import PersonaSpectrum
 from olivia.core.taxonomy import Taxonomy
 
 DATA = Path(__file__).resolve().parents[2] / "olivia/data"
@@ -25,6 +26,9 @@ FILES = [
     "language/needs.yaml",
     "language/render.yaml",
     "templates/gentle_holding.yaml",
+    "templates/zen_philosopher.yaml",
+    "templates/rational_peer.yaml",
+    "templates/silent_anchor.yaml",
     "cards/grade_a.yaml",
     "cards/grade_bc_info.yaml",
 ]
@@ -157,6 +161,31 @@ def _bad_version(d: dict[str, Any]) -> None:
     d["version"] = 2
 
 
+def _wrong_persona(d: dict[str, Any]) -> None:
+    d["persona"] = "GENTLE_HOLDING"
+
+
+def _silent_with_three_parts(d: dict[str, Any]) -> None:
+    reflect = d["stages"]["S_explore"]["parts"][0]
+    d["stages"]["S_explore"]["parts"] = [
+        reflect,
+        {"name": "image", "variants": ["{metaphor}。"]},
+        {"name": "invite", "variants": ["想说说吗？"]},
+    ]
+
+
+def _reworded_safety_check(d: dict[str, Any]) -> None:
+    d["followups"]["safety_check"][0] = "你还好吗？"
+
+
+def _inverted_empower_window(d: dict[str, Any]) -> None:
+    d["window"]["empower"] = [70, 10]
+
+
+def _unknown_window_key(d: dict[str, Any]) -> None:
+    d["window"]["closing"] = [10, 30]
+
+
 @pytest.mark.parametrize(
     ("rel", "change"),
     [
@@ -168,6 +197,13 @@ def _bad_version(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _followup_without_plain_variant),
         ("templates/gentle_holding.yaml", _wellbeing_missing),
         ("templates/gentle_holding.yaml", _wellbeing_with_mirror),
+        ("templates/zen_philosopher.yaml", _wrong_persona),
+        ("templates/rational_peer.yaml", _drop_card_title_slot),
+        ("templates/rational_peer.yaml", _reworded_safety_check),
+        ("templates/silent_anchor.yaml", _silent_with_three_parts),
+        ("templates/silent_anchor.yaml", _inverted_empower_window),
+        ("templates/silent_anchor.yaml", _unknown_window_key),
+        ("templates/silent_anchor.yaml", _template_without_haven_fallback),
         ("language/needs.yaml", _missing_need),
         ("language/needs.yaml", _bad_version),
         ("cards/grade_a.yaml", _extra_card_step),
@@ -190,11 +226,19 @@ def test_bad_data_fails_fast(
         load_language_data(tax, root)
 
 
-def test_missing_file_fails_fast(tmp_path: Path, tax: Taxonomy) -> None:
+@pytest.mark.parametrize("rel", ["language/needs.yaml", "templates/silent_anchor.yaml"])
+def test_missing_file_fails_fast(tmp_path: Path, tax: Taxonomy, rel: str) -> None:
     root = _copy(tmp_path)
-    (root / "language/needs.yaml").unlink()
+    (root / rel).unlink()
     with pytest.raises(LanguageDataError, match="cannot read"):
         load_language_data(tax, root)
+
+
+def test_persona_argument_picks_the_templates(tmp_path: Path, tax: Taxonomy) -> None:
+    data = load_language_data(tax, _copy(tmp_path), persona=PersonaSpectrum.SILENT_ANCHOR)
+    assert data.templates.persona is PersonaSpectrum.SILENT_ANCHOR
+    assert data.for_persona(PersonaSpectrum.SILENT_ANCHOR) is data
+    assert data.for_persona(PersonaSpectrum.RATIONAL_PEER).templates.persona == "RATIONAL_PEER"
 
 
 def test_invalid_yaml_fails_fast(tmp_path: Path, tax: Taxonomy) -> None:

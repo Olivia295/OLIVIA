@@ -1,13 +1,15 @@
 """Strict loaders for the W.I.L.L.O.W. language data (SDD §5).
 
-Seven files feed the language engine:
+Ten files feed the language engine:
 
 * ``language/willow.yaml``: didactic rewrites, diagnosis terms, depathologizing
   replacements, protected terms and per-filter exemptions;
 * ``language/metaphors.yaml``: spectrum x yearning nature images and a fallback list;
 * ``language/needs.yaml``: need phrases per Satir yearning;
 * ``language/render.yaml``: labels and fixed sentences around cards;
-* ``templates/gentle_holding.yaml``: per-stage reply templates;
+* ``templates/<persona>.yaml``: per-stage reply templates, one file per persona
+  (``PERSONA_TEMPLATE_FILES``, PRD ONB-03); all four are loaded and checked, and
+  ``LanguageData.templates`` is the chosen one;
 * ``cards/grade_a.yaml``: Grade A follow-along cards;
 * ``cards/grade_bc_info.yaml``: Grade B/C psychoeducation entries.
 
@@ -20,7 +22,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -44,9 +46,26 @@ FILTER_NAMES: Final = frozenset(
 _SLOT_RE: Final = re.compile(r"\{([^{}]*)\}")
 _CARD_ACTION_TYPES: Final = frozenset({"STABILIZATION", "MICRO_EXERCISE"})
 _PART_STAGES: Final = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER)
+PERSONA_TEMPLATE_FILES: Final[Mapping[PersonaSpectrum, str]] = MappingProxyType(
+    {
+        PersonaSpectrum.GENTLE_HOLDING: "templates/gentle_holding.yaml",
+        PersonaSpectrum.ZEN_PHILOSOPHER: "templates/zen_philosopher.yaml",
+        PersonaSpectrum.RATIONAL_PEER: "templates/rational_peer.yaml",
+        PersonaSpectrum.SILENT_ANCHOR: "templates/silent_anchor.yaml",
+    }
+)
 _PART_NAMES: Final = {
     HelpStage.S_EXPLORE: ("reflect", "image", "invite"),
     HelpStage.S_CLARIFY: ("reflect", "need", "invite"),
+    HelpStage.S_EMPOWER: ("bridge", "card_intro"),
+}
+# SILENT_ANCHOR speaks in one short paragraph ([10, 30] 字, WILLOW-03): S_explore and
+# S_clarify have a single ``reflect`` part and no required slots, since a 20-字 mirror
+# plus a 16-字 image could not fit that window.
+_COMPACT_PERSONAS: Final = frozenset({PersonaSpectrum.SILENT_ANCHOR})
+_COMPACT_PART_NAMES: Final = {
+    HelpStage.S_EXPLORE: ("reflect",),
+    HelpStage.S_CLARIFY: ("reflect",),
     HelpStage.S_EMPOWER: ("bridge", "card_intro"),
 }
 # Short follow-up lines (roadmap R-7b) and the direct question about intent (decision D3);
@@ -73,6 +92,9 @@ _REQUIRED_SLOTS: Final = {
     (HelpStage.S_EXPLORE, "image"): frozenset({"metaphor"}),
     (HelpStage.S_CLARIFY, "reflect"): frozenset({"mirror", "emotion"}),
     (HelpStage.S_CLARIFY, "need"): frozenset({"need"}),
+    (HelpStage.S_EMPOWER, "card_intro"): frozenset({"card_title"}),
+}
+_COMPACT_REQUIRED_SLOTS: Final = {
     (HelpStage.S_EMPOWER, "card_intro"): frozenset({"card_title"}),
 }
 
@@ -132,6 +154,8 @@ class Templates:
     normal_window: tuple[int, int]
     paragraph_max: int
     haven_window: tuple[int, int]
+    empower_window: tuple[int, int]
+    """S_empower framing without the card body: ``window.empower``, else the normal window."""
     parts: Mapping[HelpStage, tuple[TemplatePart, ...]]
     """S_explore, S_clarify and S_empower: one variant per part, one paragraph each."""
     after_card: tuple[str, ...]
@@ -237,25 +261,54 @@ class LanguageData:
     info: Mapping[str, InfoEntry]
     info_lenses: Mapping[str, tuple[str, ...]]
     """Spectrum id -> the Grade B explainers S_clarify may offer for it (draft, G-0)."""
+    personas: Mapping[PersonaSpectrum, Templates]
+    """Every persona's templates; ``templates`` is one of them."""
+
+    def for_persona(self, persona: PersonaSpectrum) -> LanguageData:
+        """The same data speaking with ``persona``'s templates (PRD ONB-03, plan D-1)."""
+        if persona is self.templates.persona:
+            return self
+        return replace(self, templates=self.personas[persona])
 
 
 # -- entry point --------------------------------------------------------------------------
 
 
-def load_language_data(tax: Taxonomy, root: Path | None = None) -> LanguageData:
-    """Load and validate every language file from ``root`` (default: packaged ``olivia/data``)."""
+def load_language_data(
+    tax: Taxonomy,
+    root: Path | None = None,
+    *,
+    persona: PersonaSpectrum = PersonaSpectrum.GENTLE_HOLDING,
+) -> LanguageData:
+    """Load and validate every language file from ``root`` (default: packaged ``olivia/data``).
+
+    All four persona template files are loaded and checked; ``persona`` picks the one
+    ``templates`` holds (switch later with :meth:`LanguageData.for_persona`).
+    """
     willow = _parse_willow(_read(root, "language/willow.yaml"))
     info_doc = _read(root, "cards/grade_bc_info.yaml")
     info = _parse_info(info_doc, tax)
+    personas = {
+        p: _parse_templates(_read(root, rel), p, rel.rsplit("/", 1)[-1])
+        for p, rel in PERSONA_TEMPLATE_FILES.items()
+    }
+    # The direct question about intent (decision D3) is persona-free: one wording for all.
+    reference = personas[PersonaSpectrum.GENTLE_HOLDING].safety_check
+    for p, tpl in personas.items():
+        if tpl.safety_check != reference:
+            raise LanguageDataError(
+                f"{PERSONA_TEMPLATE_FILES[p]}: followups.safety_check must match gentle_holding"
+            )
     return LanguageData(
         willow=willow,
         metaphors=_parse_metaphors(_read(root, "language/metaphors.yaml"), tax),
         needs=_parse_needs(_read(root, "language/needs.yaml"), tax),
         render=_parse_render(_read(root, "language/render.yaml"), tax),
-        templates=_parse_templates(_read(root, "templates/gentle_holding.yaml")),
+        templates=personas[persona],
         cards=_parse_cards(_read(root, "cards/grade_a.yaml"), tax),
         info=info,
         info_lenses=_parse_lenses(info_doc, info, tax),
+        personas=MappingProxyType(personas),
     )
 
 
@@ -442,12 +495,17 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
 # -- templates -----------------------------------------------------------------------------
 
 
-def _parse_templates(data: Mapping[str, Any]) -> Templates:
-    where = "gentle_holding.yaml"
+def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str) -> Templates:
     _keys(data, {"persona", "window", "stages", "followups", "wellbeing"}, where)
     persona = _enum(PersonaSpectrum, data["persona"], f"{where} persona")
+    if persona is not owner:
+        raise LanguageDataError(f"{where}: persona must be {owner.value}")
+    compact = persona in _COMPACT_PERSONAS
+    part_names = _COMPACT_PART_NAMES if compact else _PART_NAMES
+    required_slots = _COMPACT_REQUIRED_SLOTS if compact else _REQUIRED_SLOTS
     window = _map(data["window"], f"{where} window")
-    _keys(window, {"normal", "paragraph_max", "haven"}, f"{where} window")
+    _keys(window, {"normal", "paragraph_max", "haven"}, f"{where} window", optional={"empower"})
+    normal_window = _int_pair(window["normal"], f"{where} window.normal")
     stages = _map(data["stages"], f"{where} stages")
     _keys(stages, {s.value for s in HelpStage}, f"{where} stages")
 
@@ -465,13 +523,13 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
             _keys(part, {"name", "variants"}, f"{where} {stage} part")
             name = _str(part["name"], f"{where} {stage} part name")
             variants = _templates(part["variants"], f"{where} {stage}.{name}")
-            required = _REQUIRED_SLOTS.get((stage, name), frozenset())
+            required = required_slots.get((stage, name), frozenset())
             for text in variants:
                 if not required <= slots_of(text):
                     raise LanguageDataError(f"{where} {stage}.{name}: missing slots in {text!r}")
             built.append(TemplatePart(name, variants))
-        if tuple(p.name for p in built) != _PART_NAMES[stage]:
-            raise LanguageDataError(f"{where} {stage}: parts must be {_PART_NAMES[stage]}")
+        if tuple(p.name for p in built) != part_names[stage]:
+            raise LanguageDataError(f"{where} {stage}: parts must be {part_names[stage]}")
         parts[stage] = tuple(built)
 
     empower = _map(stages[HelpStage.S_EMPOWER.value], f"{where} S_empower")
@@ -495,9 +553,14 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
     }
     return Templates(
         persona=persona,
-        normal_window=_int_pair(window["normal"], f"{where} window.normal"),
+        normal_window=normal_window,
         paragraph_max=_int(window["paragraph_max"], f"{where} window.paragraph_max"),
         haven_window=_int_pair(window["haven"], f"{where} window.haven"),
+        empower_window=(
+            _int_pair(window["empower"], f"{where} window.empower")
+            if "empower" in window
+            else normal_window
+        ),
         parts=MappingProxyType(parts),
         after_card=_templates(empower["after_card"], f"{where} S_empower.after_card"),
         light_bridge=_templates(empower["light_bridge"], f"{where} S_empower.light_bridge"),
