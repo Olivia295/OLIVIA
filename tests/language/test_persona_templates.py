@@ -77,6 +77,18 @@ WINDOWS: dict[PersonaSpectrum, dict[str, Any]] = {
 }
 SILENT_WINDOW = (10, 30)
 COMPOSED = [HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER]
+WELLBEING_GROUPS = (
+    "break_reminder",
+    "break_reminder_haven",
+    "late_night",
+    "late_night_haven",
+    "real_support",
+)
+HAVEN_GROUPS = ("break_reminder_haven", "late_night_haven")
+PEOPLE_WORDS = ("朋友", "家人", "同事", "心理咨询师", "信得过的人", "信任的")
+# Someone else may be reading the screen: a returning greeting never says what happened
+# (the list of tests/language/test_gentle_holding_templates.py, step A3).
+REVEALING_WORDS = ["危机", "自杀", "轻生", "生命", "死", "伤害", "热线", "风险", "L2", "L3", "求助"]
 SAMPLE_LIMIT = 20_000
 SAMPLE_SIZE = 2_000
 
@@ -122,6 +134,10 @@ def _combos(pools: list[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
         yield tuple(rng.choice(pool) for pool in pools)
 
 
+def _wellbeing(tpl: Templates) -> dict[str, tuple[str, ...]]:
+    return {name: getattr(tpl, name) for name in WELLBEING_GROUPS}
+
+
 def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
     """(where, template) for every reply text the persona can say."""
     for stage, parts in tpl.parts.items():
@@ -136,10 +152,12 @@ def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
         "closing": tpl.closing,
         "greeting": tpl.greeting,
         "returning_after_crisis": tpl.returning_after_crisis,
+        "returning_after_check": tpl.returning_after_check,
         "clarify_feedback": tpl.clarify_feedback,
         "kit_empty": tpl.kit_empty,
         "closing_declined": tpl.closing_declined,
         "safety_check": tpl.safety_check,
+        **_wellbeing(tpl),
     }
     for where, texts in named.items():
         for text in texts:
@@ -383,7 +401,7 @@ def test_ready_lines_are_single_short_paragraphs(
 ) -> None:
     tpl = lang.personas[persona]
     limit = SILENT_WINDOW[1] if persona is PersonaSpectrum.SILENT_ANCHOR else 80
-    for variant in tpl.greeting + tpl.returning_after_crisis:
+    for variant in tpl.greeting + tpl.returning_after_crisis + tpl.returning_after_check:
         line = _fill(variant, TYPICAL)
         assert "\n" not in line and _all(line) <= limit, line
 
@@ -460,3 +478,89 @@ def test_silent_anchor_empower_framing_fits_its_window(lang: LanguageData, bridg
         assert _all(longest) <= high, longest
         for para in _paragraphs(longest):
             assert _all(para) <= tpl.paragraph_max, para
+
+
+# -- A3 returning greetings and B7 anti-dependence prompts, every persona -------------------
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+@pytest.mark.parametrize("pool", ["returning_after_crisis", "returning_after_check"])
+def test_returning_greetings_reveal_nothing(
+    lang: LanguageData, persona: PersonaSpectrum, pool: str
+) -> None:
+    variants: tuple[str, ...] = getattr(lang.personas[persona], pool)
+    assert len(variants) >= 3
+    assert any(not SLOT.findall(v) for v in variants), "needs a slot-free variant"
+    for variant in variants:
+        assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
+        for word in REVEALING_WORDS:
+            assert word not in variant, (word, variant)
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_wellbeing_groups_follow_the_b7_contract(
+    lang: LanguageData, persona: PersonaSpectrum
+) -> None:
+    tpl = lang.personas[persona]
+    for name, variants in _wellbeing(tpl).items():
+        assert 2 <= len(variants) <= 5, name
+        assert len(set(variants)) == len(variants), name
+        assert any(not SLOT.findall(v) for v in variants), name
+        for variant in variants:
+            assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
+            assert "\n" not in variant, variant
+            for word in [*FORBIDDEN, *ADVICE_WORDS, *SCHEMA_WORDS]:
+                assert word not in variant, f"{word!r} in {variant!r}"
+            assert not EMOJI.search(variant) and "?" not in variant, variant
+            assert not any(ch.isdigit() for ch in variant), variant
+    for variant in tpl.late_night:
+        assert "夜" in variant and any(w in variant for w in PEOPLE_WORDS), variant
+    for variant in tpl.late_night_haven:
+        assert "夜" in variant, variant
+
+
+def _within_haven(tpl: Templates, line: str) -> bool:
+    low, high = tpl.haven_window
+    return low <= _cjk(line) and _all(line) <= high
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_wellbeing_lines_fit_the_persona_windows(
+    lang: LanguageData, persona: PersonaSpectrum
+) -> None:
+    tpl = lang.personas[persona]
+    # A break or late-night paragraph is added after the reply: it keeps the paragraph
+    # limit, and SILENT_ANCHOR's stays inside its own [10, 30] window.
+    limit = SILENT_WINDOW[1] if persona is SILENT else tpl.paragraph_max
+    for name in ("break_reminder", "late_night", "real_support"):
+        for variant in getattr(tpl, name):
+            line = _fill(variant, LONGEST)
+            assert _all(line) <= limit, line
+            if persona is SILENT:
+                assert SILENT_WINDOW[0] <= _cjk(_fill(variant, TYPICAL)), line
+    for name in HAVEN_GROUPS:
+        for variant in getattr(tpl, name):
+            line = _fill(variant, TYPICAL)
+            assert _within_haven(tpl, line) and "？" not in line, line
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_real_support_wording(lang: LanguageData, persona: PersonaSpectrum) -> None:
+    for variant in lang.personas[persona].real_support:
+        assert any(word in variant for word in [*PEOPLE_WORDS, "谁"]), variant
+        # SILENT_ANCHOR asks nothing; the others ask exactly one question.
+        assert variant.count("？") == (0 if persona is SILENT else 1), variant
+
+
+@pytest.mark.parametrize("persona", NEW)
+@pytest.mark.parametrize("stage", [HelpStage.S_EXPLORE, HelpStage.S_CLARIFY])
+def test_real_support_as_the_invite_keeps_the_normal_window(
+    lang: LanguageData, persona: PersonaSpectrum, stage: HelpStage
+) -> None:
+    tpl = lang.personas[persona]
+    low, high = tpl.normal_window
+    pools = [p.variants for p in tpl.parts[stage] if p.name != "invite"]
+    for combo in itertools.product(*pools, tpl.real_support):
+        typical = "\n\n".join(_fill(p, TYPICAL) for p in combo)
+        assert low <= _cjk(typical), typical
+        assert _all("\n\n".join(_fill(p, LONGEST) for p in combo)) <= high, combo

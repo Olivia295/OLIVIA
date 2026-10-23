@@ -139,8 +139,9 @@ so the yearning picks the metaphor and need phrase. In model mode only, the sche
 most on calm turns (no crisis, no L1 screen, arousal below the somatic line) is mirrored
 once per session as a gentle question that replaces the closing question of an S_clarify
 reply, never on a turn with a red flag active, the listening lock, the D3 question or its
-answer, an information card or a follow-up. A yes on the next turn (still in S_clarify,
-calm) sets ``core_belief_confirmed`` and the state machine moves to S_empower
+answer, an information card or a follow-up, and never for SILENT_ANCHOR (it asks no
+questions; the state machine keeps it out of C_2 as well). A yes on the next turn (still
+in S_clarify, calm) sets ``core_belief_confirmed`` and the state machine moves to S_empower
 (``CLARIFY_CORE_BELIEF``); a no or anything else leaves the flow as it is.
 ``inspect`` carries ``distortions``, ``schemas``, ``yearning`` (ids) and ``schema_mirror``
 (``asked``, ``confirmed``, ``declined`` or None).
@@ -535,6 +536,8 @@ class Session:
             and calm
             and not flags
             and not transition.state.pure_listening_locked
+            # SILENT_ANCHOR asks no questions and its reply is one paragraph (plan D-1).
+            and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
             else None
         )
 

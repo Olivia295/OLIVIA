@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import random
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from olivia.core.language.data import LanguageData, Templates, load_language_data
 from olivia.core.language.engine import count_all, count_cjk, paragraphs
 from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, PersonaSpectrum, UserRegion
+from olivia.core.perception.introspector import load_mirror_lines
 from olivia.core.perception.signals import Command
 from olivia.core.session import ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
@@ -39,6 +40,9 @@ TO_CLARIFY = (
     "他总说我太黏人",
     "我也不知道该怎么办，每次吵完都很失落",
 )
+# tests/session/test_session_introspection.py: reaches S_clarify with a schema seen.
+SCHEMA_SCRIPT = ("最近工作压力有点大", "我很在意别人怎么看我", "一直在讨好别人，挺累的")
+SCHEMA_MORE = "我的意见不重要，总是顺着别人"
 
 
 def _open(persona: PersonaSpectrum, seed: int = 3) -> Session:
@@ -226,6 +230,154 @@ def test_silent_anchor_only_listens() -> None:
 def test_silent_anchor_still_gets_a_card_on_request() -> None:
     result = _open(SILENT).turn(METHOD_REQUEST)
     assert result.stage is HelpStage.S_EMPOWER and result.reply_kind is ReplyKind.CARD
+
+
+def test_silent_anchor_never_asks_the_schema_mirror() -> None:
+    # Decision D4's mirror is a question and replaces a three-paragraph reply's invite; the
+    # FSM already keeps SILENT_ANCHOR out of C_2 (CLARIFY_CORE_BELIEF).
+    lines = frozenset(line for group in load_mirror_lines(TAX).values() for line in group)
+    script = (*SCHEMA_SCRIPT, SCHEMA_MORE, SCHEMA_MORE, SCHEMA_MORE)
+    gentle = _open(PersonaSpectrum.GENTLE_HOLDING, 7)
+    gentle._mirror.enabled = True  # model mode's mirror over rule perception
+    asked = [gentle.turn(text).inspect["schema_mirror"] for text in script]
+    assert "asked" in asked  # the script does reach the mirror for other personas
+    silent = _open(SILENT, 7)
+    silent._mirror.enabled = True
+    for text in script:
+        result = silent.turn(text)
+        assert result.inspect["schema_mirror"] != "asked"
+        assert not any(line in result.reply for line in lines), result.reply
+        assert "？" not in result.reply and result.stage is not HelpStage.S_EMPOWER
+
+
+# -- B7 anti-dependence prompts and the A3 greeting, every persona ------------------------------
+
+
+class Clock:
+    def __init__(self, start: datetime) -> None:
+        self.now = start
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+DAY = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)  # 22:00 in Shanghai
+MIDNIGHT = datetime(2026, 10, 22, 16, 0, tzinfo=UTC)  # 00:00 in Shanghai
+CALM = (
+    "今天上班好累",
+    "最近和室友有点小矛盾",
+    "工作上的事情让我有点烦",
+    "回家以后也提不起劲",
+    "周末也不太想出门",
+    "感觉自己一直在硬撑",
+    "说不上来哪里不对劲",
+    "就是心里有点堵",
+)
+
+
+def _clocked(persona: PersonaSpectrum, clock: Clock) -> Session:
+    profile = PersonaProfile(
+        age_confirmed_18_plus=True,
+        created_at=DAY,
+        updated_at=DAY,
+        user_name=USER,
+        persona_spectrum=persona,
+        region=UserRegion("CN", "Asia/Shanghai"),
+    )
+    return Session.open(TAX, profile, rng=random.Random(7), now=clock)
+
+
+def _head_and_tail(reply: str) -> tuple[str, str]:
+    head, _, tail = reply.rpartition("\n\n")
+    return head, tail
+
+
+def _check_ordinary(persona: PersonaSpectrum, text: str) -> None:
+    assert _within(text, _tpl(persona).normal_window), text
+    if persona is SILENT:
+        assert "？" not in text and len(paragraphs(text)) == 1, text
+
+
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_break_reminder_after_45_minutes_keeps_the_window(persona: PersonaSpectrum) -> None:
+    clock = Clock(DAY)
+    session = _clocked(persona, clock)
+    first = session.turn(CALM[0])
+    assert first.inspect["reminder"] == "none"
+    clock.now = DAY + timedelta(minutes=46)
+    later = session.turn(CALM[1])
+    assert later.inspect["reminder"] == "break" and later.reply_kind is ReplyKind.NORMAL
+    head, tail = _head_and_tail(later.reply)
+    assert tail in {_names(v) for v in _tpl(persona).break_reminder}
+    _check_ordinary(persona, head)
+    if persona is SILENT:
+        assert count_all(tail) <= 30 and "？" not in tail
+
+
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_late_night_line_keeps_the_window(persona: PersonaSpectrum) -> None:
+    session = _clocked(persona, Clock(MIDNIGHT))
+    result = session.turn(CALM[0])
+    assert result.inspect["reminder"] == "late_night"
+    head, tail = _head_and_tail(result.reply)
+    assert tail in {_names(v) for v in _tpl(persona).late_night}
+    _check_ordinary(persona, head)
+    if persona is SILENT:
+        assert count_all(tail) <= 30 and "？" not in tail
+
+
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_haven_reminders_replace_the_haven_line_in_its_window(persona: PersonaSpectrum) -> None:
+    tpl = _tpl(persona)
+    clock = Clock(DAY)
+    session = _clocked(persona, clock)
+    assert session.turn(HAVEN_SCRIPT[0]).reply in {_names(v) for v in tpl.haven}
+    clock.now = DAY + timedelta(minutes=46)
+    rest = session.turn("嗯")
+    assert rest.stage is HelpStage.S_HAVEN and rest.inspect["reminder"] == "break"
+    assert rest.reply in {_names(v) for v in tpl.break_reminder_haven}
+    night = _clocked(persona, Clock(MIDNIGHT)).turn(HAVEN_SCRIPT[0])
+    assert night.inspect["reminder"] == "late_night"
+    assert night.reply in {_names(v) for v in tpl.late_night_haven}
+    for result in (rest, night):
+        assert _within(result.reply, tpl.haven_window) and "？" not in result.reply
+
+
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_real_support_guidance_in_the_personas_voice(persona: PersonaSpectrum) -> None:
+    session = _clocked(persona, Clock(DAY))
+    support = {_names(v) for v in _tpl(persona).real_support}
+    carried = []
+    for text in CALM:
+        result = session.turn(text)
+        if result.reply_kind is not ReplyKind.NORMAL:
+            continue
+        _check_ordinary(persona, result.reply)
+        if paragraphs(result.reply)[-1] in support:
+            carried.append(result)
+    if persona is SILENT:
+        # One-paragraph replies have no invite to replace: SILENT_ANCHOR only listens.
+        assert carried == []
+    else:
+        assert carried, "no real-support line in eight calm turns"
+
+
+@pytest.mark.parametrize("light", [False, True], ids=["crisis", "ask-denied"])
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_returning_greeting_comes_from_the_persona_and_reveals_nothing(
+    persona: PersonaSpectrum, light: bool
+) -> None:
+    tpl = _tpl(persona)
+    pool = tpl.returning_after_check if light else tpl.returning_after_crisis
+    greeting = _open(persona).care_greeting(light=light)
+    assert greeting in {_names(v) for v in pool}
+    assert "\n" not in greeting
+    for word in ("危机", "自杀", "轻生", "生命", "死", "伤害", "热线", "风险", "L2", "L3", "求助"):
+        assert word not in greeting, (word, greeting)
+    if persona is SILENT:
+        assert count_all(greeting) <= 30
+        if light:
+            assert "？" not in greeting
 
 
 @pytest.mark.parametrize("persona", PERSONAS)
