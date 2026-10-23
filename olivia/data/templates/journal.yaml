@@ -19,7 +19,10 @@ prompts:
   helpful: "这份小结对你有帮助吗？（回「有」或「没有」，直接回车跳过）"
 replies:
   rating_saved: "好，记下了。"
-  helpful_thanks: "谢谢你告诉我。"
+  # 回答“有帮助吗”之后的一句（有 / 没有 / 跳过或没认出）。
+  helpful_yes: "谢谢你告诉我，能帮上一点就好。"
+  helpful_no: "谢谢你说实话，没帮上也没关系。"
+  helpful_skipped: "好。想再看的时候，输入 olivia journal 就好。"
   offer_declined: "好。想看的时候，输入 olivia journal 就能看到。"
   empty: "这一周还没有聊天的记录，所以还没有小结。想聊的时候，输入 olivia chat 就好。"
   unavailable: "这台电脑上暂时没办法把记忆加密保存，所以没有可以整理的小结。"

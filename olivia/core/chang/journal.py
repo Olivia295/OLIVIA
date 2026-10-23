@@ -76,7 +76,9 @@ _FILE: Final = "journal.yaml"
 _PROMPT_KEYS: Final = ("rating", "offer", "helpful")
 _REPLY_KEYS: Final = (
     "rating_saved",
-    "helpful_thanks",
+    "helpful_yes",
+    "helpful_no",
+    "helpful_skipped",
     "offer_declined",
     "empty",
     "unavailable",
@@ -336,6 +338,8 @@ class Carry:
     """Text typed at a question that was not an answer: the next message of the chat."""
     ended: bool = False
     """End of input (or ``/exit`` at an opening question): the chat ends here."""
+    answered: bool = False
+    """The "was it helpful" question got a yes or a no."""
 
 
 def _show_and_rate(
@@ -354,8 +358,8 @@ def _show_and_rate(
         return Carry(line=answer) if answer.strip() else Carry()
     if entry_id is not None:
         _record(ledger, now, shown=True, helpful=helpful, entry_id=entry_id)
-    say(text.replies["helpful_thanks"])
-    return Carry()
+    say(text.replies["helpful_yes" if helpful else "helpful_no"])
+    return Carry(answered=True)
 
 
 def _record(
@@ -516,5 +520,7 @@ def run_command(
         say(words.replies["empty"])
         return 0
     card = render_journal(week, words, ledger.text, method_titles)
-    _show_and_rate(ask, say, ledger, now, card, words)
+    carry = _show_and_rate(ask, say, ledger, now, card, words)
+    if not carry.answered and not carry.ended:
+        say(words.replies["helpful_skipped"])
     return 0
