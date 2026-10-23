@@ -19,7 +19,7 @@ from typing import Any, Final, Literal, get_args
 import yaml
 
 from olivia.core.models import CrisisLevel
-from olivia.core.safety.normalize import normalize
+from olivia.core.safety.normalize import fold_words, normalize
 from olivia.core.taxonomy import Taxonomy
 
 RiskSection = Literal["stage1", "stage2", "hyperbole", "negation", "safety_confirm", "confirm_veto"]
@@ -29,6 +29,10 @@ _RISK_FILE: Final = "risk.yaml"
 _RED_FLAG_FILE: Final = "red_flags.yaml"
 _SECTIONS: Final[tuple[RiskSection, ...]] = get_args(RiskSection)
 _PAIR_SECTION: Final = "stage2_pairs"
+_ASK_SECTION: Final = "stage2_ask"
+_ASK_ID_PREFIX: Final = "ASK_INTENT"
+_ANSWER_SECTION: Final = "intent_answers"
+_ANSWER_LISTS: Final = ("deny_whole", "deny_start", "affirm_start", "unsure")
 _PAIR_ROLES: Final = ("anchors", "requests", "exceptions")
 _TIERS: Final[tuple[RedFlagTier, ...]] = get_args(RedFlagTier)
 _SCORE_KEY_BY_SECTION: Final[Mapping[str, str]] = MappingProxyType(
@@ -69,6 +73,24 @@ class PairCue:
 
 
 @dataclass(frozen=True)
+class IntentAnswers:
+    """Phrases for reading the answer to the D3 question (``safety/intent_check.py``).
+
+    Folded with :func:`~olivia.core.safety.normalize.fold_words` (spaces kept). No phrase
+    is both a yes and a no; ``unsure`` may repeat a yes phrase (有一点).
+    """
+
+    deny_whole: tuple[str, ...] = ()
+    """The first clause is exactly one of these (trailing particles aside): a plain no."""
+    deny_start: tuple[str, ...] = ()
+    """The first clause starts with one of these: a no in its own words."""
+    affirm_start: tuple[str, ...] = ()
+    """The first clause starts with one of these: a yes."""
+    unsure: tuple[str, ...] = ()
+    """Anywhere in the message, these void a no (但是, 有一点, 不知道, maybe ...)."""
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -82,6 +104,10 @@ class SafetyLexicons:
     red_flags: Mapping[str, RedFlagCue]
     self_report_negations: tuple[str, ...]
     pairs: tuple[PairCue, ...] = ()
+    ask_pairs: tuple[PairCue, ...] = ()
+    """L1 ``ASK_INTENT`` cues (decision D3), matched like ``pairs``: the session asks about
+    intent when one fires on a turn below L2."""
+    intent_answers: IntentAnswers = IntentAnswers()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -96,13 +122,17 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     flag_doc = _read_yaml(base, _RED_FLAG_FILE)
     seen_ids: dict[str, str] = {}
     risk = _parse_risk(tax, risk_doc, seen_ids)
-    pairs = _parse_pairs(tax, risk_doc, seen_ids, risk)
+    pairs = _parse_pairs(tax, risk_doc, seen_ids, risk, _PAIR_SECTION)
+    ask_pairs = _parse_pairs(tax, risk_doc, seen_ids, risk, _ASK_SECTION)
+    answers = _parse_answers(risk_doc, required=bool(ask_pairs))
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
         red_flags=MappingProxyType(red_flags),
         self_report_negations=negations,
         pairs=pairs,
+        ask_pairs=ask_pairs,
+        intent_answers=answers,
     )
 
 
@@ -192,7 +222,8 @@ def _claim_patterns(
 def _parse_risk(
     tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str]
 ) -> dict[str, RiskCue]:
-    _check_keys(doc, {"version", *_SECTIONS, _PAIR_SECTION}, _RISK_FILE)
+    allowed = {"version", *_SECTIONS, _PAIR_SECTION, _ASK_SECTION, _ANSWER_SECTION}
+    _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
     cues: dict[str, RiskCue] = {}
     for section in _SECTIONS:
@@ -243,22 +274,32 @@ def _stage2_level_and_score(
 
 
 def _parse_pairs(
-    tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str], risk: Mapping[str, RiskCue]
+    tax: Taxonomy,
+    doc: Mapping[str, Any],
+    seen_ids: dict[str, str],
+    risk: Mapping[str, RiskCue],
+    section: str,
 ) -> tuple[PairCue, ...]:
-    """Parse the optional pair section.
+    """Parse an optional pair section (``stage2_pairs`` or ``stage2_ask``).
 
     Pair phrases share the screen's one matcher with the risk cues, so none may repeat a
-    risk phrase; across pair entries a phrase may repeat, within one entry it may not.
+    risk phrase; across pair entries (of either section) a phrase may repeat, within one
+    entry it may not. ``stage2_ask`` entries carry no level or score: they are always L1
+    at the taxonomy's L1 score, and their ids start with ``ASK_INTENT``.
     """
-    if _PAIR_SECTION not in doc:
+    if section not in doc:
         return ()
+    ask = section == _ASK_SECTION
+    keys = {"id", *_PAIR_ROLES} if ask else {"id", "level", "score", *_PAIR_ROLES}
     risk_owner = {phrase: cue.id for cue in risk.values() for phrase in cue.patterns}
     pairs: list[PairCue] = []
-    for item in _entry_list(doc, _PAIR_SECTION, _RISK_FILE):
-        where = f"{_RISK_FILE} {_PAIR_SECTION} entry {item.get('id')!r}"
+    for item in _entry_list(doc, section, _RISK_FILE):
+        where = f"{_RISK_FILE} {section} entry {item.get('id')!r}"
         cue_id = _entry_id(item, where, seen_ids)
-        where = f"{_RISK_FILE} {_PAIR_SECTION} entry {cue_id}"
-        _check_keys(item, {"id", "level", "score", *_PAIR_ROLES}, where)
+        where = f"{_RISK_FILE} {section} entry {cue_id}"
+        _check_keys(item, keys, where)
+        if ask and not cue_id.startswith(_ASK_ID_PREFIX):
+            raise LexiconError(f"{where}: an ask cue id must start with {_ASK_ID_PREFIX}")
         lists = {
             role: _normalized_list(item[role], f"{where} {role}") if role in item else ()
             for role in _PAIR_ROLES
@@ -282,9 +323,47 @@ def _parse_pairs(
         for phrase in exceptions:
             if not any(anchor in phrase for anchor in anchors):
                 raise LexiconError(f"{where}: exception {phrase!r} contains none of the anchors")
-        level, score = _stage2_level_and_score(tax, item, where)
+        if ask:
+            level, score = CrisisLevel.L1, tax.threshold("risk.lexicon_scores.L1")
+        else:
+            level, score = _stage2_level_and_score(tax, item, where)
         pairs.append(PairCue(cue_id, level, score, anchors, requests, exceptions))
     return tuple(pairs)
+
+
+def _parse_answers(doc: Mapping[str, Any], *, required: bool) -> IntentAnswers:
+    """The answer phrases. Required whenever an ask cue exists: the session must be able
+    to read the answer to the question it asks."""
+    where = f"{_RISK_FILE} {_ANSWER_SECTION}"
+    if _ANSWER_SECTION not in doc:
+        if required:
+            raise LexiconError(f"{where}: required when {_ASK_SECTION} has entries")
+        return IntentAnswers()
+    node = doc[_ANSWER_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, set(_ANSWER_LISTS), where)
+    owner: dict[str, str] = {}
+    lists: dict[str, tuple[str, ...]] = {}
+    for name in _ANSWER_LISTS:
+        raw = node.get(name)
+        if not isinstance(raw, list) or not raw:
+            raise LexiconError(f"{where}: '{name}' must be a non-empty list")
+        folded: list[str] = []
+        for entry in raw:
+            phrase = fold_words(entry) if isinstance(entry, str) else ""
+            if not phrase:
+                raise LexiconError(f"{where} {name}: entry {entry!r} is empty or not a string")
+            if phrase in folded:
+                raise LexiconError(f"{where} {name}: phrase {phrase!r} is repeated")
+            # A yes and a no never share a phrase; unsure words may also read as a yes.
+            if name != "unsure":
+                if phrase in owner:
+                    raise LexiconError(f"{where}: {phrase!r} is in {owner[phrase]} and {name}")
+                owner[phrase] = name
+            folded.append(phrase)
+        lists[name] = tuple(folded)
+    return IntentAnswers(**lists)
 
 
 # -- red_flags.yaml ----------------------------------------------------------------

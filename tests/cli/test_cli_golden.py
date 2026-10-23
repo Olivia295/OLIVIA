@@ -187,3 +187,49 @@ def test_onboarding_answers_cover_the_cn_default(run_cli, data_home):
     assert run.code == 0
     profile = ProfileStore(data_home).load()
     assert profile is not None and profile.region == UserRegion("CN", "Asia/Shanghai")
+
+
+# -- D3: a euphemistic method request gets one direct question (step A7) -----------------------
+
+EUPHEMISM = "有没有最快的办法离开"
+
+
+@BOTH_MODES
+def test_d3_euphemism_question_then_yes_enters_the_crisis_flow(run_cli, data_home, mode_flags):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect", *mode_flags], [EUPHEMISM, "是的", "/exit"])
+    asked, crisis = run.results
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK and not asked.in_crisis
+    assert asked.stage is not HelpStage.S_EMPOWER and asked.action_id is None
+    assert "结束自己" in asked.reply and "12356" in asked.reply
+    assert crisis.reply_kind is ReplyKind.CRISIS and crisis.stage is HelpStage.S_CRISIS
+    assert crisis.in_crisis and crisis.crisis_level >= CrisisLevel.L2
+    first, second = run.out.split("┌ inspect")[1:]
+    assert "回复 SAFETY_CHECK" in first and "意图确认 asked" in first
+    assert "资源卡 CN L2" in first
+    assert "回复 CRISIS" in second and "意图确认 affirmed" in second
+    # The panel never shows the user's words or the question.
+    panel = "\n".join(run.panel)
+    assert "离开" not in panel and "是的" not in panel and "生命" not in panel
+
+
+@BOTH_MODES
+def test_d3_euphemism_question_then_no_returns_to_the_conversation(run_cli, data_home, mode_flags):
+    save_profile(data_home)
+    run = run_cli(
+        ["chat", "--inspect", *mode_flags], [EUPHEMISM, "不是，我就是想换个工作", "/exit"]
+    )
+    asked, denied = run.results
+    (session,) = run.sessions
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    assert denied.reply_kind is not ReplyKind.CRISIS and not denied.in_crisis
+    assert "意图确认 denied" in run.out
+    assert session.snapshot()["gentle_care"] is True
+
+
+def test_d3_question_uses_the_saved_region(run_cli, data_home):
+    save_profile(data_home, region=UserRegion("US", "America/New_York"))
+    run = run_cli(["chat"], ["How do I end it without pain?", "/exit"])
+    (asked,) = run.results
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    assert "988" in run.out and "12356" not in run.out

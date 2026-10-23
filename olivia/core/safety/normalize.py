@@ -61,10 +61,22 @@ _FOLD: Final[dict[int, str | None]] = {
 }
 
 
+# The same fold with spaces kept (whitespace is turned into spaces before it applies).
+_FOLD_KEEP_SPACES: Final[dict[int, str | None]] = {**_FOLD, ord(" "): " "}
+
+
 def normalize(text: str) -> str:
     """Fold text for matching: NFKC, casefold, Traditional -> Simplified, curly quotes
     -> "'", then drop all whitespace and invisible characters."""
     return unicodedata.normalize("NFKC", text).casefold().translate(_FOLD)
+
+
+def fold_words(text: str) -> str:
+    """:func:`normalize` without dropping word breaks: every run of whitespace becomes one
+    space (invisible characters are still dropped), so English words stay apart. Used where
+    word boundaries matter (reading a yes or no to the D3 question)."""
+    spaced = "".join(" " if ch.isspace() else ch for ch in unicodedata.normalize("NFKC", text))
+    return " ".join(spaced.casefold().translate(_FOLD_KEEP_SPACES).split())
 
 
 def clip_for_perception(text: str) -> str:

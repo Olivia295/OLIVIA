@@ -235,6 +235,7 @@ def inspect_panel(result: TurnResult) -> list[str]:
     data = result.inspect
     card = result.resource_card
     origin = data.get("feedback_source")
+    check = data.get("safety_check")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
         f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
@@ -249,7 +250,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 可用动作 {_fmt(data.get('candidates'))} · 选中 {_fmt(data.get('chosen'))}"
         f" · 反馈 {_fmt(data.get('feedback'))}" + (f"（来源 {_fmt(origin)}）" if origin else ""),
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
-        + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else ""),
+        + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else "")
+        + (f" · 意图确认 {_fmt(check)}" if check else ""),
     ]
     model_reason = data.get("risk_model_reason")
     lines.append(

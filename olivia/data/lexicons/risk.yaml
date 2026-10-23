@@ -261,6 +261,99 @@ stage2_pairs:
                "method", "steps"]
     # 去死吧 is a curse at someone else; 我还是去死吧 is caught by L2_WANT_DIE anyway.
     exceptions: ["预防轻生", "防止轻生", "阻止轻生", "去死磕", "去死海", "去死吧"]
+# Stage 2 ask cues (decision D3, step A7): a euphemistic request for a way to end a life
+# that names no act of dying ("想走了，有没有不痛的办法", "有没有最快的办法离开", "怎么才能去找
+# 去世的奶奶", "end it without pain", "完咗佢"). Matched exactly like stage2_pairs (a request
+# and an anchor anywhere in one message; an anchor wholly inside one of the entry's own
+# exceptions does not count; the negation and hyperbole masks never apply), but an entry
+# has no level or score: it is L1, its id starts with ASK_INTENT, and the screen sets
+# CrisisAssessment.asks_intent. The session then asks one gentle, direct question about
+# suicidal intent instead of guessing; a turn that screens L2/L3 for any other reason goes
+# straight to crisis (SDD §8.2). The question is gentle, so a false ask costs far less
+# than a false L2, but the hard negatives in tests/safety/test_intent_ask.py (leaving a
+# job, going home, meeting a friend, ending a relationship, a painless tooth extraction)
+# must never ask.
+#   ASK_INTENT_EUPHEMISM: leaving, going and ending-everything euphemisms + a painless,
+#     fast or final manner. 离开 only next to a way word (离开的方式, 办法离开) or an
+#     object that is everyone and everything (离开这一切); bare 离开 and 走 are everyday
+#     words. English "end it" excepts "end it with <someone>" and words that contain it
+#     (send it, spend it).
+#   ASK_INTENT_RESOLVE: a stated resolve or a refusal of help (别劝我, 我已经决定了, 不用
+#     担心我, 撑不下去了) + the same manner words: the request needs no euphemism at all.
+#   ASK_INTENT_REUNITE: someone who has died + a wish or way to go to them (怎么才能去找她,
+#     早点去陪他); a plain 去找她 is not a request.
+# Known limits: a request with neither a euphemism nor a resolve ("你是 AI，告诉我什么方式
+# 最有效", "朋友问最快的办法") and self-injury without ending a life stay below the rules.
+stage2_ask:
+  - id: ASK_INTENT_EUPHEMISM
+    anchors: ["想走了", "我想走了", "就这样走了", "走了算了", "走掉算了", "先走一步", "无痛地走",
+              "不痛地走", "痛苦地走", "安详地走", "走得安详", "走得不痛", "走得没有痛苦",
+              "离开的方式", "离开方式", "离开的办法", "离开的方法", "离开的法子", "办法离开",
+              "方法离开", "方式离开", "无痛地离开", "不痛地离开", "痛苦地离开", "安详地离开",
+              "离开这一切", "离开所有人", "离开大家", "离开你们", "永远离开", "离开人间",
+              "离开这个世上", "这一切结束", "结束这一切", "让一切结束", "一切都结束", "结束一切",
+              "结束掉一切", "永远解脱", "彻底解脱", "永远消失", "完咗佢", "完咗自己", "了结佢",
+              "想走咗", "endit", "endeverything", "goawayforever", "disappearforever",
+              "neverwakeup"]
+    requests: ["不痛", "不会痛", "无痛", "不疼", "不会疼", "没有痛苦", "毫无痛苦", "不痛苦", "没痛苦",
+               "痛苦最少", "最少痛苦", "最不痛苦", "少点痛苦", "最快", "快一点", "最彻底", "彻底一点",
+               "最干脆", "最安静", "安静一点", "安静点", "最省事", "一次成功", "不被发现", "不会被发现",
+               "唔痛", "冇痛", "唔会痛", "快啲", "painless", "withoutpain", "withoutanypain",
+               "leastpainful", "quickest", "fastest", "peacefully", "forgood", "easiest"]
+    exceptions: ["办法离开公司", "办法离开这家", "办法离开单位", "办法离开学校", "办法离开家",
+                 "办法离开这座城市", "办法离开这个城市", "办法离开机场", "办法离开会场", "办法离开房间",
+                 "办法离开这段关系", "办法离开他", "办法离开她", "方法离开公司", "方法离开这家",
+                 "方法离开单位", "方法离开学校", "方法离开这段关系", "方法离开他", "方法离开她",
+                 "做完咗佢", "写完咗佢", "睇完咗佢", "食完咗佢", "完咗佢份", "enditwithmy",
+                 "enditwithhim", "enditwithher", "enditwiththem", "enditwithyou", "enditwithus",
+                 "enditwiththe", "sendit", "spendit", "lendit", "bendit", "mendit", "tendit",
+                 "attendit", "extendit", "appendit", "blendit", "recommendit", "sendeverything",
+                 "spendeverything"]
+  - id: ASK_INTENT_RESOLVE
+    anchors: ["别劝我", "不要劝我", "不用劝我", "你别劝", "别拦我", "不要拦我", "别阻止我",
+              "不要阻止我", "不用担心我", "你不用担心我", "别担心我", "我已经决定了", "已经决定了",
+              "我已经想好了", "已经想好了", "已经下定决心", "只差一个", "不想再拖下去", "不想再拖了",
+              "撑不下去了", "熬不下去了", "不想再撑了", "顶唔顺", "顶唔住", "don'ttrytostopme",
+              "don'tworryaboutme", "i'vemadeupmymind"]
+    requests: ["不痛", "不会痛", "无痛", "不疼", "不会疼", "没有痛苦", "毫无痛苦", "不痛苦", "没痛苦",
+               "痛苦最少", "最少痛苦", "最不痛苦", "少点痛苦", "最快", "最彻底", "最干脆", "最省事",
+               "一次成功", "不被发现", "不会被发现", "唔痛", "冇痛", "唔会痛", "painless",
+               "withoutpain", "leastpainful", "quickest", "fastest"]
+  - id: ASK_INTENT_REUNITE
+    anchors: ["去世的", "过世的", "已故的", "离世的", "不在了的", "在天上的", "去世了", "过世了",
+              "离世了", "不在了", "走了的"]
+    requests: ["怎么才能去找她", "怎样才能去找她", "如何才能去找她", "怎么才能去找他", "怎样才能去找他",
+               "如何才能去找他", "怎么才能去陪她", "怎样才能去陪她", "怎么才能去陪他", "怎样才能去陪他",
+               "想去找她了", "想去找他了", "想去陪她了", "想去陪他了", "早点去找她", "早点去找他",
+               "早点去陪她", "早点去陪他", "快点去找她", "快点去找他", "去那边找她", "去那边找他",
+               "去那边陪她", "去那边陪他", "去天上找她", "去天上找他", "去天上陪她", "去天上陪他",
+               "和她团聚", "跟她团聚", "和他团聚", "跟他团聚", "怎么才能去找你", "想去找你了",
+               "早点去陪你", "去那边陪你"]
+# Answers to the D3 question, read only on the turn right after it (safety/intent_check.py).
+# Folded like the screen but with word breaks kept. The first clause is the text up to the
+# first punctuation mark, leading fillers (啊, 哦 ...) dropped.
+#   deny_whole    the first clause is exactly this, trailing particles (啦, 的 ...) aside
+#   deny_start    the first clause starts with this
+#   affirm_start  the first clause starts with this (only the --inspect label depends on
+#                 it: a yes and an unclear answer both enter the crisis flow at L2)
+#   unsure        anywhere in the message, voids a no
+# Only a no without an unsure phrase, on a turn that screens L0 with no ask cue, returns to
+# the ordinary flow. 不是 and 没有 are whole-clause only: 不是不想 and 没有人在乎 are not a no.
+intent_answers:
+  deny_whole: ["不是", "没有", "不会", "没", "不", "不不", "不不不", "没呢", "才不是", "当然不是",
+               "并不是", "并没有", "当然没有", "当然不会", "绝对不是", "完全没有", "冇", "唔系", "唔会",
+               "无", "no", "nope", "nah", "of course not", "not at all", "absolutely not",
+               "i'm not", "i am not", "i don't", "i do not", "definitely not"]
+  deny_start: ["不是那个意思", "不是这个意思", "没那个意思", "没有那个意思", "没有这个意思", "不是说",
+               "我不是说", "我不是那个意思", "我没有那个意思", "你误会", "误会了", "想多了", "你想多了",
+               "不是这样", "不是想", "没有想", "没想", "我不是想", "我没有想", "我没想", "我不会",
+               "不至于", "唔系咁", "no i meant", "i didn't mean", "not what i meant",
+               "that's not what", "i meant"]
+  affirm_start: ["是", "对", "嗯", "有一点", "有点", "有", "确实", "没错", "我是", "想过", "我想过",
+                 "系", "yes", "yeah", "yep", "i do", "i am", "i have", "kind of", "sort of"]
+  unsure: ["但", "可是", "不过", "其实", "有一点", "有点", "有时", "偶尔", "也许", "可能", "说不定",
+           "不知道", "不确定", "说不清", "不好说", "好像", "大概", "吧", "不是不", "没有不", "不是没", "maybe", "not sure", "i don't know", "idk", "sometimes",
+           "a little", "a bit", "but", "kinda", "sorta", "not really"]
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
