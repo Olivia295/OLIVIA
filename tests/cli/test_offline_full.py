@@ -242,7 +242,7 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     assert gone.code == 0 and gone.lines[-1] == FORGET.forget["done_all"]
     assert files_under(data_home) == [] and keychain.items == {}
     again = run_cli(["chat"], [], now=later)
-    assert again.code == 0 and cli.CHAT_HINT not in again.out
+    assert again.code == 1 and cli.CHAT_HINT not in again.out  # input ended before setup
     assert ProfileStore(data_home).load() is None
 
     # -- nothing tried the network -------------------------------------------------------------

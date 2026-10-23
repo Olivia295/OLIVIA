@@ -64,6 +64,9 @@ def _walk(flow: OnboardingFlow, answers: list[str]) -> Prompt | Completed | Refu
     return result
 
 
+_real_system_timezone = onb.system_timezone  # bound at import, before any test patches it
+
+
 def _to_region(flow: OnboardingFlow) -> None:
     _walk(flow, ["1", "1", "", "", "", "", ""])
     assert flow.step is Step.REGION
@@ -122,7 +125,7 @@ def test_happy_path_with_timezone_choice_and_clinical_consent(tmp_path):
     history = flow.answer(TEXT.consent_sentence + "。")
     assert isinstance(history, Prompt) and history.step is Step.CLINICAL_HISTORY
     flags = list(TAX.red_flags().values())
-    assert history.options == tuple(f"{f.code} {f.name_zh}" for f in flags)
+    assert history.options == tuple(TEXT.clinical_labels[f.code] for f in flags)
     checklist = flow.answer(f"{flags[2].code.lower()}，1  {flags[2].code}")
     assert isinstance(checklist, Prompt) and checklist.step is Step.CONTRAINDICATIONS
     assert checklist.options == tuple(TEXT.disclosure_labels[c] for c in PROFILE_CONTRAINDICATIONS)
@@ -209,7 +212,10 @@ def test_disclaimer_needs_explicit_acceptance(tmp_path, reply):
 def test_minor_refusal_persists_and_blocks_restart(tmp_path):
     flow = _flow(tmp_path)
     flow.answer("1")
-    result = flow.answer("2")
+    confirm = flow.answer("2")
+    assert isinstance(confirm, Prompt) and confirm.step is Step.AGE_CONFIRM
+    assert _files(tmp_path) == []  # nothing is recorded before the confirmation
+    result = flow.answer("1")
     assert isinstance(result, Refused) and result.reason is RefusalReason.UNDER_18
     assert "12355" in result.text and "中国大陆" in result.text
     assert "findahelpline.com" in result.text and "befrienders.org" in result.text
@@ -227,6 +233,37 @@ def test_minor_refusal_persists_and_blocks_restart(tmp_path):
     with pytest.raises(OnboardingFinishedError):
         later.answer("1")
     assert ProfileStore(tmp_path).load() == saved  # the later launch wrote nothing
+
+
+def test_age_confirmation_asks_once_with_two_choices(tmp_path):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "2"])
+    prompt = flow.prompt()
+    assert prompt.step is Step.AGE_CONFIRM
+    assert prompt.text.startswith("你确认自己未满 18 岁吗？")
+    assert prompt.options == ("是", "我选错了")
+
+
+@pytest.mark.parametrize("reply", ["2", "我选错了", "选错了"])
+def test_a_mistaken_under_18_answer_can_be_undone(tmp_path, reply):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "2"])
+    back = flow.answer(reply)
+    assert isinstance(back, Prompt) and back.step is Step.AGE_GATE
+    assert _files(tmp_path) == []
+    result = _walk(flow, ["1", "", "", "", "", "", "1", ""])
+    assert isinstance(result, Completed) and result.profile.age_confirmed_18_plus is True
+    assert not result.profile.is_age_gate_refusal
+
+
+@pytest.mark.parametrize("reply", ["", "嗯", "3"])
+def test_age_confirmation_needs_a_clear_answer(tmp_path, reply):
+    flow = _flow(tmp_path)
+    _walk(flow, ["1", "2"])
+    again = flow.answer(reply)
+    assert isinstance(again, Prompt) and again.step is Step.AGE_CONFIRM
+    assert again.text.startswith(TEXT.hints["unrecognized"])
+    assert _files(tmp_path) == []
 
 
 def test_minor_message_numbers_match_the_hotline_data():
@@ -337,6 +374,36 @@ def test_persona_from_reply(reply, persona):
     assert onb.persona_from_reply(reply, TEXT.persona_labels) is persona
 
 
+@pytest.mark.parametrize(
+    ("reply", "persona"),
+    [
+        ("树洞", PersonaSpectrum.SILENT_ANCHOR),
+        ("静默", PersonaSpectrum.SILENT_ANCHOR),
+        ("哲思", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("禅", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("战友", PersonaSpectrum.RATIONAL_PEER),
+        ("理性", PersonaSpectrum.RATIONAL_PEER),
+        ("温和", PersonaSpectrum.GENTLE_HOLDING),
+        ("随便", None),
+    ],
+)
+def test_persona_short_aliases(tmp_path, reply, persona):
+    assert onb.persona_from_reply(reply, TEXT.persona_labels, TEXT.persona_aliases) is persona
+    # Without the aliases only numbers, enum values and labels are accepted.
+    assert onb.persona_from_reply(reply, TEXT.persona_labels) is None
+    if persona is not None:
+        flow = _flow(tmp_path)
+        _walk(flow, ["1", "1", "", "", ""])
+        assert flow.answer(reply).step is Step.TABOO
+
+
+def test_persona_aliases_are_unambiguous():
+    seen: dict[str, PersonaSpectrum] = {}
+    for persona, aliases in TEXT.persona_aliases.items():
+        for alias in aliases:
+            assert seen.setdefault(alias, persona) is persona, alias
+
+
 def test_taboo_parsing_and_limits(tmp_path):
     flow = _flow(tmp_path)
     _walk(flow, ["1", "1", "", "", "", ""])
@@ -401,15 +468,74 @@ def test_region_with_several_zones_asks(tmp_path, code):
 
 
 @pytest.mark.parametrize("reply", ["9", "ZZ", "其他", "不想说"])
-def test_unknown_region_is_zz_and_defaults_to_utc(tmp_path, reply):
+def test_unknown_region_is_zz_and_defaults_to_the_system_timezone(tmp_path, reply, monkeypatch):
+    monkeypatch.setattr(onb, "system_timezone", lambda: "Asia/Tokyo")
     flow = _flow(tmp_path)
     _to_region(flow)
     prompt = flow.answer(reply)
     assert isinstance(prompt, Prompt) and prompt.step is Step.TIMEZONE
-    assert prompt.options == () and "UTC" in prompt.text
+    assert prompt.options == () and "Asia/Tokyo" in prompt.text and "UTC" not in prompt.text
     result = _walk(flow, ["", ""])
     assert isinstance(result, Completed)
-    assert result.profile.region == UserRegion(country_code="ZZ", timezone="UTC")
+    assert result.profile.region == UserRegion(country_code="ZZ", timezone="Asia/Tokyo")
+
+
+@pytest.mark.parametrize(
+    ("reply", "code"),
+    [
+        ("china", "CN"),
+        ("中国", "CN"),
+        ("大陆", "CN"),
+        ("内地", "CN"),
+        ("cn", "CN"),
+        ("Hong Kong", "HK"),
+        ("hongkong", "HK"),
+        ("香港", "HK"),
+        ("台湾", "TW"),
+        ("澳门", "MO"),
+        ("us", "US"),
+        ("美国", "US"),
+        ("USA", "US"),
+        ("uk", "GB"),
+        ("australia", "AU"),
+        ("其他", "ZZ"),
+        ("JP", None),
+        ("火星", None),
+        ("", None),
+    ],
+)
+def test_region_from_reply_accepts_common_names(reply, code):
+    assert onb.region_from_reply(reply, TEXT) == code
+
+
+def test_region_from_reply_numbers_are_optional():
+    assert onb.region_from_reply("1", TEXT) == "CN"
+    assert onb.region_from_reply("1", TEXT, numbers=False) is None
+
+
+def test_region_aliases_are_unambiguous():
+    seen: dict[str, str] = {}
+    for code in SUPPORTED_REGIONS:
+        for name in (code, TEXT.region_labels[code], *TEXT.region_aliases[code]):
+            key = "".join(name.casefold().split())
+            assert seen.setdefault(key, code) == code, name
+
+
+def test_system_timezone_reads_tz_then_the_system_files(tmp_path, monkeypatch):
+    zone_file = tmp_path / "timezone"
+    monkeypatch.setattr(onb, "_LOCALTIME", str(tmp_path / "missing"))
+    monkeypatch.setattr(onb, "_TIMEZONE_FILE", zone_file)
+    monkeypatch.setenv("TZ", ":Europe/Paris")
+    assert _real_system_timezone() == "Europe/Paris" or not HAS_TZDB
+    monkeypatch.setenv("TZ", "Not/A_Zone")
+    assert _real_system_timezone() == "UTC"
+    zone_file.write_text("Asia/Singapore\n", encoding="utf-8")
+    assert _real_system_timezone() == "Asia/Singapore"
+    monkeypatch.delenv("TZ")
+    link = tmp_path / "localtime"
+    link.symlink_to(tmp_path / "zoneinfo" / "America" / "Chicago")
+    monkeypatch.setattr(onb, "_LOCALTIME", str(link))
+    assert _real_system_timezone() == "America/Chicago"
 
 
 def test_unknown_region_accepts_a_typed_timezone(tmp_path):
@@ -554,6 +680,29 @@ def test_invalid_red_flag_code_rejected(tmp_path, bad):
     assert result.profile.clinical_history == (next(iter(TAX.red_flags())),)
 
 
+def test_clinical_options_are_plain_chinese_labels_without_codes():
+    options = onb.clinical_options(TAX, TEXT)
+    assert len(options) == len(TAX.red_flags())
+    for option, code in zip(options, TAX.red_flags(), strict=True):
+        assert option == TEXT.clinical_labels[code]
+        assert code not in option and "SIT" not in option
+        assert not any("a" <= ch.casefold() <= "z" for ch in option), option
+        assert "(" not in option
+
+
+def test_clinical_labels_must_cover_every_red_flag():
+    broken = onb.OnboardingText(
+        **{
+            **TEXT.__dict__,
+            "clinical_labels": {k: v for k, v in TEXT.clinical_labels.items() if k != "SIT-02-04"},
+        }
+    )
+    with pytest.raises(OnboardingTextError, match="SIT-02-04"):
+        onb.clinical_options(TAX, broken)
+    with pytest.raises(OnboardingTextError, match="SIT-02-04"):
+        OnboardingFlow(TAX, ProfileStore(Path("/nonexistent-olivia-test")), NOW, broken)
+
+
 # -- ONB-06 at-rest encryption switch (ruling 28) ------------------------------------
 
 
@@ -691,6 +840,12 @@ def test_text_loader_rejects_missing_and_unknown_slots(tmp_path):
     del broken["persona_labels"]["SILENT_ANCHOR"]
     (tmp_path / "onboarding.yaml").write_text(yaml.safe_dump(broken), encoding="utf-8")
     with pytest.raises(OnboardingTextError, match="SILENT_ANCHOR"):
+        load_onboarding_text(tmp_path)
+
+    broken = json.loads(json.dumps(data))
+    broken["persona_aliases"]["CHEERFUL"] = ["x"]
+    (tmp_path / "onboarding.yaml").write_text(yaml.safe_dump(broken), encoding="utf-8")
+    with pytest.raises(OnboardingTextError, match="CHEERFUL"):
         load_onboarding_text(tmp_path)
 
     broken = json.loads(json.dumps(data))

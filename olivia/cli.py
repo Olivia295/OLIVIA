@@ -15,14 +15,18 @@
 ``olivia resources``
     The crisis-resource card for the saved region in BROWSING mode.
 ``olivia region [CODE [--timezone TZ] | --clear]``
-    Show, set or clear the saved country/region (country level only, SDD §8.3).
+    Show, set or clear the saved country/region (country level only, SDD §8.3). CODE is a
+    supported code or a common name (``china``, ``中国``, ``香港``, ``usa`` ...); anything
+    else is refused with the supported list, never saved as ZZ. ZZ (and ``--clear``) takes
+    ``--timezone`` or this computer's zone, never the previous country's.
 ``olivia health``
     Show and change the recorded health information (clinical-history codes and the
     D2 disclosures), interactively with numbered choices (``chang/health.py``); it is
     always saved encrypted.
 ``olivia persona [CHOICE]``
     Show the four companion personas with the saved one marked, or switch to CHOICE (a
-    number, short name or enum value; PRD JTBD 4, ONB-03). The next ``olivia chat`` uses it.
+    number, short name, alias such as ``树洞`` or enum value; PRD JTBD 4, ONB-03). The next
+    ``olivia chat`` uses it.
 ``olivia safety-plan``
     The personal safety plan (``chang/safety_plan.py``, B10): fill it in, or show the saved
     one and edit a section or clear it, interactively with numbered choices; every section
@@ -54,6 +58,13 @@
     two reminders, no user data).
 ``olivia --version``
     The installed version, read from the package metadata.
+
+Help and argparse errors are in Chinese (``_Parser``). Exit status, the same for every
+command (README "退出码"): 0 when the command did what was asked (showing counts); 1 when
+nothing could be done (no profile yet, an under-18 refusal record, unreadable or locked
+data; ``chat`` that ends before a profile exists); 2 for a wrong command line (argparse,
+or an unknown region, timezone or persona). ``resources``, ``privacy`` and
+``forget --all`` work without a profile.
 
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
 answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
@@ -88,25 +99,27 @@ from __future__ import annotations
 import argparse
 import functools
 import random
+import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from importlib import metadata
-from typing import Final, TextIO
+from typing import Any, Final, NoReturn, TextIO
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
 from olivia import __version__
+from olivia.core.chang import onboarding
 from olivia.core.chang.care import CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
 from olivia.core.chang.journal import ChatChecks, load_journal_text
 from olivia.core.chang.journal import run_command as run_journal
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
-    FALLBACK_TIMEZONE,
     PERSONA_CHOICES,
+    SUPPORTED_REGIONS,
     TIMEZONE_CHOICES,
     Completed,
     OnboardingFlow,
@@ -115,12 +128,19 @@ from olivia.core.chang.onboarding import (
     canonical_timezone,
     load_onboarding_text,
     persona_from_reply,
+    region_from_reply,
 )
 from olivia.core.chang.privacy import privacy_notice
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.language.data import load_language_data
-from olivia.core.memory.forget import DataStores, Target, run_forget, run_memory
+from olivia.core.memory.forget import (
+    DataStores,
+    Target,
+    load_forget_text,
+    run_forget,
+    run_memory,
+)
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.memory.state import StateRecorder, StateStore
@@ -133,7 +153,7 @@ from olivia.core.models import (
 )
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
-from olivia.core.resources.resolver import resolve, resolve_region_code
+from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import LineKind, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
 from olivia.core.storage import data_dir_location
@@ -166,12 +186,22 @@ HEALTH_NOT_SAVED: Final = (
     "其他的一切都照常。"
 )
 NOT_ONBOARDED: Final = "还没有完成第一次设置。先运行 olivia chat，之后就可以修改地区了。"
+NOT_SET_UP: Final = (
+    "还没有完成第一次设置，这台电脑上还没有可以查看或忘掉的内容。先运行 olivia chat 吧。"
+)
 NO_REGION: Final = "还没有保存地区。"
 ADULTS_ONLY: Final = "这里的陪伴只为成年人设计，所以不会保存地区信息。"
 REGION_SHOW: Final = "地区：{label}（{code}）\n时区：{timezone}"
 REGION_SAVED: Final = "好的，已经保存：{label}（{code}），时区 {timezone}。"
-REGION_FALLBACK: Final = (
-    "暂时没有「{raw}」这个地区的资料，已按其他地区（ZZ）保存，求助卡片会显示全球通用的资源。"
+REGION_UNKNOWN: Final = (
+    "没有认出「{raw}」这个地区，所以没有做改动。可以用下面的代码或名称：\n"
+    "{choices}\n"
+    "不在列表里的地方，请选 ZZ，再用 --timezone 告诉我时区，"
+    "例如：olivia region ZZ --timezone Asia/Tokyo"
+)
+REGION_CHOICE: Final = "  {code}  {label}"
+REGION_SYSTEM_TIMEZONE: Final = (
+    "时区先按这台电脑的设置用 {timezone}；不对的话，可以用 --timezone 修改。"
 )
 REGION_NEEDS_TIMEZONE: Final = (
     "{label}有好几个时区，请用 --timezone 告诉我是哪一个，例如：{choices}"
@@ -179,7 +209,9 @@ REGION_NEEDS_TIMEZONE: Final = (
 REGION_BAD_TIMEZONE: Final = (
     "没有认出时区「{timezone}」。可以用「大洲/城市」的格式，例如 Asia/Singapore。"
 )
-REGION_CLEARED: Final = "已清除保存的地区和时区。求助卡片会显示全球通用的资源。"
+REGION_CLEARED: Final = (
+    "已清除保存的地区。求助卡片会显示全球通用的资源；时区按这台电脑的设置用 {timezone}。"
+)
 REGION_CLEAR_WITH_CODE: Final = "--clear 不能和地区代码一起用。"
 RESOURCES_TITLE: Final = "求助资源 · {label}（{code}）"
 RESOURCES_SET_REGION: Final = "告诉我你所在的国家或地区后，就能显示当地的电话：olivia region <代码>"
@@ -213,11 +245,13 @@ USER_TEXTS: Final = (
     PROFILE_LOCKED,
     HEALTH_NOT_SAVED,
     NOT_ONBOARDED,
+    NOT_SET_UP,
     NO_REGION,
     ADULTS_ONLY,
     REGION_SHOW,
     REGION_SAVED,
-    REGION_FALLBACK,
+    REGION_UNKNOWN,
+    REGION_SYSTEM_TIMEZONE,
     REGION_NEEDS_TIMEZONE,
     REGION_BAD_TIMEZONE,
     REGION_CLEARED,
@@ -280,9 +314,12 @@ def _zone(name: str) -> ZoneInfo | None:
 
 
 def _local_clock(clock: Clock, profile: PersonaProfile) -> Clock:
-    """``clock`` in the profile's timezone (UTC if the zone is unknown on this machine)."""
+    """``clock`` in the profile's timezone; this computer's when that zone is missing or
+    unknown here (UTC when the computer's cannot be read either)."""
     zone = _zone(profile.region.timezone) if profile.region is not None else None
     if zone is None:
+        zone = _zone(onboarding.system_timezone())
+    if zone is None:  # pragma: no cover - system_timezone only returns known names
         return clock
     return lambda: clock().astimezone(zone)
 
@@ -400,8 +437,8 @@ def _chat(
         return 1
     if store.dropped_sensitive_data:
         console.say(HEALTH_NOT_SAVED)
-    if profile is None:
-        return 0
+    if profile is None:  # declined, under 18, or input ended: nothing was set up
+        return 1
     local = _local_clock(clock, profile)
     # The posteriors and the kit from earlier sessions (B3); None starts fresh.
     state_store = StateStore(store.path.parent, store.vault)
@@ -585,38 +622,54 @@ def _resources(console: _Console, clock: Clock) -> int:
     return 0
 
 
+def _region_choices(store: ResourceStore) -> str:
+    labels = load_onboarding_text().region_labels
+    return "\n".join(
+        REGION_CHOICE.format(code=code, label=labels[code])
+        for code in SUPPORTED_REGIONS
+        if store.has_region(code)
+    )
+
+
 def _set_region(
     console: _Console, profile: PersonaProfile, raw: str, timezone: str | None, now: datetime
 ) -> int:
     store_data = _load_store(now.date())
-    wanted = raw.strip().upper()
-    candidate = wanted if len(wanted) == 2 and wanted.isascii() and wanted.isalpha() else "ZZ"
-    code = resolve_region_code(store_data, UserRegion(candidate, FALLBACK_TIMEZONE))
+    code = region_from_reply(raw, load_onboarding_text(), numbers=False)
+    if code is None or not store_data.has_region(code):
+        console.say(REGION_UNKNOWN.format(raw=raw.strip(), choices=_region_choices(store_data)))
+        return 2
     current = profile.region
     label = _region_label(code)
+    note = ""
     if timezone is not None:
         zone = canonical_timezone(timezone)
         if zone is None:
             console.say(REGION_BAD_TIMEZONE.format(timezone=timezone))
-            return 1
+            return 2
     elif code in DEFAULT_TIMEZONES:
         zone = DEFAULT_TIMEZONES[code]
-    elif current is not None and (
-        code == UNKNOWN_COUNTRY or current.timezone in TIMEZONE_CHOICES.get(code, ())
+    elif (
+        code != UNKNOWN_COUNTRY
+        and current is not None
+        and current.country_code == code
+        and current.timezone in TIMEZONE_CHOICES[code]
     ):
-        zone = current.timezone
-    elif code == UNKNOWN_COUNTRY:
-        zone = FALLBACK_TIMEZONE
+        zone = current.timezone  # the same country again: keep the zone chosen for it
     else:
-        choices = "、".join(TIMEZONE_CHOICES.get(code, ("Asia/Singapore",))[:3])
-        console.say(REGION_NEEDS_TIMEZONE.format(label=label, choices=choices))
-        return 1
+        # Never keep the old country's zone: this computer's, when it fits the region.
+        system = onboarding.system_timezone()
+        if code != UNKNOWN_COUNTRY and system not in TIMEZONE_CHOICES[code]:
+            choices = "、".join(TIMEZONE_CHOICES[code][:3])
+            console.say(REGION_NEEDS_TIMEZONE.format(label=label, choices=choices))
+            return 2
+        zone, note = system, REGION_SYSTEM_TIMEZONE.format(timezone=system)
     region = UserRegion(country_code=code, timezone=zone)
     if not _save_profile(console, replace(profile, region=region, updated_at=now)):
         return 1
-    if code != wanted:
-        console.say(REGION_FALLBACK.format(raw=raw.strip()))
     console.say(REGION_SAVED.format(label=label, code=code, timezone=zone))
+    if note:
+        console.say(note)
     return 0
 
 
@@ -632,16 +685,17 @@ def _region(
     setting = clear or code is not None or timezone is not None
     if profile is None:
         console.say(NOT_ONBOARDED if setting else NO_REGION)
-        return 1 if setting else 0
+        return 1
     if profile.is_age_gate_refusal:
         console.say(ADULTS_ONLY)
-        return 1 if setting else 0
+        return 1
     now = clock()
     if clear:
-        region = UserRegion(country_code=UNKNOWN_COUNTRY, timezone=FALLBACK_TIMEZONE)
+        zone = onboarding.system_timezone()
+        region = UserRegion(country_code=UNKNOWN_COUNTRY, timezone=zone)
         if not _save_profile(console, replace(profile, region=region, updated_at=now)):
             return 1
-        console.say(REGION_CLEARED)
+        console.say(REGION_CLEARED.format(timezone=zone))
         return 0
     if code is None and timezone is not None:
         code = profile.region.country_code if profile.region is not None else UNKNOWN_COUNTRY
@@ -742,9 +796,22 @@ def _data_stores() -> DataStores:
     )
 
 
+def _profile_quietly() -> tuple[bool, PersonaProfile | None]:
+    """(readable, profile) without saying anything; the commands report errors themselves."""
+    try:
+        return True, ProfileStore().load()
+    except (ProfileCorruptError, ProfileLockedError):
+        return False, None
+
+
 def _memory(console: _Console) -> int:
     """``olivia memory``: what is stored on this device, on screen only (B5)."""
-    return run_memory(console.say, _data_stores())
+    readable, profile = _profile_quietly()
+    if readable and profile is None:
+        console.say(NOT_SET_UP)
+        return 1
+    code = run_memory(console.say, _data_stores())
+    return 1 if profile is not None and profile.is_age_gate_refusal else code
 
 
 _FORGET_FLAGS: Final = (
@@ -758,6 +825,14 @@ _FORGET_FLAGS: Final = (
 def _forget(console: _Console, args: argparse.Namespace) -> int:
     """``olivia forget``: the menu, or the target a flag names (B5)."""
     target = next((t for flag, t in _FORGET_FLAGS if getattr(args, flag)), None)
+    readable, profile = _profile_quietly()
+    # ``--all`` always runs: it is also how leftovers without a profile are removed.
+    if target is not Target.ALL and readable and profile is None:
+        console.say(NOT_SET_UP)
+        return 1
+    if target is not Target.ALL and profile is not None and profile.is_age_gate_refusal:
+        console.say(load_forget_text().forget["adults_only"])
+        return 1
     return run_forget(
         lambda: console.ask(ANSWER_PROMPT),
         console.say,
@@ -827,14 +902,14 @@ def _persona(console: _Console, choice: str | None, clock: Clock) -> int:
     readable, profile = _load_profile(console)
     if not readable:
         return 1
-    setting = choice is not None
     if profile is None:
         console.say(PERSONA_NOT_ONBOARDED)
-        return 1 if setting else 0
+        return 1
     if profile.is_age_gate_refusal:
         console.say(PERSONA_ADULTS_ONLY)
-        return 1 if setting else 0
-    labels = load_onboarding_text().persona_labels
+        return 1
+    text = load_onboarding_text()
+    labels = text.persona_labels
     current = profile.persona_spectrum
     if choice is None:
         console.say(PERSONA_SHOW.format(label=labels[current]))
@@ -843,11 +918,11 @@ def _persona(console: _Console, choice: str | None, clock: Clock) -> int:
         console.say()
         console.say(PERSONA_HOW_TO)
         return 0
-    chosen = persona_from_reply(choice, labels)
+    chosen = persona_from_reply(choice, labels, text.persona_aliases)
     if chosen is None:
         console.say(PERSONA_UNKNOWN.format(raw=choice.strip()))
         _persona_list(console, current)
-        return 1
+        return 2
     name = labels[chosen].split("：", 1)[0]
     if chosen is current:
         console.say(PERSONA_UNCHANGED.format(name=name))
@@ -869,12 +944,71 @@ def package_version() -> str:
         return __version__
 
 
+HELP_USAGE: Final = "用法："
+HELP_POSITIONALS: Final = "参数"
+HELP_OPTIONS: Final = "选项"
+HELP_COMMANDS: Final = "命令"
+HELP_HELP: Final = "显示这段说明，然后退出"
+HELP_ERROR: Final = "{prog}：命令有误：{message}\n（输入 {prog} -h 可以查看用法）\n"
+_ARGPARSE_ERRORS: Final = (
+    (re.compile(r"the following arguments are required: (.+)"), "还缺少：{0}"),
+    (re.compile(r"unrecognized arguments: (.+)"), "没有认出这些内容：{0}"),
+    (
+        re.compile(r"argument (.+?): invalid choice: '?(.+?)'? \(choose from (.+)\)"),
+        "{0} 不能是「{1}」，可以选：{2}",
+    ),
+    (re.compile(r"argument (.+?): not allowed with argument (.+)"), "{0} 不能和 {1} 一起用"),
+    (re.compile(r"argument (.+?): expected one argument"), "{0} 后面要跟一个值"),
+    (re.compile(r"argument (.+?): invalid int value: '?(.+?)'?$"), "{0} 要跟一个整数，「{1}」不是"),
+)
+
+
+def _localise_error(message: str) -> str:
+    """argparse's English error in Chinese (the original when no pattern matches)."""
+    for pattern, template in _ARGPARSE_ERRORS:
+        found = pattern.fullmatch(message)
+        if found is not None:
+            return template.format(*(group.replace("'", "") for group in found.groups()))
+    return message
+
+
+class _HelpFormatter(argparse.HelpFormatter):
+    """argparse's layout with a Chinese ``usage:`` prefix."""
+
+    def add_usage(
+        self,
+        usage: str | None,
+        actions: Iterable[argparse.Action],
+        groups: Iterable[argparse._MutuallyExclusiveGroup],
+        prefix: str | None = None,
+    ) -> None:
+        super().add_usage(usage, actions, groups, HELP_USAGE if prefix is None else prefix)
+
+
+class _Parser(argparse.ArgumentParser):
+    """An ``ArgumentParser`` whose help and errors are in Chinese (subcommands included)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("formatter_class", _HelpFormatter)
+        kwargs["add_help"] = False
+        super().__init__(*args, **kwargs)
+        self._positionals.title = HELP_POSITIONALS
+        self._optionals.title = HELP_OPTIONS
+        self.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help=HELP_HELP)
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(2, HELP_ERROR.format(prog=self.prog, message=_localise_error(message)))
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="olivia", description="OLIVIA 离线陪伴（命令行）")
+    parser = _Parser(prog="olivia", description="OLIVIA 离线陪伴（命令行）")
     parser.add_argument(
         "--version", action="version", version=f"olivia {package_version()}", help="显示版本号"
     )
-    commands = parser.add_subparsers(dest="command", required=True, metavar="命令")
+    commands = parser.add_subparsers(
+        dest="command", required=True, metavar="<命令>", title=HELP_COMMANDS
+    )
     chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")
     chat.add_argument(
@@ -882,14 +1016,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands.add_parser("resources", help="查看所在地区的求助电话")
     region = commands.add_parser("region", help="查看或修改所在的国家/地区")
-    region.add_argument("code", nargs="?", help="两位国家/地区代码，例如 CN、HK、US、GB")
-    region.add_argument("--timezone", help="IANA 时区，例如 America/New_York")
+    region.add_argument(
+        "code",
+        nargs="?",
+        metavar="地区",
+        help="地区代码或名称：CN 中国大陆、HK 香港、MO 澳门、TW 台湾、US、CA、GB、AU，"
+        "其他地方用 ZZ",
+    )
+    region.add_argument("--timezone", metavar="时区", help="IANA 时区，例如 America/New_York")
     region.add_argument("--clear", action="store_true", help="清除保存的地区和时区")
     commands.add_parser("health", help="查看或修改加密记录的健康信息")
     commands.add_parser("safety-plan", help="填写、查看或修改加密保存的个人安全计划")
     commands.add_parser("journal", help="看看这一周的小结")
     persona = commands.add_parser("persona", help="查看或更换陪伴方式")
-    persona.add_argument("choice", nargs="?", help="序号（1–4）或简称，例如 2 或 沉静哲思")
+    persona.add_argument(
+        "choice",
+        nargs="?",
+        metavar="陪伴方式",
+        help="序号（1–4）或简称，例如 2、温和、哲思、理性、树洞",
+    )
     commands.add_parser("memory", help="查看 OLIVIA 在这台电脑上记得什么（只显示在屏幕上）")
     forget = commands.add_parser("forget", help="让 OLIVIA 忘掉一条记录、一类数据或全部数据")
     which = forget.add_mutually_exclusive_group()

@@ -50,17 +50,31 @@ pipx uninstall olivia    # 卸载程序
 | 命令 | 作用 |
 | --- | --- |
 | `olivia chat` | 开始聊天。第一次会先完成几步设置：确认你已满 18 岁、怎么称呼你、所在地区等。输入 `/exit` 结束 |
-| `olivia region` | 查看保存的国家/地区；`olivia region HK` 修改，`olivia region --clear` 清除。有多个时区的地区需要加上时区，例如 `olivia region US --timezone America/New_York` |
-| `olivia persona` | 查看四种陪伴方式（温和包裹、沉静哲思、平视战友、静默树洞）和现在用的是哪一种；`olivia persona 2` 或 `olivia persona 沉静哲思` 更换，下次聊天生效 |
-| `olivia health` | 查看或修改你愿意告诉 OLIVIA 的健康情况（以往的诊断，以及心脏或呼吸方面的情况、家里是否安全），用来避开不适合你的练习。只在这台电脑上加密保存；电脑没有系统钥匙串时不会保存 |
+| `olivia region` | 查看保存的国家/地区；`olivia region HK` 修改（也认得 `china`、`中国`、`大陆`、`香港`、`台湾`、`澳门`、`美国`、`uk` 这类叫法），`olivia region --clear` 清除。支持的地区：CN、HK、MO、TW、US、CA、GB、AU；其他地方用 `olivia region ZZ`，时区默认取这台电脑的设置，也可以加 `--timezone Asia/Tokyo` 指定。有多个时区的地区（US、CA、AU）在电脑时区不属于该地区时需要加上时区，例如 `olivia region US --timezone America/New_York`。认不出的地区不会被保存 |
+| `olivia persona` | 查看四种陪伴方式（温和包裹、沉静哲思、平视战友、静默树洞）和现在用的是哪一种；`olivia persona 2`、`olivia persona 沉静哲思`，或者用简称 `树洞`、`静默`、`哲思`、`禅`、`战友`、`理性`、`温和` 更换，下次聊天生效 |
+| `olivia health` | 查看或修改你愿意告诉 OLIVIA 的健康情况（以往被专业人士评估过的情况，以及心脏或呼吸方面的情况、家里是否安全），用来避开不适合你的练习。列表只显示中文名称。只在这台电脑上加密保存；电脑没有系统钥匙串时不会保存 |
 | `olivia safety-plan` | 在平静的时候写一份自己的安全计划：预警信号、能让自己好受一点的方法、能让自己分心的人或地方、可以求助的人和电话、让环境更安全。每一部分都可以跳过，之后可以查看、修改或清空。只在这台电脑上加密保存；电脑没有系统钥匙串时不会保存。聊天中特别难熬的时候，OLIVIA 会把其中的安抚方法、分心去处和求助的人拿出来给你看 |
+| `olivia journal` | 看看最近七天的小结：聊了几次、聊天前后的心情分、试过的小练习。只根据本机的聊天小结生成，不含聊天原文。看完会问一句有没有帮助，可以直接回车跳过 |
 | `olivia memory` | 查看 OLIVIA 在这台电脑上记得什么：每次聊天的小结、周记记录和你让它记住的话（按时间编号），以及还存着哪些别的东西（只列名字，不显示健康信息和安全计划的内容）。只显示在屏幕上，不会另存成文件 |
 | `olivia forget` | 让 OLIVIA 忘掉：一条记录、全部聊天记录、锦囊与方法偏好、安全计划，或者全部数据（之后从第一次设置重新开始）。也可以直接用 `--entry 2`（序号见 `olivia memory`）、`--ledger`、`--kit`、`--safety-plan`、`--all`。每次删除前都要输入「确认」，加 `--yes` 可以跳过。删除时会销毁加密用的钥匙，留下的文件副本也再也打不开 |
 | `olivia privacy` | 隐私说明：OLIVIA 在这台电脑上存了什么、存在哪个目录、哪些始终加密、哪些从不保存，以及怎么查看（`olivia memory`）和删除（`olivia health`、`olivia forget`）。运行时全程不联网 |
-| `olivia resources` | 查看所在地区的求助电话 |
+| `olivia resources` | 查看所在地区的求助电话（还没设置时显示全球通用的资源） |
+| `olivia settings` | 设置开关，目前只有系统提醒（默认关闭）。打开前会说明要在系统里装一个什么样的定时任务，并再问一次；关闭或 `olivia forget --all` 会把它删掉 |
 | `olivia chat --inspect` | 每一轮多显示一个内部状态面板，只有编号、等级和数值，不含你说的话，也不含回复原文。测试和反馈问题时有用 |
-| `olivia chat --model` | 试验功能。危机筛查默认只看规则；加上它会同时参考一个装在本机的小模型。这个模型只会让判断更谨慎，不会放松规则已经做出的判断 |
+| `olivia chat --model` | 试验功能，默认关闭。危机筛查默认只看规则；加上它会同时参考一个装在本机的小模型。这个模型更敏感：只会让判断更谨慎，不会放松规则已经做出的判断，所以也更容易在普通的话上弹出求助卡片 |
 | `olivia --help` | 查看全部命令 |
+
+### 退出码
+
+每个命令结束时的退出码遵循同一个约定，方便脚本判断：
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 完成了要做的事（包括只是显示信息，或在输入结束时安静地退出） |
+| `1` | 什么也没做：还没有完成第一次设置（`olivia chat` 在设置完成前结束也算），这台电脑上是未满 18 岁的记录，或者保存的数据现在读不出来、钥匙串打不开 |
+| `2` | 命令写错了：参数不对，或者给的值认不出来（例如未知的地区、时区或陪伴方式） |
+
+不需要先设置就能用的命令：`olivia resources`、`olivia privacy`、`olivia --help`、`olivia --version`，以及用来清理残留数据的 `olivia forget --all`。
 
 ## 数据存在哪里
 
@@ -92,3 +106,8 @@ OLIVIA 保存的东西都在下面这个目录里：设置文件 `profile.json`�
 pip install -e '.[dev]'
 bash scripts/check.sh
 ```
+
+两个维护用的脚本：
+
+- `python scripts/eval_crisis.py 文件.csv [--mode rules|model|both] [--show-ids]`：把一份标注好的 CSV（`id,text,level[,category]`）逐句交给产品的危机筛查（规则模式与模型模式），打印混淆矩阵、L2+L3 召回、L0 误报率和按类别的漏报与误报。从不打印原句；`--show-ids` 只额外列出出错样本的 id。
+- `python scripts/check_hotline_freshness.py`：热线数据里任何条目的核验日期超过 90 天就以非零状态退出；GitHub Actions 每季度自动运行一次（`.github/workflows/hotline-freshness.yml`），负责人和复核步骤见 `docs/resources/hotline-sources.md`。

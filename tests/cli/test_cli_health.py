@@ -60,11 +60,14 @@ def test_the_list_shows_labels_and_what_is_recorded(run_cli, data_home):
     save_profile(data_home, clinical_history=(FLAGS[1],), contraindications=(CARDIO,))
     run = run_cli(["health"], [""])
     assert run.code == 0 and run.lines[-1] == HEALTH["unchanged"]
-    names = load_taxonomy().red_flags()
-    assert f"· {FLAGS[1]} {names[FLAGS[1]].name_zh}" in run.lines
+    assert f"· {TEXT.clinical_labels[FLAGS[1]]}" in run.lines
     assert f"· {TEXT.disclosure_labels[CARDIO]}" in run.lines
     assert f"  {CARDIO_NO}. {TEXT.disclosure_labels[CARDIO]}" in run.lines
-    assert f"  1. {FLAGS[0]} {names[FLAGS[0]].name_zh}" in run.lines
+    assert f"  1. {TEXT.clinical_labels[FLAGS[0]]}" in run.lines
+    # Plain Chinese only: no internal codes and no English in the list (ruling: F4 item 4).
+    for code in FLAGS:
+        assert code not in run.out
+    assert "BPD" not in run.out and "PTSD" not in run.out and "SIT-" not in run.out
     assert _load(data_home).contraindications == (CARDIO,)
 
 

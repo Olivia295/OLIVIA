@@ -3,7 +3,7 @@
 # 首访「心灵契约共创仪式」文案（PRD ONB-01~08，SOP 1；规格裁定 22–24、28）。
 # 由 olivia/core/chang/onboarding.py 读取；步骤顺序与校验逻辑在代码里，这里只放文字。
 #
-# 顺序：免责声明 → 18+ 门禁 → 保存方式（ONB-06，默认只加密健康信息）→ 双向称呼 →
+# 顺序：免责声明 → 18+ 门禁（选“未满”时再确认一次，选错了可以返回）→ 保存方式（ONB-06，默认只加密健康信息）→ 双向称呼 →
 #       陪伴方式（四选一，默认温和包裹，ONB-03）→ 话题雷区 → 常住地区 → 时区 → 健康信息授权
 #       （最后一步，可跳过；授权后依次是健康信息清单和三项需要避开练习的情况清单，决定 D2，
 #       步骤 A1）→ 原子保存。
@@ -16,10 +16,11 @@
 #   {consent_sentence}            授权句，原样展示，用户需完整输入
 #   {sensitive_notice}            敏感个人信息告知（见下方 sensitive_notice），只用于两处授权提示
 #   {tokens}                      用户输入中没认出的编号
+#   {system_timezone}             这台电脑的时区（只用于 prompts.timezone_free）
 #
 # 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
-# 不说教（不用“应该/必须/一定要”）、不用感叹号。健康信息选项的名称来自 taxonomy 的
-# clinical_red_flags，不在本文件里；三项情况清单的文字在 disclosure_labels。
+# 不说教（不用“应该/必须/一定要”）、不用感叹号。健康信息选项的文字在 clinical_labels
+# （只显示中文名称，编号只在程序内部使用）；三项情况清单的文字在 disclosure_labels。
 # health_command 是 olivia health 命令（查看与修改已记录的健康信息）的文字。
 version: 1
 
@@ -56,6 +57,11 @@ prompts:
     谢谢你。还有一件事想先确认：这里的陪伴只为年满 18 周岁的成年人设计。
 
     请问你已经年满 18 周岁了吗？
+  # 选“未满”之后的一次确认（裁定 22：确认后会一直保留，所以给一次改正的机会）。
+  age_confirm: |-
+    你确认自己未满 18 岁吗？
+
+    确认之后，这台电脑上会一直记着这个回答。如果刚才是选错了，选 2 就能回去重新回答。
   encryption: |-
     在继续之前，想请你选一下这里的内容怎么保存。
 
@@ -91,7 +97,7 @@ prompts:
   timezone_free: |-
     再确认一下时区，这样我能知道你那边大概是白天还是深夜。
 
-    可以输入时区名称，例如 Europe/Paris 或 Asia/Singapore；直接按回车的话，我就先用 UTC。
+    可以输入时区名称，例如 Europe/Paris 或 Asia/Singapore；直接按回车的话，就用这台电脑的时区（{system_timezone}）。
   clinical_consent: |-
     还有最后一个问题，完全可以跳过。
 
@@ -106,7 +112,7 @@ prompts:
   clinical_history: |-
     谢谢你的信任。下面这些里，有和你情况相符的吗？
 
-    输入序号或编号，多个用逗号隔开；都不相符的话，直接按回车。
+    输入序号，多个用逗号隔开；都不相符的话，直接按回车。
   contraindications: |-
     还有三种情况，同样可以跳过。
 
@@ -121,6 +127,9 @@ choices:
   age_gate:
     accept: {label: "是，我已年满 18 周岁", aliases: ["是", "是的", "已满", "满了", "已成年", "成年"]}
     decline: {label: "不，我还未满 18 周岁", aliases: ["否", "不是", "未满", "没满", "没有", "未成年"]}
+  age_confirm:
+    confirm: {label: "是", aliases: ["是的", "确认", "对", "未满"]}
+    mistaken: {label: "我选错了", aliases: ["选错了", "错了", "选错", "返回", "不是"]}
   # 保存方式（ONB-06）：第一项是默认，直接按回车也选它。键名不用 on/off（YAML 会读成布尔值）。
   encryption:
     keep_off: {label: "只加密健康信息", aliases: ["默认", "不用", "保持关闭", "关闭", "只加密健康"]}
@@ -134,12 +143,30 @@ disclosure_labels:
   INTERPERSONAL_SAFETY_HAZARD: "身边有人可能会伤害我，或者在家里常常感到不安全"
   RED_FLAG_PSYCHOSIS: "曾有过幻觉、妄想这类体验（比如听到别人听不到的声音），或者医生提过这方面的情况"
 
+# 健康信息清单的选项文字（决定 D2）：键名是 taxonomy clinical_red_flags 的编号，必须一一对应；
+# 只显示这里的中文名称，不显示编号和英文。草稿：待 G-0 审核措辞。
+clinical_labels:
+  SIT-02-04: "双相情感障碍或环性心境（情绪在高涨和低落之间大幅起伏）"
+  SIT-02-06: "怀孕期间或生产以后的抑郁、焦虑"
+  SIT-06-01: "急性应激障碍或创伤后应激障碍"
+  SIT-06-05: "解离，或人格解体、现实解体的体验"
+  SIT-08-04: "神经性厌食，或长期过度限制进食"
+  SIT-09-01: "边缘型人格的情绪失调，并伴有自伤"
+  SIT-10-04: "酒精或其他成瘾物质的依赖"
+
 # ONB-03：四种陪伴方式，按此顺序编号（第一种是默认）。冒号前是简称，回答简称也可以。
 persona_labels:
   GENTLE_HOLDING: "温和包裹：温暖柔和，多一些接纳与抚慰"
   ZEN_PHILOSOPHER: "沉静哲思：说话慢一些，常用自然里的画面，多留一点空白"
   RATIONAL_PEER: "平视战友：直接、有条理，像朋友一样和你一起把事情理清楚"
   SILENT_ANCHOR: "静默树洞：话很少，只是安静地听着、陪着，不追问"
+
+# olivia persona 和首访时也接受的更短的叫法（之外还接受序号与冒号前的简称）。
+persona_aliases:
+  GENTLE_HOLDING: ["温和", "温柔", "包裹"]
+  ZEN_PHILOSOPHER: ["沉静", "哲思", "禅", "禅意"]
+  RATIONAL_PEER: ["平视", "战友", "理性"]
+  SILENT_ANCHOR: ["静默", "树洞", "安静"]
 
 region_labels:
   CN: "中国大陆"
@@ -152,14 +179,17 @@ region_labels:
   AU: "澳大利亚"
   ZZ: "其他地区，或不想说"
 
+# 首访与 olivia region 都接受的叫法（比对时忽略大小写和空格）。
 region_aliases:
-  CN: ["大陆", "内地", "中国内地"]
-  HK: ["香港"]
-  MO: ["澳门"]
-  TW: ["台湾"]
-  GB: ["UK", "英國"]
-  AU: ["澳洲"]
-  ZZ: ["其他", "其他地区", "不想说", "不说"]
+  CN: ["中国", "大陆", "内地", "中国内地", "China", "Mainland", "Mainland China", "PRC"]
+  HK: ["香港", "Hong Kong", "HKSAR"]
+  MO: ["澳门", "澳門", "Macau", "Macao"]
+  TW: ["台湾", "臺灣", "台灣", "Taiwan"]
+  US: ["USA", "America", "United States", "美國"]
+  CA: ["Canada"]
+  GB: ["UK", "英國", "Britain", "Great Britain", "United Kingdom", "England"]
+  AU: ["澳洲", "Australia"]
+  ZZ: ["其他", "其他地区", "不想说", "不说", "Other"]
 
 timezone_labels:
   America/New_York: "美国东部（纽约）"
@@ -195,7 +225,7 @@ hints:
   taboo_limits: "每个话题请控制在 {max_len} 个字以内，最多 {max_count} 个，可以再调整一下吗？"
   timezone_invalid: "我没有认出这个时区。可以选一个序号，或者按「大洲/城市」的格式再输入一次吗？例如 Asia/Singapore。"
   consent_unrecognized: "如果愿意记录，请完整输入那句话；不想记录的话，输入「跳过」就好。"
-  clinical_unknown: "我没有在列表里找到「{tokens}」。可以从上面选序号或编号吗？"
+  clinical_unknown: "我没有在列表里找到「{tokens}」。可以从上面选序号吗？"
 
 outcomes:
   completed: |-

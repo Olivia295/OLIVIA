@@ -22,6 +22,7 @@ import keyring
 import keyring.backends.fail
 import pytest
 
+from olivia.core.chang import onboarding as onboarding_module
 from olivia.core.crypto import keychain as keychain_module
 from olivia.core.crypto.errors import KeychainUnavailableError
 from olivia.notify import system as notify_system
@@ -137,3 +138,14 @@ def machine(
 
     monkeypatch.setattr(notify_system, "system_runner", forbidden)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def system_zone(monkeypatch: pytest.MonkeyPatch) -> str:
+    """This computer's timezone as the product sees it: fixed to ``UTC`` in every test.
+
+    ``olivia region ZZ`` and onboarding's "other region" default read it; a test that
+    needs another zone patches ``olivia.core.chang.onboarding.system_timezone`` again.
+    """
+    monkeypatch.setattr(onboarding_module, "system_timezone", lambda: "UTC")
+    return "UTC"

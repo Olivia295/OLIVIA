@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from cli_support import NOW, SHANGHAI, save_profile
 
 from olivia import cli
+from olivia.core.chang import onboarding
 from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import UserRegion
 from olivia.core.resources.store import ResourceStore, parse_store
@@ -210,30 +212,96 @@ def test_region_set_single_zone_snapshot(run_cli, data_home, fixture_store):
     assert profile is not None and profile.updated_at == FIXED_NOW
 
 
-def test_region_unknown_code_falls_back_to_zz_and_says_so(run_cli, data_home):
-    save_profile(data_home, region=UserRegion("GB", "Europe/London"))
-    run = run_cli(["region", "UK"])
-    assert run.code == 0
-    assert run.out == (
-        "暂时没有「UK」这个地区的资料，已按其他地区（ZZ）保存，求助卡片会显示全球通用的资源。\n"
-        "好的，已经保存：其他地区（ZZ），时区 Europe/London。\n"
-    )
-    assert _saved(data_home) == UserRegion("ZZ", "Europe/London")
-
-
-@pytest.mark.parametrize("raw", ["USA", "1", "中国", "fr"])
-def test_region_malformed_or_unsupported_codes_fall_back_to_zz(run_cli, data_home, raw):
-    save_profile(data_home)
+@pytest.mark.parametrize(
+    ("raw", "code", "zone"),
+    [
+        ("china", "CN", "Asia/Shanghai"),
+        ("中国", "CN", "Asia/Shanghai"),
+        ("大陆", "CN", "Asia/Shanghai"),
+        ("内地", "CN", "Asia/Shanghai"),
+        ("hongkong", "HK", "Asia/Hong_Kong"),
+        ("香港", "HK", "Asia/Hong_Kong"),
+        ("台湾", "TW", "Asia/Taipei"),
+        ("澳门", "MO", "Asia/Macau"),
+        ("UK", "GB", "Europe/London"),
+    ],
+)
+def test_region_accepts_common_names(run_cli, data_home, raw, code, zone):
+    save_profile(data_home, region=UserRegion("US", "America/Chicago"))
     run = run_cli(["region", raw])
     assert run.code == 0
-    assert f"「{raw}」" in run.out and "（ZZ）" in run.out
-    assert _saved(data_home) == UserRegion("ZZ", "Asia/Shanghai")
+    assert run.out == f"好的，已经保存：{cli._region_label(code)}（{code}），时区 {zone}。\n"
+    assert _saved(data_home) == UserRegion(code, zone)
+
+
+@pytest.mark.parametrize("raw", ["JP", "japan", "1", "fr", "火星"])
+def test_region_unknown_codes_are_refused_with_the_supported_list(run_cli, data_home, raw):
+    save_profile(data_home)
+    run = run_cli(["region", raw])
+    assert run.code == 2
+    assert run.out.startswith(f"没有认出「{raw}」这个地区，所以没有做改动。")
+    for code in ("CN", "HK", "MO", "TW", "US", "CA", "GB", "AU", "ZZ"):
+        assert f"  {code}  " in run.out
+    assert "olivia region ZZ --timezone" in run.out
+    assert _saved(data_home) == UserRegion("CN", "Asia/Shanghai")
+
+
+def test_region_zz_never_keeps_the_old_countrys_timezone(run_cli, data_home, monkeypatch):
+    """The Japan user: ZZ takes this computer's zone, not the stale Asia/Shanghai."""
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "Asia/Tokyo")
+    save_profile(data_home)
+    run = run_cli(["region", "ZZ"])
+    assert run.code == 0
+    assert run.out == (
+        "好的，已经保存：其他地区（ZZ），时区 Asia/Tokyo。\n"
+        "时区先按这台电脑的设置用 Asia/Tokyo；不对的话，可以用 --timezone 修改。\n"
+    )
+    assert _saved(data_home) == UserRegion("ZZ", "Asia/Tokyo")
+    # And again from ZZ itself: the computer's zone, not the one saved before.
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "Europe/Berlin")
+    assert run_cli(["region", "other"]).code == 0
+    assert _saved(data_home) == UserRegion("ZZ", "Europe/Berlin")
+
+
+def test_region_zz_with_a_timezone(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["region", "ZZ", "--timezone", "asia/tokyo"])
+    assert run.code == 0
+    assert run.out == "好的，已经保存：其他地区（ZZ），时区 Asia/Tokyo。\n"
+    assert _saved(data_home) == UserRegion("ZZ", "Asia/Tokyo")
+
+
+def test_japan_user_afternoon_is_not_late_night(run_cli, data_home, monkeypatch):
+    """A Japan user at 15:00 must not be on a stale zone where it is night (「深夜」)."""
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "Asia/Tokyo")
+    save_profile(data_home, region=UserRegion("US", "America/Los_Angeles"))
+    assert run_cli(["region", "ZZ"]).code == 0
+    afternoon = datetime(2026, 10, 22, 15, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+    profile = ProfileStore(data_home).load()
+    assert profile is not None
+    assert cli._local_clock(lambda: afternoon, profile)().hour == 15
+
+
+def test_an_unknown_saved_zone_falls_back_to_the_computers(data_home, monkeypatch):
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "Asia/Tokyo")
+    profile = save_profile(data_home, region=UserRegion("ZZ", "Mars/Olympus"))
+    noon_utc = datetime(2026, 10, 22, 6, 0, tzinfo=ZoneInfo("UTC"))
+    assert cli._local_clock(lambda: noon_utc, profile)().hour == 15
+
+
+def test_region_multi_zone_uses_the_computers_zone_when_it_fits(run_cli, data_home, monkeypatch):
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "America/Chicago")
+    save_profile(data_home)
+    run = run_cli(["region", "usa"])
+    assert run.code == 0
+    assert "America/Chicago" in run.lines[-1]
+    assert _saved(data_home) == UserRegion("US", "America/Chicago")
 
 
 def test_region_multi_zone_needs_a_timezone(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["region", "US"])
-    assert run.code == 1
+    assert run.code == 2
     assert run.out == (
         "美国有好几个时区，请用 --timezone 告诉我是哪一个，"
         "例如：America/New_York、America/Chicago、America/Denver\n"
@@ -261,17 +329,17 @@ def test_region_timezone_alone_keeps_the_country(run_cli, data_home):
 def test_region_bad_timezone_is_refused(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["region", "US", "--timezone", "Mars/Olympus"])
-    assert run.code == 1
+    assert run.code == 2
     assert run.out == (
         "没有认出时区「Mars/Olympus」。可以用「大洲/城市」的格式，例如 Asia/Singapore。\n"
     )
     assert _saved(data_home) == UserRegion("CN", "Asia/Shanghai")
 
 
-def test_region_zz_without_profile_region_uses_utc(run_cli, data_home):
+def test_region_zz_without_profile_region_uses_the_computers_zone(run_cli, data_home):
     save_profile(data_home, region=None)
-    assert run_cli(["region", "ZZ"]).out == "好的，已经保存：其他地区（ZZ），时区 UTC。\n"
-    assert _saved(data_home) == UserRegion("ZZ", "UTC")
+    assert run_cli(["region", "ZZ"]).lines[0] == "好的，已经保存：其他地区（ZZ），时区 UTC。"
+    assert _saved(data_home) == UserRegion("ZZ", "UTC")  # the conftest's computer is on UTC
 
 
 def test_region_clear_snapshot(run_cli, data_home):
@@ -281,7 +349,9 @@ def test_region_clear_snapshot(run_cli, data_home):
     )
     run = run_cli(["region", "--clear"])
     assert run.code == 0
-    assert run.out == "已清除保存的地区和时区。求助卡片会显示全球通用的资源。\n"
+    assert run.out == (
+        "已清除保存的地区。求助卡片会显示全球通用的资源；时区按这台电脑的设置用 UTC。\n"
+    )
     assert _saved(data_home) == UserRegion("ZZ", "UTC")
     saved = (data_home / PROFILE_FILENAME).read_text(encoding="utf-8")
     assert "杭州" not in saved and "330100" not in saved

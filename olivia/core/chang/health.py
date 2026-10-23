@@ -3,8 +3,9 @@
 Like onboarding, this is pure logic over a :class:`ProfileStore`: the caller shows
 ``prompt()``, passes the reply to ``answer()`` and repeats until it gets
 :class:`HealthDone`. All wording is in ``olivia/data/templates/onboarding.yaml``
-(``health_command``); the list is the onboarding one, the clinical-history codes with
-their taxonomy names followed by the ``disclosure_labels``, and only labels are shown.
+(``health_command``); the list is the onboarding one, the plain Chinese
+``clinical_labels`` followed by the ``disclosure_labels``. Only labels are shown; the
+codes stay internal.
 
 The list shows what is recorded now; the reply chooses the new set by number or code,
 ``0`` deletes everything and an empty reply changes nothing. Recording something on a
@@ -24,7 +25,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Final
 
-from olivia.core.chang.onboarding import OnboardingText, load_onboarding_text, parse_choices
+from olivia.core.chang.onboarding import (
+    OnboardingText,
+    clinical_options,
+    load_onboarding_text,
+    parse_choices,
+)
 from olivia.core.chang.profile import ProfileStore
 from olivia.core.models import PROFILE_CONTRAINDICATIONS, PersonaProfile
 from olivia.core.taxonomy import Taxonomy
@@ -72,7 +78,7 @@ class HealthEditor:
         flags = tax.red_flags()
         self._keys: tuple[str, ...] = (*flags, *PROFILE_CONTRAINDICATIONS)
         self._labels: tuple[str, ...] = (
-            *(f"{code} {flag.name_zh}" for code, flag in flags.items()),
+            *clinical_options(tax, self._text),
             *(self._text.disclosure_labels[cid] for cid in PROFILE_CONTRAINDICATIONS),
         )
         self._step = _Step.SELECT
