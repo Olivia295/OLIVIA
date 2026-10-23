@@ -187,6 +187,7 @@ def test_part_layout_and_variant_counts() -> None:
     assert len(STAGES[HelpStage.S_CLOSING]["variants"]) >= 6
     assert len(STAGES[HelpStage.S_READY]["greeting"]) >= 6
     assert len(STAGES[HelpStage.S_READY]["returning_after_crisis"]) >= 6
+    assert len(STAGES[HelpStage.S_READY]["returning_after_check"]) >= 3
 
 
 def test_no_duplicate_variants() -> None:
@@ -305,13 +306,28 @@ def test_crisis_is_short_calm_and_asks_about_safety() -> None:
 
 def test_ready_lines_are_single_short_paragraphs() -> None:
     ready = STAGES[HelpStage.S_READY]
-    for variant in ready["greeting"] + ready["returning_after_crisis"]:
+    returning = ready["returning_after_crisis"] + ready["returning_after_check"]
+    for variant in ready["greeting"] + returning:
         line = _fill(variant, TYPICAL)
         assert "\n" not in line
         assert _all_chars(line) <= PARAGRAPH_MAX, line
     for variant in ready["returning_after_crisis"]:
         assert "安全" in variant, variant
-        assert "metaphor" not in SLOT.findall(variant), variant
+    for variant in returning:
+        assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
+
+
+# Someone else may be reading the screen: a returning greeting never says what happened.
+REVEALING_WORDS = ["危机", "自杀", "轻生", "生命", "死", "伤害", "热线", "风险", "L2", "L3", "求助"]
+
+
+@pytest.mark.parametrize("pool", ["returning_after_crisis", "returning_after_check"])
+def test_returning_greetings_reveal_nothing(pool: str) -> None:
+    variants = STAGES[HelpStage.S_READY][pool]
+    assert any(not SLOT.findall(v) for v in variants), "needs a slot-free variant"
+    for variant in variants:
+        for word in REVEALING_WORDS:
+            assert word not in variant, (word, variant)
 
 
 # -- low-battery light bridge (COLBO-07) ----------------------------------------------------

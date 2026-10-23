@@ -123,6 +123,11 @@ runs, so the crisis flow follows. A turn that screens L2/L3 itself never waits f
 question. ``inspect["safety_check"]`` is ``asked``, ``affirmed``, ``denied``, ``unclear``
 or None.
 
+Care greeting (PRD §9, step A3): ``care_greeting`` renders the opening check-in for a
+session that follows a crisis (or a no to the D3 question) in an earlier one; the CLI
+decides when (``chang/care.py``). ``inspect["care_greeting"]`` and ``snapshot`` say
+whether this session opened with it.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -350,6 +355,8 @@ class Session:
         self._asking = False
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
         self._gentle_care = False
+        # This session opened with the A3 check-in greeting (``care_greeting``).
+        self._care_greeting = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
         self._last_spectrum: str | None = None
@@ -556,6 +563,7 @@ class Session:
             "safety_check": "asked" if ask else (answer.value if answer is not None else None),
             "reminder": prompted.reminder.value,
             "real_support_share": round(self._wellbeing.real_support_share, 4),
+            "care_greeting": self._care_greeting,
         }
         return TurnResult(
             reply=rendered.reply,
@@ -598,8 +606,26 @@ class Session:
             "awaiting_clarification": self._clarifying,
             "awaiting_safety_check": self._asking,
             "gentle_care": self._gentle_care,
+            "care_greeting": self._care_greeting,
             "bandit": self._sampler.to_dict(),
         }
+
+    def care_greeting(self, *, light: bool = False) -> str:
+        """The opening line after a crisis in an earlier session (PRD §9, step A3).
+
+        ``returning_after_crisis``, or the lighter ``returning_after_check`` when the last
+        session's direct question was answered with a no. Name slots only, through WILLOW,
+        the output gate and the taboo filter; it never says what happened. Call it before
+        the first turn; ``inspect["care_greeting"]`` then reports it on every turn.
+        """
+        templates = self._engine.data.templates
+        variants = templates.returning_after_check if light else templates.returning_after_crisis
+        self._gate_notes = []
+        rendered = self._with_taboo_filter(
+            lambda: self._plain_line(variants, HelpStage.S_READY), HelpStage.S_READY
+        )
+        self._care_greeting = True
+        return rendered.reply
 
     # -- stages ---------------------------------------------------------------------------
 

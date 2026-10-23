@@ -16,6 +16,7 @@ from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
 
 import olivia
 from olivia import cli
+from olivia.core.chang.care import CARE_FILENAME
 from olivia.core.chang.profile import PROFILE_FILENAME, ProfileLockedError, ProfileStore
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.language.data import ContentKind, load_language_data
@@ -47,7 +48,9 @@ def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
     assert run.out.index("110") < run.out.index("120") < run.out.index("12356")
     assert run.lines[-1] == cli.GOODBYE
     assert run.out.count(cli.GOODBYE) == 1
-    assert [p.name for p in files_under(data_home) if p.parent == data_home] == [PROFILE_FILENAME]
+    # The crisis leaves the encrypted care marker for the next visit (step A3).
+    top_level = [p.name for p in files_under(data_home) if p.parent == data_home]
+    assert top_level == [CARE_FILENAME, PROFILE_FILENAME]
 
 
 def test_returning_user_skips_onboarding(run_cli, data_home):
@@ -245,11 +248,17 @@ def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_
     )
     assert run.code == 0
     files = files_under(data_home)
-    assert {p.name for p in files if p.parent == data_home} == {PROFILE_FILENAME}
+    # Besides the profile, only the sealed care marker and its key (step A3).
+    assert {p.name for p in files if p.parent == data_home} == {PROFILE_FILENAME, CARE_FILENAME}
+    assert {p.relative_to(data_home).as_posix() for p in files if p.parent != data_home} == {
+        "keys/care.key"
+    }
     for path in files:
-        text = path.read_text(encoding="utf-8")
-        for forbidden in (*SECRET_FRAGMENTS, "遗书", "S_crisis", "L3", "12356"):
-            assert forbidden not in text, (path, forbidden)
+        raw = path.read_bytes()
+        # Ciphertext is random bytes, so only fragments long enough never to occur by chance.
+        for forbidden in (*SECRET_FRAGMENTS, "遗书", "S_crisis", '"L3"', "12356"):
+            assert forbidden.encode() not in raw, (path, forbidden)
+    assert "L3" not in (data_home / PROFILE_FILENAME).read_text(encoding="utf-8")
     saved = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
     assert set(saved) == {
         "schema_version",

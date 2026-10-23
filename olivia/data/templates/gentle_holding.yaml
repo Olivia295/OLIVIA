@@ -18,8 +18,11 @@
 #     light_bridge 在电量低于 battery.thresholds.empower_min（0.40）时替换 bridge
 #     （COLBO-07：右翼只在电量 >= 0.40 时放行，此时只给稳定化白名单），简短、温和地说明
 #     今天先从轻一点的开始；每个变体都含“先从轻一点的开始”，与 bridge 等长。
-#   - S_haven、S_crisis、S_closing：整条取一个变体。S_ready 按场景取 greeting 或
-#     returning_after_crisis（危机后的下一次会话开场，即“轻度安全问候”）。
+#   - S_haven、S_crisis、S_closing：整条取一个变体。S_ready 按场景取 greeting、
+#     returning_after_crisis（危机后的下一次会话开场，即“轻度安全问候”，步骤 A3）或
+#     returning_after_check（上次对直接询问回答“不是”之后的开场，更轻，不问安全）。
+#     两种回访问候都只用名字槽位、各有一条不带槽位的变体，并且不能透露任何危机信息
+#     （不出现等级、危机、生命、热线等字眼）：屏幕前的可能不是用户本人。
 #
 # 字数窗口（SDD §5.3、WILLOW-03）：常规回复 [140, 260] 字，单段 ≤ 80 字；
 # S_haven [15, 40] 字，不提问（CHANG-02）；S_crisis 豁免字数窗口，不用隐喻。
@@ -229,6 +232,10 @@ stages:
       - "欢迎你回来。在聊别的之前，我想先关心一下你：最近有没有比上次轻松一点，身边是安全的吗？"
       - "{user_name}，谢谢你回来找我。今天想说什么都可以，在那之前，想先问问你：现在是安全的吗？"
       - "{user_name}，又见面了。上次的事我还记着，这几天你还好吗？如果现在不太安全，我们就先说这个。"
+    returning_after_check:
+      - "{user_name}，欢迎回来。这几天过得还好吗？想聊什么都可以，慢慢说，我在这里。"
+      - "又见面了，{user_name}。先轻轻问一句：最近睡得好吗，吃得还好吗？今天从哪里聊起都行。"
+      - "欢迎你回来，我一直记挂着你。这几天心里还好吗？不管想说什么，我都在这里听。"
 
 followups:
   clarify_feedback:
