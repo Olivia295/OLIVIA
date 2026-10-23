@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Export the project's safety cases as one CSV for the crisis feasibility notebook.
 
-Rows have one of four roles:
+Rows have one of five roles:
 
 - ``train``: cases.yaml, the ho* reviewer probes, and the known limitations other than
   kl_fr*, all written or tuned by the same author;
 - ``probe``: the 52-sentence fresh-author probe (fr* in tuned_probe.yaml plus kl_fr* in
   known_false_positives.yaml). Its model results were seen on 2026-10-22, so it is no
   longer an independent test: report it, but never choose thresholds or settings by it;
+- ``dev``: an optional development set (``--dev-eval``, same columns as ``--fresh-eval``),
+  e.g. build/eval/interim_fresh.csv. Never trained on, but its results may be looked at
+  repeatedly to choose between models, settings or thresholds; it is not a final test;
 - ``fresh``: an optional independent evaluation set (``--fresh-eval``), a CSV with columns
-  id, text, level (L0-L3) written by someone who has not seen the cases or the lexicon;
+  id, text, level (L0-L3) written by someone who has not seen the cases or the lexicon.
+  It is the final test: never choose anything by it. A sentence may not be in both the
+  dev and the fresh set;
 - ``exclude``: sentences that are never trained on and never scored by the notebook, only
   used to drop near-duplicates from training (level and rule_level -1). Always every user
   turn of the G-5 red-team cases (tests/redteam/cases.yaml: the red-team runner is the
@@ -17,15 +22,16 @@ Rows have one of four roles:
   a ``text`` column given with ``--exclude-csv`` (e.g. build/eval/redteam_texts.csv).
 
 Test sentences must never be trained on, so train rows that duplicate or nearly duplicate
-a probe, fresh or exclude sentence are dropped and reported.
+a probe, dev, fresh or exclude sentence are dropped and reported.
 
 Each row also carries ``rule_level``, what today's rules-mode SafetyScreen returns for it,
 and ``category``, the cases.yaml category (empty for other sources).
 
 Run from the repository root with the project's venv:
 
-    .venv/bin/python training/colab/export_olivia_data.py [--fresh-eval path/to/fresh.csv] \
-        [--exclude-csv build/eval/redteam_texts.csv]
+    .venv/bin/python training/colab/export_olivia_data.py \
+        [--dev-eval build/eval/interim_fresh.csv] \
+        [--fresh-eval path/to/fresh.csv] [--exclude-csv build/eval/redteam_texts.csv]
 """
 
 from __future__ import annotations
@@ -49,8 +55,9 @@ REDTEAM_CASES = ROOT / "tests" / "redteam" / "cases.yaml"
 PROBE_SIZE = 52
 NEAR_DUPLICATE_JACCARD = 0.8
 LEVELS = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
-ROLES = ("train", "probe", "fresh", "exclude")
-TEST_ROLES = ("probe", "fresh")
+ROLES = ("train", "probe", "dev", "fresh", "exclude")
+TEST_ROLES = ("probe", "dev", "fresh")
+EVAL_SOURCES = {"dev": "dev_eval", "fresh": "fresh_eval"}
 EXCLUDE_ROLE = "exclude"
 HELD_OUT_ROLES = (*TEST_ROLES, EXCLUDE_ROLE)
 
@@ -81,15 +88,15 @@ def collect_rows() -> list[dict]:
     return rows
 
 
-def load_fresh(path: Path) -> list[dict]:
-    """An independent evaluation set: CSV with id, text, level (L0-L3)."""
+def load_fresh(path: Path, role: str = "fresh") -> list[dict]:
+    """An evaluation set (``role`` fresh or dev): CSV with id, text, level (L0-L3)."""
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         missing = {"id", "text", "level"} - set(reader.fieldnames or [])
         if missing:
             raise SystemExit(f"{path}: missing columns {sorted(missing)}")
-        rows = [{"id": r["id"], "text": r["text"], "level": r["level"].strip(), "role": "fresh",
-                 "source": "fresh_eval", "category": ""} for r in reader]
+        rows = [{"id": r["id"], "text": r["text"], "level": r["level"].strip(), "role": role,
+                 "source": EVAL_SOURCES[role], "category": ""} for r in reader]
     bad = [r["id"] for r in rows if r["level"] not in LEVELS]
     if bad:
         raise SystemExit(f"{path}: level must be L0-L3, bad rows: {bad[:10]}")
@@ -97,6 +104,17 @@ def load_fresh(path: Path) -> list[dict]:
     if empty:
         raise SystemExit(f"{path}: {len(empty)} rows have no text, e.g. {empty[:10]}")
     return rows
+
+
+def collect_eval_rows(fresh: Path | None, dev: Path | None) -> list[dict]:
+    """The dev rows, then the fresh rows; a sentence may not be in both sets."""
+    dev_rows = load_fresh(dev, "dev") if dev is not None else []
+    fresh_rows = load_fresh(fresh, "fresh") if fresh is not None else []
+    shared = {normalize(r["text"]) for r in dev_rows} & {normalize(r["text"]) for r in fresh_rows}
+    if shared:
+        raise SystemExit(f"{len(shared)} sentences are in both the dev and the fresh set; "
+                         "the final test must stay separate from the dev set")
+    return dev_rows + fresh_rows
 
 
 def collect_exclusions(extra: list[Path]) -> list[dict]:
@@ -157,7 +175,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "colab_data",
                         help="output directory (default: build/colab_data, git-ignored)")
     parser.add_argument("--fresh-eval", type=Path, default=None,
-                        help="optional independent evaluation CSV (id, text, level)")
+                        help="optional independent evaluation CSV (id, text, level): "
+                             "the final test")
+    parser.add_argument("--dev-eval", type=Path, default=None,
+                        help="optional development CSV (id, text, level): never trained on, "
+                             "used to choose between models")
     parser.add_argument("--exclude-csv", type=Path, action="append", default=[],
                         help="CSV with a text column: never trained on, never scored "
                              "(the red-team turns are always excluded)")
@@ -167,8 +189,7 @@ def main() -> None:
     probe_count = sum(r["role"] == "probe" for r in rows)
     if probe_count != PROBE_SIZE:
         raise SystemExit(f"expected {PROBE_SIZE} fresh-author probe sentences, found {probe_count}")
-    if args.fresh_eval is not None:
-        rows += load_fresh(args.fresh_eval)
+    rows += collect_eval_rows(args.fresh_eval, args.dev_eval)
     rows += collect_exclusions(args.exclude_csv)
     rows, dropped = drop_test_overlap(rows)
 
