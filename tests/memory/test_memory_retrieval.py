@@ -9,6 +9,7 @@ import pytest
 
 from olivia.core.crypto.vault import Vault
 from olivia.core.memory.ledger import (
+    JournalEntry,
     Ledger,
     MethodRecord,
     NoteEntry,
@@ -178,6 +179,14 @@ def test_ranking_is_deterministic_and_k_limits_the_result():
     assert len(rank("低落", entries[:2], NOW, k=5)) == 2
     with pytest.raises(ValueError):
         rank("低落", entries, NOW, k=-1)
+
+
+def test_journal_records_are_left_out_of_the_index():
+    # A B6 journal record holds no text; it is bookkeeping, never a retrieved event.
+    journal = JournalEntry("c" * 24, offered_at=NOW, shown=True, helpful=True)
+    index = MemoryIndex([journal, _note("又失眠了")])
+    assert [type(e) for e in index.entries] == [NoteEntry]
+    assert _ids(index.rank("失眠", NOW)) == ["a" * 24]
 
 
 def test_an_empty_ledger_gives_nothing():

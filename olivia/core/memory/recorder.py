@@ -18,6 +18,12 @@ explicitly asks to have remembered:
   keyed by session and segment, and a segment with no turns writes nothing, so closing
   twice, or closing right after S_ready, adds no entry.
 
+* **Self-ratings** (step B6). :meth:`SessionRecorder.rate_before` puts the opening 0-10
+  rating on the session's first segment; :meth:`SessionRecorder.rate_after` puts the
+  closing one on the segment still open (``/exit``), or rewrites the summary the state
+  machine has just written (S_closing -> S_ready), under the same key. When and whether
+  to ask is the caller's business (``chang/journal.py``).
+
 Without a usable keychain nothing is recorded; a note request gets a line saying memory
 is not available on this device.
 """
@@ -33,6 +39,7 @@ from uuid import UUID
 
 from olivia.core.memory.ledger import (
     NOTE_MAX_CHARS,
+    SELF_RATING_RANGE,
     Ledger,
     LedgerUnavailableError,
     MethodRecord,
@@ -59,6 +66,8 @@ class _Segment:
     spectra: Counter[str] = field(default_factory=Counter)
     methods: list[MethodRecord] = field(default_factory=list)
     crisis_level: CrisisLevel | None = None
+    rating_before: int | None = None
+    rating_after: int | None = None
 
     def add_stage(self, stage: HelpStage) -> None:
         if (not self.stage_path or self.stage_path[-1] is not stage) and len(
@@ -78,6 +87,8 @@ class _Segment:
             spectra=tuple(ranked[:MAX_SPECTRA]),
             methods=tuple(self.methods),
             crisis_level=self.crisis_level,
+            self_rating_before=self.rating_before,
+            self_rating_after=self.rating_after,
         )
 
 
@@ -118,10 +129,14 @@ class SessionRecorder:
         self._segment = _Segment()
         self._index = 0
         self._lost = False
+        self._written: tuple[str, SessionSummary] | None = None
+        self.closed_segment: bool = False
+        """The last :meth:`observe` wrote a segment's summary (S_closing -> S_ready)."""
 
     def observe(self, message: str, result: TurnResult) -> TurnResult:
         """Record one turn; returns ``result``, with a note confirmation if one was asked."""
         now = self._now()
+        self.closed_segment = False
         if self.enabled:
             self._track(result, now)
         note = self._cues.find(message)
@@ -129,10 +144,41 @@ class SessionRecorder:
         if note is not None and self._may_note(result):
             reply = self._take_note(note, now)
         if self.enabled and self._closed_by_state_machine(result):
-            self._flush()
+            self.closed_segment = self._flush()
         if reply is None:
             return result
         return replace(result, reply=f"{result.reply}\n\n{reply}")
+
+    @property
+    def segment_open(self) -> bool:
+        """The current segment has turns, so closing now writes a summary."""
+        return self._segment.started_at is not None
+
+    def rate_before(self, rating: int) -> None:
+        """The opening self-rating (0-10), kept on the session's first segment."""
+        _check_rating(rating)
+        if self._index == 0:
+            self._segment.rating_before = rating
+
+    def rate_after(self, rating: int) -> bool:
+        """The closing self-rating (0-10): on the open segment when it has turns, else on
+        the summary written last. False if there is nothing to rate or it was not saved."""
+        _check_rating(rating)
+        if not self.enabled:
+            return False
+        if self.segment_open:
+            self._segment.rating_after = rating
+            return True
+        if self._written is None:
+            return False
+        key, summary = self._written
+        rated = replace(summary, self_rating_after=rating)
+        try:
+            self._ledger.append_summary(rated, key=key)
+        except LedgerUnavailableError:
+            return False
+        self._written = (key, rated)
+        return True
 
     def close(self) -> bool:
         """Write the current session's summary, once. False if it could not be saved."""
@@ -194,13 +240,24 @@ class SessionRecorder:
             return replies["note_unavailable"]
         return replies["note_saved"]
 
-    def _flush(self) -> None:
+    def _flush(self) -> bool:
+        """Write the open segment's summary; True when one was written."""
         summary = self._segment.summary()
         if summary is None:
-            return
+            return False
+        key = f"{self._session_id}/{self._index}"
+        written = True
         try:
-            self._ledger.append_summary(summary, key=f"{self._session_id}/{self._index}")
+            self._ledger.append_summary(summary, key=key)
+            self._written = (key, summary)
         except LedgerUnavailableError:
             self._lost = True
+            written = False
         self._segment = _Segment()
         self._index += 1
+        return written
+
+
+def _check_rating(rating: int) -> None:
+    if isinstance(rating, bool) or rating not in SELF_RATING_RANGE:
+        raise ValueError("self-ratings are 0-10")

@@ -39,6 +39,11 @@ _SUMMARY_KEYS: Final = (
     "none",
     "joiner",
     "arrow",
+    "journal_heading",
+    "journal_shown",
+    "journal_skipped",
+    "journal_helpful",
+    "journal_not_helpful",
 )
 NO_FEEDBACK: Final = "none"
 
@@ -61,6 +66,11 @@ class SummaryText:
     none: str
     joiner: str
     arrow: str
+    journal_heading: str
+    journal_shown: str
+    journal_skipped: str
+    journal_helpful: str
+    journal_not_helpful: str
 
 
 @dataclass(frozen=True)

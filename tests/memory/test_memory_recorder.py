@@ -10,7 +10,13 @@ import pytest
 
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.crypto.vault import Vault
-from olivia.core.memory.ledger import NOTE_MAX_CHARS, Ledger, NoteEntry, SummaryEntry
+from olivia.core.memory.ledger import (
+    NOTE_MAX_CHARS,
+    Ledger,
+    LedgerUnavailableError,
+    NoteEntry,
+    SummaryEntry,
+)
 from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.memory.text import load_memory_text
 from olivia.core.methods.bandit import Feedback
@@ -252,6 +258,66 @@ def test_the_ledger_never_holds_other_text(ledger):
         for paragraph in result.reply.split("\n\n"):
             if paragraph.strip() and paragraph not in TEXT.replies.values():
                 assert paragraph not in raw
+
+
+# -- self-ratings (B6) -----------------------------------------------------------------------
+
+
+def test_ratings_before_and_after_land_in_the_summary(ledger):
+    chat = Chat(ledger)
+    chat.recorder.rate_before(4)
+    assert not chat.recorder.segment_open
+    chat.say("今天上班好累")
+    assert chat.recorder.segment_open
+    assert chat.recorder.rate_after(7) is True
+    chat.recorder.close()
+    (entry,) = _summaries(ledger)
+    assert (entry.summary.self_rating_before, entry.summary.self_rating_after) == (4, 7)
+
+
+def test_after_rating_rewrites_the_summary_the_state_machine_just_wrote(ledger):
+    chat = Chat(ledger)
+    chat.recorder.rate_before(3)
+    chat.say("给我一个方法", "/done")
+    assert not chat.recorder.closed_segment
+    chat.say("我明天试试")  # S_closing -> S_ready writes the summary
+    assert chat.recorder.closed_segment and not chat.recorder.segment_open
+    assert chat.recorder.rate_after(6) is True
+    chat.say("今天上班好累")  # a new segment: no opening rating of its own
+    assert not chat.recorder.closed_segment
+    chat.recorder.close()
+    first, second = (e.summary for e in _summaries(ledger))
+    assert (first.self_rating_before, first.self_rating_after) == (3, 6)
+    assert (second.self_rating_before, second.self_rating_after) == (None, None)
+
+
+def test_after_rating_with_nothing_to_rate(ledger):
+    chat = Chat(ledger)
+    assert chat.recorder.rate_after(5) is False
+    assert ledger.entries() == ()
+
+
+@pytest.mark.parametrize("bad", [-1, 11, True])
+def test_ratings_outside_0_to_10_are_refused(ledger, bad):
+    chat = Chat(ledger)
+    with pytest.raises(ValueError):
+        chat.recorder.rate_before(bad)
+    with pytest.raises(ValueError):
+        chat.recorder.rate_after(bad)
+
+
+def test_after_rating_lost_to_a_locked_keychain(ledger, monkeypatch):
+    chat = Chat(ledger)
+    chat.say("给我一个方法", "/done", "我明天试试")
+
+    def locked(*_args: object, **_kwargs: object) -> str:
+        raise LedgerUnavailableError("locked", permanent=False)
+
+    monkeypatch.setattr(ledger, "append_summary", locked)
+    assert chat.recorder.rate_after(6) is False
+    monkeypatch.undo()
+    (entry,) = _summaries(ledger)
+    assert entry.summary.self_rating_after is None
 
 
 # -- keychain --------------------------------------------------------------------------------

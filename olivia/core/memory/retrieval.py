@@ -51,7 +51,7 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Final
 
-from olivia.core.memory.ledger import LedgerEntry, NoteEntry
+from olivia.core.memory.ledger import JournalEntry, LedgerEntry, NoteEntry
 from olivia.core.memory.text import NO_FEEDBACK, MemoryText, load_memory_text
 
 W_REC: Final = 0.4
@@ -100,6 +100,8 @@ def searchable_text(
     """
     if isinstance(entry, NoteEntry):
         return entry.text
+    if isinstance(entry, JournalEntry):
+        return ""  # a journal record (B6) holds no text and is never retrieved
     t = _default_text() if text is None else text
     titles: Mapping[str, str] = {} if method_titles is None else method_titles
     s = entry.summary
@@ -147,7 +149,10 @@ class MemoryIndex:
         text: MemoryText | None = None,
         method_titles: Mapping[str, str] | None = None,
     ) -> None:
-        self.entries: tuple[LedgerEntry, ...] = tuple(entries)
+        # Journal records (B6) are bookkeeping, not events: they are left out.
+        self.entries: tuple[LedgerEntry, ...] = tuple(
+            e for e in entries if not isinstance(e, JournalEntry)
+        )
         grams = [
             char_ngrams(searchable_text(e, text=text, method_titles=method_titles))
             for e in self.entries
