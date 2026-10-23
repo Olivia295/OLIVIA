@@ -22,7 +22,7 @@ import pytest
 
 from olivia.core.fsm import Reason
 from olivia.core.language.data import load_language_data
-from olivia.core.models import HelpStage, PersonaProfile, UserRegion
+from olivia.core.models import HelpStage, PersonaProfile, PersonaSpectrum, UserRegion
 from olivia.core.perception.introspector import load_mirror_lines
 from olivia.core.session import ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
@@ -102,8 +102,9 @@ def test_inspect_carries_introspection_ids(student):
 
 
 def test_yearning_picks_the_metaphor_and_need():
-    # S_explore weaves {metaphor} from the spectrum x yearning cell (WILLOW-02).
-    session = _open()
+    # S_explore weaves {metaphor} from the spectrum x yearning cell (WILLOW-02); the nature
+    # images are ZEN_PHILOSOPHER's since F3.
+    session = _open(persona_spectrum=PersonaSpectrum.ZEN_PHILOSOPHER)
     result = session.turn("和男朋友总吵架，其实就是想有人懂我")
     spectrum = result.inspect["spectrum"]
     assert isinstance(spectrum, str) and result.inspect["yearning"] == "CONNECTION"

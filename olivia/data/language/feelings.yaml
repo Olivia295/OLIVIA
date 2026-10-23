@@ -1,0 +1,44 @@
+# 草稿：待 G-0 两名注册心理师审核（质量修复 F3：回复里的感受词）
+#
+# {emotion} 槽位怎么说出用户的感受。引擎按下面的顺序决定（olivia/core/language/engine.py
+# LanguageEngine.feeling_word）：
+#   1. 用户自己的话里出现 words 中某一条的 cue（没有被 negations 否定、不是 exceptions 里的词），
+#      且这一轮识别出的情绪在它的 replaces 里：用这条的 word（“今天上班好累” -> 疲惫，
+#      不说“悲伤失落”）。
+#   2. 识别出的情绪在 never_named 里（规则感知没有任何情绪线索时的兜底值 calm）：不说出任何
+#      感受词，改用不带 {emotion} 的模板（“这些感受”一类的中性说法）。
+#      所以分手、丧亲、😭、危机句里永远不会出现“平静安详”。
+#   3. 否则用 display 里的日常说法，没有就用 taxonomy 的情绪名。
+# 感受词 2–6 字，能放进“那份{emotion}”“感到{emotion}”“心里涌起{emotion}”这样的句子里。
+# 不写诊断词、不写病名。
+version: 1
+
+never_named:
+  - calm
+
+# taxonomy 情绪名听起来像临床术语的，换成日常说法。
+display:
+  anger: 气愤
+  grief: 哀伤
+  panic: 慌乱
+  overwhelm: 压力和疲惫
+  numbness: 麻木
+
+# 否定：cue 前紧挨着这些词时不算（“不累”“没那么烦”）。
+negations: [不, 没, 没有, 不是, 不太, 不怎么, 不那么, 没那么, 并不, 别]
+
+words:
+  - word: 疲惫
+    replaces: [calm, sadness, overwhelm, numbness, disappointment]
+    cues: [好累, 很累, 太累, 真累, 累死, 累坏, 累瘫, 累得, 累到, 累了, 心累, 有点累, 疲惫, 疲倦, 疲劳, 乏力, 没力气, 精疲力尽, 筋疲力尽, 身心俱疲, 累, tired, exhausted]
+    exceptions: [积累, 累积, 累计, 连累, 拖累, 牵累, 累赘, 劳累费]
+  - word: 烦躁
+    replaces: [calm, anger, overwhelm]
+    cues: [好烦, 很烦, 真烦, 太烦, 烦死, 烦透, 心烦, 烦心, 烦躁, 烦人, 好心烦]
+    exceptions: [麻烦]
+  - word: 委屈
+    replaces: [calm, sadness, anger]
+    cues: [委屈]
+  - word: 想家的心情
+    replaces: [calm, sadness, loneliness]
+    cues: [想家, 想回家, 思乡]

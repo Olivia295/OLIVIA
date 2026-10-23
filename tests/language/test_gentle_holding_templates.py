@@ -165,6 +165,7 @@ def test_header_and_stage_set() -> None:
         "normal": list(NORMAL),
         "paragraph_max": PARAGRAPH_MAX,
         "haven": list(HAVEN),
+        "short": [60, 170],
     }
     assert set(STAGES) == {stage.value for stage in HelpStage}
 

@@ -92,10 +92,20 @@ def test_asked_grade_c_in_s_clarify_and_after_a_card(seed: int) -> None:
     assert done.inspect["feedback"] == "HELPFUL"
 
 
-def test_grade_a_names_and_plain_mentions_are_not_info() -> None:
+def test_plain_mentions_are_not_info() -> None:
     session = _open()
-    for text in ("认知行为疗法是什么", "正念是什么", "我在做EMDR，有点累"):
+    for text in ("我在做EMDR，有点累", "我在做正念练习"):
         _no_info(session.turn(text))
+
+
+@pytest.mark.parametrize(
+    ("text", "method_id"), [("认知行为疗法是什么", "01"), ("正念是什么", "15")]
+)
+def test_a_grade_a_practice_asked_by_name_gets_its_explainer(text: str, method_id: str) -> None:
+    # F3: common names of Grade A practices have a short explainer (grade_a_entries).
+    result = _open().turn(text)
+    assert result.reply_kind is ReplyKind.INFO
+    assert result.inspect["info"] == method_id
 
 
 # -- asked: Grade B -----------------------------------------------------------------------

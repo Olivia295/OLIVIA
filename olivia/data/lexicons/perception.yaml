@@ -202,6 +202,17 @@ emotion_cues:
     - 去世
     - 过世
     - 离世
+    - 病逝
+    - 外婆走了
+    - 外婆也走了
+    - 外公走了
+    - 外公也走了
+    - 奶奶走了
+    - 奶奶也走了
+    - 爷爷走了
+    - 爷爷也走了
+    - 姥姥走了
+    - 姥爷走了
     - 不在了
     - 离开了我们
     - 永远离开
@@ -307,7 +318,21 @@ emotion_cues:
     - 想哭
     - 哭了
     - 一直哭
+    - 在哭
+    - 大哭
+    - 痛哭
+    - 哭着
+    - 哭得
+    - 哭到
+    - 忍不住哭
+    - 哭泣
+    - "😭"
+    - "😢"
     - 眼泪
+    - 分手
+    - 被甩
+    - 失恋
+    - 离婚了
     - 难受
     - 心痛
     - 心碎
@@ -326,6 +351,18 @@ emotion_cues:
     - 好累
     - 太累了
     - 累死了
+    - 很累
+    - 真累
+    - 我累了
+    - 累坏了
+    - 累瘫了
+    - 疲惫
+    - 疲倦
+    - 精疲力尽
+    - 筋疲力尽
+    - 身心俱疲
+    - so tired
+    - exhausted
     - 好丧
     - 很丧
   numbness:
@@ -1368,12 +1405,13 @@ negation:
 
 # Grade B/C therapies the user may ask about by name (roadmap next-phase A4; PRD §8.1:
 # Grade B is explained only in S_clarify, Grade C only when the user asks). Keys are the
-# taxonomy method ids (quoted); every Grade B and Grade C method is listed, and no Grade A
-# method is, since only B/C methods have an information card. Each list starts with the
-# taxonomy name_zh (split at " / "), then common short names. A phrase of Latin letters
-# only counts as a whole word ("eft" in "left" is not EFT). Generic names that fit several
-# methods (家庭治疗, 认知行为疗法, 正念) are left out on purpose. A name counts as a
-# question only together with a therapy_question_cues phrase in the same message.
+# taxonomy method ids (quoted); every Grade B and Grade C method is listed. Each list starts
+# with the taxonomy name_zh (split at " / "), then common short names. A phrase of Latin
+# letters only counts as a whole word ("eft" in "left" is not EFT). Generic names that fit
+# several family therapies (家庭治疗) are left out on purpose. A name counts as a question
+# only together with a therapy_question_cues phrase in the same message, and as a request
+# only together with a therapy_request_cues phrase. A few Grade A practices follow the
+# B/C entries under their common names (F3).
 therapy_names:
   # Grade B (26)
   "09": [认知行为分析系统心理治疗, 认知行为分析系统, CBASP]
@@ -1420,6 +1458,19 @@ therapy_names:
   "52": [米兰系统派家庭治疗与循环提问, 米兰系统派, 米兰学派, 循环提问]
   "59": [进食障碍强化认知行为疗法, CBT-E]
   "71": [依恋取向家庭治疗, ABFT]
+  # Grade A practices by their common names (F3, draft pending G-0). Asking what one is
+  # gets its short explainer (cards/grade_bc_info.yaml grade_a_entries); asking to do it
+  # (therapy_request_cues) offers its card when the solver allows it. A longer B/C name
+  # still wins inside the section ("哈科米正念躯体心理治疗" is 68, not 正念).
+  "01": [CBT, 认知行为疗法, 认知行为治疗, 认知行为]
+  "15": [正念, 冥想, 正念冥想, 正念练习]
+  "28": [呼吸练习, 呼吸训练, 呼吸放松, 深呼吸, 腹式呼吸]
+  "30:grounding": [接地练习, 接地技术, 着陆技术, 着陆练习, 感官着陆, 5-4-3-2-1]
+  "29": [肌肉放松, 渐进式肌肉放松, 渐进性肌肉放松, 放松练习]
+  "11": [ACT, 接纳承诺疗法, 接纳与承诺]
+  "12": [DBT, 辩证行为疗法, 辩证行为]
+  "03": [行为激活]
+  "18": [自我关怀, 自我同情]
 
 # The user is asking about the named therapy: what it is, whether it works, whether it
 # fits. Negation applies as everywhere ("不想了解" is not a question).
@@ -1461,6 +1512,30 @@ therapy_question_cues:
   - 有什么用
   - 有什么区别
   - "?"
+
+# The user asks to do the named practice (F3, draft pending G-0): "能带我做一下正念吗",
+# "教我练一下呼吸练习". With a Grade A name it is a direct request for that card; with a
+# Grade B/C name it is answered with the information card, since those are not for trying
+# alone. Negation applies ("不想试试正念" asks for nothing).
+therapy_request_cues:
+  - 带我做
+  - 带我练
+  - 带我试
+  - 陪我做
+  - 陪我练
+  - 教我做
+  - 教我练
+  - 教教我
+  - 想试试
+  - 想试一下
+  - 想做一下
+  - 想练一下
+  - 做一下
+  - 练一下
+  - 试一试
+  - 来一次
+  - 一起做
+  - 一起练
 
 # Introspector (decision D4, step C2; SDD §3.2, PRD 特性三 / MIYI-03). Read by
 # olivia/core/perception/introspector.py, not by the rule stub. Draft pending G-0.

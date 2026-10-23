@@ -11,7 +11,8 @@ pieces of language data drawn from the dossiers use them:
   With no active situation that has images the engine draws exactly as before.
 * ``grade_bc_info.yaml`` ``situation_lenses``: the Grade B methods a dossier itself names.
   Precedence for the one S_clarify lens of a session: the active situations' lenses that
-  the solver's ``info_cards`` masks allow, then the spectrum's ``clarify_lenses``.
+  the solver's ``info_cards`` masks allow, then the ``clarify_lenses`` of the spectra that
+  fit the turn (``fitting_spectra``, F3).
 
 Neither layer reaches crisis replies, red-flag referrals or the m0 rule: the seven
 red-flag dossiers have no entries (the loaders reject them), the solver's masks and
@@ -45,3 +46,18 @@ def lens_pool(
     preferred = {mid for code in situations for mid in situation_lenses.get(code, ())}
     pool = [mid for mid in allowed if mid in preferred]
     return pool or [mid for mid in allowed if mid in spectrum_lenses]
+
+
+def fitting_spectra(situations: Iterable[str], spectrum: str | None) -> frozenset[str]:
+    """The spectra a spectrum lens must belong to (F3).
+
+    With an active situation, the spectra of the active situations (``SIT-06-03`` -> "06"),
+    so a breakup or a bereavement never gets a lens drawn for another spectrum (交互分析
+    after "我们分手了"); otherwise ``spectrum``, the one the conversation showed last.
+    Empty when neither is known: no spectrum lens then.
+    """
+    codes = [code.split("-") for code in situations]
+    from_situations = frozenset(parts[1] for parts in codes if len(parts) == 3)
+    if from_situations:
+        return from_situations
+    return frozenset({spectrum}) if spectrum is not None else frozenset()

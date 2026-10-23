@@ -3,7 +3,9 @@
 ``metaphors.yaml by_situation`` holds imagery drawn from each wired dossier, and
 ``grade_bc_info.yaml situation_lenses`` the Grade B methods a dossier names. While a
 situation is active the engine prefers them: situation images, then the spectrum x
-yearning cell, then the fallback; situation lenses, then the spectrum's lenses.
+yearning cell, then the fallback; situation lenses, then the spectrum's lenses. The nature
+images are ZEN_PHILOSOPHER's: GENTLE_HOLDING and RATIONAL_PEER speak in their own everyday
+images (``by_persona``, F3), so the image tests here speak as ZEN_PHILOSOPHER.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import yaml
 from olivia.core.language import ContentKind, LanguageEngine, apply_willow
 from olivia.core.language.data import LanguageData, LanguageDataError, load_language_data
 from olivia.core.language.dossiers import lens_pool, situation_images
-from olivia.core.models import HelpStage, SafetyGrade
+from olivia.core.models import HelpStage, PersonaSpectrum, SafetyGrade
 from olivia.core.taxonomy import Taxonomy
 
 DATA = Path(__file__).resolve().parents[2] / "olivia/data"
@@ -29,6 +31,8 @@ FILES = [
     "language/metaphors.yaml",
     "language/needs.yaml",
     "language/render.yaml",
+    "language/feelings.yaml",
+    "language/utterances.yaml",
     "templates/gentle_holding.yaml",
     "templates/zen_philosopher.yaml",
     "templates/rational_peer.yaml",
@@ -144,28 +148,31 @@ def test_the_dossier_sections_are_optional(tmp_path: Path, tax: Taxonomy) -> Non
 # -- metaphor precedence -----------------------------------------------------------------
 
 
-def test_an_active_situation_picks_its_dossier_imagery(tax: Taxonomy, lang: LanguageData) -> None:
-    images = lang.metaphors.by_situation["SIT-05-02"]
+@pytest.fixture
+def zen(lang: LanguageData) -> LanguageData:
+    return lang.for_persona(PersonaSpectrum.ZEN_PHILOSOPHER)
+
+
+def test_an_active_situation_picks_its_dossier_imagery(tax: Taxonomy, zen: LanguageData) -> None:
+    images = zen.metaphors.by_situation["SIT-05-02"]
     for seed in range(20):
-        engine = LanguageEngine(tax, rng=random.Random(seed), data=lang)
+        engine = LanguageEngine(tax, rng=random.Random(seed), data=zen)
         assert engine.metaphor_phrase("05", "SAFETY", frozenset({"SIT-05-02"})) in images
 
 
-def test_two_situations_pool_their_images(tax: Taxonomy, lang: LanguageData) -> None:
+def test_two_situations_pool_their_images(tax: Taxonomy, zen: LanguageData) -> None:
     both = frozenset({"SIT-05-02", "SIT-06-03"})
-    pooled = situation_images(lang.metaphors.by_situation, both)
-    assert set(pooled) == set(lang.metaphors.by_situation["SIT-05-02"]) | set(
-        lang.metaphors.by_situation["SIT-06-03"]
+    pooled = situation_images(zen.metaphors.by_situation, both)
+    assert set(pooled) == set(zen.metaphors.by_situation["SIT-05-02"]) | set(
+        zen.metaphors.by_situation["SIT-06-03"]
     )
     seen = {
-        LanguageEngine(tax, rng=random.Random(seed), data=lang).metaphor_phrase(
-            "05", "SAFETY", both
-        )
+        LanguageEngine(tax, rng=random.Random(seed), data=zen).metaphor_phrase("05", "SAFETY", both)
         for seed in range(60)
     }
     assert seen <= set(pooled)
-    assert seen & set(lang.metaphors.by_situation["SIT-06-03"])
-    assert seen & set(lang.metaphors.by_situation["SIT-05-02"])
+    assert seen & set(zen.metaphors.by_situation["SIT-06-03"])
+    assert seen & set(zen.metaphors.by_situation["SIT-05-02"])
 
 
 def test_without_a_situation_the_grid_and_the_rng_are_untouched(
@@ -181,16 +188,16 @@ def test_without_a_situation_the_grid_and_the_rng_are_untouched(
 
 
 def test_a_situation_without_images_falls_through_to_the_grid(
-    tax: Taxonomy, lang: LanguageData
+    tax: Taxonomy, zen: LanguageData
 ) -> None:
     # A red-flag code never has dossier imagery: the red-flag path owns those dossiers.
-    engine = LanguageEngine(tax, rng=random.Random(1), data=lang)
-    cell = lang.metaphors.by_spectrum_yearning["02"]["SAFETY"]
+    engine = LanguageEngine(tax, rng=random.Random(1), data=zen)
+    cell = zen.metaphors.by_spectrum_yearning["02"]["SAFETY"]
     assert engine.metaphor_phrase("02", "SAFETY", frozenset({"SIT-02-04"})) in cell
 
 
-def test_build_slots_passes_the_situations(tax: Taxonomy, lang: LanguageData) -> None:
-    engine = LanguageEngine(tax, rng=random.Random(3), data=lang)
+def test_build_slots_passes_the_situations(tax: Taxonomy, zen: LanguageData) -> None:
+    engine = LanguageEngine(tax, rng=random.Random(3), data=zen)
     slots = engine.build_slots(
         user_name="小林",
         agent_name="Olivia",
@@ -198,7 +205,7 @@ def test_build_slots_passes_the_situations(tax: Taxonomy, lang: LanguageData) ->
         yearning_id="SAFETY",
         situations=frozenset({"SIT-05-02"}),
     )
-    assert slots.metaphor in lang.metaphors.by_situation["SIT-05-02"]
+    assert slots.metaphor in zen.metaphors.by_situation["SIT-05-02"]
 
 
 # -- lens precedence ---------------------------------------------------------------------

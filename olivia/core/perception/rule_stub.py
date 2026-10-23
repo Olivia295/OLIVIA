@@ -20,7 +20,9 @@ Rules, per field:
 - ``fine_grained_emotion``: the emotion with the most cue hits (aliases already folded
   into canonical ids by the lexicon loader); ties go to the earlier ``emotion_cues`` key,
   which the lexicon orders by the guide's §2.2 rule 4 (closer to risk first). No hit:
-  ``calm`` (guide §2.4 labels neutral messages calm).
+  ``calm`` (guide §2.4 labels neutral messages calm). That fallback is a label, not a
+  feeling the user named: replies never put it into words (F3, ``feelings.yaml``
+  ``never_named``).
 - ``valence``: the midpoint of the dominant emotion's TAX ``valence_range`` (TAX has no
   default valence); 0.0 when no emotion cue matched.
 - ``arousal``: the dominant emotion's TAX ``default_arousal`` (``calm``'s when nothing
@@ -58,14 +60,18 @@ first TAX ``satir_yearnings`` id (``SAFETY``).
 Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None without one);
 ``command`` when the whole folded message is ``/done``, ``/not-now`` or ``/unhelpful``;
 ``direct_request``, ``listening_lock_on``, ``listening_lock_off``, ``aversion`` and
-``intent_confirmed`` when a non-negated phrase of that section matched. If both lock
+``intent_confirmed`` when a non-negated phrase of that section matched (a request for a
+named practice, below, is a direct request too). If both lock
 phrases match, the later one in the message wins, since a turn cannot both set and
 release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
 reads them in different stages (S_empower, S_closing). ``kit_recall`` when a non-negated
-kit-recall phrase matched. ``therapy_question``: the method id of the first non-negated
-``therapy_names`` hit, when a non-negated ``therapy_question_cues`` phrase matched too; a
-name whose first or last character is a Latin letter or digit counts only when the text
-next to it is not one ("eft" inside "left" is no hit).
+kit-recall phrase matched. ``therapy_question`` / ``therapy_request`` (F3): the first
+non-negated ``therapy_names`` hit (a name whose first or last character is a Latin letter
+or digit counts only when the text next to it is not one: "eft" inside "left" is no hit).
+A Grade A practice ("正念", "CBT") with a non-negated ``therapy_request_cues`` phrase
+("带我做一下") is a ``therapy_request`` and a direct request; otherwise any named method
+with a ``therapy_question_cues`` phrase, or a Grade B/C method with a request phrase
+(those are explained, never done alone), is a ``therapy_question``.
 ``situation_codes`` and ``contraindication_cues``: the keys of every non-negated
 ``situation_cues`` / ``contraindication_cues`` hit (roadmap next-phase A1); the session
 decides what they mean (``methods/contraindications.py``).
@@ -95,7 +101,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, TypeVar
 
-from olivia.core.models import CrisisLevel, PerceptionContext
+from olivia.core.models import CrisisLevel, PerceptionContext, SafetyGrade
 from olivia.core.perception.lexicon import PerceptionLexicon, strip_marks
 from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.safety.crisis import CrisisAssessment
@@ -140,6 +146,7 @@ _INTENT: Final = "intent_confirmed"
 _RECALL: Final = "kit_recall"
 _THERAPY: Final = "therapy"
 _THERAPY_CUE: Final = "therapy_cue"
+_THERAPY_REQUEST: Final = "therapy_request"
 _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
 # Labels of the feedback matcher: a command, or a kit recall (matched only to win
@@ -218,6 +225,12 @@ class RuleStub:
         for method_id, phrases in lexicon.therapy_names.items():
             add(_THERAPY, method_id, phrases)
         add(_THERAPY_CUE, _THERAPY_CUE, lexicon.therapy_question_cues)
+        add(_THERAPY_REQUEST, _THERAPY_REQUEST, lexicon.therapy_request_cues)
+        self._practices = frozenset(
+            mid
+            for mid in lexicon.therapy_names
+            if mid not in tax.methods() or tax.methods()[mid].grade is SafetyGrade.GRADE_A
+        )
         for code, phrases in lexicon.situation_cues.items():
             add(_SITUATION, code, phrases)
         for enum_id, phrases in lexicon.contraindication_cues.items():
@@ -282,7 +295,8 @@ class RuleStub:
 
         signals = hits.get(_SIGNAL, [])
         labels = {label for label, _ in signals}
-        direct = _DIRECT in labels
+        asked, requested = _therapy(body, hits, self._practices)
+        direct = _DIRECT in labels or requested is not None
         lock_on, lock_off = _lock(signals)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
@@ -322,7 +336,8 @@ class RuleStub:
             feedback_unclear=unclear,
             answer=answer,
             kit_recall=_RECALL in labels,
-            therapy_question=_therapy_question(body, hits),
+            therapy_question=asked,
+            therapy_request=requested,
             situation_codes=frozenset(label for label, _ in hits.get(_SITUATION, ())),
             contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
         )
@@ -434,12 +449,19 @@ def _outermost(items: list[tuple[_L, Match]]) -> list[tuple[_L, Match]]:
     return kept
 
 
-def _therapy_question(body: str, hits: Mapping[str, list[tuple[str, Match]]]) -> str | None:
-    """The first named Grade B/C therapy, when the message also asks about it."""
-    if not hits.get(_THERAPY_CUE):
-        return None
+def _therapy(
+    body: str, hits: Mapping[str, list[tuple[str, Match]]], practices: frozenset[str]
+) -> tuple[str | None, str | None]:
+    """(asked, requested): the first named method, as a question or a request to do it."""
     named = [(m.start, label) for label, m in hits.get(_THERAPY, ()) if _whole_word(body, m)]
-    return min(named)[1] if named else None
+    if not named:
+        return None, None
+    first = min(named)[1]
+    if hits.get(_THERAPY_REQUEST):
+        return (None, first) if first in practices else (first, None)
+    if hits.get(_THERAPY_CUE):
+        return first, None
+    return None, None
 
 
 def _whole_word(body: str, match: Match) -> bool:

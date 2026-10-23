@@ -25,6 +25,8 @@ FILES = [
     "language/metaphors.yaml",
     "language/needs.yaml",
     "language/render.yaml",
+    "language/feelings.yaml",
+    "language/utterances.yaml",
     "templates/gentle_holding.yaml",
     "templates/zen_philosopher.yaml",
     "templates/rational_peer.yaml",

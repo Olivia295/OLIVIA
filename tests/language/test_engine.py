@@ -24,6 +24,7 @@ from olivia.core.models import (
     ActionType,
     CrisisLevel,
     HelpStage,
+    PersonaSpectrum,
     SafetyGrade,
     UserRegion,
 )
@@ -209,9 +210,10 @@ def test_unknown_emotion_is_rejected(tax: Taxonomy) -> None:
         tax.emotion_name("joy-ish")
 
 
-def test_need_and_metaphor_come_from_the_data(
-    tax: Taxonomy, lang: LanguageData, engine: LanguageEngine
-) -> None:
+def test_need_and_metaphor_come_from_the_data(tax: Taxonomy, lang: LanguageData) -> None:
+    # Nature images are ZEN_PHILOSOPHER's (F3); the default persona has its own.
+    zen = lang.for_persona(PersonaSpectrum.ZEN_PHILOSOPHER)
+    engine = LanguageEngine(tax, rng=random.Random(20261022), data=zen)
     for yid in tax.values("satir_yearnings"):
         assert engine.need_phrase(yid) in lang.needs[yid]
         assert engine.metaphor_phrase("04", yid) in lang.metaphors.by_spectrum_yearning["04"][yid]

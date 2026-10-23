@@ -191,7 +191,7 @@ def test_a_second_recorder_for_the_same_session_does_not_duplicate(ledger):
 def test_a_note_is_stored_verbatim_and_confirmed_briefly(ledger):
     chat = Chat(ledger)
     result = chat.say("记住：我下周三有面试，有点紧张")
-    assert result.reply.endswith(TEXT.replies["note_saved"])
+    assert result.reply == TEXT.replies["note_saved"] + TEXT.replies["note_continue"]
     (note,) = ledger.notes()
     expected = NoteEntry(note.entry_id, "我下周三有面试，有点紧张", START + timedelta(minutes=1))
     assert note == expected
@@ -231,7 +231,7 @@ def test_no_note_while_the_crisis_lasts(ledger):
 def test_a_too_long_note_is_not_stored(ledger):
     chat = Chat(ledger)
     result = chat.say("记住：" + "好" * (NOTE_MAX_CHARS + 1))
-    assert result.reply.endswith(TEXT.replies["note_too_long"])
+    assert result.reply == TEXT.replies["note_too_long"] + TEXT.replies["note_continue"]
     assert ledger.notes() == ()
 
 
@@ -328,7 +328,7 @@ def test_without_a_keychain_nothing_is_written_and_notes_are_declined(tmp_path, 
     ledger = Ledger(tmp_path, Vault(tmp_path, keychain))
     chat = Chat(ledger)
     result = chat.say("记住：我下周三有面试")
-    assert result.reply.endswith(TEXT.replies["note_unavailable"])
+    assert result.reply == TEXT.replies["note_unavailable"] + TEXT.replies["note_continue"]
     chat.say("今天上班好累")
     assert chat.recorder.close() is True  # the user was told already; nothing to report
     assert not any(p.is_file() for p in tmp_path.rglob("*"))
@@ -339,7 +339,7 @@ def test_keychain_locking_mid_session_reports_the_lost_summary(ledger, keychain)
     chat.say("今天上班好累")
     keychain.broken = KeychainUnavailableError("locked")
     result = chat.say("记住：明天早点睡")
-    assert result.reply.endswith(TEXT.replies["note_unavailable"])
+    assert result.reply == TEXT.replies["note_unavailable"] + TEXT.replies["note_continue"]
     assert chat.recorder.close() is False
     keychain.broken = None
     assert ledger.entries() == ()

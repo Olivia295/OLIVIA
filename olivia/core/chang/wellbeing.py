@@ -46,8 +46,9 @@ SUPPORT_PERCENT: Final = 15
 SUPPORT_FIRST_TURN: Final = 3
 _SUPPORT_STAGES: Final = frozenset({HelpStage.S_EXPLORE, HelpStage.S_CLARIFY})
 _PARAGRAPH: Final = "\n\n"
-# S_explore and S_clarify replies are reflect / image-or-need / invite.
-_COMPOSED_PARAGRAPHS: Final = 3
+# S_explore and S_clarify replies are reflect / image-or-need / invite, or reflect / invite
+# after a very short message (F3); the invite is always the last paragraph.
+_COMPOSED_PARAGRAPHS: Final = frozenset({2, 3})
 
 
 class Reminder(StrEnum):
@@ -172,7 +173,7 @@ class Wellbeing:
                 support = late
         elif eligible and stage in _SUPPORT_STAGES and not locked and self.support_due():
             paragraphs = reply.split(_PARAGRAPH)
-            if len(paragraphs) == _COMPOSED_PARAGRAPHS:
+            if len(paragraphs) in _COMPOSED_PARAGRAPHS:
                 line = self.pick("real_support", templates.real_support, render)
                 if line is not None:
                     reply = _PARAGRAPH.join([*paragraphs[:-1], line])

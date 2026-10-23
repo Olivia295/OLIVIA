@@ -234,7 +234,10 @@ def oracle_phone_like_runs(text: str, masked_literals: Iterable[str] = ()) -> tu
 
 
 def oracle_swap(clause: str, conflict: bool) -> str:
+    """The pronoun swap scanned at every character (F3 rule: 自己 only for what the
+    clause's own subject 我 does to itself)."""
     out: list[str] = []
+    subject_me = mirror_module._subject_is_me(clause)
     seen_self = False
     i = 0
     while i < len(clause):
@@ -254,7 +257,14 @@ def oracle_swap(clause: str, conflict: bool) -> str:
                 out.append("对方")
             elif ch == "我":
                 owned = clause.startswith("我的", i) or clause.startswith("我自己", i)
-                out.append("你" if owned or conflict or not seen_self else "自己")
+                reflexive = (
+                    not conflict
+                    and subject_me
+                    and seen_self
+                    and not owned
+                    and clause[:i].endswith(mirror_module._REFLEXIVE_VERBS)
+                )
+                out.append("自己" if reflexive else "你")
                 seen_self = True
             else:
                 out.append(ch)
@@ -286,8 +296,13 @@ def test_diagnosis_scans_match_the_oracle(lang: LanguageData) -> None:
         )
 
 
+def _card_titles(lang: LanguageData) -> tuple[str, ...]:
+    """Every card title the gate masks: the everyday name and the taxonomy name (F3)."""
+    return tuple(t for card in lang.cards.cards.values() for t in (card.title, card.taxonomy_title))
+
+
 def test_phone_like_runs_match_the_oracle(lang: LanguageData) -> None:
-    titles = tuple(card.title for card in lang.cards.cards.values())
+    titles = _card_titles(lang)
     for text in _texts(lang):
         assert phone_like_runs(text) == oracle_phone_like_runs(text)
         assert phone_like_runs(text, titles) == oracle_phone_like_runs(text, titles)
@@ -295,7 +310,7 @@ def test_phone_like_runs_match_the_oracle(lang: LanguageData) -> None:
 
 def test_gate_reasons_match_the_oracle(tax: Taxonomy, lang: LanguageData) -> None:
     gate = OutputGate(tax, lang)
-    titles = tuple(card.title for card in lang.cards.cards.values())
+    titles = _card_titles(lang)
     grade_a = tuple(
         sorted((tax.methods()[m].name_zh for m in tax.grade_a_ids()), key=len, reverse=True)
     )

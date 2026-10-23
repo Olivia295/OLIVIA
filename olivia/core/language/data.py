@@ -1,19 +1,25 @@
 """Strict loaders for the W.I.L.L.O.W. language data (SDD §5).
 
-Ten files feed the language engine:
+Twelve files feed the language engine:
 
 * ``language/willow.yaml``: didactic rewrites, diagnosis terms, depathologizing
   replacements, protected terms and per-filter exemptions;
-* ``language/metaphors.yaml``: spectrum x yearning nature images, a fallback list and
-  the dossier imagery per situation code (``by_situation``, plan D-2);
+* ``language/metaphors.yaml``: spectrum x yearning nature images, a fallback list, the
+  dossier imagery per situation code (``by_situation``, plan D-2) and the personas that
+  speak in everyday images instead of nature (``by_persona``, F3);
 * ``language/needs.yaml``: need phrases per Satir yearning;
 * ``language/render.yaml``: labels and fixed sentences around cards;
+* ``language/feelings.yaml``: how the ``{emotion}`` slot names a feeling (F3);
+* ``language/utterances.yaml``: acknowledgements for messages that are not statements and
+  the one-line answers to medication and diagnosis questions (F3);
 * ``templates/<persona>.yaml``: per-stage reply templates, one file per persona
   (``PERSONA_TEMPLATE_FILES``, PRD ONB-03); all four are loaded and checked, and
   ``LanguageData.templates`` is the chosen one;
 * ``cards/grade_a.yaml``: Grade A follow-along cards;
-* ``cards/grade_bc_info.yaml``: Grade B/C psychoeducation entries, the spectrum lenses and
-  the Grade B methods each dossier names (``situation_lenses``, plan D-2).
+* ``cards/grade_bc_info.yaml``: Grade B/C psychoeducation entries, the spectrum lenses, the
+  Grade B methods each dossier names (``situation_lenses``, plan D-2) and short
+  explainers for the Grade A practices a user can ask about by name (``grade_a_entries``,
+  F3).
 
 Every file is checked against the taxonomy when loaded. A missing or unknown key, a wrong
 type, an unknown slot or a coverage gap raises :class:`LanguageDataError`; nothing is
@@ -33,6 +39,7 @@ from typing import Any, Final, TypeVar
 
 import yaml
 
+from olivia.core.language.mirror import MAX_MIRROR, Utterance
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, SafetyGrade
 from olivia.core.resources.store import EmergencyPurpose
 from olivia.core.taxonomy import Taxonomy
@@ -148,17 +155,34 @@ def _empty() -> Mapping[str, tuple[str, ...]]:
 
 
 @dataclass(frozen=True)
+class PersonaImages:
+    """Everyday images for a persona that does not speak in nature imagery (F3)."""
+
+    fallback: tuple[str, ...]
+    by_spectrum: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
+
+
+def _no_persona_images() -> Mapping[PersonaSpectrum, PersonaImages]:
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True)
 class MetaphorData:
     by_spectrum_yearning: Mapping[str, Mapping[str, tuple[str, ...]]]
     fallback: tuple[str, ...]
     by_situation: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
     """Situation code -> images drawn from its dossier (plan D-2; ``language/dossiers.py``)."""
+    by_persona: Mapping[PersonaSpectrum, PersonaImages] = field(default_factory=_no_persona_images)
+    """Personas with their own everyday images; the others keep the nature images."""
 
 
 @dataclass(frozen=True)
 class TemplatePart:
     name: str
     variants: tuple[str, ...]
+    unnamed: tuple[str, ...] = ()
+    """Variants without ``{emotion}``, used instead of ``variants`` when the turn's feeling
+    is not named (F3: a fallback emotion never fills the slot)."""
 
 
 @dataclass(frozen=True)
@@ -169,6 +193,9 @@ class Templates:
     haven_window: tuple[int, int]
     empower_window: tuple[int, int]
     """S_empower framing without the card body: ``window.empower``, else the normal window."""
+    short_window: tuple[int, int] | None
+    """S_explore / S_clarify after a very short message (F3): two paragraphs in this
+    window instead of three; None keeps the normal reply (SILENT_ANCHOR)."""
     parts: Mapping[HelpStage, tuple[TemplatePart, ...]]
     """S_explore, S_clarify and S_empower: one variant per part, one paragraph each."""
     after_card: tuple[str, ...]
@@ -225,6 +252,9 @@ class Templates:
 class ExerciseCard:
     id: str
     title: str
+    """The name the user sees: an exercise, not a treatment (F3)."""
+    taxonomy_title: str
+    """The taxonomy ``name_zh`` the card is checked against."""
     duration_minutes: int
     intro: str
     steps: tuple[str, ...]
@@ -255,6 +285,8 @@ class RenderText:
     card_duration: str
     card_safety_label: str
     card_stealth_label: str
+    card_home_line: str
+    """Replaces the at-work line outside working hours (F3)."""
     info_what_label: str
     info_how_label: str
     info_who_label: str
@@ -265,6 +297,8 @@ class RenderText:
     info_b_closing: str
     info_c_closing: str
     """Ends a Grade C card: not for trying alone; see a professional."""
+    info_a_closing: str
+    """Ends a Grade A explainer: it can be tried here, by asking for it (F3)."""
     referral_intro: str
     referral_destinations: Mapping[str, str]
     referral_closing: str
@@ -276,6 +310,62 @@ class RenderText:
     crisis_unknown_region_l3: str
     crisis_minimal: str
     emergency_purposes: Mapping[EmergencyPurpose, str]
+
+
+@dataclass(frozen=True)
+class FeelingWord:
+    """A feeling named in the user's own words ("好累" -> 疲惫)."""
+
+    word: str
+    replaces: frozenset[str]
+    """The emotion ids (``never_named`` included) this word may stand in for."""
+    cues: tuple[str, ...]
+    exceptions: tuple[str, ...]
+    """Words that hold a cue without meaning it ("积累" holds "累")."""
+
+
+@dataclass(frozen=True)
+class Feelings:
+    """How the ``{emotion}`` slot names a feeling (``language/feelings.yaml``, F3)."""
+
+    never_named: frozenset[str]
+    """Emotion ids that never fill the slot (the rule stub's fallback ``calm``)."""
+    display: Mapping[str, str]
+    """Emotion id -> everyday word where the taxonomy name sounds clinical."""
+    words: tuple[FeelingWord, ...]
+    negations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Boundary:
+    """A question the companion cannot answer, and the one line it says instead."""
+
+    cues: tuple[str, ...]
+    needs_any: tuple[str, ...]
+    """At least one of these must occur too; empty means no extra condition."""
+    line: str
+
+
+@dataclass(frozen=True)
+class Utterances:
+    """``language/utterances.yaml`` (F3)."""
+
+    acks: Mapping[str, tuple[str, ...]]
+    """Utterance kind (``mirror.Utterance`` value) -> acknowledgements for the mirror slot."""
+    boundaries: Mapping[str, Boundary]
+    """``medication`` and ``diagnosis``."""
+
+
+def _no_feelings() -> Feelings:
+    return Feelings(frozenset(), MappingProxyType({}), (), ())
+
+
+def _no_utterances() -> Utterances:
+    return Utterances(MappingProxyType({}), MappingProxyType({}))
+
+
+def _no_info() -> Mapping[str, InfoEntry]:
+    return MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -293,6 +383,10 @@ class LanguageData:
     """Every persona's templates; ``templates`` is one of them."""
     situation_lenses: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
     """Situation code -> the Grade B methods its dossier names (plan D-2, draft, G-0)."""
+    feelings: Feelings = field(default_factory=_no_feelings)
+    utterances: Utterances = field(default_factory=_no_utterances)
+    exercise_info: Mapping[str, InfoEntry] = field(default_factory=_no_info)
+    """Grade A practices a user can ask about by name -> a short explainer (F3)."""
 
     def for_persona(self, persona: PersonaSpectrum) -> LanguageData:
         """The same data speaking with ``persona``'s templates (PRD ONB-03, plan D-1)."""
@@ -340,6 +434,9 @@ def load_language_data(
         info_lenses=_parse_lenses(info_doc, info, tax),
         personas=MappingProxyType(personas),
         situation_lenses=_parse_situation_lenses(info_doc, info, tax),
+        feelings=_parse_feelings(_read(root, "language/feelings.yaml"), tax),
+        utterances=_parse_utterances(_read(root, "language/utterances.yaml")),
+        exercise_info=_parse_exercise_info(info_doc, tax),
     )
 
 
@@ -399,7 +496,12 @@ def _parse_willow(data: Mapping[str, Any]) -> WillowData:
 
 def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
     where = "metaphors.yaml"
-    _keys(data, {"version", "by_spectrum_yearning", "fallback"}, where, optional={"by_situation"})
+    _keys(
+        data,
+        {"version", "by_spectrum_yearning", "fallback"},
+        where,
+        optional={"by_situation", "by_persona"},
+    )
     _version(data, where)
     grid_raw = _map(data["by_spectrum_yearning"], f"{where} by_spectrum_yearning")
     spectra = set(tax.spectrum_ids())
@@ -416,7 +518,33 @@ def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
         MappingProxyType(grid),
         _strs(data["fallback"], f"{where} fallback"),
         _parse_situation_images(data.get("by_situation", {}), tax),
+        _parse_persona_images(data.get("by_persona", {}), tax),
     )
+
+
+def _parse_persona_images(node: Any, tax: Taxonomy) -> Mapping[PersonaSpectrum, PersonaImages]:
+    """``by_persona``: persona -> everyday images (a fallback list, optionally per spectrum)."""
+    where = "metaphors.yaml by_persona"
+    raw = _map(node, where) if node else {}
+    personas: dict[PersonaSpectrum, PersonaImages] = {}
+    for key, value in raw.items():
+        persona = _enum(PersonaSpectrum, key, where)
+        here = f"{where}.{key}"
+        body = _map(value, here)
+        _keys(body, {"fallback"}, here, optional={"by_spectrum"})
+        spectra_raw = _map(body.get("by_spectrum", {}), f"{here}.by_spectrum")
+        _keys(spectra_raw, set(), f"{here}.by_spectrum", optional=set(tax.spectrum_ids()))
+        personas[persona] = PersonaImages(
+            _unique(_strs(body["fallback"], f"{here}.fallback"), here),
+            MappingProxyType(
+                {
+                    sid: _unique(_strs(spectra_raw[sid], f"{here}.{sid}"), f"{here}.{sid}")
+                    for sid in tax.spectrum_ids()
+                    if sid in spectra_raw
+                }
+            ),
+        )
+    return MappingProxyType(personas)
 
 
 def _situation_keys(raw: Mapping[str, Any], tax: Taxonomy, where: str) -> list[str]:
@@ -463,7 +591,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
     _keys(data, {"version", "card", "info", "referral", "crisis"}, where)
     _version(data, where)
     card = _map(data["card"], f"{where} card")
-    _keys(card, {"duration", "safety_label", "stealth_label"}, f"{where} card")
+    _keys(card, {"duration", "safety_label", "stealth_label", "home_line"}, f"{where} card")
     duration = _str(card["duration"], f"{where} card.duration")
     if slots_of(duration) != {"minutes"}:
         raise LanguageDataError(f"{where} card.duration must carry exactly the {{minutes}} slot")
@@ -478,6 +606,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "lens_intro",
             "b_closing",
             "c_closing",
+            "a_closing",
         },
         f"{where} info",
     )
@@ -519,6 +648,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         card_duration=duration,
         card_safety_label=_str(card["safety_label"], f"{where} card.safety_label"),
         card_stealth_label=_str(card["stealth_label"], f"{where} card.stealth_label"),
+        card_home_line=_str(card["home_line"], f"{where} card.home_line"),
         info_what_label=_str(info["what_label"], f"{where} info.what_label"),
         info_how_label=_str(info["how_label"], f"{where} info.how_label"),
         info_who_label=_str(info["who_label"], f"{where} info.who_label"),
@@ -526,6 +656,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         info_lens_intro=_str(info["lens_intro"], f"{where} info.lens_intro"),
         info_b_closing=_str(info["b_closing"], f"{where} info.b_closing"),
         info_c_closing=_str(info["c_closing"], f"{where} info.c_closing"),
+        info_a_closing=_str(info["a_closing"], f"{where} info.a_closing"),
         referral_intro=_str(ref["intro"], f"{where} referral.intro"),
         referral_destinations=MappingProxyType(
             {code: _str(dest_raw[code], f"{where} {code}") for code in tax.red_flags()}
@@ -565,7 +696,12 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
     part_names = _COMPACT_PART_NAMES if compact else _PART_NAMES
     required_slots = _COMPACT_REQUIRED_SLOTS if compact else _REQUIRED_SLOTS
     window = _map(data["window"], f"{where} window")
-    _keys(window, {"normal", "paragraph_max", "haven"}, f"{where} window", optional={"empower"})
+    _keys(
+        window,
+        {"normal", "paragraph_max", "haven"},
+        f"{where} window",
+        optional={"empower", "short"},
+    )
     normal_window = _int_pair(window["normal"], f"{where} window.normal")
     stages = _map(data["stages"], f"{where} stages")
     _keys(stages, {s.value for s in HelpStage}, f"{where} stages")
@@ -581,14 +717,26 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         built: list[TemplatePart] = []
         for raw in raw_parts:
             part = _map(raw, f"{where} {stage} part")
-            _keys(part, {"name", "variants"}, f"{where} {stage} part")
+            _keys(part, {"name", "variants"}, f"{where} {stage} part", optional={"unnamed"})
             name = _str(part["name"], f"{where} {stage} part name")
             variants = _templates(part["variants"], f"{where} {stage}.{name}")
             required = required_slots.get((stage, name), frozenset())
             for text in variants:
                 if not required <= slots_of(text):
                     raise LanguageDataError(f"{where} {stage}.{name}: missing slots in {text!r}")
-            built.append(TemplatePart(name, variants))
+            unnamed: tuple[str, ...] = ()
+            if "unnamed" in part:
+                unnamed = _templates(part["unnamed"], f"{where} {stage}.{name}.unnamed")
+                for text in unnamed:
+                    slots = slots_of(text)
+                    if "emotion" in slots or not required - {"emotion"} <= slots:
+                        raise LanguageDataError(
+                            f"{where} {stage}.{name}.unnamed: needs the part's slots"
+                            f" without {{emotion}}: {text!r}"
+                        )
+            elif "emotion" in required:
+                raise LanguageDataError(f"{where} {stage}.{name}: needs unnamed variants")
+            built.append(TemplatePart(name, variants, unnamed))
         if tuple(p.name for p in built) != part_names[stage]:
             raise LanguageDataError(f"{where} {stage}: parts must be {part_names[stage]}")
         parts[stage] = tuple(built)
@@ -626,6 +774,9 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
             _int_pair(window["empower"], f"{where} window.empower")
             if "empower" in window
             else normal_window
+        ),
+        short_window=(
+            _int_pair(window["short"], f"{where} window.short") if "short" in window else None
         ),
         parts=MappingProxyType(parts),
         after_card=_templates(empower["after_card"], f"{where} S_empower.after_card"),
@@ -707,7 +858,7 @@ def _parse_cards(data: Mapping[str, Any], tax: Taxonomy) -> CardDeck:
         here = f"{where} card {cid}"
         _keys(
             item,
-            {"id", "title", "duration_minutes", "intro", "steps", "closing"},
+            {"id", "title", "display_title", "duration_minutes", "intro", "steps", "closing"},
             here,
             optional={"stealth_note", "safety_note"},
         )
@@ -718,7 +869,8 @@ def _parse_cards(data: Mapping[str, Any], tax: Taxonomy) -> CardDeck:
         title, steps, minutes = sources[cid]
         card = ExerciseCard(
             id=cid,
-            title=_str(item["title"], f"{here} title"),
+            title=_str(item["display_title"], f"{here} display_title"),
+            taxonomy_title=_str(item["title"], f"{here} title"),
             duration_minutes=_int(item["duration_minutes"], f"{here} duration_minutes"),
             intro=_str(item["intro"], f"{here} intro"),
             steps=_strs(item["steps"], f"{here} steps"),
@@ -726,7 +878,11 @@ def _parse_cards(data: Mapping[str, Any], tax: Taxonomy) -> CardDeck:
             stealth_note=_opt_str(item, "stealth_note", here),
             safety_note=_opt_str(item, "safety_note", here),
         )
-        if card.title != title or len(card.steps) != steps or card.duration_minutes != minutes:
+        if (
+            card.taxonomy_title != title
+            or len(card.steps) != steps
+            or card.duration_minutes != minutes
+        ):
             raise LanguageDataError(f"{here}: title, step count or duration differs from taxonomy")
         cards[cid] = card
     excluded: dict[str, str] = {}
@@ -759,7 +915,12 @@ def _card_sources(tax: Taxonomy) -> dict[str, tuple[str, int, int]]:
 
 def _parse_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntry]:
     where = "grade_bc_info.yaml"
-    _keys(data, {"entries", "clarify_lenses"}, where, optional={"situation_lenses"})
+    _keys(
+        data,
+        {"entries", "clarify_lenses"},
+        where,
+        optional={"situation_lenses", "grade_a_entries"},
+    )
     grades = {"B": SafetyGrade.GRADE_B, "C": SafetyGrade.GRADE_C}
     entries: dict[str, InfoEntry] = {}
     for raw in _list(data["entries"], f"{where} entries"):
@@ -835,6 +996,122 @@ def _parse_situation_lenses(
                 raise LanguageDataError(f"{where}.{code}: {mid} is not a Grade B method")
         lenses[code] = ids
     return MappingProxyType(lenses)
+
+
+def _parse_exercise_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntry]:
+    """``grade_a_entries``: explainers for Grade A practices a user asks about by name.
+
+    Ids are Grade A methods or card-type registry actions; the title is the everyday name
+    shown to the user (never the taxonomy name, which the gate keeps for S_empower).
+    """
+    where = "grade_bc_info.yaml grade_a_entries"
+    node = data.get("grade_a_entries")
+    if node is None:
+        return MappingProxyType({})
+    sources = _card_sources(tax)
+    entries: dict[str, InfoEntry] = {}
+    for raw in _list(node, where):
+        item = _map(raw, where)
+        eid = str(item.get("id"))
+        here = f"{where} {eid}"
+        _keys(item, {"id", "title", "what_it_is", "how_it_helps", "who_offers_it"}, here)
+        if eid not in sources or eid in entries:
+            raise LanguageDataError(f"{here}: not a Grade A card id, or a duplicate")
+        entries[eid] = InfoEntry(
+            id=eid,
+            title=_str(item["title"], f"{here} title"),
+            grade=SafetyGrade.GRADE_A,
+            what_it_is=_str(item["what_it_is"], f"{here} what_it_is"),
+            how_it_helps=_str(item["how_it_helps"], f"{here} how_it_helps"),
+            who_offers_it=_str(item["who_offers_it"], f"{here} who_offers_it"),
+        )
+    return MappingProxyType(entries)
+
+
+# -- feelings.yaml / utterances.yaml (F3) --------------------------------------------------
+
+
+def _parse_feelings(data: Mapping[str, Any], tax: Taxonomy) -> Feelings:
+    where = "feelings.yaml"
+    _keys(data, {"version", "never_named", "display", "words", "negations"}, where)
+    _version(data, where)
+    emotions = set(tax.emotion_profiles())
+
+    def emotion(value: str, here: str) -> str:
+        if value not in emotions:
+            raise LanguageDataError(f"{here}: unknown emotion {value!r}")
+        return value
+
+    never = frozenset(emotion(e, f"{where} never_named") for e in _strs(data["never_named"], where))
+    display_raw = _map(data["display"], f"{where} display")
+    display = {
+        emotion(k, f"{where} display"): _str(v, f"{where} display.{k}")
+        for k, v in display_raw.items()
+    }
+    words: list[FeelingWord] = []
+    for raw in _list(data["words"], f"{where} words"):
+        item = _map(raw, f"{where} word")
+        _keys(item, {"word", "replaces", "cues"}, f"{where} word", optional={"exceptions"})
+        word = _str(item["word"], f"{where} word")
+        here = f"{where} word {word}"
+        words.append(
+            FeelingWord(
+                word=word,
+                replaces=frozenset(
+                    emotion(e, here) for e in _strs(item["replaces"], f"{here} replaces")
+                ),
+                cues=_unique(_strs(item["cues"], f"{here} cues"), f"{here} cues"),
+                exceptions=_strs(
+                    item.get("exceptions", []), f"{here} exceptions", allow_empty=True
+                ),
+            )
+        )
+    return Feelings(
+        never_named=never,
+        display=MappingProxyType(display),
+        words=tuple(words),
+        negations=_strs(data["negations"], f"{where} negations"),
+    )
+
+
+def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
+    where = "utterances.yaml"
+    _keys(data, {"version", "acks", "boundaries"}, where)
+    _version(data, where)
+    kinds = {u.value for u in Utterance if u is not Utterance.STATEMENT}
+    acks_raw = _map(data["acks"], f"{where} acks")
+    _keys(acks_raw, kinds, f"{where} acks")
+    acks: dict[str, tuple[str, ...]] = {}
+    for kind in sorted(kinds):
+        lines = _unique(_strs(acks_raw[kind], f"{where} acks.{kind}"), f"{where} acks.{kind}")
+        for line in lines:
+            if (
+                not line.startswith("你")
+                or "我" in line
+                or len(line) > MAX_MIRROR
+                or slots_of(line)
+            ):
+                raise LanguageDataError(
+                    f"{where} acks.{kind}: an acknowledgement starts with 你, holds no 我 or"
+                    f" slot and has at most {MAX_MIRROR} characters: {line!r}"
+                )
+        acks[kind] = lines
+    raw_bounds = _map(data["boundaries"], f"{where} boundaries")
+    _keys(raw_bounds, {"medication", "diagnosis"}, f"{where} boundaries")
+    bounds: dict[str, Boundary] = {}
+    for name, value in raw_bounds.items():
+        item = _map(value, f"{where} boundaries.{name}")
+        here = f"{where} boundaries.{name}"
+        _keys(item, {"cues", "line"}, here, optional={"needs_any"})
+        line = _str(item["line"], f"{here} line")
+        if slots_of(line):
+            raise LanguageDataError(f"{here}: the line must not carry slots")
+        bounds[name] = Boundary(
+            cues=_unique(_strs(item["cues"], f"{here} cues"), f"{here} cues"),
+            needs_any=_strs(item.get("needs_any", []), f"{here} needs_any", allow_empty=True),
+            line=line,
+        )
+    return Utterances(MappingProxyType(acks), MappingProxyType(bounds))
 
 
 # -- primitives ----------------------------------------------------------------------------

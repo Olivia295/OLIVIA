@@ -25,6 +25,7 @@ REPLY_KEYS: Final = (
     "note_unavailable",
     "memory_unavailable",
     "summary_not_saved",
+    "note_continue",
 )
 _SUMMARY_KEYS: Final = (
     "heading",

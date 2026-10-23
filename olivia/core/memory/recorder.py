@@ -6,7 +6,10 @@ or keeps anything but the result's ids, levels and stages, plus the one thing th
 explicitly asks to have remembered:
 
 * **Notes.** A message that starts with a note cue (``notes.py``) has the text after the
-  cue stored verbatim, and a short confirmation is appended to the reply. Crisis handling
+  cue stored verbatim. An ordinary reply (NORMAL or HAVEN) is replaced by the short
+  confirmation and ``note_continue``, a gentle line that keeps the conversation open, so
+  the note is never reflected back as a feeling (F3); a reply that carries a card keeps
+  it, with the confirmation appended. Crisis handling
   wins: no note on a turn in the crisis flow, a turn the screen rated L1 or above (the
   same caution as for everyday phrases, roadmap R-7b), or the direct question about
   intent (D3); the reply then stays exactly as the session wrote it.
@@ -54,6 +57,8 @@ from olivia.core.session import ReplyKind, TurnResult
 MAX_SPECTRA: Final = 3
 MAX_STAGE_PATH: Final = 64
 _NO_NOTE_KINDS: Final = frozenset({ReplyKind.CRISIS, ReplyKind.SAFETY_CHECK})
+# Replies a note turn replaces with its confirmation (F3); any other kind keeps its card.
+_NOTE_ONLY_KINDS: Final = frozenset({ReplyKind.NORMAL, ReplyKind.HAVEN})
 
 
 @dataclass
@@ -147,6 +152,8 @@ class SessionRecorder:
             self.closed_segment = self._flush()
         if reply is None:
             return result
+        if result.reply_kind in _NOTE_ONLY_KINDS:
+            return replace(result, reply=f"{reply}{self._text.replies['note_continue']}")
         return replace(result, reply=f"{result.reply}\n\n{reply}")
 
     @property

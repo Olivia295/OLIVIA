@@ -109,6 +109,6 @@ def test_stealth_and_safety_notes_follow_taxonomy(card_id: str) -> None:
 
 
 def test_cards_have_only_known_fields() -> None:
-    allowed = {"id", "duration_minutes", "steps", *TEXT_FIELDS}
+    allowed = {"id", "duration_minutes", "steps", "display_title", *TEXT_FIELDS}
     for card in CARDS:
         assert set(card) <= allowed, f"{card['id']}: {set(card) - allowed}"
