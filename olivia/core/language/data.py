@@ -51,7 +51,13 @@ _PART_NAMES: Final = {
 }
 # Short follow-up lines (roadmap R-7b) and the direct question about intent (decision D3);
 # the session fills only the two name slots.
-_FOLLOWUPS: Final = ("clarify_feedback", "kit_empty", "closing_declined", "safety_check")
+_FOLLOWUPS: Final = (
+    "clarify_feedback",
+    "kit_empty",
+    "closing_declined",
+    "safety_check",
+    "health_hint",
+)
 # Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
 _WELLBEING: Final = (
     "break_reminder",
@@ -158,6 +164,9 @@ class Templates:
     real_support: tuple[str, ...]
     """Replaces the S_explore / S_clarify invite: one question about people in the user's
     life (PRD §11.1 real-support share)."""
+    health_hint: tuple[str, ...]
+    """A heart, breathing or home-safety disclosure heard in the conversation can be
+    saved with ``olivia health`` (decision D2, step A1)."""
 
 
 @dataclass(frozen=True)
@@ -506,6 +515,7 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         kit_empty=lines["kit_empty"],
         closing_declined=lines["closing_declined"],
         safety_check=lines["safety_check"],
+        health_hint=lines["health_hint"],
         break_reminder=lines["break_reminder"],
         break_reminder_haven=lines["break_reminder_haven"],
         late_night=lines["late_night"],

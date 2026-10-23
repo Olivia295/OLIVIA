@@ -140,6 +140,16 @@ calm) sets ``core_belief_confirmed`` and the state machine moves to S_empower
 ``inspect`` carries ``distortions``, ``schemas``, ``yearning`` (ids) and ``schema_mirror``
 (``asked``, ``confirmed``, ``declined`` or None).
 
+Contraindications and situations (roadmap next-phase A1, decision D2): every solver call
+gets the turn's ``active_contraindications`` and ``situation_codes`` from
+``methods/contraindications.py`` (profile disclosures, red flags, crisis status and the
+perception cues, which hold for the rest of the session). A heart, breathing or
+home-safety disclosure heard in the conversation, and not in the profile, adds one
+``followups.health_hint`` line (once per disclosure) to the first reply that is not a
+crisis, D3, haven or gate-fallback reply; the profile is never written.
+``inspect["contraindications"]`` (arousal overload included) and
+``inspect["situations"]`` list the ids.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -164,10 +174,12 @@ from olivia.core.language.engine import LanguageEngine, Slots
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
 from olivia.core.methods.bandit import Feedback, ThompsonSampler
+from olivia.core.methods.contraindications import ActiveContext, SessionContraindications
 from olivia.core.methods.solver import (
     M0_ACTION_ID,
     AllowedSet,
     SolverInput,
+    active_contraindications,
     allowed_actions,
     build_plan,
     info_cards,
@@ -373,6 +385,8 @@ class Session:
         self._somatic = tax.threshold(_SOMATIC_KEY)
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
+        self._contra = SessionContraindications(tax, profile.contraindications)
+        self._context = ActiveContext()
         self._sampler = ThompsonSampler(tax)
         self._engine = LanguageEngine(tax, rng=rng, data=shared.language)
         self._state = SessionState(session_id=uuid4())
@@ -452,6 +466,7 @@ class Session:
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
+        self._context = self._contra.observe(signals, perception, status, flags)
         ask = answer is None and assessment.asks_intent and not status.in_crisis
         # The request on an ask turn is not a request for an exercise, and the answer to the
         # question is not an answer to any other question.
@@ -588,6 +603,7 @@ class Session:
 
         if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
+            self._append_health_hint(rendered, stage)
 
         if pending is not None and feedback is not None:
             self._apply_feedback(pending, feedback, now)
@@ -616,6 +632,8 @@ class Session:
             "lock": transition.state.pure_listening_locked,
             "spectrum": spectrum,
             "red_flags": sorted(flags),
+            "contraindications": sorted(self._active_now(stage, perception, flags)),
+            "situations": sorted(self._context.situations),
             "candidates": list(rendered.candidates),
             "chosen": rendered.chosen,
             "info": rendered.info_id,
@@ -879,8 +897,8 @@ class Session:
             arousal=perception.arousal,
             battery=transition.state.social_battery,
             active_red_flags=flags,
-            active_contraindications=frozenset(),
-            situation_codes=frozenset(),
+            active_contraindications=self._context.contraindications,
+            situation_codes=self._context.situations,
             shelved_actions=frozenset(),
         )
         asked = signals.therapy_question
@@ -939,9 +957,26 @@ class Session:
                 stage=stage,
                 arousal=perception.arousal,
                 active_red_flags=flags,
-                active_contraindications=frozenset(),
-                situation_codes=frozenset(),
+                active_contraindications=self._context.contraindications,
+                situation_codes=self._context.situations,
                 shelved_actions=shelved,
+                battery=self._state.social_battery,
+            ),
+        )
+
+    def _active_now(
+        self, stage: HelpStage, perception: PerceptionContext, flags: frozenset[str]
+    ) -> frozenset[str]:
+        """Every contraindication the solver applies this turn, arousal overload included."""
+        return active_contraindications(
+            self._tax,
+            SolverInput(
+                stage=stage,
+                arousal=perception.arousal,
+                active_red_flags=flags,
+                active_contraindications=self._context.contraindications,
+                situation_codes=self._context.situations,
+                shelved_actions=frozenset(),
                 battery=self._state.social_battery,
             ),
         )
@@ -1091,6 +1126,17 @@ class Session:
         rendered.referral_flags = codes
         if rendered.kind is not ReplyKind.CARD:
             rendered.kind = ReplyKind.REFERRAL
+
+    def _append_health_hint(self, rendered: _Rendered, stage: HelpStage) -> None:
+        """Say once that a disclosure heard in the conversation can be saved (D2)."""
+        unsaved = self._contra.unsaved_disclosures()
+        if not unsaved or rendered.kind is ReplyKind.HAVEN or stage is HelpStage.S_HAVEN:
+            return
+        line = self._plain_line(self._engine.data.templates.health_hint, stage)
+        if line is None or self._has_taboo(line[0], ""):
+            return
+        self._contra.mark_hinted(unsaved)
+        rendered.reply = f"{rendered.reply}\n\n{line[0]}"
 
     # -- feedback -------------------------------------------------------------------------
 

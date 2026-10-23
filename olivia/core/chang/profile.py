@@ -57,10 +57,7 @@ from olivia.core.storage import (
 PROFILE_FILENAME: Final = "profile.json"
 PROFILE_STORE: Final = "profile"
 SENSITIVE_FIELDS: Final = ("clinical_history", "contraindications")
-"""Profile keys that are sealed regardless of the at-rest switch (ruling 28, D2).
-
-``contraindications`` arrives with A1; listing it here already keeps it out of plaintext.
-"""
+"""Profile keys that are sealed regardless of the at-rest switch (ruling 28, D2)."""
 
 _FIELDS_KEY: Final = "sealed_fields"
 _WHOLE_KEY: Final = "sealed_profile"

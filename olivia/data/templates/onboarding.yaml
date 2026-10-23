@@ -4,7 +4,8 @@
 # 由 olivia/core/chang/onboarding.py 读取；步骤顺序与校验逻辑在代码里，这里只放文字。
 #
 # 顺序：免责声明 → 18+ 门禁 → 保存方式（ONB-06，默认只加密健康信息）→ 双向称呼 →
-#       陪伴方式 → 话题雷区 → 常住地区 → 时区 → 健康信息授权（最后一步，可跳过）→ 原子保存。
+#       陪伴方式 → 话题雷区 → 常住地区 → 时区 → 健康信息授权（最后一步，可跳过；授权后依次是
+#       健康信息清单和两项需要避开练习的情况清单，决定 D2，步骤 A1）→ 原子保存。
 #       这台电脑没有可用的系统钥匙串时，不问保存方式、也不问健康信息，完成语前加一句说明
 #       （outcomes.health_not_saved），健康信息一律不保存（裁定 28）。
 #
@@ -16,7 +17,8 @@
 #
 # 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
 # 不说教（不用“应该/必须/一定要”）、不用感叹号。健康信息选项的名称来自 taxonomy 的
-# clinical_red_flags，不在本文件里。
+# clinical_red_flags，不在本文件里；两项情况清单的文字在 disclosure_labels。
+# health_command 是 olivia health 命令（查看与修改已记录的健康信息）的文字。
 version: 1
 
 consent_sentence: "我同意在这台电脑上记录我选择的健康信息"
@@ -81,6 +83,12 @@ prompts:
     谢谢你的信任。下面这些里，有和你情况相符的吗？
 
     输入序号或编号，多个用逗号隔开；都不相符的话，直接按回车。
+  contraindications: |-
+    还有两种情况，同样可以跳过。
+
+    如果下面有和你相符的，告诉我的话，我会避开可能让你不舒服或不安全的练习，比如需要屏住呼吸、或者用冷水刺激身体的练习。它们和刚才的信息一样加密保存，之后也可以随时用 olivia health 修改。
+
+    输入序号，多个用逗号隔开；都不相符的话，直接按回车。
 
 choices:
   disclaimer:
@@ -93,6 +101,11 @@ choices:
   encryption:
     keep_off: {label: "只加密健康信息", aliases: ["默认", "不用", "保持关闭", "关闭", "只加密健康"]}
     encrypt_all: {label: "全部加密", aliases: ["全部", "加密", "开启", "打开", "都加密"]}
+
+# 情况清单（决定 D2）：键名是 taxonomy 的 contraindication_enums 编号，顺序固定。
+disclosure_labels:
+  CARDIORESPIRATORY_INSTABILITY: "心脏或呼吸方面需要格外小心（比如严重哮喘、心律不齐、装有心脏起搏器）"
+  INTERPERSONAL_SAFETY_HAZARD: "身边有人可能会伤害我，或者在家里常常感到不安全"
 
 persona_label: "温和包裹：温暖柔和，多一些接纳与抚慰"
 
@@ -173,3 +186,22 @@ outcomes:
     Befrienders Worldwide：https://befrienders.org/find-support-now/
 
     如果你此刻有危险，或者有伤害自己的念头，请马上拨打当地的紧急电话，或者告诉身边的大人。
+
+# olivia health：查看与修改这台电脑上加密记录的健康信息（决定 D2，步骤 A1）。
+# 列表的选项文字同首访：clinical_red_flags 的编号与名称，加上 disclosure_labels。
+health_command:
+  current: "现在记录的："
+  none_recorded: "现在还没有记录任何健康信息。"
+  select: |-
+    想重新选择的话，输入序号，多个用逗号隔开；输入 0 删除全部记录；直接按回车就不做改动。
+  consent: |-
+    记录之前，请完整输入下面这句话：
+    {consent_sentence}
+
+    不想记录的话，输入「跳过」或直接按回车。
+  saved: "好的，已经更新，并加密保存在这台电脑上。"
+  cleared: "好的，记录的健康信息已经全部删除了。"
+  unchanged: "好的，没有做任何改动。"
+  no_keychain: "这台电脑上暂时没有可用的系统钥匙串，没办法把健康信息加密保存，所以这里先不记录。其他的一切都照常。"
+  not_onboarded: "还没有完成第一次设置。先运行 olivia chat，之后就可以在这里查看和修改了。"
+  adults_only: "这里的陪伴只为成年人设计，所以不会保存健康信息。"

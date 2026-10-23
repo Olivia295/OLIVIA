@@ -19,6 +19,10 @@ key order is kept as the tie-break priority between emotions (first key wins).
 ``therapy_names`` maps every Grade B and Grade C taxonomy method id, and nothing else, to
 the names a user may ask about it by; a name belongs to one method only.
 ``therapy_question_cues`` are the words that make a named therapy a question.
+
+``situation_cues`` maps taxonomy situation codes, and ``contraindication_cues`` taxonomy
+contraindication enum ids, to the phrases that reveal them in conversation (roadmap
+next-phase A1); a phrase belongs to one key of its section only.
 """
 
 from __future__ import annotations
@@ -64,6 +68,8 @@ _SECTIONS: Final = frozenset(
         "therapy_names",
         # Read and validated by perception/introspector.py (step C2).
         "introspection",
+        "situation_cues",
+        "contraindication_cues",
         *_PHRASE_SECTIONS,
     }
 )
@@ -125,6 +131,10 @@ class PerceptionLexicon:
     """Grade B/C method id -> folded names, every such method present, in taxonomy order."""
     therapy_question_cues: tuple[str, ...]
     """Words that make a named therapy a question ("是什么", "有用吗")."""
+    situation_cues: Mapping[str, tuple[str, ...]]
+    """Taxonomy situation code -> folded phrases (A1: SIT-06-04, SIT-11-01)."""
+    contraindication_cues: Mapping[str, tuple[str, ...]]
+    """Taxonomy contraindication enum id -> folded phrases (A1)."""
 
 
 def strip_marks(text: str) -> str:
@@ -194,6 +204,16 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         kit_recall=phrases["kit_recall"],
         therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
         therapy_question_cues=phrases["therapy_question_cues"],
+        situation_cues=MappingProxyType(
+            _keyed_cues(doc.get("situation_cues"), "situation_cues", tax.situation_codes())
+        ),
+        contraindication_cues=MappingProxyType(
+            _keyed_cues(
+                doc.get("contraindication_cues"),
+                "contraindication_cues",
+                tax.values("contraindication_enums"),
+            )
+        ),
     )
 
 
@@ -336,6 +356,18 @@ def _therapy_names(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
         raise PerceptionLexiconError(f"{_FILE}: therapy_names has no entry for {missing}")
     _check_distinct(names, "therapy_names")
     return {mid: names[mid] for mid in methods if mid in names}
+
+
+def _keyed_cues(node: Any, where: str, known: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """``key -> phrases`` where every key is one of ``known`` (taxonomy ids or codes)."""
+    section = _mapping(node, where)
+    cues: dict[str, tuple[str, ...]] = {}
+    for key, raw in section.items():
+        if not isinstance(key, str) or key not in known:
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {key!r} is not a taxonomy id")
+        cues[key] = _phrases(raw, f"{where}.{key}")
+    _check_distinct(cues, where)
+    return cues
 
 
 def _negation(node: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:

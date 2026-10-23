@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 
 from olivia.core.models import (
+    PROFILE_CONTRAINDICATIONS,
     UNKNOWN_COUNTRY,
     ActionSkeleton,
     ActionType,
@@ -116,6 +117,7 @@ def test_profile_without_refusal_key_still_loads():
         {"region": UserRegion(country_code="CN", timezone="Asia/Shanghai")},
         {"taboo_topics": ("考试",)},
         {"clinical_history": ("SIT-02-04",)},
+        {"contraindications": ("CARDIORESPIRATORY_INSTABILITY",)},
     ],
 )
 def test_age_gate_refusal_record_holds_no_user_data(kw):
@@ -324,3 +326,19 @@ def test_profile_from_dict_huge_integer_is_a_value_error():
     data["directiveness_preference"] = 10**400
     with pytest.raises(ValueError):
         PersonaProfile.from_dict(data)
+
+
+def test_profile_contraindications_round_trip_and_default_to_none():
+    p = _profile(contraindications=PROFILE_CONTRAINDICATIONS)
+    assert PersonaProfile.from_dict(p.to_dict()) == p
+    legacy = dict(_profile().to_dict())
+    del legacy["contraindications"]
+    assert PersonaProfile.from_dict(legacy).contraindications == ()
+
+
+@pytest.mark.parametrize("bad", [("ACUTE_AROUSAL_OVERLOAD",), ("RED_FLAG_MANIA",), ("x",)])
+def test_profile_records_only_the_disclosure_contraindications(bad):
+    with pytest.raises(ValueError, match="contraindications"):
+        _profile(contraindications=bad)
+    with pytest.raises(ValueError, match="contraindications"):
+        PersonaProfile.from_dict(_profile().to_dict() | {"contraindications": list(bad)})

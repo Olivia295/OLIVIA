@@ -373,7 +373,13 @@ FOLLOWUP_SLOTS = {"user_name", "agent_name"}
 
 
 def test_followup_groups_and_variant_counts() -> None:
-    assert set(FOLLOWUPS) == {"clarify_feedback", "kit_empty", "closing_declined", "safety_check"}
+    assert set(FOLLOWUPS) == {
+        "clarify_feedback",
+        "kit_empty",
+        "closing_declined",
+        "safety_check",
+        "health_hint",
+    }
     for name, variants in FOLLOWUPS.items():
         assert 2 <= len(variants) <= 5, name
         assert len(set(variants)) == len(variants), name
@@ -414,6 +420,7 @@ def test_followups_pass_willow_unchanged_and_the_output_gate() -> None:
         "kit_empty": templates.kit_empty,
         "closing_declined": templates.closing_declined,
         "safety_check": templates.safety_check,
+        "health_hint": templates.health_hint,
     }
     assert {name: list(v) for name, v in loaded.items()} == FOLLOWUPS
     stages = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)
@@ -536,3 +543,12 @@ def test_wellbeing_lines_pass_willow_unchanged_and_the_output_gate() -> None:
             assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
             for stage in stages:
                 assert gate.reasons(text, kind=ContentKind.NORMAL, stage=stage) == (), text
+
+
+def test_health_hint_names_the_command_and_asks_nothing() -> None:
+    # Decision D2 (step A1): a disclosure heard in the conversation is only offered for
+    # saving; the line names the command, says it is optional and asks no question.
+    for variant in FOLLOWUPS["health_hint"]:
+        assert "olivia health" in variant and "加密" in variant, variant
+        assert "？" not in variant, variant
+        assert "没关系" in variant or "如果愿意" in variant, variant

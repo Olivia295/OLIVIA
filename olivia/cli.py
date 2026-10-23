@@ -16,6 +16,10 @@
     The crisis-resource card for the saved region in BROWSING mode.
 ``olivia region [CODE [--timezone TZ] | --clear]``
     Show, set or clear the saved country/region (country level only, SDD §8.3).
+``olivia health``
+    Show and change the recorded health information (clinical-history codes and the
+    D2 disclosures), interactively with numbered choices (``chang/health.py``); it is
+    always saved encrypted.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -55,6 +59,7 @@ import yaml
 
 from olivia import __version__
 from olivia.core.chang.care import CareRecorder, CareStore
+from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
     FALLBACK_TIMEZONE,
@@ -269,6 +274,7 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"（{_fmt(data.get('reason'))}） · 纯倾听锁 {_fmt(data.get('lock'))}",
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
         f" · 谱系 {_fmt(data.get('spectrum'))} · 红线 {_fmt(data.get('red_flags'))}",
+        f"│ 禁忌 {_fmt(data.get('contraindications'))} · 情境 {_fmt(data.get('situations'))}",
         f"│ 效价 {_fmt(data.get('valence'))} · 情绪 {_fmt(data.get('emotion'))}"
         f" · 意图 {_fmt(data.get('intent'))} · 姿态 {_fmt(data.get('stance'))}"
         f" · 准备度 {_fmt(data.get('readiness'))}",
@@ -523,6 +529,36 @@ def _region(
     return 0
 
 
+# -- health -----------------------------------------------------------------------------------
+
+
+def _health(console: _Console, clock: Clock) -> int:
+    """``olivia health``: the interactive exchange of ``chang/health.py``."""
+    try:
+        editor = HealthEditor(_taxonomy(), ProfileStore(), clock())
+        outcome = editor.outcome
+        if outcome is None:
+            step: HealthPrompt | HealthDone = editor.prompt()
+            while isinstance(step, HealthPrompt):
+                console.say(step.text)
+                for number, option in enumerate(step.options, start=1):
+                    console.say(f"  {number}. {option}")
+                answer = console.ask(ANSWER_PROMPT)
+                if answer is None:
+                    return 0
+                console.say()
+                step = editor.answer(answer)
+            outcome = step
+    except ProfileCorruptError:
+        console.say(PROFILE_CORRUPT)
+        return 1
+    except ProfileLockedError:
+        console.say(PROFILE_LOCKED)
+        return 1
+    console.say(outcome.text)
+    return 0 if outcome.ok else 1
+
+
 # -- entry point ------------------------------------------------------------------------------
 
 
@@ -550,6 +586,7 @@ def build_parser() -> argparse.ArgumentParser:
     region.add_argument("code", nargs="?", help="两位国家/地区代码，例如 CN、HK、US、GB")
     region.add_argument("--timezone", help="IANA 时区，例如 America/New_York")
     region.add_argument("--clear", action="store_true", help="清除保存的地区和时区")
+    commands.add_parser("health", help="查看或修改加密记录的健康信息")
     return parser
 
 
@@ -584,6 +621,8 @@ def main(
             return _chat(console, args.inspect, now, rng, student=args.model)
         if args.command == "resources":
             return _resources(console, now)
+        if args.command == "health":
+            return _health(console, now)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()

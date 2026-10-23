@@ -16,6 +16,12 @@ PROFILE_SCHEMA_VERSION: Final = 1
 _COUNTRY_RE: Final = re.compile(r"[A-Z]{2}")
 NAME_MAX_LEN: Final = 12
 _MAX_SCHEMAS: Final = 3
+PROFILE_CONTRAINDICATIONS: Final = ("CARDIORESPIRATORY_INSTABILITY", "INTERPERSONAL_SAFETY_HAZARD")
+"""Contraindication enums the user may record in the profile (decision D2, step A1).
+
+Their taxonomy ``detection_source`` is ``USER_PROFILE_DISCLOSURE``; every other enum is
+derived during the conversation (``methods/contraindications.py``).
+"""
 
 
 class CrisisLevel(IntEnum):
@@ -107,6 +113,9 @@ class PersonaProfile:
     taboo_topics: tuple[str, ...] = ()
     region: UserRegion | None = None
     clinical_history: tuple[str, ...] = ()
+    contraindications: tuple[str, ...] = ()
+    """Self-disclosed contraindication enums, a subset of ``PROFILE_CONTRAINDICATIONS``
+    (decision D2); always encrypted at rest, like ``clinical_history``."""
     enable_at_rest_encryption: bool = False
     age_gate_refused_at: datetime | None = None
     """Set only on the refusal record a declared minor leaves behind (NG-3, ruling 22).
@@ -127,13 +136,21 @@ class PersonaProfile:
         else:
             if self.age_confirmed_18_plus is not False:
                 raise ValueError("an age-gate refusal record cannot confirm 18+")
-            if self.region is not None or self.taboo_topics or self.clinical_history:
+            if (
+                self.region is not None
+                or self.taboo_topics
+                or self.clinical_history
+                or self.contraindications
+            ):
                 raise ValueError("an age-gate refusal record must not hold user data")
             stamps.append(("age_gate_refused_at", self.age_gate_refused_at))
         for label, ts in stamps:
             if ts.tzinfo is None:
                 raise ValueError(f"{label} must be timezone-aware")
         _check_range("directiveness_preference", self.directiveness_preference)
+        unknown = sorted(set(self.contraindications) - set(PROFILE_CONTRAINDICATIONS))
+        if unknown:
+            raise ValueError(f"contraindications holds ids the profile cannot record: {unknown}")
 
     @property
     def is_age_gate_refusal(self) -> bool:
@@ -153,6 +170,7 @@ class PersonaProfile:
             "taboo_topics": list(self.taboo_topics),
             "region": self.region.to_dict() if self.region is not None else None,
             "clinical_history": list(self.clinical_history),
+            "contraindications": list(self.contraindications),
             "enable_at_rest_encryption": self.enable_at_rest_encryption,
             "age_gate_refused_at": (
                 self.age_gate_refused_at.isoformat() if self.age_gate_refused_at else None
@@ -189,6 +207,7 @@ class PersonaProfile:
             taboo_topics=_str_tuple(data, "taboo_topics"),
             region=UserRegion.from_dict(region_raw) if region_raw is not None else None,
             clinical_history=_str_tuple(data, "clinical_history"),
+            contraindications=_str_tuple(data, "contraindications"),
             enable_at_rest_encryption=_bool_or(data, "enable_at_rest_encryption", False),
             age_gate_refused_at=(
                 _aware_datetime(data, "age_gate_refused_at")

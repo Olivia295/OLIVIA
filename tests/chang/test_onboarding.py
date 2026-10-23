@@ -28,7 +28,12 @@ from olivia.core.chang.onboarding import (
 )
 from olivia.core.chang.profile import ProfileStore
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
-from olivia.core.models import PersonaProfile, PersonaSpectrum, UserRegion
+from olivia.core.models import (
+    PROFILE_CONTRAINDICATIONS,
+    PersonaProfile,
+    PersonaSpectrum,
+    UserRegion,
+)
 from olivia.core.taxonomy import load_taxonomy
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,11 +123,15 @@ def test_happy_path_with_timezone_choice_and_clinical_consent(tmp_path):
     assert isinstance(history, Prompt) and history.step is Step.CLINICAL_HISTORY
     flags = list(TAX.red_flags().values())
     assert history.options == tuple(f"{f.code} {f.name_zh}" for f in flags)
-    result = flow.answer(f"{flags[2].code.lower()}，1  {flags[2].code}")
+    checklist = flow.answer(f"{flags[2].code.lower()}，1  {flags[2].code}")
+    assert isinstance(checklist, Prompt) and checklist.step is Step.CONTRAINDICATIONS
+    assert checklist.options == tuple(TEXT.disclosure_labels[c] for c in PROFILE_CONTRAINDICATIONS)
+    result = flow.answer("２")
     assert isinstance(result, Completed)
     assert result.profile.region == UserRegion(country_code="US", timezone="America/Los_Angeles")
     # Taxonomy order, de-duplicated, canonical case.
     assert result.profile.clinical_history == (flags[0].code, flags[2].code)
+    assert result.profile.contraindications == ("INTERPERSONAL_SAFETY_HAZARD",)
     assert ProfileStore(tmp_path).load() == result.profile
 
 
@@ -151,6 +160,9 @@ def test_no_file_written_before_completion(tmp_path):
         assert flow.outcome is None
         assert _files(tmp_path) == []
     assert flow.step is Step.CLINICAL_HISTORY
+    flow.answer("1")
+    assert flow.outcome is None and _files(tmp_path) == []
+    assert flow.step is Step.CONTRAINDICATIONS
     result = flow.answer("1")
     assert isinstance(result, Completed)
     assert sorted(p.name for p in _files(tmp_path)) == ["profile.json", "profile.key"]
@@ -404,8 +416,29 @@ def test_clinical_consent_needs_the_full_sentence(tmp_path, reply):
 def test_clinical_consent_then_nothing_selected(tmp_path):
     flow = _flow(tmp_path)
     _to_region(flow)
-    result = _walk(flow, ["1", f"  {TEXT.consent_sentence} ", ""])
+    result = _walk(flow, ["1", f"  {TEXT.consent_sentence} ", "", ""])
     assert isinstance(result, Completed) and result.profile.clinical_history == ()
+    assert result.profile.contraindications == ()
+
+
+def test_checklist_rejects_unknown_numbers_and_keeps_the_clinical_answer(tmp_path):
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    _walk(flow, ["1", TEXT.consent_sentence, "2"])
+    again = flow.answer("3")
+    assert isinstance(again, Prompt) and again.step is Step.CONTRAINDICATIONS
+    assert "「3」" in again.text and _files(tmp_path) == []
+    result = flow.answer("1、2")
+    assert isinstance(result, Completed)
+    assert result.profile.clinical_history == (tuple(TAX.red_flags())[1],)
+    assert result.profile.contraindications == PROFILE_CONTRAINDICATIONS
+
+
+def test_skipping_the_consent_skips_the_checklist(tmp_path):
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    result = _walk(flow, ["1", "跳过"])
+    assert isinstance(result, Completed) and result.profile.contraindications == ()
 
 
 @pytest.mark.parametrize("bad", ["SIT-99-99", "99", "0", "1, SIT-XX"])
@@ -418,7 +451,8 @@ def test_invalid_red_flag_code_rejected(tmp_path, bad):
     unknown = [t for t in bad.replace(",", " ").split() if t != "1"]
     assert all(token.casefold() in again.text.casefold() for token in unknown)
     assert _files(tmp_path) == []
-    result = flow.answer("1")
+    assert flow.answer("1").step is Step.CONTRAINDICATIONS
+    result = flow.answer("")
     assert isinstance(result, Completed)
     assert result.profile.clinical_history == (next(iter(TAX.red_flags())),)
 
@@ -459,10 +493,14 @@ def test_encryption_switch_choice_is_saved(tmp_path, reply, whole):
 def test_clinical_history_is_encrypted_whatever_the_switch(tmp_path, encryption):
     flow = _flow(tmp_path)
     code = next(iter(TAX.red_flags()))
-    result = _walk(flow, ["1", "1", encryption, "", "", "", "", "1", TEXT.consent_sentence, "1"])
+    answers = ["1", "1", encryption, "", "", "", "", "1", TEXT.consent_sentence, "1", "1"]
+    result = _walk(flow, answers)
     assert isinstance(result, Completed) and result.profile.clinical_history == (code,)
+    disclosed = PROFILE_CONTRAINDICATIONS[0]
+    assert result.profile.contraindications == (disclosed,)
     for raw in _profile_bytes(tmp_path):
         assert code.encode() not in raw and b"clinical_history" not in raw
+        assert disclosed.encode() not in raw and b"contraindications" not in raw
     assert ProfileStore(tmp_path).load() == result.profile
 
 
@@ -488,12 +526,13 @@ def test_without_keychain_health_questions_are_skipped_and_the_user_told(tmp_pat
 
 def test_keychain_failing_at_the_final_save_drops_health_information(tmp_path, keychain):
     flow = _flow(tmp_path)
-    _walk(flow, ["1", "1", "2", "", "", "", "", "1", TEXT.consent_sentence])
+    _walk(flow, ["1", "1", "2", "", "", "", "", "1", TEXT.consent_sentence, "1"])
     keychain.broken = KeychainUnavailableError("locked")
-    result = flow.answer("1")
+    result = flow.answer("1，2")
     assert isinstance(result, Completed)
     assert result.text.startswith(TEXT.outcomes["health_not_saved"])
     assert result.profile.clinical_history == ()
+    assert result.profile.contraindications == ()
     assert result.profile.enable_at_rest_encryption is False
     code = next(iter(TAX.red_flags()))
     for raw in _profile_bytes(tmp_path):
@@ -527,6 +566,8 @@ def test_text_file_has_draft_header_and_no_banned_wording():
         *TEXT.outcomes.values(),
         *TEXT.region_labels.values(),
         *(c.label for pair in TEXT.choices.values() for c in pair),
+        *TEXT.disclosure_labels.values(),
+        *TEXT.health.values(),
     ]
     for text in texts:
         lowered = text.casefold()
