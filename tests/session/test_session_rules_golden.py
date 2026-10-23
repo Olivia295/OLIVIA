@@ -85,7 +85,8 @@ def write_golden() -> None:
 def test_rules_mode_matches_the_recorded_golden():
     golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
     current = json.loads(json.dumps(transcript(), ensure_ascii=False))
-    for turn in current:
+    # A re-recorded golden carries these keys too; they are compared elsewhere.
+    for turn in (*current, *golden):
         for key in PERCEPTION_KEYS:
             turn["inspect"].pop(key, None)
     assert len(current) == len(golden)

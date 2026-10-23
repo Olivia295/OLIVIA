@@ -18,6 +18,11 @@
    "previous_stage": "S_ready",
    "reason": "SESSION_START",
    "arousal": 0.7,
+   "valence": -0.6,
+   "emotion": "anxiety",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "05",
@@ -32,7 +37,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -54,6 +60,11 @@
    "previous_stage": "S_explore",
    "reason": "STAY",
    "arousal": 0.85,
+   "valence": -0.6,
+   "emotion": "anxiety",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "01",
@@ -73,7 +84,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -95,6 +107,11 @@
    "previous_stage": "S_explore",
    "reason": "DIRECT_REQUEST",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "INFORMATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -109,7 +126,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -131,6 +149,11 @@
    "previous_stage": "S_empower",
    "reason": "EMPOWER_TO_CLOSING",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -145,7 +168,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -167,6 +191,11 @@
    "previous_stage": "S_closing",
    "reason": "HAVEN_ENTER",
    "arousal": 0.35,
+   "valence": -0.7,
+   "emotion": "sadness",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.05,
    "lock": false,
    "spectrum": "05",
@@ -181,7 +210,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -203,6 +233,11 @@
    "previous_stage": "S_haven",
    "reason": "HAVEN_EXIT",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -217,7 +252,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -239,6 +275,11 @@
    "previous_stage": "S_explore",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": true,
    "spectrum": null,
@@ -253,7 +294,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -275,6 +317,11 @@
    "previous_stage": "S_explore",
    "reason": "DIRECT_REQUEST",
    "arousal": 1.0,
+   "valence": -0.85,
+   "emotion": "panic",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "01",
@@ -294,7 +341,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -316,6 +364,11 @@
    "previous_stage": "S_empower",
    "reason": "EMPOWER_TO_CLOSING",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -330,7 +383,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -352,6 +406,11 @@
    "previous_stage": "S_closing",
    "reason": "DIRECT_REQUEST",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -403,7 +462,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -427,6 +487,11 @@
    "previous_stage": "S_empower",
    "reason": "STAY",
    "arousal": 0.35,
+   "valence": -0.7,
+   "emotion": "sadness",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "05",
@@ -441,7 +506,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -465,6 +531,11 @@
    "previous_stage": "S_empower",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "INFORMATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -481,7 +552,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -505,6 +577,11 @@
    "previous_stage": "S_empower",
    "reason": "CRISIS_ENTER",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "REFERRAL",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -521,7 +598,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -543,6 +621,11 @@
    "previous_stage": "S_crisis",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -559,7 +642,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -581,6 +665,11 @@
    "previous_stage": "S_crisis",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -597,7 +686,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -619,6 +709,11 @@
    "previous_stage": "S_crisis",
    "reason": "CRISIS_EXIT",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -635,7 +730,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -657,6 +753,11 @@
    "previous_stage": "S_ready",
    "reason": "SESSION_START",
    "arousal": 0.7,
+   "valence": -0.6,
+   "emotion": "anxiety",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "05",
@@ -671,7 +772,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -693,6 +795,11 @@
    "previous_stage": "S_explore",
    "reason": "STAY",
    "arousal": 0.85,
+   "valence": -0.6,
+   "emotion": "anxiety",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "01",
@@ -712,7 +819,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -734,6 +842,11 @@
    "previous_stage": "S_explore",
    "reason": "DIRECT_REQUEST",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "INFORMATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -748,7 +861,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -770,6 +884,11 @@
    "previous_stage": "S_empower",
    "reason": "EMPOWER_TO_CLOSING",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -784,7 +903,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -806,6 +926,11 @@
    "previous_stage": "S_closing",
    "reason": "HAVEN_ENTER",
    "arousal": 0.35,
+   "valence": -0.7,
+   "emotion": "sadness",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.05,
    "lock": false,
    "spectrum": "05",
@@ -820,7 +945,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -842,6 +968,11 @@
    "previous_stage": "S_haven",
    "reason": "HAVEN_EXIT",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -856,7 +987,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -878,6 +1010,11 @@
    "previous_stage": "S_explore",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": true,
    "spectrum": null,
@@ -892,7 +1029,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -914,6 +1052,11 @@
    "previous_stage": "S_explore",
    "reason": "DIRECT_REQUEST",
    "arousal": 1.0,
+   "valence": -0.85,
+   "emotion": "panic",
+   "intent": "STABILIZATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "01",
@@ -933,7 +1076,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -955,6 +1099,11 @@
    "previous_stage": "S_empower",
    "reason": "EMPOWER_TO_CLOSING",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -969,7 +1118,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -991,6 +1141,11 @@
    "previous_stage": "S_closing",
    "reason": "DIRECT_REQUEST",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1042,7 +1197,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1066,6 +1222,11 @@
    "previous_stage": "S_empower",
    "reason": "STAY",
    "arousal": 0.35,
+   "valence": -0.7,
+   "emotion": "sadness",
+   "intent": "VALIDATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": "05",
@@ -1080,7 +1241,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1104,6 +1266,11 @@
    "previous_stage": "S_empower",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "INFORMATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1120,7 +1287,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1144,6 +1312,11 @@
    "previous_stage": "S_empower",
    "reason": "CRISIS_ENTER",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "REFERRAL",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1160,7 +1333,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1182,6 +1356,11 @@
    "previous_stage": "S_crisis",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1198,7 +1377,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1220,6 +1400,11 @@
    "previous_stage": "S_crisis",
    "reason": "STAY",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1236,7 +1421,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  },
  {
@@ -1258,6 +1444,11 @@
    "previous_stage": "S_crisis",
    "reason": "CRISIS_EXIT",
    "arousal": 0.25,
+   "valence": 0.0,
+   "emotion": "calm",
+   "intent": "EXPLORATION",
+   "stance": "CONGRUENT",
+   "readiness": 0.5,
    "battery": 0.6,
    "lock": false,
    "spectrum": null,
@@ -1274,7 +1465,8 @@
    "risk_model": "rules-only",
    "risk_model_reason": null,
    "model_level": null,
-   "model_score": null
+   "model_score": null,
+   "safety_check": null
   }
  }
 ]
