@@ -352,6 +352,7 @@ flowchart TD
   - 未知地区 (ZZ)：L2 引导访问国际求助导航 (findahelpline.com / befrienders.org)；L3 警示前往最近急诊科或拨打通用急救电话 (112，优先拨打当地紧急号码)。
   - 各地区卡片中条目按数据文件顺序（即优先级）排列；L3 卡片急救号码在前。任何呈现条目的核验日期距今超过 180 天时，卡片标注“可能已过期”。
 - `GEO-08` **Ed25519 签名包与离线防篡改架构**：热线数据收录于 `olivia/data/resources/hotlines/` 树状目录中，统一由发布工具打包为 Ed25519 签名验证包 `hotlines.bundle`，客户端公钥严格核验，杜绝未验真号码被篡改或伪造。
+  - *实现说明（P2-3，2026-10-22）*：采用单个数据文件 `olivia/data/resources/hotlines.yaml` 加分离式 Ed25519 签名 `hotlines.yaml.sig`（对原始字节签名），公钥在 `olivia/core/resources/keys.py`；内置数据验签失败即拒绝加载，不显示未验真号码。细节见 SDD §8.3 的 GEO-08 实现说明。
 
 ---
 
