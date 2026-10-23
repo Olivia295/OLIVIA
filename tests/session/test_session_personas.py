@@ -362,6 +362,18 @@ def test_real_support_guidance_in_the_personas_voice(persona: PersonaSpectrum) -
         assert carried, "no real-support line in eight calm turns"
 
 
+@pytest.mark.parametrize("persona", PERSONAS)
+def test_health_hint_in_the_personas_voice(persona: PersonaSpectrum) -> None:
+    result = _open(persona).turn("我有心脏病，最近工作压力好大")
+    hints = {_names(v) for v in _tpl(persona).health_hint}
+    tail = paragraphs(result.reply)[-1]
+    assert tail in hints, result.reply
+    assert "olivia health" in tail and "？" not in tail
+    if persona is SILENT:
+        first = paragraphs(result.reply)[0]
+        assert "？" not in first and count_all(first) <= 30, first
+
+
 @pytest.mark.parametrize("light", [False, True], ids=["crisis", "ask-denied"])
 @pytest.mark.parametrize("persona", PERSONAS)
 def test_returning_greeting_comes_from_the_persona_and_reveals_nothing(

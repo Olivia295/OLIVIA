@@ -157,6 +157,7 @@ def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
         "kit_empty": tpl.kit_empty,
         "closing_declined": tpl.closing_declined,
         "safety_check": tpl.safety_check,
+        "health_hint": tpl.health_hint,
         **_wellbeing(tpl),
     }
     for where, texts in named.items():
@@ -413,9 +414,11 @@ def test_followups_are_short_name_slot_lines(lang: LanguageData, persona: Person
         "clarify_feedback": tpl.clarify_feedback,
         "kit_empty": tpl.kit_empty,
         "closing_declined": tpl.closing_declined,
+        "health_hint": tpl.health_hint,
     }
     for name, variants in groups.items():
         assert 2 <= len(variants) <= 5, name
+        assert any(not SLOT.findall(v) for v in variants), name
         for variant in variants:
             assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
             line = _fill(variant, TYPICAL)
@@ -426,6 +429,22 @@ def test_followups_are_short_name_slot_lines(lang: LanguageData, persona: Person
         assert "锦囊" in variant, variant
         expected = 0 if persona is PersonaSpectrum.SILENT_ANCHOR else 1
         assert variant.count("？") == expected, variant
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_health_hint_names_the_command_and_asks_nothing(
+    lang: LanguageData, persona: PersonaSpectrum
+) -> None:
+    # Decision D2 (step A1), the checks of test_gentle_holding_templates.py for every persona.
+    hints = lang.personas[persona].health_hint
+    for variant in hints:
+        assert "olivia health" in variant and "加密" in variant, variant
+        assert "？" not in variant, variant
+        assert "没关系" in variant or "如果愿意" in variant, variant
+        assert not any(ch.isdigit() for ch in variant), variant
+    if persona is SILENT:
+        # Followups have no word window; SILENT_ANCHOR's stays short anyway.
+        assert all(_all(_fill(v, LONGEST)) <= 45 for v in hints)
 
 
 # -- SILENT_ANCHOR: [10, 30] presence, no questions unless for safety ------------------------
