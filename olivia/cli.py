@@ -43,6 +43,15 @@
 ``olivia privacy``
     A short privacy notice (``chang/privacy.py``, B8): what is stored where, always
     offline, what is encrypted, how to see and delete it. Reads and writes nothing.
+``olivia settings``
+    A numbered menu of switches (``notify/settings.py``, B9); for now the system
+    reminders, off by default (decision D5). Turning them on says what will be installed
+    and asks once more, then installs one scheduled job (``notify/jobs.py``: a LaunchAgent,
+    a Task Scheduler task, or a systemd user timer / crontab line); turning them off, or
+    ``forget --all``, removes it. The job runs the hidden ``olivia notify-check``
+    (``notify/check.py``), which sends at most one content-free notification and nothing
+    while the keychain is locked; all it writes is ``notify.json`` (the dates of the last
+    two reminders, no user data).
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -129,6 +138,10 @@ from olivia.core.resources.store import LineKind, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
 from olivia.core.storage import data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
+from olivia.notify import system as notify_system
+from olivia.notify.check import run_check
+from olivia.notify.settings import remove_reminders, run_settings
+from olivia.notify.text import load_notify_text
 
 Clock = Callable[[], datetime]
 
@@ -703,7 +716,12 @@ def _journal(console: _Console, clock: Clock) -> int:
 
 
 def _data_stores() -> DataStores:
-    return DataStores.open(method_titles=_card_titles(_taxonomy()))
+    base = ProfileStore().path.parent
+    return DataStores.open(
+        base,
+        method_titles=_card_titles(_taxonomy()),
+        on_forget_all=(lambda: remove_reminders(notify_system.current_host(), base),),
+    )
 
 
 def _memory(console: _Console) -> int:
@@ -738,6 +756,40 @@ def _forget(console: _Console, args: argparse.Namespace) -> int:
 def _privacy(console: _Console) -> int:
     """``olivia privacy``: the privacy notice (B8); nothing is read or written."""
     console.say(privacy_notice(data_dir_location()))
+    return 0
+
+
+# -- settings and reminders -------------------------------------------------------------------
+
+
+def _settings(console: _Console, clock: Clock) -> int:
+    """``olivia settings``: the numbered menu (``notify/settings.py``, B9)."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    words = load_notify_text().settings
+    if profile is None:
+        console.say(words["not_onboarded"])
+        return 1
+    if profile.is_age_gate_refusal:
+        console.say(words["adults_only"])
+        return 1
+    store = ProfileStore()
+    return run_settings(
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        profile,
+        save=lambda changed: _save_profile(console, changed),
+        host=notify_system.current_host,
+        base=store.path.parent,
+        keychain_ok=store.vault.available,
+        now=clock(),
+    )
+
+
+def _notify_check(clock: Clock) -> int:
+    """``olivia notify-check`` (hidden; the scheduled job): prints nothing."""
+    run_check(notify_system.current_host(), ProfileStore().path.parent, clock())
     return 0
 
 
@@ -834,6 +886,8 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "privacy", help="看看 OLIVIA 怎么保护你的隐私：存了什么、存在哪里、怎么删除"
     )
+    commands.add_parser("settings", help="查看或修改设置（例如系统提醒，默认关闭）")
+    commands.add_parser("notify-check")  # no help: hidden; the scheduled job runs it (B9)
     return parser
 
 
@@ -882,6 +936,10 @@ def main(
             return _forget(console, args)
         if args.command == "privacy":
             return _privacy(console)
+        if args.command == "settings":
+            return _settings(console, now)
+        if args.command == "notify-check":
+            return _notify_check(now)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()

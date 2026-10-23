@@ -19,7 +19,7 @@ from __future__ import annotations
 import itertools
 import random
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass, fields
 from typing import Final
 
@@ -31,6 +31,7 @@ from olivia.core.language.data import (
     load_language_data,
     slots_of,
 )
+from olivia.core.language.dossiers import situation_images
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
 from olivia.core.language.mirror import FALLBACK_MIRROR, mirror
@@ -110,8 +111,17 @@ class LanguageEngine:
         canonical = self._tax.canonical_label("yearning", yearning_id)
         return self._rng.choice(self._data.needs[canonical])
 
-    def metaphor_phrase(self, spectrum_id: str | None, yearning_id: str | None) -> str:
-        """A nature image for the spectrum x yearning cell, or a fallback image."""
+    def metaphor_phrase(
+        self,
+        spectrum_id: str | None,
+        yearning_id: str | None,
+        situations: Set[str] = frozenset(),
+    ) -> str:
+        """A nature image: the active situations' dossier imagery, else the spectrum x
+        yearning cell, else a fallback image (precedence: ``language/dossiers.py``)."""
+        dossier = situation_images(self._data.metaphors.by_situation, situations)
+        if dossier:
+            return self._rng.choice(dossier)
         grid = self._data.metaphors.by_spectrum_yearning
         if spectrum_id is not None and spectrum_id in grid and yearning_id is not None:
             cell = grid[spectrum_id]
@@ -136,13 +146,14 @@ class LanguageEngine:
         yearning_id: str | None = None,
         spectrum_id: str | None = None,
         card_title: str = "",
+        situations: Set[str] = frozenset(),
     ) -> Slots:
         return Slots(
             user_name=user_name,
             agent_name=agent_name,
             emotion=self.emotion_word(emotion_id) if emotion_id is not None else "",
             mirror=self.safe_mirror(user_text) if user_text.strip() else "",
-            metaphor=self.metaphor_phrase(spectrum_id, yearning_id),
+            metaphor=self.metaphor_phrase(spectrum_id, yearning_id, situations),
             need=self.need_phrase(yearning_id) if yearning_id is not None else "",
             card_title=card_title,
         )
