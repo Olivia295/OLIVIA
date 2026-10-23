@@ -33,10 +33,16 @@ class StorageCorruptError(Exception):
     """The file and all of its snapshots exist but none is valid."""
 
 
+def data_dir_location() -> Path:
+    """Where the application data directory is (``OLIVIA_HOME`` or the platform's user
+    data directory), without creating it."""
+    override = os.environ.get("OLIVIA_HOME")
+    return Path(override) if override else platformdirs.user_data_path("olivia", appauthor=False)
+
+
 def app_data_dir() -> Path:
     """Return the application data directory, creating it (0o700 on POSIX) if absent."""
-    override = os.environ.get("OLIVIA_HOME")
-    path = Path(override) if override else platformdirs.user_data_path("olivia", appauthor=False)
+    path = data_dir_location()
     if not path.exists():
         path.mkdir(parents=True, exist_ok=True)
         if os.name != "nt":

@@ -86,6 +86,22 @@ def test_phone_cleaning(raw, cleaned):
 # -- wording ----------------------------------------------------------------------------------
 
 
+def test_first_run_notice_says_where_it_stays_and_how_to_delete_it():
+    intro = load_safety_plan_text().command["intro"]
+    for point in (
+        "加密保存在这台电脑上",
+        "不会上传",
+        "第 2、3、4 部分",  # where it is used
+        "olivia forget --safety-plan",  # how to withdraw
+        "其他的一切都照常",  # declining changes nothing
+    ):
+        assert point in intro, point
+    raw = (
+        Path(__file__).resolve().parents[3] / "olivia/data/templates/safety_plan.yaml"
+    ).read_text(encoding="utf-8")
+    assert "待 G-4 法务审核" in raw
+
+
 def test_every_sentence_passes_willow_and_the_gate():
     tax = load_taxonomy()
     data = load_language_data(tax)

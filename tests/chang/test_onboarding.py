@@ -482,6 +482,42 @@ def test_clinical_consent_then_nothing_selected(tmp_path):
     assert result.profile.contraindications == ()
 
 
+# PIPL Art. 28-30: the notice before the separate consent states what is collected, why,
+# where it stays, what declining changes and how to withdraw (next-phase B8).
+NOTICE_POINTS = (
+    "敏感的个人信息",  # what kind of information this is
+    "以往被专业人士评估过",  # what: the clinical-history list
+    "心脏或呼吸",  # what: the three checklist items
+    "身边有人可能伤害你",
+    "幻觉、妄想",
+    "只用来",  # purpose
+    "加密保存在这台电脑上",  # where and how
+    "不会上传",
+    "没有任何影响",  # declining changes nothing
+    "olivia health",  # withdrawal
+    "olivia forget",
+)
+
+
+def test_consent_comes_after_a_standalone_notice(tmp_path):
+    notice = TEXT.sensitive_notice
+    for point in NOTICE_POINTS:
+        assert point in notice, point
+    assert TEXT.consent_sentence not in notice and "{" not in notice
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    consent = flow.answer("1")
+    assert isinstance(consent, Prompt) and consent.step is Step.CLINICAL_CONSENT
+    assert notice in consent.text
+    assert consent.text.index(notice) < consent.text.index(TEXT.consent_sentence)
+    again = flow.answer("好")  # the hint keeps the notice on screen
+    assert isinstance(again, Prompt) and notice in again.text
+
+
+def test_notice_wording_is_marked_for_legal_review():
+    assert "待 G-4 法务审核" in TEXT_FILE.read_text(encoding="utf-8")
+
+
 def test_checklist_rejects_unknown_numbers_and_keeps_the_clinical_answer(tmp_path):
     flow = _flow(tmp_path)
     _to_region(flow)
@@ -622,6 +658,7 @@ def test_text_file_has_draft_header_and_no_banned_wording():
     diagnosis = yaml.safe_load(WILLOW.read_text(encoding="utf-8"))["diagnosis_terms"]
     texts = [
         TEXT.consent_sentence,
+        TEXT.sensitive_notice,
         *TEXT.persona_labels.values(),
         *TEXT.prompts.values(),
         *TEXT.hints.values(),

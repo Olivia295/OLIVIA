@@ -8,9 +8,10 @@ their taxonomy names followed by the ``disclosure_labels``, and only labels are 
 
 The list shows what is recorded now; the reply chooses the new set by number or code,
 ``0`` deletes everything and an empty reply changes nothing. Recording something on a
-profile that holds no health information yet asks for the onboarding consent sentence
-first (ruling 23). The change is saved through the store, so it is always encrypted;
-without a usable keychain nothing is asked and nothing is saved. A store error
+profile that holds no health information yet shows the onboarding's standalone
+``sensitive_notice`` and asks for the consent sentence first (ruling 23, B8). The change
+is saved through the store, so it is always encrypted; without a usable keychain
+nothing is asked and nothing is saved. A store error
 (``ProfileCorruptError``, ``ProfileLockedError``) propagates to the caller.
 """
 
@@ -98,7 +99,11 @@ class HealthEditor:
             raise RuntimeError("the exchange has already finished")
         health = self._text.health
         if self._step is _Step.CONSENT:
-            body = health["consent"].replace("{consent_sentence}", self._text.consent_sentence)
+            body = (
+                health["consent"]
+                .replace("{sensitive_notice}", self._text.sensitive_notice)
+                .replace("{consent_sentence}", self._text.consent_sentence)
+            )
             options: tuple[str, ...] = ()
         else:
             recorded = self._recorded()
