@@ -19,6 +19,7 @@ the digits of an allowed number.
 
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from olivia.core.language.data import ContentKind, LanguageData, slots_of
+from olivia.core.language.filters import contains_any
 from olivia.core.models import HelpStage
 from olivia.core.taxonomy import Taxonomy
 
@@ -53,11 +55,22 @@ def digits_of(text: str) -> str:
     return "".join(str(unicodedata.decimal(ch)) for ch in folded if ch.isdecimal())
 
 
+@functools.lru_cache(maxsize=32)
+def _folded_literals(literals: tuple[str, ...]) -> tuple[str, ...]:
+    """The masked literals, longest first, NFKC-folded once per set of literals."""
+    return tuple(
+        unicodedata.normalize("NFKC", literal)
+        for literal in sorted(set(literals), key=len, reverse=True)
+    )
+
+
 def phone_like_runs(text: str, masked_literals: Iterable[str] = ()) -> tuple[str, ...]:
     """Digit strings of every phone-number-like run in ``text`` (see module docstring)."""
     folded = unicodedata.normalize("NFKC", text)
-    for literal in sorted(set(masked_literals), key=len, reverse=True):
-        folded = folded.replace(unicodedata.normalize("NFKC", literal), _MASK)
+    if _DIGIT_RUN_RE.search(folded) is None:
+        return ()  # masking only removes text, so no digit means no run
+    for literal in _folded_literals(tuple(masked_literals)):
+        folded = folded.replace(literal, _MASK)
     folded = _CLOCK_RE.sub(_MASK, folded)
     runs = (digits_of(m.group()) for m in _DIGIT_RUN_RE.finditer(folded))
     return tuple(run for run in runs if len(run) >= MIN_PHONE_DIGITS)
@@ -104,7 +117,8 @@ class OutputGate:
             return ("empty:",)
         found: list[str] = []
         folded = text.casefold()
-        found += [f"diagnosis:{t}" for t in willow.diagnosis_terms if t in folded]
+        if contains_any(folded, willow.diagnosis_terms):
+            found += [f"diagnosis:{t}" for t in willow.diagnosis_terms if t in folded]
         allowed = {digits_of(n) for n in allowed_numbers}
         for run in phone_like_runs(text, self._card_titles):
             if run not in allowed:

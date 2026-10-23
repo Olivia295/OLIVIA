@@ -20,6 +20,10 @@ The risk heads feed the crisis screen (:class:`StudentRiskModel`, an injected
 ``RiskModel`` for ``SafetyScreen``); the other heads feed model-mode perception
 (``model_heads.py``, roadmap C1). The risk model keeps the heads of its last forward
 pass so the session runs the student once per turn.
+
+NumPy is imported where the student is loaded or run, not with this module: the session
+imports :func:`choose_risk_model` in rules mode too, and NumPy alone is about 18 MB of the
+SDD §0 50 MB envelope (G-3).
 """
 
 from __future__ import annotations
@@ -36,10 +40,7 @@ from dataclasses import dataclass
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any, Final
-
-import numpy as np
-from numpy.typing import NDArray
+from typing import TYPE_CHECKING, Any, Final
 
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import RiskModel, RiskPrediction
@@ -51,14 +52,17 @@ VOCAB: Final = "vocab.json"
 CONFIG: Final = "student_config.json"
 _FILES: Final = (WEIGHTS, VOCAB, CONFIG)
 _PACKAGE_DIR: Final = "data/models/perception"
-_DTYPES: Final = frozenset({np.dtype(np.float16), np.dtype(np.float32)})
 _HEAD_KINDS: Final = frozenset({"class", "tanh", "sigmoid", "bce"})
 _RISK_LABELS: Final = ("L0", "L1", "L2", "L3")
 _WHITESPACE: Final = re.compile(r"\s+")
 RULES_ONLY: Final = "rules-only"
 MODEL_FAILURE_LEVEL: Final = "MODEL_FAILURE"
 
-Floats = NDArray[np.float32]
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
+    Floats = NDArray[np.float32]
 HeadValue = float | dict[str, float]
 
 
@@ -126,6 +130,8 @@ class StudentModel:
         self._min_len = min_len
         self._embedding = embedding
         self._layers = layers
+        import numpy as np
+
         self._dense_t = np.ascontiguousarray(dense_weight.T)
         self._dense_bias = dense_bias
         self._heads_t = np.ascontiguousarray(heads_weight.T)
@@ -145,6 +151,8 @@ class StudentModel:
 
     def raw_outputs(self, text: str) -> Floats:
         """The heads layer's raw outputs (before any activation)."""
+        import numpy as np
+
         x = self._embedding[np.asarray(self.encode(text), dtype=np.intp)]
         pooled = []
         for layer in self._layers:
@@ -157,6 +165,8 @@ class StudentModel:
 
     def predict_heads(self, text: str) -> dict[str, HeadValue]:
         """Every head: a float for tanh/sigmoid heads, label probabilities for class heads."""
+        import numpy as np
+
         z = self.raw_outputs(text).astype(np.float64)
         result: dict[str, HeadValue] = {}
         for head in self.heads.values():
@@ -260,6 +270,8 @@ def load_student(directory: Path | None = None) -> StudentModel:
 
 
 def _load(base: Traversable | Path) -> StudentModel:
+    import numpy as np
+
     blobs = _verified_files(base)
     config = _json(blobs[CONFIG], "config_invalid")
     if config.get("format_version") != FORMAT_VERSION:
@@ -366,6 +378,9 @@ def _int_list(value: object, reason: str) -> list[int]:
 
 
 def _arrays(data: bytes, config: Mapping[str, Any]) -> dict[str, Floats]:
+    import numpy as np
+
+    dtypes = frozenset({np.dtype(np.float16), np.dtype(np.float32)})
     expected = config.get("arrays")
     if not isinstance(expected, dict) or not expected:
         raise StudentUnavailableError("config_invalid")
@@ -381,7 +396,7 @@ def _arrays(data: bytes, config: Mapping[str, Any]) -> dict[str, Floats]:
     for name, array in raw.items():
         if list(array.shape) != expected[name]:
             raise StudentUnavailableError(f"array_shape:{name}")
-        if array.dtype not in _DTYPES:
+        if array.dtype not in dtypes:
             raise StudentUnavailableError(f"array_dtype:{name}")
         values = array.astype(np.float32)
         if not np.isfinite(values).all():

@@ -5,14 +5,17 @@ cites the PRD and SDD section of each); this is its fast form for ``scripts/chec
 Each step's P99 is its exclusive time per turn in an instrumented run, in rules mode and in
 model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performance.py``.
 
-Two budgets are not met yet and are marked ``xfail(strict=True)``, so the suite records
-the gap and turns red once it closes (then drop the marker):
+One budget is not met yet and is marked ``xfail``. It is not strict: peak RSS differs by
+platform and runner (a GitHub macOS runner stays under 50 MB where a desktop Mac reaches
+about 58 MB), so an XPASS there is reported, not failed; drop the marker once every
+platform passes:
 
-* generation + gate (SDD §10.1 Step 6, P99 2 ms): about 10 ms here, nearly all of it the
-  WILLOW filter's ``replace_longest`` (``language/filters.py``), which tries every phrase
-  at every position of the reply;
-* peak RSS (SDD §0, < 50 MB): about 63 MB after importing ``olivia.cli`` alone (the
-  interpreter, NumPy, cryptography, PyYAML) and 74-80 MB after a scripted run.
+* peak RSS (SDD §0, < 50 MB): about 58 MB after a rules-mode run on macOS. NumPy,
+  ``keyring`` and ``cryptography`` now load only where they are used (importing
+  ``olivia.cli`` alone is about 36 MB), but a chat seals its ledger with the OS keychain:
+  ``cryptography`` (about 4 MB) and ``keyring`` (about 11 MB, mostly ``urllib.request``
+  and the macOS frameworks behind it) are on the rules path, and the shared lexicons,
+  matchers and templates add about 6 MB.
 """
 
 from __future__ import annotations
@@ -75,11 +78,6 @@ def step_p99s(tmp_path_factory: pytest.TempPathFactory) -> dict[tuple[str, str],
     return p99s
 
 
-GENERATION_GAP = pytest.mark.xfail(
-    strict=True, reason="WILLOW replace_longest: generation P99 about 10 ms (budget 2 ms)"
-)
-
-
 @untraced
 @pytest.mark.parametrize("mode", ["rules", "model"])
 @pytest.mark.parametrize(
@@ -89,7 +87,7 @@ GENERATION_GAP = pytest.mark.xfail(
         "safety",
         "fsm",
         "solver",
-        pytest.param("generation", marks=GENERATION_GAP),
+        "generation",
     ],
 )
 def test_step_p99_within_its_budget(step_p99s, mode: str, step: str):
@@ -109,7 +107,7 @@ def test_the_instrumented_run_times_every_step(tmp_path):
 
 @untraced
 @pytest.mark.skipif(sys.platform == "win32", reason="no resource module on Windows")
-@pytest.mark.xfail(strict=True, reason="peak RSS about 74 MB in rules mode (budget < 50 MB)")
+@pytest.mark.xfail(reason="peak RSS about 58 MB in rules mode on a desktop Mac (budget < 50 MB)")
 def test_peak_rss_of_a_rules_mode_run_is_within_the_envelope():
     env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
     done = subprocess.run(
