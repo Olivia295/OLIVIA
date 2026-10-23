@@ -5,12 +5,9 @@ cites the PRD and SDD section of each); this is its fast form for ``scripts/chec
 Each step's P99 is its exclusive time per turn in an instrumented run, in rules mode and in
 model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performance.py``.
 
-Two budgets are not met yet and are marked ``xfail(strict=True)``, so the suite records
-the gap and turns red once it closes (then drop the marker):
+One budget is not met yet and is marked ``xfail(strict=True)``, so the suite records the
+gap and turns red once it closes (then drop the marker):
 
-* generation + gate (SDD §10.1 Step 6, P99 2 ms): about 10 ms here, nearly all of it the
-  WILLOW filter's ``replace_longest`` (``language/filters.py``), which tries every phrase
-  at every position of the reply;
 * peak RSS (SDD §0, < 50 MB): about 63 MB after importing ``olivia.cli`` alone (the
   interpreter, NumPy, cryptography, PyYAML) and 74-80 MB after a scripted run.
 """
@@ -75,11 +72,6 @@ def step_p99s(tmp_path_factory: pytest.TempPathFactory) -> dict[tuple[str, str],
     return p99s
 
 
-GENERATION_GAP = pytest.mark.xfail(
-    strict=True, reason="WILLOW replace_longest: generation P99 about 10 ms (budget 2 ms)"
-)
-
-
 @untraced
 @pytest.mark.parametrize("mode", ["rules", "model"])
 @pytest.mark.parametrize(
@@ -89,7 +81,7 @@ GENERATION_GAP = pytest.mark.xfail(
         "safety",
         "fsm",
         "solver",
-        pytest.param("generation", marks=GENERATION_GAP),
+        "generation",
     ],
 )
 def test_step_p99_within_its_budget(step_p99s, mode: str, step: str):

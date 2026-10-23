@@ -36,6 +36,9 @@ _EDGE_PUNCT: Final = " \t　～~。，,、！？!?；;：:…“”\"'‘’（�
 _FIRST_PERSON: Final = ("我", "咱")
 # Words that hold 我/你 without being a pronoun for the speaker or the listener.
 _NON_PRONOUN: Final = ("你死我活", "自我", "忘我", "无我", "唯我", "敌我", "你我", "你好")
+# The characters at which _swap can do anything but copy: a _NON_PRONOUN word's first
+# character, 我们/咱们/你们 and the pronouns 你/您/我.
+_SWAP_STARTS: Final = frozenset(w[0] for w in _NON_PRONOUN) | frozenset("我咱你您")
 _LEADS: Final = (
     "我总是觉得",
     "我总觉得",
@@ -147,6 +150,10 @@ def _swap(clause: str, conflict: bool) -> str:
     seen_self = False
     i = 0
     while i < len(clause):
+        if clause[i] not in _SWAP_STARTS:  # no word, pair or pronoun starts here
+            out.append(clause[i])
+            i += 1
+            continue
         word = next((w for w in _NON_PRONOUN if clause.startswith(w, i)), None)
         if word is not None:
             out.append(word)
