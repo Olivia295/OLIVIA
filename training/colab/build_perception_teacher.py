@@ -75,7 +75,7 @@ md(r"""
 | `GRADNORM_MIN_WEIGHT` | `0.05` | 每步更新后的权重下限，防止某个头被完全关掉。 |
 | `STUDENT_WIDTH` | `"wide"` | 学生宽度：`"wide"` = 每种卷积核 160 个、共享层 192 维；`"base"` = 96 / 128（第四轮）。训练前按字表大小算出 `student.npz` 的字节数并断言 < 4 MB；产品端按数组形状加载，不需要改代码。 |
 | `KD_SOURCE` | `"ensemble"` | 蒸馏目标：`"ensemble"` = 5 个折教师 + 最终教师各自的软目标取平均（分类头平均概率，连续头平均输出值；各折教师训练完立即对学生训练文本做预测并存进 `fold_*.npz`，不另存折模型）；`"final"` = 只用最终教师（第四轮）。 |
-| `HARD_NEGATIVE_WEIGHT` | `2.0` | 学生**风险头硬标签损失**中，难负例行乘的权重；1.0 即关闭。难负例 = 轮次（取自 `source`）与槽位（顶层 `slot`）在 `HARD_NEGATIVE_SLOTS` 里、真实等级为 L0 的合成数据行（第四轮与第六轮的全部 L0 槽位：问药、问诊断、要练习、红线话题、日常反刍、重度诉苦要方法、主动说病史要练习、丧亲与受虐倾诉、诉苦夹问药、口癖与自嘲）。只加在硬标签上、不加在蒸馏项上，免得放大教师自己的误报。 |
+| `HARD_NEGATIVE_WEIGHT` | `2.0` | 学生**风险头硬标签损失**中，难负例行乘的权重；1.0 即关闭。难负例 = 轮次（取自 `source`）与槽位（顶层 `slot`）在 `HARD_NEGATIVE_SLOTS` 里、真实等级为 L0 的合成数据行（第四、六、七轮的全部 L0 槽位：问药、问诊断、要练习、红线话题、日常反刍、重度诉苦要方法、主动说病史要练习、丧亲与受虐倾诉、诉苦夹问药、口癖与自嘲、危机后报平安、只想被听、日常短句、“应该”式自责）。只加在硬标签上、不加在蒸馏项上，免得放大教师自己的误报。 |
 
 另外两处改动不是开关：
 
@@ -231,6 +231,8 @@ HARD_NEGATIVE_SLOTS = {        # 难负例槽位 {轮次: 槽位}（轮次取自
         "L0_everyday_rumination"),                                                # quota_round4.yaml 的全部 L0 槽位
     6: ("L0_heavy_vent_request", "L0_redflag_history_request", "L0_loss_abuse_family", "L0_med_diag_with_venting",
         "L0_hyperbole_dark_humor"),                                               # quota_round6.yaml 的全部 L0 槽位
+    7: ("L0_safety_confirmation", "L0_listen_only_request", "L0_short_everyday_negative",
+        "L0_should_self_talk"),                                                   # quota_round7.yaml 的全部 L0 槽位
 }
 HARD_NEGATIVE_KEYS = {f"r{r}:{slot}" for r, slots in HARD_NEGATIVE_SLOTS.items() for slot in slots}
 assert LOSS_BALANCE in ("gradnorm", "equal") and STUDENT_WIDTH in ("wide", "base") and KD_SOURCE in ("ensemble", "final")
