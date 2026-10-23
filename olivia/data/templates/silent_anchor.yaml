@@ -22,6 +22,17 @@
 # ResourceCard，由引擎附在后面，各人格完全相同）；safety_check 与 gentle_holding.yaml 逐字一致
 # （决定 D3，与人格无关，加载时校验）。
 
+#
+# F2b 新增（草稿：待 G-0）：
+#   S_closing.variants        /done（HELPFUL）之后的收尾：不说“收进锦囊”，也不说“还不想试”。
+#   S_closing.after_not_now   /not-now（NOT_NOW）之后的收尾：卡片确实收进了锦囊，可以提锦囊。
+#   S_ready.after_close       收尾仪式之后的一句：用户回“好”或说声谢谢时，简短、温暖、不提问。
+#   followups.no_pending_feedback  没有卡片在等反馈时收到 /done、/not-now、/unhelpful：只说一句。
+#   followups.unhelpful_ack   卡片收到 /unhelpful（或明确反感）后，回复开头的一句确认。
+#   followups.safety_confirmed  危机中用户明确说自己安全的那一轮，危机卡之前的一句回应。
+#   followups.forget_hint     聊天里说“清空所有记忆”时：告诉用户用 olivia forget --all、olivia memory，
+#                             不复述原话。
+#   followups.haven_return    在静默陪伴中直接要方法、离开 S_haven 时，卡片之后告诉用户怎么回到安静陪伴。
 persona: SILENT_ANCHOR
 window: {normal: [10, 30], paragraph_max: 50, haven: [15, 30], empower: [10, 70]}
 
@@ -106,12 +117,16 @@ stages:
 
   S_closing:
     variants:
-      - "今天就到这里。做了也好，收着也好，都很好。我在。"
+      - "今天就到这里。试过了，就很好。我在。"
       - "{user_name}，谢谢你今天来。好好休息，我一直都在。"
-      - "那个小方法收在锦囊里，不会催你。我在这里。"
+      - "试过就好，不用做得完美。我在这里。"
       - "今天先停在这里。你说的，我都听见了。"
       - "好好歇一歇。什么时候回来，我都在这里。"
       - "我是{agent_name}。今天辛苦了，下次见。"
+    after_not_now:
+      - "今天就到这里。先收进锦囊，也很好。我在。"
+      - "那个小方法收在锦囊里，不会催你。我在这里。"
+      - "先收进锦囊了，想用的时候再说。我在。"
 
   S_ready:
     greeting:
@@ -132,6 +147,10 @@ stages:
       - "{user_name}，欢迎回来。我在这里。"
       - "又见面了。想说什么都可以，我听着。"
       - "欢迎回来，我一直记挂着你。慢慢说。"
+    after_close:
+      - "好，那就先这样。我在。"
+      - "{user_name}，好好休息。我一直在。"
+      - "嗯，今天先到这里。我在这里。"
 
 followups:
   clarify_feedback:
@@ -158,6 +177,21 @@ followups:
     - "记下了，这次会避开不合适的练习。想保存可用 olivia health 加密，不存也没关系。"
     - "{user_name}，我会留意。如果愿意，可以用 olivia health 加密记下。"
     - "这次我会替你避开不合适的练习。olivia health 可以加密保存，不用也没关系。"
+  no_pending_feedback:
+    - "现在没有在等你反馈的练习。我在。"
+    - "现在没有在等你反馈的练习，我听着。"
+  unhelpful_ack:
+    - "好，这个先放下。我记下了。"
+    - "知道了，不合适就放下。我在。"
+  safety_confirmed:
+    - "谢谢你告诉我你现在安全。"
+    - "{user_name}，知道你安全，我放心了一些。"
+  forget_hint:
+    - "清空记忆：运行 olivia forget --all；先看看记了什么：olivia memory。"
+    - "想清空，退出后运行 olivia forget --all。查看用 olivia memory。"
+  haven_return:
+    - "想安静待着，开头写 [5%] 就好。"
+    - "想回到安静里，开头写上 [5%]。"
 
 # 防依赖提示（B7）：都是陈述句，不提问；单独一段 ≤ 30 字，*_haven 按 [15, 30] 写。
 # real_support 只在三段式回复里替换 invite 段（chang/wellbeing.py），本人格的回复只有一段，

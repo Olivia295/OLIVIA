@@ -134,6 +134,19 @@ def _combos(pools: list[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
         yield tuple(rng.choice(pool) for pool in pools)
 
 
+F2B_LINES = (
+    "no_pending_feedback",
+    "unhelpful_ack",
+    "safety_confirmed",
+    "forget_hint",
+    "haven_return",
+)
+
+
+def _f2b_lines(tpl: Templates) -> dict[str, tuple[str, ...]]:
+    return {name: getattr(tpl, name) for name in F2B_LINES}
+
+
 def _wellbeing(tpl: Templates) -> dict[str, tuple[str, ...]]:
     return {name: getattr(tpl, name) for name in WELLBEING_GROUPS}
 
@@ -150,7 +163,9 @@ def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
         "haven": tpl.haven,
         "crisis": tpl.crisis,
         "closing": tpl.closing,
+        "closing_after_not_now": tpl.closing_after_not_now,
         "greeting": tpl.greeting,
+        "after_close": tpl.after_close,
         "returning_after_crisis": tpl.returning_after_crisis,
         "returning_after_check": tpl.returning_after_check,
         "clarify_feedback": tpl.clarify_feedback,
@@ -158,6 +173,7 @@ def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
         "closing_declined": tpl.closing_declined,
         "safety_check": tpl.safety_check,
         "health_hint": tpl.health_hint,
+        **_f2b_lines(tpl),
         **_wellbeing(tpl),
     }
     for where, texts in named.items():
@@ -382,7 +398,7 @@ def test_full_personas_light_bridge_fits(
 def test_full_personas_closing_and_haven(lang: LanguageData, persona: PersonaSpectrum) -> None:
     tpl = lang.personas[persona]
     low, high = tpl.normal_window
-    for variant in tpl.closing:
+    for variant in tpl.closing + tpl.closing_after_not_now:
         reply = _fill(variant, TYPICAL)
         assert len(_paragraphs(reply)) >= 2, reply
         assert low <= _cjk(reply) and _all(_fill(variant, LONGEST)) <= high, reply
@@ -402,7 +418,8 @@ def test_ready_lines_are_single_short_paragraphs(
 ) -> None:
     tpl = lang.personas[persona]
     limit = SILENT_WINDOW[1] if persona is PersonaSpectrum.SILENT_ANCHOR else 80
-    for variant in tpl.greeting + tpl.returning_after_crisis + tpl.returning_after_check:
+    lines = tpl.greeting + tpl.returning_after_crisis + tpl.returning_after_check
+    for variant in lines + tpl.after_close:
         line = _fill(variant, TYPICAL)
         assert "\n" not in line and _all(line) <= limit, line
 
@@ -415,6 +432,7 @@ def test_followups_are_short_name_slot_lines(lang: LanguageData, persona: Person
         "kit_empty": tpl.kit_empty,
         "closing_declined": tpl.closing_declined,
         "health_hint": tpl.health_hint,
+        **_f2b_lines(tpl),
     }
     for name, variants in groups.items():
         assert 2 <= len(variants) <= 5, name
@@ -461,7 +479,7 @@ def test_silent_anchor_presence_lines_fit_ten_to_thirty(
 ) -> None:
     tpl = lang.personas[SILENT]
     if stage is HelpStage.S_CLOSING:
-        variants = tpl.closing
+        variants = tpl.closing + tpl.closing_after_not_now
     elif stage is HelpStage.S_HAVEN:
         variants = tpl.haven
     else:
@@ -583,3 +601,49 @@ def test_real_support_as_the_invite_keeps_the_normal_window(
         typical = "\n\n".join(_fill(p, TYPICAL) for p in combo)
         assert low <= _cjk(typical), typical
         assert _all("\n\n".join(_fill(p, LONGEST) for p in combo)) <= high, combo
+
+
+# -- F2b: closing pools, after-close lines and session meta lines ----------------------------
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_closing_pools_say_what_happened(lang: LanguageData, persona: PersonaSpectrum) -> None:
+    # After /done the card is not in the kit and the user did try it; after /not-now it is
+    # in the kit (fix 6: the reply must match what happened, and the kit recall).
+    tpl = lang.personas[persona]
+    assert len(tpl.closing) >= 6 and len(tpl.closing_after_not_now) >= 3
+    for variant in tpl.closing:
+        assert "锦囊" not in variant and "不想试" not in variant, variant
+    for variant in tpl.closing_after_not_now:
+        assert "锦囊" in variant or "不想试" in variant, variant
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_after_close_is_one_short_line_without_a_question(
+    lang: LanguageData, persona: PersonaSpectrum
+) -> None:
+    tpl = lang.personas[persona]
+    assert 2 <= len(tpl.after_close) <= 5
+    assert any(not SLOT.findall(v) for v in tpl.after_close)
+    for variant in tpl.after_close:
+        assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
+        assert "\n" not in variant and "？" not in variant, variant
+        assert "欢迎回来" not in variant and "聊起" not in variant, variant
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+def test_session_meta_lines(lang: LanguageData, persona: PersonaSpectrum) -> None:
+    tpl = lang.personas[persona]
+    for name in F2B_LINES:
+        assert all("？" not in v for v in getattr(tpl, name)), name
+    assert all(
+        v.startswith(("现在没有在等你反馈的练习", "{user_name}，现在没有在等你反馈的练习"))
+        for v in tpl.no_pending_feedback
+    )
+    for variant in tpl.forget_hint:
+        assert "olivia forget --all" in variant and "olivia memory" in variant, variant
+    for variant in tpl.haven_return:
+        assert "[5%]" in variant, variant
+    for variant in tpl.safety_confirmed:
+        assert "安全" in variant, variant
+        assert not any(ch.isdigit() for ch in variant), variant

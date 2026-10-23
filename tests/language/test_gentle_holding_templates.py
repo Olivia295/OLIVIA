@@ -274,8 +274,9 @@ def test_longest_slot_values_stay_under_the_ceilings(stage: str) -> None:
         assert _all_chars(reply) <= NORMAL[1], reply
 
 
-def test_closing_fits_the_normal_window() -> None:
-    for variant in STAGES[HelpStage.S_CLOSING]["variants"]:
+@pytest.mark.parametrize("pool", ["variants", "after_not_now"])
+def test_closing_fits_the_normal_window(pool: str) -> None:
+    for variant in STAGES[HelpStage.S_CLOSING][pool]:
         reply = _fill(variant, TYPICAL)
         assert len(_paragraphs(reply)) >= 2, reply
         for paragraph in _paragraphs(reply):
@@ -307,7 +308,7 @@ def test_crisis_is_short_calm_and_asks_about_safety() -> None:
 def test_ready_lines_are_single_short_paragraphs() -> None:
     ready = STAGES[HelpStage.S_READY]
     returning = ready["returning_after_crisis"] + ready["returning_after_check"]
-    for variant in ready["greeting"] + returning:
+    for variant in ready["greeting"] + returning + ready["after_close"]:
         line = _fill(variant, TYPICAL)
         assert "\n" not in line
         assert _all_chars(line) <= PARAGRAPH_MAX, line
@@ -379,6 +380,11 @@ def test_followup_groups_and_variant_counts() -> None:
         "closing_declined",
         "safety_check",
         "health_hint",
+        "no_pending_feedback",
+        "unhelpful_ack",
+        "safety_confirmed",
+        "forget_hint",
+        "haven_return",
     }
     for name, variants in FOLLOWUPS.items():
         assert 2 <= len(variants) <= 5, name
@@ -421,6 +427,11 @@ def test_followups_pass_willow_unchanged_and_the_output_gate() -> None:
         "closing_declined": templates.closing_declined,
         "safety_check": templates.safety_check,
         "health_hint": templates.health_hint,
+        "no_pending_feedback": templates.no_pending_feedback,
+        "unhelpful_ack": templates.unhelpful_ack,
+        "safety_confirmed": templates.safety_confirmed,
+        "forget_hint": templates.forget_hint,
+        "haven_return": templates.haven_return,
     }
     assert {name: list(v) for name, v in loaded.items()} == FOLLOWUPS
     stages = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)

@@ -450,7 +450,25 @@ def _chat(
                 continue
             if not line.strip():
                 continue
-            result = recorder.observe(line, session.turn(line))
+            try:
+                turned = session.turn(line)
+            except Exception:  # SDD §10.1: even a failed screen leaves every number on screen
+                today = local().date()
+                card = resolve(
+                    _load_store(today),
+                    profile.region,
+                    CrisisLevel.L3,
+                    mode=CardMode.BROWSING,
+                    today=today,
+                )
+                numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+                minimal = load_language_data(tax).render.crisis_minimal
+                console.say(
+                    "\n".join([f"{profile.agent_name}：{minimal}", *(f"· {n}" for n in numbers)])
+                )
+                console.say()
+                continue
+            result = recorder.observe(line, turned)
             checks.observe(result)
             # The reply (a crisis card included) is on screen before any keychain access.
             console.say(f"{profile.agent_name}：{result.reply}")

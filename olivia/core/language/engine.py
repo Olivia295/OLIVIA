@@ -354,7 +354,9 @@ class LanguageEngine:
 
     # -- crisis ----------------------------------------------------------------------------
 
-    def render_crisis(self, card: ResourceCard, slots: Slots, *, plan_block: str = "") -> str:
+    def render_crisis(
+        self, card: ResourceCard, slots: Slots, *, plan_block: str = "", urgent: bool = False
+    ) -> str:
         """S_crisis wording plus the card's numbers: emergency first, stale entries marked.
 
         Exempt from word windows and metaphors. If the gate ever blocks the full card, the
@@ -368,6 +370,12 @@ class LanguageEngine:
         with the plan's own digit runs allowed for this reply only; if it is blocked, the
         plan block is dropped and the reply is the one without it (minimal-card fallback
         included). :attr:`last_plan_gate` keeps the verdict on the reply with the plan.
+
+        ``urgent`` frames the card's emergency numbers the way an L3 card does (the L3
+        heading, then the line about calling someone close) on a card below L3. The
+        session passes it, with the region's emergency numbers added to its L2 card, when
+        the risk model scored L3 but its L3 does not count as plan evidence (owner decision
+        2026-10-24): the emergency numbers lead, every L2 line stays, the flow stays L2.
         """
         if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
             raise ValueError("render_crisis needs a CRISIS-mode card at L2 or L3")
@@ -376,7 +384,7 @@ class LanguageEngine:
         if not usable:
             raise ValueError("no S_crisis variant can be filled from these slots")
         opening = _fill(self._rng.choice(usable), values)
-        resources = self._resource_blocks(card)
+        resources = self._resource_blocks(card, urgent=urgent)
         numbers = _numbers(card)
         self.last_plan_gate = None
         if plan_block.strip():
@@ -441,18 +449,22 @@ class LanguageEngine:
             return result.text
         return self._minimal_card(numbers)
 
-    def _resource_blocks(self, card: ResourceCard) -> list[str]:
-        """The card's numbers: emergency first, then lines, stale entries marked."""
+    def _resource_blocks(self, card: ResourceCard, *, urgent: bool = False) -> list[str]:
+        """The card's numbers: emergency first, then lines, stale entries marked.
+
+        ``urgent`` frames the emergency numbers as an L3 card does (:meth:`render_crisis`).
+        """
         r = self._data.render
         stale = set(card.stale_entries)
         mark = r.crisis_stale_mark
         blocks: list[str] = []
         if card.emergency:
-            lines = [r.crisis_emergency_heading[card.level]]
+            framing = CrisisLevel.L3 if urgent else card.level
+            lines = [r.crisis_emergency_heading[framing]]
             for em in card.emergency:
                 purpose = r.emergency_purposes[em.purpose]
                 lines.append(f"· {em.number}（{purpose}）{mark if em.id in stale else ''}")
-            if card.level is CrisisLevel.L3:
+            if framing is CrisisLevel.L3:
                 lines.append(r.crisis_contact_people)
                 if card.region_used == _UNKNOWN_REGION:
                     lines.append(r.crisis_unknown_region_l3)

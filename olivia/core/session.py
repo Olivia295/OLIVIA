@@ -24,12 +24,21 @@ Stage handling:
 * ``S_crisis``: a CRISIS card at ``max(L2, this turn's level, the crisis entry level)``
   for the profile region (never the minors-only lines), rendered by ``render_crisis``.
   Using the entry level keeps an L3 card's emergency numbers on screen for every turn of
-  an L3 crisis, not only the turns that repeat the plan (ruling 14).
+  an L3 crisis, not only the turns that repeat the plan (ruling 14). When the risk model
+  scored L3 but the arbitration capped it at L2 (its L3 is not plan evidence), the L2
+  card leads with the region's emergency numbers, framed as on an L3 card, for the rest
+  of that crisis; every L2 line stays and the flow stays L2 (owner decision 2026-10-24).
+  On the turn the tracker hears an explicit safety confirmation, one
+  ``followups.safety_confirmed`` line comes before the card. No compact card exists
+  (SDD §8.2's "精简版"; render data has only the gate-fallback minimal card), so every
+  crisis turn repeats the full card.
 * ``S_empower``: the solver's available set, minus actions that have no follow-along card
   (``12:tipp_cold_water`` is excluded from the deck pending G-0), is sampled by Thompson
-  sampling in the dominant spectrum. A turn with no spectrum cue uses ``"02"`` (the
-  low-mood spectrum, the commonest presentation) so the posterior still has one place
-  to live. No candidate -> m0, a companionship reply from the S_explore templates; any
+  sampling in the dominant spectrum. A turn with no spectrum cue uses the conversation's
+  last known spectrum, else ``"02"`` (the low-mood spectrum, the commonest presentation),
+  and the card's feedback is filed under the same spectrum. A card that leaves S_haven on
+  a direct request ends with ``followups.haven_return`` (how to get back to quiet
+  company). No candidate -> m0, a companionship reply from the S_explore templates; any
   red flag in the plan appends the referral card. While a shown card still waits for
   feedback, an S_empower turn re-sends the ``after_card`` prompt instead of sampling a
   new card. That covers a direct request straight after an S_explore stabilization
@@ -41,8 +50,32 @@ Stage handling:
   the S_explore reflection (reflect paragraph, then card intro, card and ``after_card``).
   Not while the pure-listening lock is on, not while an S_explore card still waits for
   feedback and not on a turn that gives feedback. No candidate -> the plain S_explore
-  reply.
+  reply. The card waits for one more turn only: after an S_explore turn that neither
+  answers it nor gets the clarification question, it expires, so a later request gets a
+  new card.
+* ``S_closing``: entering it, the closing ritual matches the feedback: ``S_closing.
+  variants`` after ``/done`` (nothing about the kit), ``after_not_now`` after
+  ``/not-now`` (the card is in the kit). Later turns in S_closing get one
+  ``S_ready.after_close`` line, never the same closing text twice in a row; new content
+  that is not plainly positive (not a yes or no, a command, a feedback phrase or a kit
+  request) reopens listening in S_explore (``inspect["reason"]`` ``CLOSING_REOPEN``).
+  A yes that ends the session in S_ready also gets an ``after_close`` line.
 * Every other stage: ``compose(stage, slots)``.
+
+Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
+waiting gets ``followups.no_pending_feedback`` and a short request to wipe the memory
+("清空所有记忆", below L1) gets ``followups.forget_hint`` (``olivia forget --all``,
+``olivia memory``); neither is mirrored, and the stage holds (unless the battery or a
+crisis moves it). ``/unhelpful`` or aversion on a waiting card leads the reply with
+``followups.unhelpful_ack``.
+
+Failures (SDD §10.1): the crisis screen runs first and its own failures are its own
+(model failures already fail toward L2). Anything that raises after it gives a degraded
+reply instead of an exception: the minimal crisis card with every number of the
+region's card when the screen said L2/L3, the session is in a crisis or the D3 answer
+was due, otherwise the persona's slot-free presence line (``ReplyKind.HAVEN``).
+``inspect["reason"]`` is ``DEGRADED`` and ``inspect["degraded"]`` the error's class
+name; nothing is logged and no user text is kept.
 
 Red-flag referral (SDD §8.4): the first non-crisis turn on which a flag is active (from
 the profile, or newly detected in the text) appends ``render_referral`` for it, once per
@@ -199,6 +232,7 @@ only, and gate reasons are reduced to their check names.
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -264,6 +298,7 @@ from olivia.core.resources.store import ResourceStore, parse_store
 from olivia.core.safety.crisis import CrisisAssessment, RiskModel, SafetyScreen
 from olivia.core.safety.intent_check import IntentAnswer, read_intent_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
+from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
@@ -284,6 +319,20 @@ _COMMAND_FEEDBACK: Final = {
 _NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
 SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
+CLOSING_REOPEN: Final = "CLOSING_REOPEN"
+"""``inspect["reason"]`` when new content after the closing ritual reopens S_explore."""
+DEGRADED: Final = "DEGRADED"
+"""``inspect["reason"]`` of a reply from the SDD §10.1 fallback (``Session.turn``)."""
+# A short message asking to wipe OLIVIA's own memory ("清空所有记忆", "把聊天记录都删了"),
+# matched on the normalized text. Longer messages, or wiping a memory *of* someone
+# ("清空关于他的记忆"), are ordinary conversation.
+_FORGET_RE: Final = re.compile(
+    r"(?:清空|清除|删除|删掉|删光|抹掉|忘掉|忘记)(?:你|我们)?的?(?:所有|全部|一切)?的?"
+    r"(?:记忆|记录|聊天记录|数据)"
+    r"|把(?:你|我们)?的?(?:所有|全部)?的?(?:记忆|记录|聊天记录|数据)(?:都|全)?"
+    r"(?:清空|清除|删除|删掉|删了|忘掉|忘了)"
+)
+_FORGET_MAX_CHARS: Final = 20
 
 
 class FeedbackSource(StrEnum):
@@ -441,6 +490,7 @@ class Session:
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
+        self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
         self._contra = SessionContraindications(tax, profile.contraindications)
@@ -485,6 +535,12 @@ class Session:
         self._plan_block = crisis_block(safety_plan)
         self._suggest_plan = suggest_safety_plan
         self._plan_suggested = False
+        # The risk model scored L3 in this crisis but its L3 is not plan evidence, so the
+        # flow stays L2: the card still leads with the emergency numbers (owner decision
+        # 2026-10-24). Cleared when the crisis ends.
+        self._urgent = False
+        # The last closing ritual or after-close line, never sent twice in a row.
+        self._last_closing: str | None = None
 
     @classmethod
     def open(
@@ -555,14 +611,26 @@ class Session:
         return replace(self._state, user_shelved_actions=list(self._state.user_shelved_actions))
 
     def turn(self, text: str) -> TurnResult:
+        """One user turn. The crisis screen runs first; if anything after it raises, the
+        user still gets a reply (SDD §10.1): the minimal crisis card with every number
+        when the screen said L2/L3, the session is in a crisis or the D3 answer was due,
+        otherwise the persona's slot-free presence line. Nothing is logged."""
         now = self._now()
         self._gate_notes = []
 
         assessment = self._screen.assess(text)
+        asking = self._asking
+        try:
+            return self._turn(text, now, assessment)
+        except Exception as exc:  # SDD §10.1: degrade, never leave the user without a reply
+            return self._degraded(assessment, now, asking=asking, error=type(exc).__name__)
+
+    def _turn(self, text: str, now: datetime, assessment: CrisisAssessment) -> TurnResult:
         assessment, answer = self._answer_safety_check(text, assessment)
         model_level, model_score = self._risk.take_turn()
         perception, signals = self._shared.stub.perceive(text, assessment)
         perception = self._shared.introspector.apply(text, perception)
+        before = self._last_status
         # The rule stub reports valence 0.0 under the fallback emotion when no emotion word
         # matched: that is no evidence, which the tracker never reads as an improvement.
         evidence = not (
@@ -570,6 +638,18 @@ class Session:
         )
         status = self._tracker.observe(assessment, text, perception.valence if evidence else None)
         self._last_status = status
+        # The tracker heard an explicit safety confirmation on this crisis turn.
+        confirmed = (
+            status.in_crisis
+            and not status.awaiting_confirmation
+            and before is not None
+            and before.in_crisis
+            and before.awaiting_confirmation
+        )
+        if not status.in_crisis:
+            self._urgent = False
+        elif model_level == CrisisLevel.L3.name:
+            self._urgent = True
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
@@ -610,16 +690,41 @@ class Session:
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
+        # A command, or a pick from the naming offer (C3), is not something to mirror back.
+        mirror_text = "" if signals.command is not None or naming is not None else text
+        # Two meta turns outside a crisis: a feedback command with no card waiting for it,
+        # and a request in the chat to wipe the memory. Each gets one short line, never a
+        # mirror, and holds the stage (the command is not passed on).
+        meta = not status.in_crisis and assessment.level < CrisisLevel.L2
+        no_pending = meta and signals.command is not None and pending is None
+        forget = (
+            meta
+            and not no_pending
+            and assessment.level < CrisisLevel.L1
+            and not ask
+            and answer is None
+            and _asks_to_forget(text)
+        )
+        if no_pending:
+            signals = replace(signals, command=None)
         transition = step(
             self._tax,
             self._state,
             TurnInput(perception, status, signals, self._profile.persona_spectrum),
         )
+        if no_pending or forget:
+            transition = self._held(transition)
+        # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
+        self._stabilization_only = transition.stabilization_only
+        spectrum = dominant_spectrum(perception.distress_vector)
+        reason = transition.reason.value
+        if self._reopens(transition, signals, follow, perception, spectrum) and not (
+            no_pending or forget or ask or answer is not None
+        ):
+            transition = self._reopen(transition, perception)
+            reason = CLOSING_REOPEN
         self._state = transition.state
         stage = transition.state.current_stage
-        spectrum = dominant_spectrum(perception.distress_vector)
-        # A command, or a pick from the naming offer (C3), is not something to mirror back.
-        mirror_text = "" if signals.command is not None or naming is not None else text
         feedback = self._feedback_for(pending, transition, signals)
         if spectrum is not None:
             self._last_spectrum = spectrum
@@ -658,8 +763,15 @@ class Session:
         ordinary = False
         if stage is HelpStage.S_CRISIS:
             rendered = self._crisis(status, now)
+            if confirmed:
+                # The user just said they are safe: say we heard it, then the card.
+                self._add_line(rendered, templates.safety_confirmed, stage, first=True)
         elif ask:
             rendered = self._safety_check(stage, now)
+        elif no_pending:
+            rendered = self._followup(templates.no_pending_feedback, stage)
+        elif forget:
+            rendered = self._followup(templates.forget_hint, stage)
         elif follow.clarify and still_waiting:
             rendered = self._followup(templates.clarify_feedback, stage)
             self._clarifying = True
@@ -671,8 +783,17 @@ class Session:
             rendered = self._offer(
                 stage, perception, flags, spectrum, mirror_text, now, recall=True
             )
+        elif stage is HelpStage.S_CLOSING and transition.reason is Reason.EMPOWER_TO_CLOSING:
+            # The closing ritual says what happened: a shelved card is in the kit now.
+            shelved = feedback is Feedback.NOT_NOW
+            pool = templates.closing_after_not_now if shelved else templates.closing
+            rendered = self._closing(pool, stage, window=True)
+            ordinary = True
         elif info is not None:
             rendered = self._info(info, stage, perception, spectrum, mirror_text)
+        elif stage in (HelpStage.S_CLOSING, HelpStage.S_READY):
+            # After the ritual: a short warm line, never the ritual again.
+            rendered = self._closing(templates.after_close, stage)
         elif stage is HelpStage.S_EMPOWER:
             # A card still waiting for feedback is not replaced: staying in S_empower, or
             # asking for a method right after an S_explore stabilization card, gets the
@@ -690,7 +811,15 @@ class Session:
                 rendered = self._offer(stage, perception, flags, spectrum, mirror_text, now)
         elif (
             stage is HelpStage.S_EXPLORE
-            and perception.arousal >= self._somatic
+            and (
+                perception.arousal >= self._somatic
+                # A safety retreat from S_empower (F2a) brings stabilization along; a retreat
+                # for aversion does not push another card.
+                or (
+                    transition.offer_stabilization
+                    and transition.reason is not Reason.EMPOWER_AVERSION
+                )
+            )
             and not transition.state.pure_listening_locked
             and feedback is None
             and not (pending is not None and pending.stage is HelpStage.S_EXPLORE)
@@ -720,6 +849,16 @@ class Session:
                 self._externalize.mark_named()
             ordinary = True
 
+        if feedback is Feedback.UNHELPFUL and stage is not HelpStage.S_CRISIS:
+            self._add_line(rendered, templates.unhelpful_ack, stage, first=True)
+        if (
+            transition.previous is HelpStage.S_HAVEN
+            and stage is HelpStage.S_EMPOWER
+            and rendered.kind is ReplyKind.CARD
+        ):
+            # A direct request left the quiet company: say how to get back to it.
+            self._add_line(rendered, templates.haven_return, stage, first=False)
+
         settled = not status.in_crisis and assessment.level < CrisisLevel.L1
         plain = rendered.kind is ReplyKind.NORMAL or stage is HelpStage.S_HAVEN
         prompted = self._wellbeing.prompt(
@@ -741,10 +880,17 @@ class Session:
 
         if pending is not None and feedback is not None:
             self._apply_feedback(pending, feedback, now)
-        # A card waits only while the session stays in the stage it was shown in.
+        # A card waits only while the session stays in the stage it was shown in. An
+        # S_explore stabilization card also expires after one turn that is not about it
+        # (no feedback, no clarification question), so a later request gets a new card.
+        expired = (
+            pending is not None and pending.stage is HelpStage.S_EXPLORE and not self._clarifying
+        )
         if rendered.pending is not None:
             self._pending = rendered.pending
-        elif feedback is not None or (pending is not None and pending.stage is not stage):
+        elif (
+            feedback is not None or (pending is not None and pending.stage is not stage) or expired
+        ):
             self._pending = None
 
         inspect: dict[str, object] = {
@@ -755,7 +901,7 @@ class Session:
             "cue_ids": list(assessment.cue_ids),
             "stage": stage.value,
             "previous_stage": transition.previous.value,
-            "reason": transition.reason.value,
+            "reason": reason,
             "arousal": perception.arousal,
             "valence": perception.valence,
             "emotion": perception.fine_grained_emotion,
@@ -872,8 +1018,10 @@ class Session:
 
     # -- stages ---------------------------------------------------------------------------
 
-    def _crisis(self, status: CrisisStatus, now: datetime) -> _Rendered:
-        level = max(CrisisLevel.L2, status.level, status.entry_level or CrisisLevel.L0)
+    def _crisis_card(self, level: CrisisLevel, now: datetime) -> tuple[ResourceCard, bool]:
+        """The region's CRISIS card at ``level`` (never the minors' lines), and whether it
+        is framed as urgent: below L3 after a capped model L3 (``_urgent``), the region's
+        emergency numbers are added in front of every line of the card."""
         card = resolve(
             self._shared.store,
             self._profile.region,
@@ -882,8 +1030,31 @@ class Session:
             today=now.date(),
             is_minor=False,
         )
+        if not self._urgent or level >= CrisisLevel.L3 or card.emergency:
+            return card, False
+        l3 = resolve(
+            self._shared.store,
+            self._profile.region,
+            CrisisLevel.L3,
+            mode=CardMode.CRISIS,
+            today=now.date(),
+            is_minor=False,
+        )
+        stale = tuple(e.id for e in l3.emergency if e.id in l3.stale_entries)
+        urgent = replace(
+            card,
+            emergency=l3.emergency,
+            stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
+        )
+        return urgent, True
+
+    def _crisis(self, status: CrisisStatus, now: datetime) -> _Rendered:
+        level = max(CrisisLevel.L2, status.level, status.entry_level or CrisisLevel.L0)
+        card, urgent = self._crisis_card(level, now)
         self._engine.last_gate = None
-        reply = self._engine.render_crisis(card, self._plain_slots(), plan_block=self._plan_block)
+        reply = self._engine.render_crisis(
+            card, self._plain_slots(), plan_block=self._plan_block, urgent=urgent
+        )
         planned = self._engine.last_plan_gate
         if planned is not None and not planned.ok:
             # The plan block was dropped; the hotline card is shown without it.
@@ -957,7 +1128,8 @@ class Session:
         shelved = self._state.user_shelved_actions
         deck = self._engine.data.cards.cards
         chosen: str | None = None
-        bucket = spectrum if spectrum is not None else FALLBACK_SPECTRUM
+        # The turn's spectrum, else the conversation's last known one, else the fallback.
+        bucket = spectrum or self._last_spectrum or FALLBACK_SPECTRUM
         allowed = self._allowed(stage, perception, flags, frozenset(shelved))
         if recall:
             unmasked = self._allowed(stage, perception, flags, frozenset())
@@ -1121,11 +1293,16 @@ class Session:
         flags: frozenset[str],
         shelved: frozenset[str],
     ) -> AllowedSet:
+        if self._stabilization_only:
+            # An L1 turn (ruling 5): the stabilization pool, with every mask still applied.
+            stage, arousal = HelpStage.S_EXPLORE, max(perception.arousal, self._somatic)
+        else:
+            arousal = perception.arousal
         return allowed_actions(
             self._tax,
             SolverInput(
                 stage=stage,
-                arousal=perception.arousal,
+                arousal=arousal,
                 active_red_flags=flags,
                 active_contraindications=self._context.contraindications,
                 situation_codes=self._context.situations,
@@ -1320,14 +1497,51 @@ class Session:
         """A short follow-up line (roadmap R-7b), through the taboo filter and the gate."""
         return self._with_taboo_filter(lambda: self._plain_line(variants, stage), stage)
 
-    def _plain_line(self, variants: tuple[str, ...], stage: HelpStage) -> tuple[str, str] | None:
-        """One variant with only the name slots filled, after WILLOW and the output gate."""
+    def _closing(
+        self, variants: tuple[str, ...], stage: HelpStage, *, window: bool = False
+    ) -> _Rendered:
+        """A closing ritual (``window``: one that fits the stage's word window) or an
+        after-close line, never the text of the last one sent."""
+        avoid = self._last_closing
+        rendered = self._with_taboo_filter(
+            lambda: self._plain_line(variants, stage, avoid=avoid, window=window), stage
+        )
+        self._last_closing = rendered.reply
+        return rendered
+
+    def _add_line(
+        self, rendered: _Rendered, variants: tuple[str, ...], stage: HelpStage, *, first: bool
+    ) -> None:
+        """Put one name-slot line before (``first``) or after the reply, unless the gate or
+        a taboo topic rules it out; the reply itself is kept either way."""
+        line = self._plain_line(variants, stage)
+        if line is None or self._has_taboo(line[0], ""):
+            return
+        if first:
+            rendered.reply = f"{line[0]}\n\n{rendered.reply}"
+        else:
+            rendered.reply = f"{rendered.reply}\n\n{line[0]}"
+
+    def _plain_line(
+        self,
+        variants: tuple[str, ...],
+        stage: HelpStage,
+        *,
+        avoid: str | None = None,
+        window: bool = False,
+    ) -> tuple[str, str] | None:
+        """One variant with only the name slots filled, after WILLOW and the output gate.
+
+        ``avoid`` leaves out a variant that renders to that text and ``window`` keeps to
+        the variants that fit the stage's word window, unless that leaves none."""
         values = self._plain_slots().values()
+        willow = self._engine.data.willow
         usable = [v for v in variants if all(values[s] for s in slots_of(v))]
-        text = self._rng.choice(usable)
-        for name, value in values.items():
-            text = text.replace("{" + name + "}", value)
-        text = apply_willow(text, ContentKind.NORMAL, self._engine.data.willow)
+        texts = [apply_willow(_fill_names(v, values), ContentKind.NORMAL, willow) for v in usable]
+        pool = [t for t in texts if t != avoid] or texts
+        if window:
+            pool = [t for t in pool if self._engine.window_penalty(stage, t) == 0] or pool
+        text = self._rng.choice(pool)
         result = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=stage)
         self._engine.last_gate = result
         if not self._note_gate():
@@ -1454,6 +1668,117 @@ class Session:
                 declined = True
         return _FollowUp(signals, source, clarify, recall, kit_empty, declined)
 
+    def _held(self, transition: Transition) -> Transition:
+        """The transition of a meta turn: counted as a turn, but the stage stays (unless
+        the battery or a crisis moved it, which a meta turn never overrides)."""
+        moved = transition.state.current_stage
+        previous = transition.previous
+        if moved in (previous, HelpStage.S_CRISIS, HelpStage.S_HAVEN):
+            return transition
+        state = replace(
+            transition.state,
+            current_stage=previous,
+            stage_turn_count=self._state.stage_turn_count + 1,
+            stage_entry_arousal=self._state.stage_entry_arousal,
+        )
+        return Transition(previous, state, Reason.STAY)
+
+    @staticmethod
+    def _reopens(
+        transition: Transition,
+        signals: TurnSignals,
+        follow: _FollowUp,
+        perception: PerceptionContext,
+        spectrum: str | None,
+    ) -> bool:
+        """New content after the closing ritual: anything still in S_closing that is not a
+        yes or no, a command, a feedback phrase or a kit request, and that is not plainly
+        positive (a thank-you gets the after-close line instead)."""
+        return (
+            transition.previous is HelpStage.S_CLOSING
+            and transition.state.current_stage is HelpStage.S_CLOSING
+            and transition.reason is Reason.STAY
+            and signals.command is None
+            and signals.answer is None
+            and signals.feedback is None
+            and not signals.kit_recall
+            and not follow.kit_empty
+            and not follow.closing_declined
+            and (perception.valence <= 0.0 or spectrum is not None)
+        )
+
+    @staticmethod
+    def _reopen(transition: Transition, perception: PerceptionContext) -> Transition:
+        """Back to listening: S_explore, entered on this turn."""
+        state = replace(
+            transition.state,
+            current_stage=HelpStage.S_EXPLORE,
+            stage_turn_count=1,
+            stage_entry_arousal=perception.arousal,
+        )
+        return Transition(transition.previous, state, Reason.STAY)
+
+    def _degraded(
+        self, assessment: CrisisAssessment, now: datetime, *, asking: bool, error: str
+    ) -> TurnResult:
+        """The SDD §10.1 fallback reply after a failure past the crisis screen.
+
+        A crisis (this turn's screen at L2/L3, the tracker's crisis, the S_crisis stage, or
+        the answer to the D3 question) gets the minimal crisis card with every number of
+        the region's card (emergency numbers included after a capped model L3); anything
+        else gets the persona's slot-free presence line. ``inspect`` carries the error's
+        class name only, never its message.
+        """
+        state = self._state
+        status = self._last_status
+        crisis = (
+            assessment.level >= CrisisLevel.L2
+            or asking
+            or state.current_stage is HelpStage.S_CRISIS
+            or (status is not None and status.in_crisis)
+        )
+        card: ResourceCard | None = None
+        if crisis:
+            entry = status.entry_level if status is not None else None
+            level = max(CrisisLevel.L2, assessment.level, entry or CrisisLevel.L0)
+            card, _ = self._crisis_card(level, now)
+            numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+            minimal = self._shared.language.render.crisis_minimal
+            reply = "\n".join([minimal, *(f"· {n}" for n in numbers)])
+            kind = ReplyKind.CRISIS
+            stage = HelpStage.S_CRISIS
+        else:
+            level = assessment.level
+            reply = self._engine.gate.fallback
+            kind = ReplyKind.HAVEN
+            stage = state.current_stage
+        inspect: dict[str, object] = {
+            "turn": state.global_turn_count,
+            "level": level.name,
+            "assessed_level": assessment.level.name,
+            "in_crisis": crisis,
+            "cue_ids": list(assessment.cue_ids),
+            "stage": stage.value,
+            "previous_stage": state.current_stage.value,
+            "reason": DEGRADED,
+            "degraded": error,
+            "hotline_source": self._shared.hotline_source,
+            "hotline_reason": self._shared.hotline_reason,
+            "risk_model": self._risk.label,
+            "risk_model_reason": self._risk.reason,
+        }
+        return TurnResult(
+            reply=reply,
+            reply_kind=kind,
+            stage=stage,
+            crisis_level=level,
+            in_crisis=crisis,
+            resource_card=card,
+            action_id=None,
+            referral_flags=(),
+            inspect=inspect,
+        )
+
     @staticmethod
     def _feedback_for(
         pending: _Pending | None, transition: Transition, signals: TurnSignals
@@ -1508,3 +1833,15 @@ class Session:
             return True
         self._gate_notes.extend(reason.split(":", 1)[0] for reason in result.reasons)
         return False
+
+
+def _fill_names(template: str, values: Mapping[str, str]) -> str:
+    for name, value in values.items():
+        template = template.replace("{" + name + "}", value)
+    return template
+
+
+def _asks_to_forget(text: str) -> bool:
+    """A short message asking OLIVIA to wipe its memory ("清空所有记忆")."""
+    folded = normalize(text)
+    return len(folded) <= _FORGET_MAX_CHARS and _FORGET_RE.search(folded) is not None
