@@ -2,16 +2,16 @@
   "format_version": 1,
   "files": {
     "student.npz": {
-      "sha256": "654fbf079477cbfafc834b33560aaa6561b06fb11b916e251d27bdc010a20077",
-      "bytes": 2488000
+      "sha256": "876227e3f996d59ad0a773bdc4bdeb3d372391493f92b33fa05c4d02ed13f3bd",
+      "bytes": 2497984
     },
     "vocab.json": {
-      "sha256": "91dc8a258c6c91c86eeaad2b931478242fdaef512261bd27f6cebfd934b77ace",
-      "bytes": 14895
+      "sha256": "2d55e6a88d4a00fdac2652699849eb476e43424409ca10d68970f7ecd92ea75f",
+      "bytes": 15077
     },
     "student_config.json": {
-      "sha256": "3695a54217aba0f13b08c28b97937faf53682384540e74899799658855fa6ba2",
-      "bytes": 9824
+      "sha256": "ae9eab46b8d796a15de60aba90905de9010da5e91063dbdc325f9cdf4f9d337d",
+      "bytes": 9822
     }
   }
 }

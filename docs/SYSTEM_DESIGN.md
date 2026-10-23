@@ -603,7 +603,7 @@ marked_by_user: false
 - **中文真实语料驱动**：清洗对齐 PsyQA 中文心理支持语料，结合 60 份困扰档案第四节“典型内心独白”作为种子样本；
 - **对抗样本增强**：针对否定句（“我不想死”与“我想死”）构建专项对比数据集；
 - **轻量静态参数导出**：权重矩阵序列化为纯静态数组，无外部深度学习框架依赖。
-- **打包的学生（2026-10-24）**：三个同形状字符级 CNN 的集成（结构对比 notebook 的 `cnn_ensemble3`，按事先写定的规则在开发集上选出），`olivia/data/models/perception/` 下 `student.npz`（float16，2.43 MB）、`vocab.json`、`student_config.json` 与记录哈希和字节数的 `MANIFEST.json`。配置格式版本 2：`architecture.type = "ensemble"`、`members = 3`、`array_prefix = "m{i}_"`，`architecture.member` 为 `cnn`（`kernels`、`embed_dim`、`filters`、`hidden`），`combine` 给出逐头合并规则：类别头 log(平均 softmax)、tanh 头 atanh(平均 tanh)、sigmoid/bce 头 logit(平均 sigmoid)，平均值夹在 1e-6 之内；温度与风险阈值在合并后的输出上拟合，模型名取 `variant_fingerprint`。格式版本 1（单个 CNN，顶层 `kernels` 与 `student_fingerprint`）仍可加载；其他结构或未知格式使模型不可用并回退规则。产品前向照搬 notebook 的 NumPy 参考（`tests/perception/student_reference.py` 逐条比对）。
+- **打包的学生（2026-10-24）**：三个同形状字符级 CNN 的集成（结构对比 notebook 的 `cnn_ensemble3`，按事先写定的规则在开发集上选出），现为用第 1–8 轮 8,721 条合成数据重新训练的版本（`variant_fingerprint` `4524170efaf8d8b0`，第八轮补日常计划、准备与告别作 L0 难负例；替换第一版 `9f1148b39d28bb2c`），`olivia/data/models/perception/` 下 `student.npz`（float16，2,497,984 字节）、`vocab.json`、`student_config.json` 与记录哈希和字节数的 `MANIFEST.json`。配置格式版本 2：`architecture.type = "ensemble"`、`members = 3`、`array_prefix = "m{i}_"`，`architecture.member` 为 `cnn`（`kernels`、`embed_dim`、`filters`、`hidden`），`combine` 给出逐头合并规则：类别头 log(平均 softmax)、tanh 头 atanh(平均 tanh)、sigmoid/bce 头 logit(平均 sigmoid)，平均值夹在 1e-6 之内；温度与风险阈值在合并后的输出上拟合，模型名取 `variant_fingerprint`。格式版本 1（单个 CNN，顶层 `kernels` 与 `student_fingerprint`）仍可加载；其他结构或未知格式使模型不可用并回退规则。产品前向照搬 notebook 的 NumPy 参考（`tests/perception/student_reference.py` 逐条比对）。
 
 ---
 

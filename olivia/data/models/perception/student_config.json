@@ -94,9 +94,9 @@
       "dtype": "数组存为 float16，加载后转 float32 计算"
     }
   },
-  "variant_fingerprint": "9f1148b39d28bb2c",
-  "teacher_fingerprint": "5c146223232bfe31",
-  "targets_fingerprint": "e344d9c5f6554fb0",
+  "variant_fingerprint": "4524170efaf8d8b0",
+  "teacher_fingerprint": "fafdf74df467f17a",
+  "targets_fingerprint": "3ae9af0cd950782d",
   "preprocess": "html.unescape → NBSP 换为空格 → 连续空白合并为一个空格 → 去掉首尾空白；按字（Unicode 码位）切分，不在字表中的字记为 UNK",
   "max_len": 160,
   "head_chars": 48,
@@ -225,15 +225,15 @@
     }
   ],
   "temperatures": {
-    "emotion": 0.8037413830796607,
-    "intent": 0.8490963295983402,
-    "risk": 0.8828851789899173,
-    "stance": 0.9571378807290598,
-    "dominant_spectrum": 0.780711701648376
+    "emotion": 0.8035285774535136,
+    "intent": 0.8882686532581107,
+    "risk": 0.8911100107275884,
+    "stance": 0.9595049496968158,
+    "dominant_spectrum": 0.8097718863777803
   },
   "risk": {
-    "threshold_ge2": 0.3697343170642853,
-    "threshold_l3": 0.27992698550224304,
+    "threshold_ge2": 0.33623212575912476,
+    "threshold_l3": 0.32593458890914917,
     "rule": "level = argmax P；P(L2)+P(L3) ≥ threshold_ge2 时至少 L2；P(L3) ≥ threshold_l3 时为 L3",
     "threshold_l3_used_only_with_model_plan_evidence": true,
     "target_recall_ge2": 0.95,
@@ -241,7 +241,7 @@
   },
   "arrays": {
     "m0_embedding": [
-      2138,
+      2164,
       64
     ],
     "m0_conv2_weight": [
@@ -291,7 +291,7 @@
       47
     ],
     "m1_embedding": [
-      2138,
+      2164,
       64
     ],
     "m1_conv2_weight": [
@@ -341,7 +341,7 @@
       47
     ],
     "m2_embedding": [
-      2138,
+      2164,
       64
     ],
     "m2_conv2_weight": [
@@ -391,7 +391,7 @@
       47
     ]
   },
-  "npz_bytes": 2488000,
+  "npz_bytes": 2497984,
   "training_options": {
     "loss_balance": "gradnorm",
     "kd_source": "ensemble",
@@ -437,11 +437,11 @@
         ]
       },
       "L0 误报为 ≥L2": {
-        "hit": 7,
+        "hit": 9,
         "n": 100,
         "ci95": [
-          0.034318824364064096,
-          0.13749671006529757
+          0.04807199516388488,
+          0.16226374696643667
         ]
       },
       "L1 判为 L1": {
@@ -453,24 +453,24 @@
         ]
       },
       "L1 判为 ≥L2": {
-        "hit": 8,
+        "hit": 6,
         "n": 60,
         "ci95": [
-          0.06914026978309641,
-          0.24165394590072103
+          0.04664219945723587,
+          0.20149694492511044
         ]
       }
     },
     "holdout_l0_false_alarm": {
-      "hit": 34,
-      "n": 812,
-      "rate": 0.04187192118226601,
+      "hit": 41,
+      "n": 884,
+      "rate": 0.04638009049773756,
       "ci95": [
-        0.030116456803192797,
-        0.057941813331598056
+        0.03437050172169317,
+        0.06231521338784889
       ]
     },
-    "parity": 0.00034256107925800805,
-    "latency_p99_ms": 2.7803586399772935
+    "parity": 0.00028980146427437514,
+    "latency_p99_ms": 2.812087950080695
   }
 }
