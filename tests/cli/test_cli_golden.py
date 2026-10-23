@@ -40,13 +40,15 @@ BOTH_MODES_FALSE_ALARM = pytest.mark.parametrize(
 
 
 def test_sop1_covenant_then_first_session(run_cli, data_home):
-    answers = ["1", "1", "小林", "阿柳", "", "考试、前任", "5", "2", "跳过"]
+    answers = ["1", "1", "", "小林", "阿柳", "", "考试、前任", "5", "2", "跳过"]
     run = run_cli(["chat"], [*answers, "今天上班好累", "/exit"])
     assert run.code == 0
     out = run.out
-    # Disclaimer, then the 18+ gate, then names, persona, taboo topics, region, timezone,
-    # and the optional consent last; nothing personal is asked before the age gate.
-    markers = ["我已阅读并同意", "年满 18 周岁", "怎么称呼你", "温和包裹", "考试、前任、体重"]
+    # Disclaimer, then the 18+ gate, the storage choice (ONB-06), names, persona, taboo
+    # topics, region, timezone, and the optional consent last; nothing personal is asked
+    # before the age gate.
+    markers = ["我已阅读并同意", "年满 18 周岁", "全部加密", "怎么称呼你", "温和包裹"]
+    markers += ["考试、前任、体重"]
     markers += ["平时主要在哪里生活", "有好几个时区", "完全可以跳过", "约定已经保存"]
     positions = [out.index(marker) for marker in markers]
     assert positions == sorted(positions)

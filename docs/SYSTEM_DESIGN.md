@@ -58,6 +58,7 @@
    - 6.3 闭环贝叶斯自进化数学模型 (纯 Thompson 采样与探索安全门禁)
    - 6.4 7 天情绪周记时空数据聚合算法 (基于用户自评数据)
    - 6.5 记忆档案原子级写入安全协议 (影子写入与三版本快照)
+   - 6.6 本地静态加密：密钥层级与加密擦除 (B1)
 7. [多推理模型适配网关与个人信息保护管线 (Inference Gateway & PIPL Pipeline)](#7-多推理模型适配网关与个人信息保护管线-inference-gateway--pipl-pipeline)
 8. [多级安全防御体系、四级危机响应与能力绝对边界 (Multi-Tiered Safety & Crisis Protocols)](#8-多级安全防御体系四级危机响应与能力绝对边界-multi-tiered-safety--crisis-protocols)
    - 8.1 危机前置防御时序模型 (SAFE-09 强制合规)
@@ -430,6 +431,31 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{Atomic Rename} \to \text{Persistent Ledger}$$
 并保留最近 3 个版本的容灾备份快照，确保数据 100% 具备容错自愈能力。
 
+### 6.6 本地静态加密：密钥层级与加密擦除 (B1)
+
+实现：`olivia/core/crypto/`（`aead.py`、`keychain.py`、`vault.py`）与 `olivia/core/chang/profile.py`。决定 Q6（`cryptography` 的 AES-256-GCM）、Q7（主密钥存系统钥匙串，经 `keyring`）、裁定 28。
+
+**密钥层级（信封加密）**
+
+| 层级 | 位置 | 内容 |
+| :--- | :--- | :--- |
+| 主密钥（KEK） | 系统钥匙串，服务名 `olivia`，条目 `master-key`（轮换时临时有 `master-key-next`） | 256 位随机密钥 + 8 字节密钥编号；首次需要加密时才创建 |
+| 数据密钥（DEK） | `<数据目录>/keys/<store>.key`，每个存储一个（`profile`、之后的 `ledger`、`kit`、`safety_plan`、`posteriors`） | 用主密钥以 AES-256-GCM 包裹；不做快照 |
+| 数据 | 各存储自己的文件 | 用该存储的 DEK 以 AES-256-GCM 加密；随机 96 位 nonce；附加数据 = 格式魔数 + 版本 + 存储名 + 标签，换存储、换标签、换版本都打不开 |
+
+**画像的三种文件形态**：未开开关且没有敏感字段时为明文 JSON（不需要钥匙串）；有 `clinical_history`（A1 起含 `contraindications`）时，这些字段移入 `sealed_fields` 密文，其余仍为明文；开关（ONB-06，默认关）打开时整份画像只剩 `sealed_profile` 密文。敏感字段在任何情况下都不以明文落盘，包括快照：每次保存后删除不符合当前保护级别的旧快照。旧版明文画像在读取时自动迁移并清除明文快照。
+
+**加密擦除**：`Vault.shred(store)` 删除该存储的包裹密钥文件，并轮换主密钥（其余 DEK 重新包裹、旧主密钥从钥匙串删除），因此即使被删的密钥文件在磁盘上残留副本也无法解开；删最后一个存储时直接删除主密钥。`Vault.shred_all()`（“全部遗忘”）删除所有包裹密钥与主密钥。轮换可在任意一步中断：新主密钥先写入 `master-key-next`，下一个进程会补完。命令行入口（`olivia forget`）在 B5。
+
+**钥匙串不可用**（如无后端的无头 Linux，或 `keyring` 只有不推荐的明文后端）：不保存任何敏感字段，首访跳过加密开关与健康信息两问，并温和告知“健康信息没办法在这台电脑上加密保存”；其他功能照常。钥匙串只是暂时打不开（锁定、拒绝访问）时，不改动任何文件，提示后退出，稍后可重试。
+
+**威胁模型**
+
+- 防：数据文件被复制、同步到网盘、被同机其他账户读取（文件 0600、目录 0700）；密文或密钥文件被篡改（GCM 认证失败即报错，绝不退回明文）；把一份存储的密文或密钥文件挪给另一份存储；擦除后从磁盘残留中恢复（需要已删除的主密钥）。
+- 不防：以同一用户身份运行的恶意程序（它也能读钥匙串）；已解锁会话中的内存读取；能写数据目录的人删除或回滚文件（明文部分未做认证，`sealed_fields` 可被整体删掉）；SSD / 写时复制文件系统上已删除的旧明文块（迁移前写下的明文只能删除，不能保证物理覆盖）。
+- 不记录日志；钥匙串条目名与错误信息只含固定标识符，从不含用户文字。不联网。
+- 换电脑或重置钥匙串后，加密数据无法读取（与“删钥即擦除”是同一性质）；主密钥丢失而包裹密钥仍在时，系统不会悄悄生成新主密钥覆盖，避免钥匙串偶发读空造成数据永久丢失。
+
 ---
 
 ## 7. 多推理模型适配网关与个人信息保护管线 (Inference Gateway & PIPL Pipeline)
@@ -566,7 +592,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 | **§ 3.1 / § 9 感知学生模型** | 纯 NumPy 字符级 CNN 学生模型的加载、校验与风险头推理（规则仍是底线） | `olivia/core/perception/student.py` [已实现 / P6-6a，默认关闭（R-P6a）]；其余感知头接入 [待实现 / C1] | `try_load_student(directory=None) -> StudentLoad`（不抛异常，失败给出原因）, `load_student(directory=None) -> StudentModel`, `default_student() -> StudentLoad`; `StudentModel.predict_heads(text)`, `.risk(text) -> tuple[CrisisLevel, float]`; `StudentRiskModel(student)`: `.predict(text) -> RiskPrediction`; `choose_risk_model(model: RiskModel \| None = None, *, student: bool = False) -> RiskChoice`; `StudentUnavailableError` |
 | **§ 3.2 萨提亚冰山内省器** | 认知扭曲、渴望与图式镜像 | 模块待定 [待实现 / C2（决定 D4）] | — |
 | **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
-| **§ 3.3 静态加密与加密擦除** | 钥匙串主密钥、AES-256-GCM 文件信封、按文件数据密钥 | `olivia/core/crypto/` [待实现 / B1] | 接口待定 |
+| **§ 3.3 / § 6.6 静态加密与加密擦除** | 钥匙串主密钥、AES-256-GCM 文件信封、按存储数据密钥、加密擦除 | `olivia/core/crypto/` [已实现 / B1]；`olivia/core/chang/profile.py` | `seal_bytes(key, plaintext, *, store, label='')`, `open_bytes(...)`, `KeyBackend`, `KeyringBackend`, `Vault(base_dir, backend=None)` 及 `.available/.seal/.open/.shred/.shred_all/.rotate_master_key`, `ProfileStore(base_dir=None, vault=None)`, `SENSITIVE_FIELDS`, `ProfileLockedError`, `CryptoError` 族 |
 | **§ 3.3 透明账本与 3D 检索** | 会话摘要账本、跨会话状态、3D 艾宾浩斯检索 | `olivia/core/memory/ledger.py`、`retrieval.py` [待实现 / B2–B4] | 接口待定 |
 | **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/machine.py`（由 `olivia/core/fsm/__init__.py` 导出）[已实现 / P3-2、P3-5] | `step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition`（纯函数，不修改入参）; `close_session(state: SessionState) -> Transition`; `TurnInput(perception, crisis: CrisisStatus, signals: TurnSignals, persona)`, `Transition(previous, state, reason)`, `Reason` |
 | **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；另有 `active_contraindications(tax, inp)`, `banned_actions(tax, flags)`, `M0_ACTION_ID`, `M0_SITUATIONS`；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |

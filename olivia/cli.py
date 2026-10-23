@@ -20,8 +20,10 @@
     The installed version, read from the package metadata.
 
 The only file the CLI writes is the profile (``chang/profile.py``: region, timezone and
-the onboarding answers) through ``storage.atomic_write_text``. Conversation text,
-perception output and crisis history are never written anywhere.
+the onboarding answers) through ``storage.atomic_write_text``, plus, once there is
+something to encrypt, its wrapped data key under ``keys/`` (``core/crypto``). Health
+information is always encrypted, the whole profile when the user chose that (ONB-06).
+Conversation text, perception output and crisis history are never written anywhere.
 
 The ``--inspect`` panel (SDD §10.2, ruling 27) prints ids, levels and numbers from
 ``TurnResult.inspect``, and never the user's text, the reply text or anything below
@@ -55,7 +57,7 @@ from olivia.core.chang.onboarding import (
     canonical_timezone,
     load_onboarding_text,
 )
-from olivia.core.chang.profile import ProfileCorruptError, ProfileStore
+from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.language.data import load_language_data
 from olivia.core.models import UNKNOWN_COUNTRY, CrisisLevel, PersonaProfile, UserRegion
 from olivia.core.resources.bundle import load_hotlines_bytes
@@ -79,6 +81,14 @@ CHAT_HINT: Final = "想结束的时候，输入 /exit 就好。"
 USER_PROMPT: Final = "你："
 ANSWER_PROMPT: Final = "> "
 PROFILE_CORRUPT: Final = "本地的设置文件读不出来了。为了不弄丢你的信息，我没有改动它。"
+PROFILE_LOCKED: Final = (
+    "加密保存的信息现在打不开：系统钥匙串没有响应，或者钥匙已经不在这台电脑上了。"
+    "你的文件我没有改动。"
+)
+HEALTH_NOT_SAVED: Final = (
+    "这台电脑上没有可用的系统钥匙串，健康信息没办法加密保存，所以之前记下的健康信息已经删除了。"
+    "其他的一切都照常。"
+)
 NOT_ONBOARDED: Final = "还没有完成第一次设置。先运行 olivia chat，之后就可以修改地区了。"
 NO_REGION: Final = "还没有保存地区。"
 ADULTS_ONLY: Final = "这里的陪伴只为成年人设计，所以不会保存地区信息。"
@@ -113,6 +123,8 @@ USER_TEXTS: Final = (
     GOODBYE,
     CHAT_HINT,
     PROFILE_CORRUPT,
+    PROFILE_LOCKED,
+    HEALTH_NOT_SAVED,
     NOT_ONBOARDED,
     NO_REGION,
     ADULTS_ONLY,
@@ -275,11 +287,17 @@ def _chat(
     student: bool = False,
 ) -> int:
     tax = _taxonomy()
+    store = ProfileStore()
     try:
-        profile = _onboard(console, tax, ProfileStore(), clock())
+        profile = _onboard(console, tax, store, clock())
     except ProfileCorruptError:
         console.say(PROFILE_CORRUPT)
         return 1
+    except ProfileLockedError:
+        console.say(PROFILE_LOCKED)
+        return 1
+    if store.dropped_sensitive_data:
+        console.say(HEALTH_NOT_SAVED)
     if profile is None:
         return 0
     session = Session.open(
@@ -353,11 +371,28 @@ def render_browsing(card: ResourceCard, tax: Taxonomy) -> str:
 
 def _load_profile(console: _Console) -> tuple[bool, PersonaProfile | None]:
     """(readable, profile); an unreadable profile is reported and never overwritten."""
+    store = ProfileStore()
     try:
-        return True, ProfileStore().load()
+        profile = store.load()
     except ProfileCorruptError:
         console.say(PROFILE_CORRUPT)
         return False, None
+    except ProfileLockedError:
+        console.say(PROFILE_LOCKED)
+        return False, None
+    if store.dropped_sensitive_data:
+        console.say(HEALTH_NOT_SAVED)
+    return True, profile
+
+
+def _save_profile(console: _Console, profile: PersonaProfile) -> bool:
+    """Save, or report (and change nothing) when encrypted data cannot be written now."""
+    try:
+        ProfileStore().save(profile)
+    except ProfileLockedError:
+        console.say(PROFILE_LOCKED)
+        return False
+    return True
 
 
 def _resources(console: _Console, clock: Clock) -> int:
@@ -405,7 +440,8 @@ def _set_region(
         console.say(REGION_NEEDS_TIMEZONE.format(label=label, choices=choices))
         return 1
     region = UserRegion(country_code=code, timezone=zone)
-    ProfileStore().save(replace(profile, region=region, updated_at=now))
+    if not _save_profile(console, replace(profile, region=region, updated_at=now)):
+        return 1
     if code != wanted:
         console.say(REGION_FALLBACK.format(raw=raw.strip()))
     console.say(REGION_SAVED.format(label=label, code=code, timezone=zone))
@@ -431,7 +467,8 @@ def _region(
     now = clock()
     if clear:
         region = UserRegion(country_code=UNKNOWN_COUNTRY, timezone=FALLBACK_TIMEZONE)
-        ProfileStore().save(replace(profile, region=region, updated_at=now))
+        if not _save_profile(console, replace(profile, region=region, updated_at=now)):
+            return 1
         console.say(REGION_CLEARED)
         return 0
     if code is None and timezone is not None:

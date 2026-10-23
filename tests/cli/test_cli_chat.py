@@ -16,7 +16,8 @@ from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
 
 import olivia
 from olivia import cli
-from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
+from olivia.core.chang.profile import PROFILE_FILENAME, ProfileLockedError, ProfileStore
+from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import OutputGate
@@ -192,6 +193,48 @@ def test_no_panel_without_inspect(run_cli, data_home):
     assert run.panel == []
 
 
+def test_locked_keychain_is_reported_and_nothing_changes(run_cli, data_home, keychain):
+    save_profile(data_home, clinical_history=(next(iter(load_taxonomy().red_flags())),))
+    before = {p: p.read_bytes() for p in files_under(data_home)}
+    keychain.broken = KeychainUnavailableError("locked")
+    for argv in (["chat"], ["resources"], ["region"], ["region", "HK"], ["region", "--clear"]):
+        run = run_cli(argv, ["你好"])
+        assert run.code == 1 and cli.PROFILE_LOCKED in run.out
+        assert run.sessions == []
+    assert {p: p.read_bytes() for p in files_under(data_home)} == before
+    keychain.broken = None
+    assert run_cli(["chat"], ["今天上班好累"]).code == 0
+
+
+@pytest.mark.parametrize("argv", [["region", "HK"], ["region", "--clear"]])
+def test_region_change_that_cannot_be_encrypted_is_refused(run_cli, data_home, monkeypatch, argv):
+    save_profile(data_home, enable_at_rest_encryption=True)
+    before = (data_home / PROFILE_FILENAME).read_bytes()
+
+    def locked(self: ProfileStore, profile: object) -> None:
+        raise ProfileLockedError("the keychain is unavailable", lost=False)
+
+    monkeypatch.setattr(ProfileStore, "save", locked)  # the keychain locks between load and save
+    run = run_cli(argv)
+    assert run.code == 1 and cli.PROFILE_LOCKED in run.out
+    assert "已经保存" not in run.out and cli.REGION_CLEARED not in run.out
+    assert (data_home / PROFILE_FILENAME).read_bytes() == before
+
+
+def test_legacy_health_information_is_dropped_without_keychain(run_cli, data_home, keychain):
+    code = next(iter(load_taxonomy().red_flags()))
+    profile = save_profile(data_home)
+    legacy = profile.to_dict() | {"clinical_history": [code]}
+    (data_home / PROFILE_FILENAME).write_text(json.dumps(legacy, ensure_ascii=False), "utf-8")
+    keychain.broken = NoKeychainError("none")
+    run = run_cli(["chat"], ["今天上班好累"])
+    assert run.code == 0 and cli.HEALTH_NOT_SAVED in run.out
+    for path in files_under(data_home):
+        assert code.encode() not in path.read_bytes(), path
+    again = run_cli(["chat"], ["今天上班好累"])
+    assert cli.HEALTH_NOT_SAVED not in again.out
+
+
 # -- persistence -----------------------------------------------------------------------------
 
 
@@ -219,7 +262,6 @@ def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_
         "directiveness_preference",
         "taboo_topics",
         "region",
-        "clinical_history",
         "enable_at_rest_encryption",
         "age_gate_refused_at",
     }

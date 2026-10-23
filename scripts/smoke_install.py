@@ -98,7 +98,12 @@ def run(exe: Path, args: list[str], home: Path, lines: list[str] | None = None) 
         input=stdin.encode("utf-8"),
         capture_output=True,
         cwd=home.parent,
-        env=clean_env(OLIVIA_HOME=str(home)),
+        # The null keyring backend makes every platform behave like a device without a
+        # keychain (no storage-mode or health questions in onboarding), so the scripted
+        # answers line up everywhere and the runner's real keychain is never touched.
+        env=clean_env(
+            OLIVIA_HOME=str(home), PYTHON_KEYRING_BACKEND="keyring.backends.null.Keyring"
+        ),
         timeout=120,
         check=False,
     )

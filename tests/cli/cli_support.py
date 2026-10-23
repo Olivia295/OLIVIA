@@ -15,9 +15,10 @@ SHANGHAI = ZoneInfo("Asia/Shanghai")
 NOW = datetime(2026, 10, 22, 23, 30, tzinfo=SHANGHAI)
 PANEL_PREFIXES = ("┌", "│", "└")
 
-# Onboarding answers for a mainland adult: accept, 18+, name, default agent name, the one
-# persona, no taboo topics, region 1 (CN, timezone set automatically), skip the consent.
-ONBOARD_CN = ["1", "1", "小林", "", "", "", "1", "跳过"]
+# Onboarding answers for a mainland adult: accept, 18+, default storage (only health
+# information encrypted, ONB-06), name, default agent name, the one persona, no taboo
+# topics, region 1 (CN, timezone set automatically), skip the consent.
+ONBOARD_CN = ["1", "1", "", "小林", "", "", "", "1", "跳过"]
 
 # An L3 sentence from tests/safety/cases.yaml (rp05, L3_ACT_FAREWELL).
 L3_SENTENCE = "我写了一封遗书"
