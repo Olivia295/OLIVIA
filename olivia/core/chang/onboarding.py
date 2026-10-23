@@ -435,7 +435,8 @@ def system_timezone() -> str:
     env = os.environ.get("TZ", "").strip().lstrip(":")
     if env:
         candidates.append(env.split("zoneinfo/", 1)[-1])
-    target = os.path.realpath(_LOCALTIME)
+    # Windows spells the resolved link with backslashes.
+    target = os.path.realpath(_LOCALTIME).replace("\\", "/")
     if "zoneinfo/" in target:
         candidates.append(target.split("zoneinfo/", 1)[1])
     with contextlib.suppress(OSError, UnicodeDecodeError):
