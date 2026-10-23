@@ -159,6 +159,20 @@ def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     assert crisis_turn.inspect["hotline_reason"] == "no override"
 
 
+@pytest.mark.parametrize("mode_flags", [[], ["--model"]], ids=["rules", "model"])
+def test_inspect_panel_shows_the_perception_fields(run_cli, data_home, mode_flags):
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect", *mode_flags], ["今天上班好累"])
+    (result,) = run.results
+    data = result.inspect
+    assert (
+        f"│ 效价 {data['valence']:.2f} · 情绪 {data['emotion']} · 意图 {data['intent']}"
+        f" · 姿态 {data['stance']} · 准备度 {data['readiness']:.2f}"
+    ) in run.panel
+    if not mode_flags:  # rules mode: the stub's placeholders
+        assert (data["stance"], data["readiness"]) == ("CONGRUENT", 0.5)
+
+
 def test_rules_only_by_default_and_says_so(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法"])

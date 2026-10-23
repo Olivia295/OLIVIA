@@ -5,7 +5,9 @@
     ``Session.turn`` and the reply is printed exactly as returned, crisis cards included.
     The crisis screen uses the rules alone; ``--model`` (experimental, off by default
     until a student passes the release gate) also consults the packaged perception
-    student, which can only raise the rule level and is capped at L2.
+    student, which can only raise the rule level and is capped at L2, and takes valence,
+    emotion, intent, stance, readiness and (without a spectrum cue) the spectrum from its
+    other heads; arousal is the higher of the rule and model values (roadmap C1).
     ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
     feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
     as are natural-language replies to a card ("今天先不做了"): the session's perception
@@ -237,6 +239,9 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"（{_fmt(data.get('reason'))}） · 纯倾听锁 {_fmt(data.get('lock'))}",
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
         f" · 谱系 {_fmt(data.get('spectrum'))} · 红线 {_fmt(data.get('red_flags'))}",
+        f"│ 效价 {_fmt(data.get('valence'))} · 情绪 {_fmt(data.get('emotion'))}"
+        f" · 意图 {_fmt(data.get('intent'))} · 姿态 {_fmt(data.get('stance'))}"
+        f" · 准备度 {_fmt(data.get('readiness'))}",
         f"│ 可用动作 {_fmt(data.get('candidates'))} · 选中 {_fmt(data.get('chosen'))}"
         f" · 反馈 {_fmt(data.get('feedback'))}" + (f"（来源 {_fmt(origin)}）" if origin else ""),
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"

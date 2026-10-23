@@ -1,4 +1,8 @@
-"""G-3: the offline control loop (one ``Session.turn``) stays within P99 55 ms (SDD §10.1)."""
+"""G-3: the offline control loop (one ``Session.turn``) stays within P99 55 ms (SDD §10.1).
+
+Both modes: rules only (the default) and model mode, where the packaged student runs one
+forward pass per turn for the crisis screen and the perception heads (roadmap C1).
+"""
 
 from __future__ import annotations
 
@@ -45,7 +49,7 @@ def _coverage_is_tracing() -> bool:
     return coverage.Coverage.current() is not None
 
 
-def _mixed_turns() -> list[float]:
+def _mixed_turns(*, student: bool) -> list[float]:
     tax = load_taxonomy()
     profile = PersonaProfile(
         age_confirmed_18_plus=True,
@@ -54,10 +58,12 @@ def _mixed_turns() -> list[float]:
         region=UserRegion("CN", "Asia/Shanghai"),
     )
     samples: list[float] = []
-    session = Session.open(tax, profile, rng=random.Random(3), now=lambda: NOW)
+    session = Session.open(tax, profile, rng=random.Random(3), now=lambda: NOW, student=student)
     for i in range(TURNS):
         if i % len(SCRIPT) == 0:
-            session = Session.open(tax, profile, rng=random.Random(i), now=lambda: NOW)
+            session = Session.open(
+                tax, profile, rng=random.Random(i), now=lambda: NOW, student=student
+            )
         text = SCRIPT[i % len(SCRIPT)]
         t0 = time.perf_counter()
         session.turn(text)
@@ -68,12 +74,13 @@ def _mixed_turns() -> list[float]:
 # Line tracing multiplies the cost of every Python line; scripts/check.sh runs this file
 # again without coverage, where the budget applies.
 @pytest.mark.skipif(_coverage_is_tracing(), reason="latency is not measurable under coverage")
-def test_turn_p99_within_the_control_loop_budget():
-    _mixed_turns()  # warm-up: loads and caches the shared data
+@pytest.mark.parametrize("student", [False, True], ids=["rules", "model"])
+def test_turn_p99_within_the_control_loop_budget(student: bool):
+    _mixed_turns(student=student)  # warm-up: loads and caches the shared data
     # Scheduler jitter on shared runners has nothing to do with this code, so the budget
     # applies to the best of three rounds: a real slowdown fails every round.
     p99s = []
     for _ in range(3):
-        samples = _mixed_turns()
+        samples = _mixed_turns(student=student)
         p99s.append(samples[int(len(samples) * 0.99) - 1])
     assert min(p99s) <= P99_BUDGET_S, f"P99 per round (s): {p99s}, budget {P99_BUDGET_S}"

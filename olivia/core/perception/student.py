@@ -16,8 +16,10 @@ valid convolution, ReLU and global max pool -> concatenation -> dense + ReLU -> 
 layer whose slices are the heads. Class heads are ``softmax(z / temperature)``, ``tanh``
 heads ``tanh``, and ``sigmoid`` / ``bce`` heads ``sigmoid``.
 
-Only the risk heads are wired into the product so far (:class:`StudentRiskModel`, an
-injected ``RiskModel`` for ``SafetyScreen``); the other heads are read by P6-6b.
+The risk heads feed the crisis screen (:class:`StudentRiskModel`, an injected
+``RiskModel`` for ``SafetyScreen``); the other heads feed model-mode perception
+(``model_heads.py``, roadmap C1). The risk model keeps the heads of its last forward
+pass so the session runs the student once per turn.
 """
 
 from __future__ import annotations
@@ -175,7 +177,10 @@ class StudentModel:
 
     def risk(self, text: str) -> tuple[CrisisLevel, float]:
         """The risk level (training rule with the calibrated thresholds) and crisis score."""
-        heads = self.predict_heads(text)
+        return self.risk_from_heads(self.predict_heads(text))
+
+    def risk_from_heads(self, heads: Mapping[str, HeadValue]) -> tuple[CrisisLevel, float]:
+        """:meth:`risk` from heads already computed by :meth:`predict_heads`."""
         probs = heads["risk"]
         score = heads["crisis_confidence"]
         assert isinstance(probs, dict) and isinstance(score, float)
@@ -189,15 +194,28 @@ class StudentModel:
 
 
 class StudentRiskModel:
-    """The student's risk heads as a Stage 2 ``RiskModel`` (no cue ids of its own)."""
+    """The student's risk heads as a Stage 2 ``RiskModel`` (no cue ids of its own).
+
+    It keeps every head of its last forward pass (no text) until :meth:`take_heads`, so
+    model-mode perception reuses the screen's pass instead of running the student again.
+    """
 
     def __init__(self, student: StudentModel) -> None:
         self.student = student
         self.name = f"student:{student.fingerprint}"
+        self._last_heads: dict[str, HeadValue] | None = None
 
     def predict(self, text: str) -> RiskPrediction:
-        level, score = self.student.risk(text)
+        self._last_heads = None
+        heads = self.student.predict_heads(text)
+        self._last_heads = heads
+        level, score = self.student.risk_from_heads(heads)
         return RiskPrediction(level, score, ())
+
+    def take_heads(self) -> dict[str, HeadValue] | None:
+        """The heads of the last :meth:`predict` not yet taken, then forget them."""
+        heads, self._last_heads = self._last_heads, None
+        return heads
 
 
 # -- loading ---------------------------------------------------------------------------------
@@ -487,6 +505,8 @@ class RiskChoice:
     """Why the student is not in use when it was wanted (``None`` otherwise)."""
     model: RiskModel | None
     """What to inject into ``SafetyScreen`` (``None``: the rule model alone)."""
+    student: StudentRiskModel | None = None
+    """The packaged student behind ``model`` when it is in use, for model-mode perception."""
 
     def take_turn(self) -> tuple[str | None, float | None]:
         """The model's (level name, score) on the last screen, then forget it.
@@ -528,4 +548,4 @@ def choose_risk_model(model: RiskModel | None = None, *, student: bool = False) 
     if loaded.model is None:
         return RiskChoice(RULES_ONLY, loaded.reason, None)
     risk_model = StudentRiskModel(loaded.model)
-    return RiskChoice(risk_model.name, None, _Observed(risk_model))
+    return RiskChoice(risk_model.name, None, _Observed(risk_model), risk_model)
