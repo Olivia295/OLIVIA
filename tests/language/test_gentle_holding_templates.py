@@ -357,11 +357,12 @@ FOLLOWUP_SLOTS = {"user_name", "agent_name"}
 
 
 def test_followup_groups_and_variant_counts() -> None:
-    assert set(FOLLOWUPS) == {"clarify_feedback", "kit_empty", "closing_declined"}
+    assert set(FOLLOWUPS) == {"clarify_feedback", "kit_empty", "closing_declined", "safety_check"}
     for name, variants in FOLLOWUPS.items():
         assert 2 <= len(variants) <= 5, name
         assert len(set(variants)) == len(variants), name
         assert any(not SLOT.findall(v) for v in variants), name
+    assert len(FOLLOWUPS["safety_check"]) >= 3
 
 
 def test_followups_are_one_short_paragraph_with_name_slots_only() -> None:
@@ -396,12 +397,24 @@ def test_followups_pass_willow_unchanged_and_the_output_gate() -> None:
         "clarify_feedback": templates.clarify_feedback,
         "kit_empty": templates.kit_empty,
         "closing_declined": templates.closing_declined,
+        "safety_check": templates.safety_check,
     }
     assert {name: list(v) for name, v in loaded.items()} == FOLLOWUPS
-    stages = (HelpStage.S_EXPLORE, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)
+    stages = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)
     for variants in loaded.values():
         for variant in variants:
             text = _fill(variant, TYPICAL)
             assert apply_willow(text, ContentKind.NORMAL, data.willow) == text, text
             for stage in stages:
                 assert gate.reasons(text, kind=ContentKind.NORMAL, stage=stage) == (), text
+
+
+def test_safety_check_asks_one_direct_question_and_nothing_else() -> None:
+    # Decision D3: one gentle, direct question about suicidal intent; never a method, a
+    # card or advice, and never a number (the session adds the region's hotlines).
+    for variant in FOLLOWUPS["safety_check"]:
+        assert variant.count("？") == 1, variant
+        assert "结束自己" in variant and "生命" in variant, variant
+        for word in [*ADVICE_WORDS, "办法", "方式"]:
+            assert word not in variant, f"{word!r} in {variant!r}"
+        assert not any(ch.isdigit() for ch in variant), variant

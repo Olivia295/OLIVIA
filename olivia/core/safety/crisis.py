@@ -12,6 +12,10 @@ With ``model_plan_evidence=True`` (off by default, enabled only after the inject
 passes an independent evaluation), an injected model's own in-contract L3 prediction
 counts as plan evidence, so Stage 2 can answer L3. The rule model's prediction and a
 model failure never count as plan evidence.
+
+``asks_intent`` (decision D3) is set when a rule ``ASK_INTENT`` cue fires: an L1 pair cue
+for a euphemistic request for a way to end a life. The screen only reports it; the
+session decides to ask.
 """
 
 from __future__ import annotations
@@ -56,6 +60,10 @@ class CrisisAssessment:
     stage: Literal["STAGE1", "STAGE2"]
     has_plan_evidence: bool
     cue_ids: tuple[str, ...]
+    asks_intent: bool = False
+    """An ``ASK_INTENT`` rule cue fired (decision D3): a euphemistic request for a way to
+    end a life. Only the rules set it, never an injected model. The cue itself is L1; the
+    session asks one direct question when the turn's level stays below L2."""
 
 
 def arbitrate(
@@ -80,13 +88,16 @@ class _CueIndex:
                 cues[cue.id] = cue
                 for phrase in cue.patterns:
                     phrases[phrase] = cue.id
-        # Lexicon validation keeps pair phrases disjoint from the risk phrases above.
-        for pair in lexicons.pairs:
+        # Lexicon validation keeps pair phrases disjoint from the risk phrases above. The
+        # ask cues (decision D3) are pairs too; they fire at L1.
+        pairs = (*lexicons.pairs, *lexicons.ask_pairs)
+        for pair in pairs:
             for phrase in (*pair.anchors, *pair.requests, *pair.exceptions):
                 phrases[phrase] = _PAIR_KEY + phrase
         self.matcher = PhraseMatcher(phrases)
         self.cues: dict[str, RiskCue] = cues
-        self.pairs: tuple[PairCue, ...] = lexicons.pairs
+        self.pairs: tuple[PairCue, ...] = pairs
+        self.ask_ids: frozenset[str] = frozenset(p.id for p in lexicons.ask_pairs)
 
     def scan(self, text: str) -> list[Match]:
         return self.matcher.find_all(text)
@@ -217,6 +228,7 @@ class SafetyScreen:
                 CrisisLevel.L3, score, "STAGE1", True, _unique_ids(m.key for m in stage1)
             )
         prediction = self._rule_model.predict_matches(matches)
+        asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False
         if self._model is not None:
             model_prediction = self._predict_safely(self._model, text)
@@ -229,7 +241,7 @@ class SafetyScreen:
             prediction = _with_floor(prediction, model_prediction)
         level = arbitrate(self._tax, prediction.level, prediction.score, has_plan_evidence)
         return CrisisAssessment(
-            level, prediction.score, "STAGE2", has_plan_evidence, prediction.cue_ids
+            level, prediction.score, "STAGE2", has_plan_evidence, prediction.cue_ids, asks_intent
         )
 
     def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:

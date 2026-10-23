@@ -324,10 +324,57 @@ class LanguageEngine:
         usable = [t for t in self._data.templates.crisis if all(values[s] for s in slots_of(t))]
         if not usable:
             raise ValueError("no S_crisis variant can be filled from these slots")
+        blocks = [_fill(self._rng.choice(usable), values), *self._resource_blocks(card)]
+        text = apply_willow("\n\n".join(blocks), ContentKind.CRISIS, self._data.willow)
+        numbers = _numbers(card)
+        result = self._gate.check(
+            text, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
+        )
+        self.last_gate = result
+        if result.ok:
+            return result.text
+        return self._minimal_card(numbers)
+
+    def render_safety_check(self, card: ResourceCard, slots: Slots, stage: HelpStage) -> str:
+        """The direct question about intent (decision D3) plus the card's resource lines.
+
+        The question is one ``followups.safety_check`` variant (name slots only) under the
+        NORMAL filters; the resource lines are the crisis card's, from ``card`` (the
+        region's L2 CRISIS card), under the CRISIS filters. The whole reply passes the gate
+        as NORMAL content in ``stage`` with the card's numbers allowed, the way crisis
+        cards pass it. A block falls back to the minimal card, never to a reply without
+        numbers.
+        """
+        if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
+            raise ValueError("render_safety_check needs a CRISIS-mode card at L2 or L3")
+        values = slots.values()
+        tpl = self._data.templates.safety_check
+        usable = [t for t in tpl if all(values[s] for s in slots_of(t))]
+        if not usable:
+            raise ValueError("no safety_check variant can be filled from these slots")
+        willow = self._data.willow
+        question = apply_willow(_fill(self._rng.choice(usable), values), ContentKind.NORMAL, willow)
+        resources = apply_willow(
+            "\n\n".join(self._resource_blocks(card)), ContentKind.CRISIS, willow
+        )
+        numbers = _numbers(card)
+        result = self._gate.check(
+            f"{question}\n\n{resources}",
+            kind=ContentKind.NORMAL,
+            stage=stage,
+            allowed_numbers=numbers,
+        )
+        self.last_gate = result
+        if result.ok:
+            return result.text
+        return self._minimal_card(numbers)
+
+    def _resource_blocks(self, card: ResourceCard) -> list[str]:
+        """The card's numbers: emergency first, then lines, stale entries marked."""
         r = self._data.render
         stale = set(card.stale_entries)
         mark = r.crisis_stale_mark
-        blocks = [_fill(self._rng.choice(usable), values)]
+        blocks: list[str] = []
         if card.emergency:
             lines = [r.crisis_emergency_heading[card.level]]
             for em in card.emergency:
@@ -345,15 +392,10 @@ class LanguageEngine:
                 if ln.hours != _UNKNOWN_HOURS and ln.kind is not LineKind.DIRECTORY_URL:
                     lines.append(f"  {r.crisis_hours_label}{ln.hours}")
             blocks.append("\n".join(lines))
-        text = apply_willow("\n\n".join(blocks), ContentKind.CRISIS, self._data.willow)
-        numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
-        result = self._gate.check(
-            text, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
-        )
-        self.last_gate = result
-        if result.ok:
-            return result.text
-        return "\n".join([r.crisis_minimal, *(f"· {n}" for n in numbers)])
+        return blocks
+
+    def _minimal_card(self, numbers: Sequence[str]) -> str:
+        return "\n".join([self._data.render.crisis_minimal, *(f"· {n}" for n in numbers)])
 
     # -- helpers ---------------------------------------------------------------------------
 
@@ -361,6 +403,10 @@ class LanguageEngine:
         result = self._gate.check(text, kind=kind, stage=stage)
         self.last_gate = result
         return result.text
+
+
+def _numbers(card: ResourceCard) -> list[str]:
+    return [e.number for e in card.emergency] + [ln.number for ln in card.lines]
 
 
 def _fill(template: str, values: dict[str, str]) -> str:

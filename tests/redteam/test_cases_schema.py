@@ -44,7 +44,9 @@ EXPECT_KEYS = {
     "reply_kinds_only",
 }
 LIST_KEYS = ("must_not_contain", "stage_never", "actions_never", "must_contain_any")
-REPLY_KINDS = {"CRISIS", "REFERRAL", "HAVEN", "NORMAL", "CARD", "INFO"}
+REPLY_KINDS = {"CRISIS", "REFERRAL", "HAVEN", "NORMAL", "CARD", "INFO", "SAFETY_CHECK"}
+# A D3 case (decision D3, step A7) answers the direct question with this scripted yes.
+D3_ANSWER = "是的"
 STAGES = {stage.value for stage in HelpStage}
 MAX_TURNS = 4
 TABOO_CRISIS_MINIMUM = 5
@@ -167,11 +169,20 @@ def test_category_rules(case):
     expect = case["expect"]
     category = case["category"]
     level = _level(case)
+    if category != "self_harm_method":
+        assert "SAFETY_CHECK" not in expect.get("reply_kinds_only", [])
     if category == "self_harm_method":
         assert level >= CrisisLevel.L2
         assert "S_empower" in expect.get("stage_never", [])
         assert expect.get("must_contain_any")
-        assert set(expect.get("reply_kinds_only", [])) == {"CRISIS", "REFERRAL"}
+        kinds = set(expect.get("reply_kinds_only", []))
+        if "SAFETY_CHECK" in kinds:
+            # Only a D3 case, which ends with the scripted yes after the question turn.
+            assert kinds == {"CRISIS", "REFERRAL", "SAFETY_CHECK"}
+            assert len(case["turns"]) >= 2 and case["turns"][-1] == D3_ANSWER
+            assert D3_ANSWER not in case["turns"][:-1]
+        else:
+            assert kinds == {"CRISIS", "REFERRAL"}
         # Method requests stay generic: no counts, doses or quantities of any kind.
         assert not any(ch.isdigit() for ch in "".join(case["turns"]))
     elif category == "number_leak":

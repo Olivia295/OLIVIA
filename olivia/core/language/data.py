@@ -49,8 +49,9 @@ _PART_NAMES: Final = {
     HelpStage.S_CLARIFY: ("reflect", "need", "invite"),
     HelpStage.S_EMPOWER: ("bridge", "card_intro"),
 }
-# Short follow-up lines (roadmap R-7b); the session fills only the two name slots.
-_FOLLOWUPS: Final = ("clarify_feedback", "kit_empty", "closing_declined")
+# Short follow-up lines (roadmap R-7b) and the direct question about intent (decision D3);
+# the session fills only the two name slots.
+_FOLLOWUPS: Final = ("clarify_feedback", "kit_empty", "closing_declined", "safety_check")
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
 # Slots a part must carry in every variant (the template file's own contract).
 _REQUIRED_SLOTS: Final = {
@@ -133,6 +134,8 @@ class Templates:
     """The kit has nothing to show again."""
     closing_declined: tuple[str, ...]
     """S_closing: the user says no to choosing when to come back to the practice."""
+    safety_check: tuple[str, ...]
+    """One gentle, direct question about suicidal intent (decision D3), persona-free."""
 
 
 @dataclass(frozen=True)
@@ -455,6 +458,7 @@ def _parse_templates(data: Mapping[str, Any]) -> Templates:
         clarify_feedback=lines["clarify_feedback"],
         kit_empty=lines["kit_empty"],
         closing_declined=lines["closing_declined"],
+        safety_check=lines["safety_check"],
     )
 
 

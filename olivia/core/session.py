@@ -89,6 +89,18 @@ never on a crisis turn (the tracker's crisis or an L2/L3 screen) or an L1 screen
 ``inspect["feedback_source"]`` says where recorded feedback came from: ``command``,
 ``phrase`` (a feedback or aversion phrase) or ``confirmed`` (a yes to the question).
 
+Direct question about intent (decision D3, step A7): a turn whose screen reports an
+``ASK_INTENT`` cue (a euphemistic request for a way to end a life: 想走了 + 不痛, end it
+without pain) while the turn stays below L2 and outside a crisis gets one gentle, direct
+question about suicidal intent plus the region's L2 resource lines (SAFETY_CHECK), and
+nothing else: no card, referral, method or advice, and the request is not passed on as a
+direct request. The next turn is read as the answer (``safety/intent_check.py``): a clear
+no returns to the ordinary flow and sets the in-session gentle-care flag (``snapshot``);
+a yes, an unclear answer, no answer or a new crisis cue is read as L2 before the tracker
+runs, so the crisis flow follows. A turn that screens L2/L3 itself never waits for the
+question. ``inspect["safety_check"]`` is ``asked``, ``affirmed``, ``denied``, ``unclear``
+or None.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -135,7 +147,8 @@ from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import ResourceStore, parse_store
-from olivia.core.safety.crisis import RiskModel, SafetyScreen
+from olivia.core.safety.crisis import CrisisAssessment, RiskModel, SafetyScreen
+from olivia.core.safety.intent_check import IntentAnswer, read_intent_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
@@ -155,6 +168,8 @@ _COMMAND_FEEDBACK: Final = {
 
 
 _NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
+# Cue id added to an answer turn the session reads as L2 after the D3 question.
+SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
 
 
 class FeedbackSource(StrEnum):
@@ -179,6 +194,8 @@ class ReplyKind(StrEnum):
     NORMAL = "NORMAL"
     CARD = "CARD"
     INFO = "INFO"
+    SAFETY_CHECK = "SAFETY_CHECK"
+    """The direct question about intent with the region's resource lines (decision D3)."""
 
 
 @dataclass(frozen=True)
@@ -303,6 +320,10 @@ class Session:
         self._last_status: CrisisStatus | None = None
         self._pending: _Pending | None = None
         self._clarifying = False
+        # The last turn asked the D3 question, so the next turn is its answer.
+        self._asking = False
+        # The user said no to the D3 question this session (kept across sessions by A3/B3).
+        self._gentle_care = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
 
@@ -352,6 +373,7 @@ class Session:
         self._gate_notes = []
 
         assessment = self._screen.assess(text)
+        assessment, answer = self._answer_safety_check(text, assessment)
         model_level, model_score = self._risk.take_turn()
         perception, signals = self._shared.stub.perceive(text, assessment)
         status = self._tracker.observe(assessment, text, perception.valence)
@@ -359,6 +381,14 @@ class Session:
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
+        ask = answer is None and assessment.asks_intent and not status.in_crisis
+        # The request on an ask turn is not a request for an exercise, and the answer to the
+        # question is not an answer to any other question.
+        if ask:
+            signals = replace(signals, direct_request=False, answer=None)
+        elif answer is not None:
+            signals = replace(signals, answer=None)
+        self._asking = ask
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
@@ -384,6 +414,8 @@ class Session:
         templates = self._engine.data.templates
         if stage is HelpStage.S_CRISIS:
             rendered = self._crisis(status, now)
+        elif ask:
+            rendered = self._safety_check(stage, now)
         elif follow.clarify and still_waiting:
             rendered = self._followup(templates.clarify_feedback, stage)
             self._clarifying = True
@@ -423,7 +455,7 @@ class Session:
                 lambda: self._compose(stage, perception, spectrum, mirror_text), stage
             )
 
-        if stage is not HelpStage.S_CRISIS:
+        if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
 
         if pending is not None and feedback is not None:
@@ -466,6 +498,7 @@ class Session:
             "risk_model_reason": self._risk.reason,
             "model_level": model_level,
             "model_score": model_score,
+            "safety_check": "asked" if ask else (answer.value if answer is not None else None),
         }
         return TurnResult(
             reply=rendered.reply,
@@ -506,6 +539,8 @@ class Session:
             "pending_spectrum": pending.spectrum if pending else None,
             "pending_stage": pending.stage.value if pending else None,
             "awaiting_clarification": self._clarifying,
+            "awaiting_safety_check": self._asking,
+            "gentle_care": self._gentle_care,
             "bandit": self._sampler.to_dict(),
         }
 
@@ -525,6 +560,50 @@ class Session:
         reply = self._engine.render_crisis(card, self._plain_slots())
         self._note_gate()
         return _Rendered(reply, ReplyKind.CRISIS, card=card)
+
+    def _safety_check(self, stage: HelpStage, now: datetime) -> _Rendered:
+        """The D3 question with the region's L2 resource lines (never the minors' lines)."""
+        card = resolve(
+            self._shared.store,
+            self._profile.region,
+            CrisisLevel.L2,
+            mode=CardMode.CRISIS,
+            today=now.date(),
+            is_minor=False,
+        )
+        self._engine.last_gate = None
+        reply = self._engine.render_safety_check(card, self._plain_slots(), stage)
+        self._note_gate()
+        return _Rendered(reply, ReplyKind.SAFETY_CHECK, card=card)
+
+    def _answer_safety_check(
+        self, text: str, assessment: CrisisAssessment
+    ) -> tuple[CrisisAssessment, IntentAnswer | None]:
+        """Read this turn as the answer to the D3 question asked on the turn before.
+
+        Anything but a clear no is read as L2 (the screen's own L2/L3 is kept as it is);
+        a no sets the gentle-care flag. Whether a no carries a new crisis cue is the rule
+        screen's call: an injected model's score band alone (L1) does not void it, while
+        its L2 still enters crisis through ``assessment``. Returns the assessment
+        unchanged and None when no question was asked.
+        """
+        if not self._asking:
+            return assessment, None
+        shared = self._shared.screen
+        rules = assessment if self._screen is shared else shared.assess(text)
+        answer = read_intent_answer(self._shared.lexicons.intent_answers, text, rules)
+        if answer is IntentAnswer.DENIED:
+            self._gentle_care = True
+            return assessment, answer
+        if assessment.level >= CrisisLevel.L2:
+            return assessment, answer
+        l2 = replace(
+            assessment,
+            level=CrisisLevel.L2,
+            score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L2")),
+            cue_ids=(*assessment.cue_ids, SAFETY_CHECK_CUE),
+        )
+        return l2, answer
 
     def _offer(
         self,
