@@ -29,6 +29,7 @@ def _inp(
     return SolverInput(
         stage=stage,
         arousal=arousal,
+        battery=0.6,
         active_red_flags=flags,
         active_contraindications=frozenset(),
         situation_codes=situations,

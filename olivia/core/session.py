@@ -746,6 +746,7 @@ class Session:
         inp = SolverInput(
             stage=stage,
             arousal=perception.arousal,
+            battery=transition.state.social_battery,
             active_red_flags=flags,
             active_contraindications=frozenset(),
             situation_codes=frozenset(),
