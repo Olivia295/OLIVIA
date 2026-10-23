@@ -1449,3 +1449,402 @@ therapy_question_cues:
   - 有什么用
   - 有什么区别
   - "?"
+
+# Introspector (decision D4, step C2; SDD §3.2, PRD 特性三 / MIYI-03). Read by
+# olivia/core/perception/introspector.py, not by the rule stub. Draft pending G-0.
+#
+# Matching: the message is folded like every other section, clipped to the perception
+# window and stripped of punctuation and symbols ("我这么害怕，说明……" reads as
+# "我这么害怕说明……"), then scanned once. Within each of distortions / schemas / yearnings
+# a hit fully inside a longer hit is dropped and a hit directly preceded by a
+# `negation.prefixes` entry is void (same rule as the stub), so "我不是一无是处" is no hit.
+#
+# Keys are taxonomy ids: every cognitive_distortions, schemas and satir_yearnings id has
+# an entry, and nothing else does. A phrase belongs to one id only, across all three
+# sections, and no phrase of an id lies inside a phrase of another id of the same
+# section. Phrases are first-person and specific on purpose: ordinary talk ("这次没考好",
+# "我不太在意别人的看法") must not fire. tests/perception/test_introspector.py holds
+# positives and hard negatives for every id.
+introspection:
+  distortions:
+    ALL_OR_NOTHING:
+      - 要么完美要么就是失败
+      - 不是满分就是失败
+      - 有一点没做好就全完了
+      - 一点瑕疵就等于全盘失败
+      - 不完美就等于失败
+      - 做不到最好就等于没做
+      - 要么全对要么全错
+    CATASTROPHIZING:
+      - 这下全完了
+      - 一切都毁了
+      - 天要塌下来了
+      - 后果不堪设想
+      - 我的人生全完了
+      - 会变成一场灾难
+      - 肯定会出大事
+    OVERGENERALIZATION:
+      - 我总是搞砸
+      - 我永远都做不好
+      - 我什么事都做不好
+      - 每次都会搞砸
+      - 从来没有一件事做成过
+      - 所有事都被我搞砸了
+    MIND_READING:
+      - 他们肯定在背后笑我
+      - 大家一定都觉得我很差
+      - 他肯定看不起我
+      - 她肯定看不起我
+      - 别人肯定觉得我很蠢
+      - 同事肯定觉得我没用
+      - 他们心里肯定在嫌弃我
+    FORTUNE_TELLING:
+      - 肯定会失败
+      - 注定会搞砸
+      - 结果一定很糟
+      - 反正最后也不会成功
+      - 试了也肯定没用
+      - 肯定考不上
+      - 面试肯定过不了
+    MENTAL_FILTER:
+      - 只记得做错的那一点
+      - 好的地方都不算数
+      - 夸我的话都不算
+      - 只看到自己的缺点
+      - 一个差评就抵消了所有
+      - 别人的夸奖都是客套
+      - 满脑子都是那一个错误
+    EMOTIONAL_REASONING:
+      - 这么害怕说明
+      - 这么难受说明
+      - 这么焦虑说明
+      - 心里不安就说明
+      - 感觉不好就说明
+      - 既然我感觉这么糟
+      - 我感觉自己很蠢所以
+    SHOULD_STATEMENTS:
+      - 我应该做得更好
+      - 我必须做到最好
+      - 我不应该这么脆弱
+      - 我本该做得更好
+      - 我必须让所有人满意
+      - 我不该有这种情绪
+      - 我不允许自己犯错
+    PERSONALIZATION:
+      - 都是我的错
+      - 全怪我
+      - 都怪我不好
+      - 是我害的
+      - 要不是因为我
+      - 是我拖累了大家
+      - 是我连累了
+  schemas:
+    DEFECTIVENESS:
+      - 我不够好
+      - 自己不够好
+      - 我一无是处
+      - 自己一无是处
+      - 我真没用
+      - 我好没用
+      - 我太没用了
+      - 我本身就有问题
+      - 我是个失败品
+      - 骨子里就很差劲
+      - 真实的我很糟糕
+      - 我配不上任何好东西
+      - 我天生就有缺陷
+    UNRELENTING_STANDARDS:
+      - 必须做到完美
+      - 一点错都不能有
+      - 做得再好也不够
+      - 九十九分也不够
+      - 对自己要求太高
+      - 差一点都不行
+      - 不能有任何失误
+    FEAR_OF_ABANDONMENT:
+      - 怕被抛弃
+      - 害怕被丢下
+      - 最后都会离开我
+      - 迟早会离开我
+      - 怕他不要我了
+      - 担心被抛下
+      - 早晚会被扔下
+    MISTRUST_ABUSE:
+      - 没有人可以信任
+      - 对我好都是有目的
+      - 迟早会被背叛
+      - 谁都靠不住
+      - 人心都是坏的
+      - 肯定会被利用
+      - 对我好肯定别有用心
+    EMOTIONAL_DEPRIVATION:
+      - 从来没有人真正懂我
+      - 没有人在乎我的感受
+      - 我的需要从来没人管
+      - 没人真正关心过我
+      - 从小就没人抱过我
+      - 我的感受不重要
+    SOCIAL_ISOLATION:
+      - 跟谁都格格不入
+      - 融不进任何圈子
+      - 我不属于任何地方
+      - 总觉得自己是局外人
+      - 跟大家隔着一层
+      - 我永远融不进去
+    DEPENDENCE_INCOMPETENCE:
+      - 离开别人我什么都做不了
+      - 我自己根本搞不定
+      - 没有人帮我就不行
+      - 一个人做不了决定
+      - 什么都得靠别人
+      - 我照顾不好自己
+    VULNERABILITY_TO_HARM:
+      - 随时会出事
+      - 总觉得会有不好的事发生
+      - 肯定得了什么大病
+      - 灾祸随时会降临
+      - 世界太危险了
+      - 一出门就怕出意外
+    ENMESHMENT:
+      - 和我妈分不开
+      - 离不开我妈
+      - 人生都是父母安排的
+      - 家里人的情绪就是我的情绪
+      - 我妈不开心我就不能开心
+      - 分不清哪些是我自己想要的
+    SUBJUGATION:
+      - 我的意见不重要
+      - 只能听别人的
+      - 不敢说出自己想要什么
+      - 一直在压抑自己
+      - 我没有资格拒绝
+      - 不敢拒绝别人
+      - 总是顺着别人
+    SELF_SACRIFICE:
+      - 总是先照顾别人
+      - 别人的事比我的重要
+      - 自己再累也要先帮别人
+      - 牺牲自己成全别人
+      - 所有人的需要都压在我身上
+      - 习惯了把自己放在最后
+    APPROVAL_SEEKING:
+      - 在意别人怎么看我
+      - 很怕别人不喜欢我
+      - 一直在讨好别人
+      - 需要别人的认可
+      - 别人一不夸我就慌
+      - 活在别人的眼光里
+    NEGATIVITY_PESSIMISM:
+      - 什么事都会往坏处想
+      - 好事总会变坏
+      - 开心不了多久就会出事
+      - 凡事总往最坏处想
+      - 好事轮不到我
+      - 生活就是一件接一件的坏事
+    EMOTIONAL_INHIBITION:
+      - 不能在别人面前哭
+      - 情绪要藏起来
+      - 表达情绪很丢人
+      - 从不让别人看到我难过
+      - 哭是软弱的表现
+      - 把情绪都憋在心里
+    PUNITIVENESS:
+      - 犯了错就该受惩罚
+      - 我不配被原谅
+      - 我活该被骂
+      - 做错了就该被骂
+      - 不能原谅自己
+      - 对自己太狠了
+    ENTITLEMENT_GRANDIOSITY:
+      - 规则不适用于我
+      - 我就应该被特殊对待
+      - 凭什么要我排队
+      - 别人都该围着我转
+      - 他们根本不配和我比
+      - 普通的规矩管不了我
+    INSUFFICIENT_SELF_CONTROL:
+      - 一点都管不住自己
+      - 控制不住自己乱花钱
+      - 明知道不对还是忍不住
+      - 一点苦都吃不了
+      - 一忍就破功
+      - 管不住嘴
+    CONDITIONAL_WORTH:
+      - 只有做到最好才配被爱
+      - 不优秀就没人爱我
+      - 成绩好爸妈才会爱我
+      - 我的价值取决于成绩
+      - 只有有用才有价值
+      - 没有成就我就什么都不是
+    REST_GUILT:
+      - 休息就有负罪感
+      - 一停下来就内疚
+      - 停下来就是罪过
+      - 闲着就很愧疚
+      - 不干活就觉得对不起
+      - 放假也不敢休息
+    FAILURE:
+      - 我注定比别人差
+      - 同龄人都比我强
+      - 我就是个失败者
+      - 永远赶不上别人
+      - 别人都走在我前面
+      - 这辈子注定一事无成
+  yearnings:
+    SAFETY:
+      - 想要一点安全感
+      - 没有安全感
+      - 心里很不踏实
+      - 想有个安稳的地方
+      - 想要确定的东西
+      - 什么都不确定让我很怕
+    ACCEPTANCE:
+      - 希望有人接受真实的我
+      - 想被接纳
+      - 不用伪装也能被喜欢
+      - 想被无条件地爱
+      - 接受本来的样子
+      - 不想再假装
+    AUTONOMY:
+      - 想自己做决定
+      - 想要自己的空间
+      - 不想再被安排
+      - 想按自己的节奏来
+      - 想为自己活一次
+      - 想喘口气
+    COMPETENCE:
+      - 想证明自己可以
+      - 想被认可
+      - 想做成一件事
+      - 想知道自己是有能力的
+      - 想要成就感
+      - 证明我不是没用的人
+    CONNECTION:
+      - 想有人懂我
+      - 想有人陪着我
+      - 希望有人真正理解我
+      - 想被看见
+      - 想和人亲近一点
+      - 想要有人可以说说话
+  # The yearning a schema points to (Satir iceberg: the need under the belief), used when
+  # a turn names a schema but no yearning phrase; every schema id, one yearning each.
+  schema_yearnings:
+    DEFECTIVENESS: ACCEPTANCE
+    UNRELENTING_STANDARDS: ACCEPTANCE
+    FEAR_OF_ABANDONMENT: CONNECTION
+    MISTRUST_ABUSE: SAFETY
+    EMOTIONAL_DEPRIVATION: CONNECTION
+    SOCIAL_ISOLATION: CONNECTION
+    DEPENDENCE_INCOMPETENCE: COMPETENCE
+    VULNERABILITY_TO_HARM: SAFETY
+    ENMESHMENT: AUTONOMY
+    SUBJUGATION: AUTONOMY
+    SELF_SACRIFICE: AUTONOMY
+    APPROVAL_SEEKING: ACCEPTANCE
+    NEGATIVITY_PESSIMISM: SAFETY
+    EMOTIONAL_INHIBITION: CONNECTION
+    PUNITIVENESS: ACCEPTANCE
+    ENTITLEMENT_GRANDIOSITY: ACCEPTANCE
+    INSUFFICIENT_SELF_CONTROL: COMPETENCE
+    CONDITIONAL_WORTH: ACCEPTANCE
+    REST_GUILT: AUTONOMY
+    FAILURE: COMPETENCE
+  # The answer to the schema mirror question, read on the next turn only (model mode). The
+  # first clause of the message (up to the first punctuation mark, leading fillers such as
+  # 嗯 or 哦 dropped, trailing particles such as 吧 or 啊 dropped) is read the way
+  # olivia/core/safety/intent_check.py reads the D3 answer: a no wins; an unsure word
+  # makes it unclear; a yes needs a whole-clause `affirm_whole` or a leading `affirm_start`
+  # with no `decline_start` phrase anywhere in the clause. Start phrases are two characters
+  # or more, so 对不起 is no yes.
+  mirror_answers:
+    affirm_whole:
+      - 是
+      - 是的
+      - 是啊
+      - 是呀
+      - 对
+      - 对的
+      - 对啊
+      - 对呀
+      - 嗯
+      - 嗯嗯
+      - 确实
+      - 没错
+      - 是这样
+      - 就是这样
+      - 有
+      - 有的
+      - 会
+      - 会的
+      - 常常
+      - 经常
+    affirm_start:
+      - 是的
+      - 是啊
+      - 是呀
+      - 是这样
+      - 就是这样
+      - 对的
+      - 对啊
+      - 对呀
+      - 对对
+      - 确实
+      - 没错
+      - 说得对
+      - 你说得对
+      - 说中了
+      - 被你说中
+      - 真的是这样
+      - 好像是这样
+      - 好像是的
+      - 一直是这样
+      - 我就是这么想的
+      - 我也这么觉得
+      - 常常会
+      - 经常会
+      - 嗯是
+      - 嗯对
+      - 嗯确实
+      - 是有
+      - 会的
+    decline_whole:
+      - 不
+      - 不是
+      - 没有
+      - 不对
+      - 没
+      - 不会
+      - 还好
+      - 不太是
+      - 不完全是
+      - 不怎么
+    decline_start:
+      - 不是
+      - 不对
+      - 没有
+      - 倒也不
+      - 不完全
+      - 也不是
+      - 不太
+      - 并不
+      - 并没有
+      - 谈不上
+      - 说不上
+      - 其实不
+      - 应该不是
+      - 好像不是
+      - 好像也没有
+      - 不会
+      - 没那么
+      - 不怎么
+      - 不至于
+    unsure:
+      - 不知道
+      - 不清楚
+      - 说不清
+      - 不确定
+      - 可能
+      - 也许
+      - 或许
+      - 大概
+      - 不好说

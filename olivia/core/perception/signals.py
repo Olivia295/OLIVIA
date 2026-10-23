@@ -56,6 +56,10 @@ class TurnSignals:
     gives it a meaning."""
     kit_recall: bool = False
     """The user asks to see a method they shelved earlier ("锦囊里那个再给我看看")."""
+    core_belief_confirmed: bool = False
+    """The user affirmed the schema mirror question asked on the turn before (PRD C_2
+    "核心信念识别", decision D4; model mode only). Set by the session, never by the stub;
+    in S_clarify it opens S_empower like the auto-advance, through the same gates."""
     therapy_question: str | None = None
     """The Grade B/C method the user asks about by name ("EMDR 有用吗" -> ``"21"``), as a
     taxonomy method id; None when the turn asks about none (roadmap next-phase A4)."""

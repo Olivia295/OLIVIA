@@ -259,6 +259,7 @@ def inspect_panel(result: TurnResult) -> list[str]:
     card = result.resource_card
     origin = data.get("feedback_source")
     check = data.get("safety_check")
+    mirror = data.get("schema_mirror")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
         f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
@@ -271,6 +272,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 效价 {_fmt(data.get('valence'))} · 情绪 {_fmt(data.get('emotion'))}"
         f" · 意图 {_fmt(data.get('intent'))} · 姿态 {_fmt(data.get('stance'))}"
         f" · 准备度 {_fmt(data.get('readiness'))}",
+        f"│ 认知扭曲 {_fmt(data.get('distortions'))} · 图式 {_fmt(data.get('schemas'))}"
+        f" · 渴望 {_fmt(data.get('yearning'))}" + (f" · 图式镜像 {_fmt(mirror)}" if mirror else ""),
         f"│ 可用动作 {_fmt(data.get('candidates'))} · 选中 {_fmt(data.get('chosen'))}"
         f" · 反馈 {_fmt(data.get('feedback'))}" + (f"（来源 {_fmt(origin)}）" if origin else ""),
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"

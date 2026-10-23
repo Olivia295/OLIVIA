@@ -28,7 +28,8 @@
 # S_haven [15, 40] 字，不提问（CHANG-02）；S_crisis 豁免字数窗口，不用隐喻。
 # S_closing 按常规窗口写。S_ready 只限单段 ≤ 80 字。
 # S_explore 不给任何方法或建议（COLBO-02）。
-# S_clarify 只镜像感受与需要，不做图式或核心信念判定（规格裁定 25）。
+# S_clarify 只镜像感受与需要，不做图式或核心信念判定（规格裁定 25）；决定 D4 后，模型模式下的图式
+# 镜像提问由 language/schema_mirror.yaml 提供，会话用它替换 invite 段，本文件不写。
 # Grade B/C 文案与 A 级卡片正文由其他文件渲染，这里只负责前后衔接。
 #
 # followups（路线图 R-7b）：卡片等待反馈时的自然语言跟进，整条取一个变体，单段 ≤ 80 字，

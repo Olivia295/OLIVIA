@@ -62,6 +62,8 @@ _SECTIONS: Final = frozenset(
         "feedback",
         "answers",
         "therapy_names",
+        # Read and validated by perception/introspector.py (step C2).
+        "introspection",
         *_PHRASE_SECTIONS,
     }
 )
