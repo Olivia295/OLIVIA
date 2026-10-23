@@ -40,6 +40,9 @@
     or everything (crypto-shredding; ``--all`` also deletes the keychain item, so the
     next ``chat`` starts onboarding afresh). Without a flag, a numbered menu; every
     deletion asks for a typed confirmation unless ``--yes``.
+``olivia privacy``
+    A short privacy notice (``chang/privacy.py``, B8): what is stored where, always
+    offline, what is encrypted, how to see and delete it. Reads and writes nothing.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -104,6 +107,7 @@ from olivia.core.chang.onboarding import (
     load_onboarding_text,
     persona_from_reply,
 )
+from olivia.core.chang.privacy import privacy_notice
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.language.data import load_language_data
@@ -123,6 +127,7 @@ from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve, resolve_region_code
 from olivia.core.resources.store import LineKind, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
+from olivia.core.storage import data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 
 Clock = Callable[[], datetime]
@@ -727,6 +732,15 @@ def _forget(console: _Console, args: argparse.Namespace) -> int:
     )
 
 
+# -- privacy ----------------------------------------------------------------------------------
+
+
+def _privacy(console: _Console) -> int:
+    """``olivia privacy``: the privacy notice (B8); nothing is read or written."""
+    console.say(privacy_notice(data_dir_location()))
+    return 0
+
+
 # -- persona ----------------------------------------------------------------------------------
 
 
@@ -817,6 +831,9 @@ def build_parser() -> argparse.ArgumentParser:
     which.add_argument("--safety-plan", action="store_true", help="删掉个人安全计划")
     which.add_argument("--all", action="store_true", help="忘掉全部数据，之后从头开始")
     forget.add_argument("--yes", action="store_true", help="不再询问确认")
+    commands.add_parser(
+        "privacy", help="看看 OLIVIA 怎么保护你的隐私：存了什么、存在哪里、怎么删除"
+    )
     return parser
 
 
@@ -863,6 +880,8 @@ def main(
             return _memory(console)
         if args.command == "forget":
             return _forget(console, args)
+        if args.command == "privacy":
+            return _privacy(console)
         return _region(console, args.code, args.timezone, args.clear, now)
     except KeyboardInterrupt:
         console.say()

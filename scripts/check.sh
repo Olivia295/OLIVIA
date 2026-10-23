@@ -29,3 +29,6 @@ fi
     tests/perception/test_student_performance.py tests/session/test_session_performance.py \
     tests/memory/test_retrieval_performance.py
 "$PY" scripts/validate_taxonomy.py
+# G-4's automatic part (ruling 32, plan B8): offline, no typed text on disk or in output,
+# sealed stores, private permissions, forget --all leaves nothing. In-memory keychain only.
+"$PY" scripts/privacy_audit.py

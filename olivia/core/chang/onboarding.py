@@ -7,9 +7,11 @@ or :class:`Refused`. All wording lives in ``olivia/data/templates/onboarding.yam
 Order: disclaimer (explicit acceptance) -> 18+ gate -> at-rest encryption switch (ONB-06,
 default off: only health information is encrypted, ruling 28) -> both names -> persona
 (the four of ONB-03, ``GENTLE_HOLDING`` by default; plan D-1) -> taboo topics -> region ->
-timezone -> optional clinical-history consent (last, ruling 23) -> after consent, the
-clinical history and the D2 checklist of the profile's contraindication disclosures
-(heart or breathing, safety at home; step A1) -> one atomic save (ONB-08). The age
+timezone -> optional clinical-history consent (last, ruling 23; its prompt shows the
+standalone ``sensitive_notice`` before the consent sentence, PIPL Art. 28-30, B8) ->
+after consent, the clinical history and the D2 checklist of the profile's
+contraindication disclosures (heart or breathing, safety at home; step A1) -> one
+atomic save (ONB-08). The age
 gate comes before anything personal is asked, so nothing is ever collected from a minor
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
@@ -167,7 +169,15 @@ _HEALTH_KEYS: Final = (
     "adults_only",
 )
 _SLOTS: Final = frozenset(
-    {"user_name", "agent_name", "max_len", "max_count", "consent_sentence", "tokens"}
+    {
+        "user_name",
+        "agent_name",
+        "max_len",
+        "max_count",
+        "consent_sentence",
+        "sensitive_notice",
+        "tokens",
+    }
 )
 _SLOT: Final = re.compile(r"\{([^{}]*)\}")
 
@@ -232,6 +242,9 @@ class Choice:
 @dataclass(frozen=True)
 class OnboardingText:
     consent_sentence: str
+    sensitive_notice: str
+    """The standalone notice shown before the consent sentence (PIPL Art. 28-30, B8):
+    what is recorded, why, where it stays, what declining changes and how to withdraw."""
     prompts: Mapping[str, str]
     choices: Mapping[str, tuple[Choice, Choice]]
     """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``encryption`` as
@@ -291,6 +304,9 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
             ("encryption", "keep_off", "encrypt_all"),
         )
     }
+    notice = _nonempty_str(doc.get("sensitive_notice"), "sensitive_notice")
+    if _SLOT.search(notice):
+        raise OnboardingTextError(f"{_TEXT_FILE}: sensitive_notice takes no slots")
     for where, texts in (
         ("prompts", prompts),
         ("hints", hints),
@@ -303,6 +319,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
                 raise OnboardingTextError(f"{_TEXT_FILE}: {where}.{key} uses unknown slots {bad}")
     return OnboardingText(
         consent_sentence=_nonempty_str(doc.get("consent_sentence"), "consent_sentence"),
+        sensitive_notice=notice,
         prompts=MappingProxyType(prompts),
         choices=MappingProxyType(choices),
         persona_labels=MappingProxyType({p: labels[p.value] for p in PERSONA_CHOICES}),
@@ -700,6 +717,7 @@ class OnboardingFlow:
             "user_name": self._user_name,
             "agent_name": self._agent_name,
             "consent_sentence": self._text.consent_sentence,
+            "sensitive_notice": self._text.sensitive_notice,
             **extra,
         }
         return _SLOT.sub(lambda m: values[m.group(1)], template)
