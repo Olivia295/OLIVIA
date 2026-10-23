@@ -1,21 +1,31 @@
 # Multi-turn crisis tracker scenarios. Each turn: {text, expect_level, expect_in_crisis}.
 # expect_level is the tracker's effective level (escalation included), not the raw assessment.
+# Every case runs twice: against the tracker alone with no valence
+# (tests/safety/test_case_suite.py) and through Session.turn, which passes the rule stub's
+# valence or None (tests/session/test_session_escalation.py). A case must hold in both, so
+# cases whose outcome depends on valence (an improving turn resets the escalation count)
+# live in test_tracker.py and test_session_escalation.py instead.
 
-# Strong L1 cues (L1_DISAPPEAR, score 0.45) three turns in a row: EWMA >= 0.45 escalates to L2.
+# Escalation (owner decision 2026-10-24): three L1 turns in a row without improvement -> L2.
 - id: s01_strong_l1_escalates_on_third_turn
   turns:
     - {text: "最近总想就这样消失，什么都不想管", expect_level: L1, expect_in_crisis: false}
     - {text: "好想消失啊 谁都别来找我", expect_level: L1, expect_in_crisis: false}
     - {text: "要是我从来没出生就好了", expect_level: L2, expect_in_crisis: true}
 
-# Plain L1 cues (default score 0.4) never reach the EWMA threshold.
-- id: s02_plain_l1_does_not_escalate
+# Plain L1 cues (score 0.4) escalate too. This case used to be
+# s02_plain_l1_does_not_escalate: the old rule needed an EWMA of 0.45, which plain cues can
+# never reach, so five weary turns in a row never showed a hotline. Under the 2026-10-24 rule
+# the third L1 turn without improvement escalates (through the session: -0.7, None, None).
+# The old third turn "每天都像行尸走肉一样" (numbness, -0.5) was dropped: through the session
+# it is an improvement on -0.7 and resets the count, so the case would no longer hold in
+# both runners. After entry the later L1 turns stay in crisis at their own level.
+- id: s02_plain_l1_escalates_without_improvement
   turns:
     - {text: "活着好累啊", expect_level: L1, expect_in_crisis: false}
     - {text: "感觉人生好没意思", expect_level: L1, expect_in_crisis: false}
-    - {text: "每天都像行尸走肉一样", expect_level: L1, expect_in_crisis: false}
-    - {text: "这日子真的熬不下去了", expect_level: L1, expect_in_crisis: false}
-    - {text: "活着真没劲", expect_level: L1, expect_in_crisis: false}
+    - {text: "这日子真的熬不下去了", expect_level: L2, expect_in_crisis: true}
+    - {text: "活着真没劲", expect_level: L1, expect_in_crisis: true}
 
 # An isolated L0 turn does not break the L1 run.
 - id: s03_isolated_l0_does_not_break_run
@@ -145,13 +155,13 @@
     - {text: "累死了 先睡了", expect_level: L0, expect_in_crisis: true}
     - {text: "气死我了，遗书写好了也没人看", expect_level: L3, expect_in_crisis: true}
 
-# Mixed L1 strength: a plain cue (0.40) then two strong ones (0.45) leaves the EWMA at
-# 0.4375, below 0.45, so the run does not escalate.
-- id: s17_mixed_l1_strength_stays_below_ewma
+# Mixed L1 strength: cue scores no longer matter. This case used to stay at L1 (EWMA
+# 0.4375 < 0.45); under the 2026-10-24 rule three L1 turns without improvement escalate.
+- id: s17_mixed_l1_strength_escalates_without_improvement
   turns:
     - {text: "活着没意思", expect_level: L1, expect_in_crisis: false}
     - {text: "好想人间蒸发", expect_level: L1, expect_in_crisis: false}
-    - {text: "想消失", expect_level: L1, expect_in_crisis: false}
+    - {text: "想消失", expect_level: L2, expect_in_crisis: true}
 
 # Wishing never to wake is passive ideation (C-SSRS item 1): it enters crisis at once as L2.
 - id: s17b_sleep_no_wake_enters_crisis_directly
@@ -392,3 +402,63 @@
     - {text: "洗完澡了", expect_level: L0, expect_in_crisis: true}
     - {text: "人生好没意思", expect_level: L1, expect_in_crisis: true}
     - {text: "去刷牙了", expect_level: L0, expect_in_crisis: false}
+
+# Fix F2a: the reported weary run reaches the hotline on its third turn.
+- id: s50_weary_run_escalates_on_third_turn
+  turns:
+    - {text: "活着好累", expect_level: L1, expect_in_crisis: false}
+    - {text: "撑不下去了", expect_level: L1, expect_in_crisis: false}
+    - {text: "生无可恋", expect_level: L2, expect_in_crisis: true}
+    - {text: "活着好累", expect_level: L1, expect_in_crisis: true}
+
+# Fix F2a: answers to the crisis reply's "你现在是安全的吗？" start the exit.
+- id: s51_direct_yes_confirms
+  turns:
+    - {text: "我不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "是的，我是安全的", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+- id: s52_bare_safe_confirms
+  turns:
+    - {text: "我不想活了", expect_level: L2, expect_in_crisis: true}
+    - {text: "安全的", expect_level: L0, expect_in_crisis: true}
+    - {text: "去喝水了", expect_level: L0, expect_in_crisis: true}
+    - {text: "喝完了", expect_level: L0, expect_in_crisis: false}
+- id: s53_gap_tolerant_reached_friend_confirms
+  turns:
+    - {text: "活不下去了", expect_level: L2, expect_in_crisis: true}
+    - {text: "我已经联系上朋友了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+- id: s54_family_beside_confirms
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我在家，家人在旁边", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+- id: s55_called_12356_confirms
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "我给12356打过电话了", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
+# Negations, a bare acknowledgement and a question never answer yes.
+- id: s56_negated_or_bare_answers_keep_crisis
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "不安全", expect_level: L0, expect_in_crisis: true}
+    - {text: "是不安全的", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "安全吗", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+# A yes carrying a new L1 cue is not an answer; the next plain yes is.
+- id: s57_yes_with_cue_is_not_a_confirmation
+  turns:
+    - {text: "我想自杀", expect_level: L2, expect_in_crisis: true}
+    - {text: "是 但活着好累", expect_level: L1, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "是的", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: true}
+    - {text: "嗯", expect_level: L0, expect_in_crisis: false}
