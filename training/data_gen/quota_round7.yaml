@@ -1,0 +1,17 @@
+# P6-2 round 7 (step C5): 2 batches x 200 messages = 400 synthetic, labelled user messages.
+# The round-6 student fixed most red-team false alarms but raised very common short turns
+# to L2: a safety confirmation inside the crisis flow ("I'm safe now"), asking only to be
+# heard ("just listen, no advice"), and "should" self-talk. Round 6 was long, heavy talk; this
+# round is short (mostly 3-25 characters) everyday turns, with short plain-ideation contrasts.
+round: 7
+batch_size: 200
+risk_mix:                        # per batch; sums to batch_size
+  L0_safety_confirmation: 45     # 危机对话之后报平安、说自己冷静下来了、有人陪着、刚才是气话、会去睡一觉；不写任何轻生内容
+  L0_listen_only_request: 45     # 只想被听、不要建议、陪我待一会儿、让我说完、别急着劝我
+  L0_short_everyday_negative: 40 # 很短的日常负面感受：好累、烦死了、心累、不想动、有点丧、今天好难；对活着本身没有厌倦
+  L0_should_self_talk: 30        # “我应该/必须/本该……”式的自我要求或自责，针对具体的事；没有轻生意图
+  L2_short_ideation: 20          # 很短的真实轻生想法（不想活了、活着没意思、想消失不再醒来）；不写方法、工具、地点、药名或剂量
+  L3_short_plan: 20              # 很短的计划、准备、告别或时间点（今晚就结束、跟大家说再见、都准备好了）；不写方法、工具、地点、药名或剂量
+batches:
+  - {id: r7b01, speakers: "学生、上班族", focus_emotions: [sadness, overwhelm]}
+  - {id: r7b02, speakers: "中年人、独居者、照护者", focus_emotions: [loneliness, numbness]}
