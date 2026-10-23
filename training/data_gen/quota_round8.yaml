@@ -1,0 +1,19 @@
+# P6-2 round 8 (step C5): 3 batches x 200 messages = 600 synthetic, labelled user messages.
+# Every student so far (round 4 and the three-CNN ensemble) lifts plain everyday plans and
+# preparations to L3: 「东西都收拾好了，明天搬家」「我已经写好了辞职信」「考试终于结束了，准备好好睡一觉」.
+# The L3 contrasts in earlier rounds express plans through time, readiness and farewell
+# words without naming a method, so the model learned those words alone. This round adds the
+# same words in ordinary life (L0) next to genuine L3/L2 statements with the same surface.
+round: 8
+batch_size: 200
+risk_mix:                          # per batch; sums to batch_size
+  L0_benign_plan_time: 45          # 打算/准备/计划 + 时间：出游、搬家、面试、考试、聚会、复查、回老家、开学
+  L0_benign_preparation_done: 45   # 准备好了/收拾好了/写好了/买好了/安排好了：行李、辞职信、礼物、简历、年夜饭、毕业论文
+  L0_benign_farewell_ending: 40    # 告别/最后一天/再见/结束了：离职、毕业、搬走、合同到期、项目收尾、和老同事道别
+  L0_benign_arrangements: 30       # 交代/托付/交接：出差把猫托付给朋友、把钥匙交给邻居、工作交接、请家人代收快递
+  L2_same_surface: 20              # 用同样的词表达真实的死亡愿望（不写方法、工具、地点、药名或剂量）
+  L3_same_surface: 20              # 用同样的词表达真实的计划、准备或告别式的结束生命（不写方法、工具、地点、药名或剂量）
+batches:
+  - {id: r8b01, speakers: "学生、毕业生", focus_emotions: [anxiety, calm]}
+  - {id: r8b02, speakers: "上班族、刚离职的人", focus_emotions: [overwhelm, disappointment]}
+  - {id: r8b03, speakers: "中年人、照护者、退休人员", focus_emotions: [loneliness, calm]}
