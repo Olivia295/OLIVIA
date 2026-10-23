@@ -1,5 +1,6 @@
 """Memory: the encrypted transparent ledger (B2), the cross-session state (B3: the
-sampler's posteriors and the kit) and, later, retrieval (B4).
+sampler's posteriors and the kit) and 3D retrieval over the ledger (B4,
+:mod:`olivia.core.memory.retrieval`).
 
 ``recorder`` (session summaries and note capture) imports the session module, so it is
 not re-exported here: import it from :mod:`olivia.core.memory.recorder`.
