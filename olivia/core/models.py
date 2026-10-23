@@ -208,6 +208,7 @@ class SessionState:
     social_battery: float = 0.6
     current_risk_level: CrisisLevel = CrisisLevel.L0
     consecutive_l1_count: int = 0
+    """Mirror of ``CrisisTracker.consecutive_l1_count``, copied in by ``fsm.step`` each turn."""
     user_shelved_actions: list[str] = field(default_factory=list)
     stage_entry_arousal: float | None = None
     """Arousal on the turn that entered the current stage: the ΔArousal baseline (SDD 4.2)."""

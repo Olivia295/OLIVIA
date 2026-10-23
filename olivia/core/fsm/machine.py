@@ -155,6 +155,7 @@ def step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition:
         pure_listening_locked=locked,
         social_battery=battery,
         current_risk_level=inp.crisis.level,
+        consecutive_l1_count=inp.crisis.consecutive_l1_count,
         stage_entry_arousal=inp.perception.arousal if changed else state.stage_entry_arousal,
         user_shelved_actions=list(state.user_shelved_actions),
     )

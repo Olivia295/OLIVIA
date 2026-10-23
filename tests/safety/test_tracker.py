@@ -160,3 +160,20 @@ def test_relapse_inside_crisis_also_resets_the_l1_trend(run):
     run("我现在安全了")
     s = run("活着好累")
     assert s.level is L.L1 and not s.escalated and not s.awaiting_confirmation
+
+
+def test_l1_run_count_is_exposed_on_status_and_tracker(tax, lex):
+    screen = SafetyScreen(tax, lex)
+    tracker = CrisisTracker(tax, lex)
+
+    def observe(text):
+        return tracker.observe(screen.assess(text), text).consecutive_l1_count
+
+    assert tracker.consecutive_l1_count == 0
+    assert [observe("活着好累") for _ in range(2)] == [1, 2]
+    assert observe("今天吃了面") == 2  # one L0 turn does not break the run
+    assert observe("活着好累") == 3
+    assert [observe("今天吃了面") for _ in range(3)] == [3, 3, 0]  # l1_clear_streak L0 turns
+    observe("活着好累")
+    assert observe("我想死") == 0  # any L2/L3 turn resets the run
+    assert tracker.consecutive_l1_count == 0
