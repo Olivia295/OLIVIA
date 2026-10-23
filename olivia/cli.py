@@ -14,6 +14,8 @@
     The crisis-resource card for the saved region in BROWSING mode.
 ``olivia region [CODE [--timezone TZ] | --clear]``
     Show, set or clear the saved country/region (country level only, SDD §8.3).
+``olivia --version``
+    The installed version, read from the package metadata.
 
 The only file the CLI writes is the profile (``chang/profile.py``: region, timezone and
 the onboarding answers) through ``storage.atomic_write_text``. Conversation text,
@@ -33,11 +35,13 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from importlib import metadata
 from typing import Final, TextIO
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from olivia import __version__
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
     FALLBACK_TIMEZONE,
@@ -440,8 +444,19 @@ def _region(
 # -- entry point ------------------------------------------------------------------------------
 
 
+def package_version() -> str:
+    """The installed distribution's version; the source tree's when it is not installed."""
+    try:
+        return metadata.version("olivia")
+    except metadata.PackageNotFoundError:
+        return __version__
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="olivia", description="OLIVIA 离线陪伴（命令行）")
+    parser.add_argument(
+        "--version", action="version", version=f"olivia {package_version()}", help="显示版本号"
+    )
     commands = parser.add_subparsers(dest="command", required=True, metavar="命令")
     chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")

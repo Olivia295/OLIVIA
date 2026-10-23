@@ -4,8 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "olivia"
-version = "0.1.0"
+# Single source: olivia/__init__.py. `olivia --version` reads it back from the metadata.
+dynamic = ["version"]
+description = "离线的中文陪伴命令行工具（内部测试版），不做诊断或治疗"
+readme = "README.md"
 requires-python = ">=3.11"
+# No license field yet: the owner has not chosen one.
+# "Private :: Do Not Upload" makes PyPI refuse an accidental upload.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Private :: Do Not Upload",
+]
 dependencies = [
     "PyYAML>=6.0",
     "platformdirs>=4.0",
@@ -19,6 +35,11 @@ dependencies = [
 [project.scripts]
 olivia = "olivia.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/Olivia295/OLIVIA"
+Source = "https://github.com/Olivia295/OLIVIA"
+Issues = "https://github.com/Olivia295/OLIVIA/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
@@ -28,6 +49,9 @@ dev = [
     "mypy>=1.10",
     "types-PyYAML",
 ]
+
+[tool.setuptools.dynamic]
+version = { attr = "olivia.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["olivia*"]
