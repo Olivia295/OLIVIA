@@ -56,6 +56,11 @@ class TurnSignals:
     gives it a meaning."""
     kit_recall: bool = False
     """The user asks to see a method they shelved earlier ("锦囊里那个再给我看看")."""
+    leave_taking: bool = False
+    """The user is leaving for now ("我去睡了", "今天就到这里吧"; F5d): a non-negated
+    ``leave_taking`` phrase that is not asked as a question ("今天就到这里？" is not).
+    While a card waits it is read as ``feedback`` (not_now) instead; with no card
+    waiting, an L0 turn gets a short goodbye."""
     core_belief_confirmed: bool = False
     """The user affirmed the schema mirror question asked on the turn before (PRD C_2
     "核心信念识别", decision D4; model mode only). Set by the session, never by the stub;
