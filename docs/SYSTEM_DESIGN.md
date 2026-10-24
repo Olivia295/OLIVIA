@@ -26,6 +26,7 @@
 | **v2.1.0** | 2026-10-19 | 联合技术委员会 | 临床深化 | 引入两阶段漏斗危机检查与三级疗法分类，完成 60 份困扰档案与 75 种疗法集成。 |
 | **v3.1.0** | 2026-10-20 | 首席架构师 / 临床总监 | 权威基线 | 1. 修复两阶段危机检测时序漏洞（SAFE-09：危机筛查强制前置于低电量避风港判断）；<br>2. 形式化对齐 `taxonomy.yaml` v3.1.0，修正 7 处转介红线编号与 75 种疗法分级映射；<br>3. 补全 GEO-01~08 属地化与海外危机资源解析协议；<br>4. 统一感知网络为 8 头多任务架构，损失函数严格对齐；<br>5. 规范纯 Thompson 采样模型，废除矛盾的 10% ε-greedy；<br>6. 明确核心信念判定限制在「本会话实时上下文」，增加模块实现映射索引。 |
 | **v3.2.0** | 2026-10-21 | 架构委员会 / 临床总监 | 实施对齐 | 1. 临床禁忌症统一收敛为 13 种固定枚举体系，32 个 Grade A 方法全面对齐；<br>2. 临床转介红线使用稳定动作与禁用 ID，并建立 S_explore 高唤醒稳定化微干预 ID 白名单；<br>3. 危机状态机出口统一为 SafetyConfirmEvent + 连续安全轮数（L2: 2 轮, L3: 3 轮）；<br>4. 属地化与海外资源模型全面升级为 ResourceCard 与 Ed25519 签名；<br>5. PersonaProfile 升级为 UserRegion 架构并新增 clinical_history 敏感健康信息授权；<br>6. 危机前置防御时序图对齐 0.20 低电量避风港阈值与 Stage 1 明确线索熔断；<br>7. 补全各状态字数窗口阻尼模型及危机卡刚性豁免，将存储物理抹除升级为加密擦除 (Crypto-Shredding)。 |
+| **v3.2.x** | 2026-10-24 | 实现组 | 实施对齐（只改文档） | 按代码同步 2026-10-22 ～ 10-24 的实现（路线图 B1–B10、A1–A7、C1–C5、D-1/D-2、G-1/G-3/G-5，修复 F1–F4，第八轮学生）：1. 记忆的存储措辞改为“账本、状态、关怀、安全计划始终加密”，§6.5 只有画像留快照，§6.6 数据密钥换成实际存储名；2. §2 数据契约补齐画像、会话状态与动作骨架的新字段；3. §3.1 写明打包学生为第八轮三 CNN 集成（9 头、各头 λ = 1、GradNorm 只用于教师），模型模式仍默认关闭；§3.2 核心信念改为 D4 图式镜像确认；4. §4.2 空掩码只在命中红线时附转介卡，避风港目前只按电量退出；§5.3 写明计数方式；新增 §6.4a；5. §8.1 增组合式线索（F1）；§8.2 改为危机态每轮完整卡、关怀标记独立存储 `care`，并写入 2026-10-24 的四条安全决定；6. §10.1 分列两种截断窗口与 `Session.turn` 的异常降级，§10.2 换成真实面板样例；7. §11 重新核对（新增组合线索、D3 回答判读、模型其余各头与四条安全决定各行）。 |
 
 ### 技术评审委员会签署表 (Architectural Sign-off)
 | 评审席位 | 签署代表 | 审核领域 | 签署状态 | 签署日期 |
@@ -57,6 +58,7 @@
    - 6.2 「结构先行，语态后润」双通道网关与本地校验器
    - 6.3 闭环贝叶斯自进化数学模型 (纯 Thompson 采样与探索安全门禁)
    - 6.4 7 天情绪周记时空数据聚合算法 (基于用户自评数据)
+   - 6.4a 可选系统提醒 (B9)
    - 6.5 记忆档案原子级写入安全协议 (影子写入与三版本快照)
    - 6.6 本地静态加密：密钥层级与加密擦除 (B1)
 7. [多推理模型适配网关与个人信息保护管线 (Inference Gateway & PIPL Pipeline)](#7-多推理模型适配网关与个人信息保护管线-inference-gateway--pipl-pipeline)
@@ -95,7 +97,7 @@
 │  全局主调度器 ──► 前置两阶段安全检查器 (SAFE-09) ──► 运行模式管理器                             │
 │         │                                                                                       │
 │         ├───► [子系统 I: M.I.Y.I. 认知感知与透明记忆底座] (olivia/core/perception/*)            │
-│         │     ├─► 中文上下文多任务心理感知网络 (8头并发 / 极性 / 唤醒度 / 否定句法消歧)         │
+│         │     ├─► 中文上下文多任务心理感知网络 (8+1头并发 / 极性 / 唤醒度 / 否定句法消歧)       │
 │         │     ├─► 萨提亚冰山内省器与会话内核心信念判定 (拒绝跨会话未授权嗅探)                   │
 │         │     └─► 3D 艾宾浩斯记忆检索 (时间指数衰减 / 语义余弦 / 显著性资产保护)                │
 │         │                                                                                       │
@@ -118,7 +120,7 @@
 │                                           │                                                     │
 │                                           ▼                                                     │
 │  [底层持久化与模型网关 / Persistence & Inference Adapters]                                      │
-│  纯文本双向透明账本 (可选本地加密) ◄──► 双模推理网关 (本地离线模板 / 本地小模型 / 云端大模型)   │
+│  双向透明账本 (始终本地加密，可查阅) ◄──► 双模推理网关 (本地离线模板 / 本地小模型 / 云端大模型) │
 │  属地化与海外危机资源库 (olivia/core/resources/*，GEO-01~08，Ed25519 签名防篡改)                 │
 │                                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -128,7 +130,7 @@
 1. **纯本地离线基线绝对完备公理 (Offline Completeness)**：脱机状态下，系统完全依托本地 8 头多任务感知与符号状态机闭环执行，基于 `taxonomy.yaml` 的 32 种 A 级微方法推荐严密可靠，周记基于离线结构化槽位合成，保障 100% 隐私安全与可用性；
 2. **符号骨架不可穿透公理 (Skeleton Inviolability)**：在 AI 增强激活时，大模型**仅被允许担任表现层语态转译与意境润色**，严禁擅自修改 C.O.L.B.O. 锁定的临床协议类型、步骤约束与安全边界，输出经本地校验器严格验证；
 3. **降级无额外延迟公理 (Zero-Overhead Fallback)**：大模型端点发生网络波动、超时或校验不通过时，网关瞬间切换回本地模板输出，终端用户不经历额外等待卡顿；
-4. **透明记忆双向平权公理 (Radical Memory Transparency)**：所有记忆均以人类可读的标记语言明文存储，支持可选静态加密，用户享有随时查阅、修改、加密擦除 (Crypto-Shredding) 的绝对主权。
+4. **透明记忆双向平权公理 (Radical Memory Transparency)**：所有记忆均以人类可读的标记语言（带 YAML 头的 Markdown）记录，用户享有随时查阅（`olivia memory`）、修改、加密擦除 (Crypto-Shredding，`olivia forget`) 的绝对主权。存储方式（决定 D1、步骤 B1–B3、A3、B10，见 §6.5、§6.6）：账本、跨会话状态、关怀标记与安全计划**始终加密**，与 ONB-06 开关无关；画像中的健康信息（`clinical_history`、`contraindications`）也始终加密；只有 ONB-06 关闭时画像的其余非敏感字段为明文 JSON，开关打开时整份画像加密。
 
 ---
 
@@ -142,15 +144,20 @@ Type PersonaProfile:
     user_name: String                   # 用户希望被称呼的名字 (默认: "朋友")
     agent_name: String                  # 陪伴者名称 (默认: "Olivia")
     persona_spectrum: PersonaEnum       # GENTLE_HOLDING | ZEN_PHILOSOPHER | RATIONAL_PEER | SILENT_ANCHOR
-    directiveness_preference: Float     # 指导性偏好 [0.0: 纯倾听, 1.0: 强引导] (默认 0.5)
+    directiveness_preference: Float     # 指导性偏好 [0.0: 纯倾听, 1.0: 强引导] (默认 0.5)；保留字段（P7），当前首访不采集、代码也不读取
     taboo_topics: List<String>          # 用户声明的安全雷区词汇/话题
-    region: UserRegion                  # 用户属地模型 (含国家码、省市编码、显示名与 IANA 时区；未知标记为 ZZ)
-    clinical_history: Optional<List<String>> # 用户明确授权录入的既往病史标签 (如 SIT-08-04, 见 PIPL 合规条款)
-    age_confirmed_18_plus: Boolean      # 18+ 成年人准入确认标识 (必须为 True)
-    enable_at_rest_encryption: Boolean  # 是否开启本地静态存储加密 (Crypto-Shredding 销毁保障)
+    region: Optional<UserRegion>        # 用户属地：国家/地区码 + IANA 时区（§8.3 只按国家/地区解析；未设置或不支持的代码按 ZZ 解析）
+    clinical_history: List<String>      # 用户明确授权录入的既往病史标签 (如 SIT-08-04, 见 PIPL 合规条款)；始终加密
+    contraindications: List<String>     # 用户自述的禁忌症枚举（决定 D2：心肺不稳、人身安全险境、精神病性体验，`PROFILE_CONTRAINDICATIONS` 的子集）；始终加密
+    age_confirmed_18_plus: Boolean      # 18+ 成年人准入确认标识 (成年人档案必须为 True)
+    age_gate_refused_at: Optional<ISO8601String> # 只出现在未成年人婉拒记录上（NG-3、裁定 22）：此时 age_confirmed_18_plus 为 False，且不含任何采集的数据
+    enable_at_rest_encryption: Boolean  # ONB-06：是否把整份画像加密（默认关；健康信息无论开关都加密）
+    notifications: Boolean              # 可选系统提醒（B9、决定 D5），默认关，非敏感
     created_at: ISO8601String           # 契约建立时间戳
     updated_at: ISO8601String           # 最近一次修改时间戳
 ```
+
+`UserRegion` 实现为 `country_code`（两位大写字母）+ `timezone`（IANA）；另有 `province_code`、`city_code`、`city_display_name` 三个可选字段，只为读取旧档案保留，代码中没有任何使用方（行政区划索引已废弃，见 §11）。
 
 > [!IMPORTANT]
 > `clinical_history` 属于 PIPL 第 28–32 条规定的敏感个人健康信息。系统严格遵循：
@@ -170,6 +177,7 @@ Type SessionState:
     current_risk_level: CrisisLevel     # L0 | L1 | L2 | L3
     consecutive_l1_count: Integer       # 当前升级窗口内“未见好转”的 L1 轮数（镜像危机追踪器的计数，规则见 §8.2：好转的一轮、连续 3 轮 L0、任一 L2/L3 轮或危机退出时清零，其他 L0 轮暂停）
     user_shelved_actions: List<MethodKey> # 本次会话用户置入锦囊待执行的方法
+    stage_entry_arousal: Optional<Float> # 进入当前阶段那一轮的唤醒度，即 §4.2 ΔArousal 的基线（裁定 6）；`close_session` 回到 S_ready 时清空
 ```
 
 ### 2.3 心理感知上下文模型 (`PerceptionContext`)
@@ -183,21 +191,27 @@ Type PerceptionContext:
     crisis_confidence: Float            # 危机置信度得分 [0.0, 1.0] (连续回归预测)
     communication_stance: SatirStance   # 5 种萨提亚应对姿态之一
     readiness_to_change: Float          # 改变准备度得分 [0.0, 1.0]
-    distress_vector: Map<String, Float> # 11 大谱系 / 60 项困扰倾向打分 (基于语义嵌入与词表)
+    distress_vector: Map<String, Float> # 11 大谱系（"01"–"11"）的分布，归一化为和 1；没有谱系线索时为空
     detected_distortions: List<DistortionType> # 本轮识别出的认知扭曲 (如 PERSONALIZATION)
     detected_schemas: List<SchemaType>  # 本轮内省器识别出的早期图式 (最大 3 项)
     deep_yearning: SatirYearning        # 5 大萨提亚底层核心渴望之一 (SAFETY 等)
     somatic_stabilization_eligible: Boolean # 当 Arousal >= 0.80 时激活自下而上稳定化白名单
 ```
 
+*实现说明*：
+- `distress_vector` 只含 11 个谱系键；60 份档案的情境编号不在这里，而由 `TurnSignals.situation_codes`（`perception/signals.py`）单独给出，并在会话内保持（§11 “困扰档案接入”一行）。规则模式按谱系线索命中数归一化；模型模式在没有谱系线索时取 `dominant_spectrum` 头的分布（`none` 最可能时为空）。
+- 规则模式下没有证据的字段取占位值（`rule_stub.py`）：`communication_stance` 恒为 `CONGRUENT`、`readiness_to_change` 恒为 0.5；模型模式由姿态头与准备度头给出（`perception/model_heads.py`）。认知扭曲、图式与渴望在两种模式下都由内省器填写（§3.2）。
+- `risk_level` / `crisis_confidence` 直接抄自本轮危机筛查（§8.1），感知层从不重新计算风险。
+
 ### 2.4 临床干预动作骨架模型 (`ActionSkeleton`)
 ```
 Type ActionSkeleton:
     method_id: MethodKey                # 方法唯一枚举标识，沿用 taxonomy 形式 (方法如 "01"，子动作如 "12:tipp_breathing")
-    safety_grade: SafetyGrade           # GRADE_A (自主微练习) | GRADE_B (科普重塑) | GRADE_C (专业转介)
+    action_type: ActionType             # MICRO_EXERCISE (A 级整方法) | STABILIZATION | COMPANIONSHIP (m0) | PSYCHOEDUCATION | REFERRAL (§4.3.7)
+    safety_grade: Optional<SafetyGrade> # GRADE_A (自主微练习) | GRADE_B (科普重塑) | GRADE_C (专业转介)；子动作沿用父方法等级，独立登记动作（m0、转介卡等）为空
     clinical_rationale: String          # 选定该方法的机制依据
     core_action_steps: List<String>     # 规范化的 2-3 个核心微动作步骤
-    duration_minutes: Integer           # 预估耗时 (2-5 分钟)
+    duration_minutes: Integer           # 预估耗时：A 级整方法 2–5 分钟；`action_registry` 中的子动作与独立动作 1–4 分钟（如 `12:tipp_cold_water` 1 分钟）
     stealth_workplace_compatible: Boolean # 是否支持工位无痕隐形执行
     contraindications: List<String>     # 禁忌症清单 (如: 心脏病、神经性厌食症心动过缓禁做冷水浸没)
 ```
@@ -236,12 +250,21 @@ $$\mathcal{L}_{total}(\Theta) = \sum_{k=1}^8 \lambda_k \mathcal{L}_k(\Theta)$$
 
 通过 GradNorm 动态平衡多任务梯度震荡，确保端侧前向推断时延满足 $P_{99} \le 45\text{ms}$。
 
+*实现说明（与打包模型核对，2026-10-24）*：
+- **头数**：实际为上述 8 头再加 1 个辅助头 `dominant_spectrum`（12 类：谱系 `01`–`11` 与 `none`，交叉熵），共 9 头、47 维原始输出（`olivia/data/models/perception/student_config.json` 的 `heads`）。其余 8 头的类别数：情绪 16、意图 6、风险 4、姿态 5；效价为 tanh，唤醒、准备度为 sigmoid，危机置信度为 BCE。
+- **打包的学生不是单一共享表征**：它是 3 个同形状字符级 CNN 的集成（第八轮，`variant_fingerprint` `4524170efaf8d8b0`，见 §9）。每个成员：字嵌入 64 维 → 卷积核 2/3/4/5 各 160 个滤波器（valid 卷积、ReLU、时间维全局最大池化）→ 拼接 640 维 → 全连接 192 维（ReLU）→ 47 维输出头；所以“$\mathbf{h} \in \mathbb{R}^{128}$”在打包模型中对应的是每个成员 192 维的隐藏层。3 个成员的输出按 `combine` 规则逐头合并后再做温度校准。输入截断为开头 48 字 + 结尾 112 字（`max_len` 160、`head_chars` 48），与规则感知的窗口不同（§10.1）。
+- **损失与训练方式**（`training/colab/build_perception_teacher.py`，学生结构对比与集成训练见 `build_student_arch.py`）：GradNorm（α = 1.5）只用于**教师**（`hfl/chinese-roberta-wwm-ext` + 9 头，5 折交叉验证 + 最终教师；`LOSS_BALANCE = "gradnorm"`）。学生各头 λ 恒为 1，损失 = 0.5 × 硬标签损失 + 0.5 × 蒸馏损失（蒸馏温度 2，目标为最终教师与 5 个折教师共 6 个的平均软目标）；风险头为带类别权重的交叉熵（权重为类别频率倒数的平方根），难负例行（`HARD_NEGATIVE_SLOTS` 列出的各轮 L0 槽位）在风险头上的权重为 2；$\gamma_{pos} = 15$ 作用于危机置信度头上风险 $\ge$ L2 的行，教师与学生相同。打包配置的 `training_options` 记录了这些选项（`loss_balance: gradnorm`、`kd_source: ensemble`、`kd_teachers: 6`、`hard_negative_weight: 2.0`）。
+- **否定消歧**不靠网络的句法注意力：规则层有否定与口癖遮罩（`risk.yaml`），训练数据含否定对比样本；“我不想活了”判 L2、“我不想死了”判 L0。
+- **默认关闭**：模型模式仍需显式开启（`olivia chat --model`，`Session.open(..., student=True)`），产品默认只用规则；模型只能抬高规则等级，L3 计划证据开关 `model_plan_evidence` 仍关闭（§8.2）。
+
 ### 3.2 萨提亚冰山内省器与会话内核心信念判定准则
 内省器将用户输入按 6 层冰山模型解耦，提取 5 大核心渴望（`SAFETY`、`ACCEPTANCE`、`AUTONOMY`、`COMPETENCE`、`CONNECTION`）。维护 20 类早期图式的模式识别规则。
 - **CoreBeliefIdentified 会话内判定准则**：
   为恪守数据最小化与个人隐私保护原则，**系统严禁在未经授权的情况下跨历史会话深挖或拼接用户敏感图式标签**。核心信念的判定严格限制在**本次会话实时上下文**内：
   1. 用户在阶段二对话中显式认同了某种深层信念或图式模式（例如用户输入：“确实，我总觉得只有必须做到完美才配被爱”）；**或者**
   2. 在本次会话内部，内省器连续 2 轮对同一图式输出高置信度匹配（置信度 $> 0.70$），且与当前的萨提亚深层渴望形成拓扑印证。
+  - *实现说明（裁定 25、决定 D4，步骤 C2）*：准则 2 **未采用**，内省器只做词表匹配、不输出置信度，从不自行判定核心信念。准则 1 的实现是图式镜像（`perception/introspector.py` 的 `SchemaMirror`）：**只在模型模式**、只在 $S_{clarify}$、唤醒度低于躯体优先线、每次会话至多一次，把本会话平稳轮次里出现最多的图式化成一句温和的提问（“心里好像有个声音一直在说……，是这样吗？”）；下一轮用户回答“是”即为 PRD $C_2$ 的“核心信念识别”，状态机经 `Reason.CLARIFY_CORE_BELIEF` 进入 $S_{empower}$。危机、避风港、L1 筛查、红线、纯倾听锁与 `SILENT_ANCHOR` 的轮次从不提问；规则模式从不提问，也从不判定核心信念。
+- **实现范围**：上文“6 层冰山”在代码里只落到其中的渴望层与信念层：内省器（`introspector.py`，两种模式都运行）每轮只产出 3 项——认知扭曲（9 类）、早期图式（20 类，最多 3 项）与深层渴望（5 类，取命中最多的渴望短语；没有时取第一个图式对应的渴望；都没有时为默认 `SAFETY`）。冰山的行为、应对姿态、感受、观点各层没有单独的解析器（姿态只在模型模式由姿态头给出）。
 - **高唤醒抑制**：当唤醒度 $Arousal \ge 0.80$ 时，内省器自动挂起深层图式分析，防止过深的反思加剧用户前额叶认知负荷。
 
 ### 3.3 3D 艾宾浩斯记忆检索与本地静态加密协议
@@ -275,7 +298,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 | 当前状态 $q$ | 转移触发条件 $\sigma$ | 下一状态 $\delta(q, \sigma)$ | 动作与工程保障 |
 | :--- | :--- | :---: | :--- |
 | **任意非危机状态** | 危机检测复核判定为 L2 或 L3 级别 | **$S_{crisis}$** | **最高安全熔断**：瞬间中断正常流程，由 GEO 模块呈现属地化危机干预与急救卡片 |
-| **任意非危机状态**（含 $S_{haven}$） | 用户显式要求方法 (JTBD 4)，优先于下一行的避风港判定 | **$S_{empower}$** | 尊重用户自主掌控权，动态跳过理清阶段直达赋能推荐；候选仍经红线掩码与唤醒检查，`SILENT_ANCHOR` 人格同样适用；掩码后可用集合为空时给 $m_0$ + 转介卡；本轮为 L1 时只给稳定化白名单内的卡片（裁定 5，`Transition.stabilization_only`） |
+| **任意非危机状态**（含 $S_{haven}$） | 用户显式要求方法 (JTBD 4)，优先于下一行的避风港判定 | **$S_{empower}$** | 尊重用户自主掌控权，动态跳过理清阶段直达赋能推荐；候选仍经红线掩码与唤醒检查，`SILENT_ANCHOR` 人格同样适用；掩码后可用集合为空时给 $m_0$，命中临床红线时另附转介卡（§4.3.7）；本轮为 L1 时只给稳定化白名单内的卡片（裁定 5，`Transition.stabilization_only`） |
 | **任意非危机状态** | 两阶段危机复核通过 且 `social_battery` $\le 0.20$ 且 当前非 $S_{crisis}$（$S_{empower}$ 中只在本轮给出新的电量读数时） | **$S_{haven}$** | 冻结提问，输出极低字数沉静陪伴，仅做在场确认与安全守候（严禁危机逃逸） |
 | **$S_{explore}$** | `stage_turn_count` $\ge 2$ 且 $Arousal < 0.80$ 且 无纯倾听锁 且 `social_battery` $\ge 0.40$ 且 本轮不是 L1 | **$S_{clarify}$** | 推进至理清阶段，探查图式与萨提亚深层渴望 |
 | **$S_{clarify}$** | $Arousal \ge 0.80$（躯体优先线） | **$S_{explore}$** | `CLARIFY_AROUSAL_RETREAT`：回到倾听阶段的稳定化通道，会话给稳定化卡片（`Transition.offer_stabilization`） |
@@ -283,14 +306,14 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 | **$S_{empower}$** | 用户唤醒度激增 ($\Delta Arousal \ge 0.25$ 或 $Arousal \ge 0.85$) 或 表达反感 | **$S_{explore}$** | **紧急安全回退**：撤回认知方法，激活稳定化通道在场承接 (生理叹息/感官着陆)；转移带 `Transition.offer_stabilization` 供会话呈现稳定化卡片 |
 | **$S_{empower}$** | 用户发出 `/unhelpful` 或明确说方法没帮助（“这个不适合我”）(`UNHELPFUL`) | **$S_{explore}$** | 记录 `UNHELPFUL`，按 §6.3 对该方法施加软衰减，回到倾听 |
 | **$S_{empower}$** | 用户发出 `/done` (完成微练习) 或 `/not-now` (存入锦囊，`NOT_NOW`)，或用日常的话明确说出同样的意思（“做完了”“今天先不做了”） | **$S_{closing}$** | 进入结束仪式，建立 Gollwitzer 实施意向与温和道别 |
-| **$S_{haven}$** | 用户心力恢复 (`social_battery` $\ge 0.35$) 或 发起新探索议题 | **$S_{explore}$** | 平滑退出避风港模式，恢复常规双向探索对话 |
+| **$S_{haven}$** | 用户心力恢复 (`social_battery` $\ge 0.35$) 或 发起新探索议题 | **$S_{explore}$** | 平滑退出避风港模式，恢复常规双向探索对话。*实现*：目前只按电量退出（`Reason.HAVEN_EXIT`），“新探索议题”没有识别器（R-P3d，待 C5）；在避风港里直接要方法经上面“显式要求方法”一行离开避风港、进入 $S_{empower}$（负责人决定 2026-10-24） |
 | **$S_{closing}$** | 实施意向确认完成 或 会话自然关闭 | **$S_{ready}$** | **结束状态出口**：原子写入会话摘要与经历账本，就绪等待下一次会话 |
 | **$S_{crisis}$** | 用户显式确认安全（`SafetyConfirmEvent`）且之后连续 N 轮处于安全区间 (L2: 2 轮, L3: 3 轮) | **$S_{explore}$** | **危机状态出口**：唯一合法出口，解除危机熔断，恢复温和陪伴，保留关怀标记 |
 
 补充说明：
 - **轮次**：`stage_turn_count` 与“5轮”都指当前阶段内的轮次，进入新阶段时重新计数。
 - **ΔArousal 基线**：$\Delta Arousal$ 以进入当前阶段时的唤醒度为基线计算。
-- **直接索要方法**：任何非危机状态均可触发（$S_{crisis}$ 中不响应），$S_{haven}$ 也一样（负责人决定，2026-10-24，PRD COLBO-03）；候选动作仍经红线掩码与唤醒检查（电量低于 0.40 时只给稳定化白名单）；`SILENT_ANCHOR` 人格也可由此进入 $S_{empower}$；掩码后可用集合为空时给 $m_0$（`EMOTIONAL_HOLDING_PRESENCE`）并附转介卡。从避风港进入的 $S_{empower}$ 不会因为保存着的低电量在下一轮被拉回避风港：$S_{empower}$ 中只有新的电量读数（`[x%]`）才重新进入 $S_{haven}$；以正常方式离开 $S_{empower}$ 后，保存的电量照常生效。
+- **直接索要方法**：任何非危机状态均可触发（$S_{crisis}$ 中不响应），$S_{haven}$ 也一样（负责人决定，2026-10-24，PRD COLBO-03）；候选动作仍经红线掩码与唤醒检查（电量低于 0.40 时只给稳定化白名单）；`SILENT_ANCHOR` 人格也可由此进入 $S_{empower}$；掩码后可用集合为空时给 $m_0$（`EMOTIONAL_HOLDING_PRESENCE`），只有命中临床红线时才附转介卡（`solver.allowed_actions` 的 `referral_flags`，与 §4.3.7 一致）。从避风港进入的 $S_{empower}$ 不会因为保存着的低电量在下一轮被拉回避风港：$S_{empower}$ 中只有新的电量读数（`[x%]`）才重新进入 $S_{haven}$；以正常方式离开 $S_{empower}$ 后，保存的电量照常生效。
 - **L1 停留在 $S_{explore}$**（§8.2）：本轮有效等级为 L1 时，$S_{explore} \to S_{clarify}$、$S_{clarify} \to S_{empower}$（自动推进与核心信念识别）都不触发；直接索要方法仍然有效，但只给稳定化白名单内的卡片（裁定 5）。
 - **日常说法的反馈（路线图 R-7b）**：反馈不只来自斜杠命令。卡片等待反馈时，感知层把明确的日常说法读成对应命令（`TurnSignals.feedback`），会话按命令原路处理，效果与命令完全相同；含糊的回应（`feedback_unclear`）先问一次是否收进锦囊，下一轮的“好/可以”（`answer`）记为 `NOT_NOW`。对自己的贬低从不算 `UNHELPFUL`；斜杠命令优先；筛查为 L2/L3 的一轮从不读反馈。“锦囊里那个再给我看看”（`kit_recall`）按直接索要处理，重新递上锦囊里最近存入、且当前仍被求解器放行并有卡片的方法；锦囊跨会话保存（步骤 B3，见 §6.3），所以新会话里“上次存的那个”也能调回；锦囊为空时温和说明。$S_{closing}$ 中整句的“好/可以”等同实施意向确认，“不用了”得到一句温和回应并留在 $S_{closing}$。
 
@@ -380,6 +403,8 @@ C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互
 3. **静默树洞型人格 (`SILENT_ANCHOR`)**：字数窗口收缩至 $[10, 30]$ 汉字，仅提供极简情感回声与中立安全在场；
 4. **危机状态 ($S_{crisis}$) 与 Grade C 医疗转介卡片**：**享有刚性字数豁免权**，确保紧急救援电话、心理援助热线、营业时间及转介指引无损完整呈现，绝不因字数上限截断生命防线信息。
 
+*计数方式（`LanguageEngine.window_penalty`）*：$\kappa_{under} = \kappa_{over} = 1$。下限按**汉字数**计（`count_cjk`），上限与单段上限按**去掉空白后的全部字符数**计（`count_all`，标点、数字、字母都算）；每个超出单段上限（`paragraph_max`，常规 80）的段落另加 $(\text{超出字数})^2$ 的惩罚，段落以空行分隔。$S_{haven}$ 必须只有一段（出现换行即加 $\text{上限}^2$ 的惩罚）；$S_{ready}$ 的一句只受单段上限约束。用户只回了很短的一句时（`is_short_input`，修复 F3），$S_{explore}$ / $S_{clarify}$ 只取首末两段，按模板的 `window.short` 计（`GENTLE_HOLDING` $[60, 170]$，另两种常规人格 $[50, 160]$，`SILENT_ANCHOR` 不设）。`compose` 在打乱后的模板组合中优先选不重复近几轮段落、惩罚最小的一个，遇到惩罚为 0 且不重复的组合即停。
+
 *实现说明（计划 D-1，2026-10-23）*：每种人格一个模板文件（`olivia/data/templates/gentle_holding.yaml`、`zen_philosopher.yaml`、`rational_peer.yaml`、`silent_anchor.yaml`，映射见 `language/data.py` 的 `PERSONA_TEMPLATE_FILES`），各自在 `window` 中声明字数窗口；`load_language_data` 启动时载入并校验全部四份，`LanguageData.for_persona(persona)` 选出会话用的一份（`Session` 按 `PersonaProfile.persona_spectrum` 选择）。`LanguageEngine.window_penalty` 读当前人格的窗口：$S_{haven}$ 用 `window.haven`，$S_{empower}$ 用 `window.empower`（缺省同常规窗口，且不计卡片正文），其余常规阶段用 `window.normal`。`GENTLE_HOLDING`、`ZEN_PHILOSOPHER`、`RATIONAL_PEER` 为常规 $[140, 260]$、单段 $\le 80$、避风港 $[15, 40]$，三段式结构相同；`SILENT_ANCHOR` 的 $S_{explore}$、$S_{clarify}$ 只有一段且不要求槽位，常规窗口 $[10, 30]$，避风港取交集 $[15, 30]$，$S_{empower}$ 因须写出三个反馈命令按 $[10, 70]$、单段 $\le 50$ 计（待 G-0 确认），其 $S_{clarify}$ 不追加 B 级视角卡。危机首句以外的求助电话行由 `render.yaml` 与 `ResourceCard` 生成，与人格无关；`followups.safety_check`（决定 D3）四份逐字一致，加载时校验。每份模板都有 `wellbeing`（B7）、`S_ready.returning_after_check`（A3）与 `followups.health_hint`（A1）；`SILENT_ANCHOR` 的这些句子都是陈述句，休息与深夜提示单段 $\le 30$ 字；它的回复只有一段、没有可替换的 invite，所以不做现实支持引导（`real_support` 不会出现），模型模式的图式镜像提问（决定 D4）也不对它出现。
 
 ---
@@ -409,7 +434,7 @@ C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互
 
 $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 
-每次反馈只更新主导谱系 $d$ 的后验，即 `distress_vector` 中得分最高的一项所属的谱系。
+每次反馈只更新主导谱系 $d$ 的后验，即 `distress_vector` 中得分最高的一项所属的谱系。*实现（修复 F2b）*：直接要方法的那一轮常常没有谱系线索，此时采样与反馈都记在本次会话最近一次出现的谱系下，整场都没有谱系时才回退到 `"02"`（`session.py` 的 `FALLBACK_SPECTRUM`）。
 
 - **临床证据等级先验映射**：
   - Level I（跨诊断黄金循证，如 CBT, ACT, MCT）: $\alpha_0 = 4.0, \ \beta_0 = 1.0$；
@@ -420,7 +445,7 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
   - 用户反馈 `NOT_NOW`（存入锦囊）：保持当前参数不变，零负向扣分；
   - 用户反馈 `UNHELPFUL`（不适用/排斥）：$\beta_{m, d} \leftarrow \beta_{m, d} + 1.0$；采用软性时间衰减降权函数：
     $$\beta_{eff} = 1.0 + (\beta_{m, d} - 1.0) \cdot \exp\left(-\lambda_{decay} \Delta t\right)$$
-    其中 $\lambda_{decay} = 0.1$/天（`taxonomy.yaml` 的 `thompson_sampling_index.lambda_decay_per_day`），$\Delta t$ 以天计；随时间推移自动衰减恢复探索概率，并在透明档案中供用户查阅与一键解除；
+    其中 $\lambda_{decay} = 0.1$/天（`taxonomy.yaml` 的 `thompson_sampling_index.lambda_decay_per_day`），$\Delta t$ 以天计；随时间推移自动衰减恢复探索概率，并在透明档案中供用户查阅与一键解除（*现状*：衰减已实现；“查阅与解除”只做到整体层面——`olivia memory` 只列出锦囊卡数与“方法偏好”这一项的名字，`olivia forget --kit` 一次清空全部后验与锦囊，没有逐个方法的查看或重置）；
 - **探索安全门禁 (Exploration Safety Gating)**：
   - 仅在用户生理唤醒度 $Arousal \le 0.60$ 且候选池严格处于 32 种 Grade A 方法时，允许利用后验方差进行探索性采样；
   - 当 $Arousal > 0.60$ 时，采样方差强制归零，系统强制退化为最高确定性均值策略（Exploit Only）或自下而上躯体稳定化协议。
@@ -428,7 +453,7 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 
 ### 6.4 7 天情绪周记时空数据聚合算法 (基于用户自评数据)
 满 7 天且会话活跃时，周记聚合器提取：
-1. 用户会话前后 0–10 分困扰自评均值与心力电量走势；
+1. 用户会话前后 0–10 分自评（*实现*：按“心情”打分，0 很糟、10 很好，与 PRD 写的“困扰”方向相反，见下文与计划 §9 B6 行）；心力电量走势**不做**：会话摘要不存电量（决定 D1 只记编号、等级与时间），周记无从统计；
 2. 本周高频困扰外化命名；
 3. 产生积极反馈的 A 级微方法复盘；
 4. 若当周触发过 L2/L3 危机，周记自动转为庄重守护口吻，严禁轻浮轻淡散文。
@@ -439,14 +464,19 @@ $$\theta_{m, d} \sim \text{Beta}(\alpha_{m, d}, \beta_{m, d})$$
 
 *周记*：只读账本，不产生新的用户文字。窗口为滚动 7 天（`now − 7 天` 起），内容：会话段数；各段“开始 → 结束”心情分（缺的写“没打”）与其中聊完后分数升高的次数；最常出现的困扰谱系（最多 3 个，按出现的会话数，用 `memory.yaml` 的日常说法）；试过的小练习（卡片标题）与各自的反馈；用户要求记住的话只给条数（原话留在账本里，SOP 5 未规定，按计划取条数）。窗口内有会话进入过危机流程时，开头与结尾换成庄重守护口吻，并指向 `olivia resources`。除自评分与次数外不出现数字，文案经 WILLOW 与输出网关检查，不含诊断词。SOP 5 的“复原力金句”需要对话原文，与决定 D1 冲突，不做。
 
-*何时*：开场分数之后，当窗口内会话摘要 ≥ 2 条、且窗口内没有任何周记记录（看过或婉拒都算）时，问「这周的小结写好了，想看看吗？」：回答“好/想看”等即展示，随后问「这份小结对你有帮助吗？」（有 / 没有，可跳过，对应 PRD §11.1 的周记满意度）；回答“不用”或直接回车即婉拒，并告诉用户 `olivia journal` 随时可看。婉拒同样算一次，7 天内不再提（PRD Q-3“杜绝压迫感”）。`olivia journal` 随时展示同一份周记（窗口内没有会话时温和说明），并问同样的满意度问题。没有钥匙串时不提、不展示。SOP 5 的“周日 20:30”定时提醒属系统通知，由 B9 的可选系统提醒实现（默认关闭，见下表 § 6.4a）。
+*何时*：开场分数之后，当窗口内会话摘要 ≥ 2 条、且窗口内没有任何周记记录（看过或婉拒都算）时，问「这周的小结写好了，想看看吗？」：回答“好/想看”等即展示，随后问「这份小结对你有帮助吗？」（有 / 没有，可跳过，对应 PRD §11.1 的周记满意度）；回答“不用”或直接回车即婉拒，并告诉用户 `olivia journal` 随时可看。婉拒同样算一次，7 天内不再提（PRD Q-3“杜绝压迫感”）。`olivia journal` 随时展示同一份周记（窗口内没有会话时温和说明），并问同样的满意度问题。没有钥匙串时不提、不展示。SOP 5 的“周日 20:30”定时提醒属系统通知，由 B9 的可选系统提醒实现（默认关闭，见下文 §6.4a）。
 
 *记录*：每次提出周记都写一条账本条目 `kind: journal`（`olivia_ledger: 1`，字段 `offered_at`、`shown`、`helpful`，正文是“某天的一周小结 / 看了或没看 / 有没有帮助”），先在展示时写入，得到满意度后用同一 id 重写；和其他条目一样始终加密，`Ledger.shred()` 一并擦除。选账本而不是 B3 的 `state.bin`：只是在账本里多一种条目（约 40 行），对用户透明（B5 的 `olivia memory` 列账本时能看到；B4/B5 遍历条目时需认得 `JournalEntry`），而改 `state.bin` 要升版本号并让会话把它原样带过去，否则聊天退出时的保存会把它覆盖掉。旧版本读到 `journal` 条目时按“未知条目”跳过计数，不报内容。`--inspect` 不变：这些都不是轮次级数据。
+
+### 6.4a 可选系统提醒（步骤 B9，决定 D5；PRD SOP 5、RSK-07）
+SOP 5 的“周日 20:30”周记提醒与长时间未来的提醒都是系统通知，**默认关闭**（画像 `notifications`，非敏感）。用户在 `olivia settings` 里打开时，先说明要安装的一个定时任务及其位置并再确认一次；关闭或 `olivia forget --all` 即删除。定时任务每天本地 20:30 运行隐藏命令 `olivia notify-check`：周日且周记到期时发“这周的小结写好了……”（当天最多一次），7 天没有会话时发“很久没聊了……”（7 天最多一次），其余不发。通知不含任何内容、称呼或数字；钥匙串被锁或不可用时不发；“上次提醒”的两个日期存于数据目录 `notify.json`（无用户数据）。各平台的调度方式与接口见 §11 “§ 6.4a 系统提醒”一行（`olivia/notify/`）。
 
 ### 6.5 记忆档案原子级写入安全协议
 遵循影子替换协议：
 $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{Atomic Rename} \to \text{Persistent Ledger}$$
 并保留最近 3 个版本的容灾备份快照，确保数据 100% 具备容错自愈能力。
+
+*实现（B1、B2）*：所有写入都走 `storage.atomic_write_text` / `atomic_write_bytes`（临时文件 → fsync → 原子改名 → 目录 fsync）。**只有画像**保留最近 3 份快照（`SNAPSHOT_KEEP = 3`，同目录下的 `.snapshots/<文件名>/`，读取失败时 `read_text_with_recovery` 依次回退）。加密存储——账本条目、`state.bin`、关怀标记、安全计划、各存储的包裹密钥——一律 `snapshot=False`：密文快照会让加密擦除留下可解的旧副本，而且这些文件没有可回退的旧明文；`notify.json` 与各类空标记文件同样不留快照。
 
 **实现（B2，决定 D1）**：`olivia/core/memory/`（`ledger.py`、`notes.py`、`recorder.py`、`text.py`；文案 `olivia/data/templates/memory.yaml`，“记住”线索 `olivia/data/lexicons/memory.yaml`）。
 
@@ -454,7 +484,7 @@ $$\text{MemoryLedger} \to \text{ledger.tmp} \to \text{Flush \& Sync} \to \text{A
 
 | 条目 | 内容 | 何时写 |
 | :--- | :--- | :--- |
-| 会话摘要 `summary` | 首末轮时间；阶段路径（相邻重复合并，如 `S_ready → S_explore → S_empower → S_closing`）；主要困扰谱系 id（最多 3 个，按出现次数）；展示过的练习卡 id 与各自反馈（`HELPFUL` / `NOT_NOW` / `UNHELPFUL` / 无）；是否进入危机流程（只记标志与等级）；会话前后 0–10 自评（B6，见 §6.4）；显著标记（裁定 29：当轮 ≥ L2 或用户标记）与 `marked_by_user` | 会话结束时：状态机 S_closing → S_ready（之后若继续聊，算新的一段、另记一条），或 `/exit`、输入结束、Ctrl-C。按“会话 id + 段号”定条目 id，重复关闭不会多出条目；没有任何一轮的段不写 |
+| 会话摘要 `summary` | 首末轮时间；阶段路径（相邻重复合并，如 `S_ready → S_explore → S_empower → S_closing`）；主要困扰谱系 id（最多 3 个，按出现次数）；展示过的练习卡 id 与各自反馈（`HELPFUL` / `NOT_NOW` / `UNHELPFUL` / 无）；是否进入危机流程（只记标志与等级）；会话前后 0–10 自评（B6，见 §6.4）；显著标记（裁定 29：当轮 ≥ L2 或用户标记）与 `marked_by_user`（字段可读写，但会话记录器目前从不置位，所以摘要的显著只来自 ≥ L2；笔记本身总是显著） | 会话结束时：状态机 S_closing → S_ready（之后若继续聊，算新的一段、另记一条），或 `/exit`、输入结束、Ctrl-C。按“会话 id + 段号”定条目 id，重复关闭不会多出条目；没有任何一轮的段不写 |
 | 笔记 `note` | 用户明确要求记住的话：消息**开头**是「记住：」「帮我记一下」「请记得」等线索时，线索之后的文字原样保存（≤ 500 字），回复末尾简短确认、不复述内容 | 当轮。当轮在危机流程中、筛查 ≥ L1、或是意图确认（D3）时一律不记，也不确认——危机处理优先，显著标记已足够；“我记住了他说的话”这类不在开头或不带分隔符的说法不是请求 |
 
 *格式*：每个条目是一份带 YAML 头的 Markdown。头部是记录本身；正文是由头部生成的简短中文小结（阶段、谱系与反馈都用日常说法，不用病名），笔记的正文就是笔记原文：
@@ -497,7 +527,7 @@ marked_by_user: false
 | 层级 | 位置 | 内容 |
 | :--- | :--- | :--- |
 | 主密钥（KEK） | 系统钥匙串，服务名 `olivia`，条目 `master-key`（轮换时临时有 `master-key-next`） | 256 位随机密钥 + 8 字节密钥编号；首次需要加密时才创建 |
-| 数据密钥（DEK） | `<数据目录>/keys/<store>.key`，每个存储一个（`profile`、之后的 `ledger`、`kit`、`safety_plan`、`posteriors`） | 用主密钥以 AES-256-GCM 包裹；不做快照 |
+| 数据密钥（DEK） | `<数据目录>/keys/<store>.key`，每个存储一个：`profile`（B1）、`ledger`（B2）、`ledger_rekey`（B5 单条遗忘时的暂存，用完即擦除）、`state`（B3，后验与锦囊）、`care`（A3，关怀标记）、`safety_plan`（B10） | 用主密钥以 AES-256-GCM 包裹；不做快照 |
 | 数据 | 各存储自己的文件 | 用该存储的 DEK 以 AES-256-GCM 加密；随机 96 位 nonce；附加数据 = 格式魔数 + 版本 + 存储名 + 标签，换存储、换标签、换版本都打不开 |
 
 **画像的三种文件形态**：未开开关且没有敏感字段时为明文 JSON（不需要钥匙串）；有 `clinical_history`（A1 起含 `contraindications`）时，这些字段移入 `sealed_fields` 密文，其余仍为明文；开关（ONB-06，默认关）打开时整份画像只剩 `sealed_profile` 密文。敏感字段在任何情况下都不以明文落盘，包括快照：每次保存后删除不符合当前保护级别的旧快照。旧版明文画像在读取时自动迁移并清除明文快照。
@@ -547,6 +577,8 @@ marked_by_user: false
            [进入正常 S_explore 倾听阶段]
 ```
 
+*实现说明（组合式线索，修复 F1，2026-10-24）*：危机筛查扫描的是**整条**规范化后的消息（`normalize`，不做感知窗口截断）。Stage 1 与 Stage 2 除整句短语（`risk.yaml` 各节，Aho-Corasick 单遍扫描）外，另有 `compositions` 一节（引擎 `safety/compose.py`，`Composer.find`）：两组词在同一分句内、间隔不超过几个字时组合匹配（例如计划动词 × 结束生命的行为 + 紧邻的时间词），并统一排除否定、他人主语、阻断词、缺少所需语境与同句的日常或过去时抵消词。组合给出的等级：L3（`S1_*`，Stage 1 计划证据，不受遮罩）、L2 / L1（与 Stage 2 短语一样受否定与口癖遮罩）、ASK（L1 + 置 `asks_intent`，走 §8.2 的 D3 直接询问，不受遮罩）。L1/L2 组合只在高于短语线索时计入，L3 组合只在没有 Stage 1 短语时计入，ASK 组合始终计入。条目清单与测试规模见 PRD §9.1 的 F1 实现说明。
+
 ### 8.2 四级危机分级、取高仲裁与权威热线联动
 统一以 `taxonomy.yaml` 半开区间为准：
 - **L0 (安全 $[0.0, 0.20)$)**：正常流转状态机；
@@ -566,7 +598,13 @@ marked_by_user: false
   1. 用户明确确认安全（`SafetyConfirmEvent`，如明确表达“我已经联系上朋友了”、“我现在安全了，想聊点别的”）；**并且**
   2. 确认之后连续 $N$ 轮会话输入经两阶段危机筛查均为安全轮（依初始危机等级：L2 需连续 2 轮安全，L3 需连续 3 轮安全）。确认之后只有 L0 轮计为安全轮；L1 轮暂停计数（既不计入，也不清零）；L2/L3 轮清零，并需要用户重新确认安全。
   - *确认的识别（修复 F2a，2026-10-24）*：`risk.yaml` 的 `safety_confirm` 短语（“我安全了 / 我是安全的 / 我很安全 / 我没事了 / 我不会伤害自己 / 我联系上朋友了 / 家人在旁边 / 我给12356打过电话了”等）匹配前，消息与短语都先去掉“已经 / 现在 / 都”，所以“我已经联系上朋友了”“我现在是安全的”也算。危机回复每次都会问“你现在是安全的吗？”，所以等待确认期间，整句的简短肯定回答（“是 / 是的 / 对 / 安全 / 安全的 / 嗯，安全 / 我很安全 / yes / I'm safe”）也算确认；单独的“嗯”只是应答，不算。否认词表（`confirm_veto`，如“不知道 / 暂时 / 但是”）、问句与短语前的否定仍优先：“不安全 / 是不安全的 / 安全吗 / 暂时安全”都不算。
-  在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。危机态中每轮回复都重复呈现危机卡的精简版；跨会话的“关怀标记”存入用户画像，供下次会话启动时做轻度安全问候。
+  在满足上述双重条件前，系统严格维持在 $S_{crisis}$ 守护态，优先承接人身安全支持。危机态中**每轮回复都重复呈现完整的危机卡**（不存在“精简版”：渲染数据只有输出网关拦截时的最简卡回退，它同样保留卡上全部号码），卡片等级取 $\max(L2, \text{本轮等级}, \text{进入危机时的等级})$，所以 L3 危机的每一轮都带急救号码（裁定 14）。跨会话的“关怀标记”**不写入画像**，而是独立的加密存储 `care`（步骤 A3，`chang/care.py`）：只存时间与种类（L2 / L3 / 对 D3 询问回答“不是”），7 天内的下一次 `olivia chat` 先做一次轻度安全问候后清除，过期的静默丢弃；没有钥匙串时不保存。
+
+- **负责人 2026-10-24 拍板的四条安全决定（已在 F1 / F2a / F2b 实现）**：
+  1. **自伤（NSSI）**：当前或刚发生的自伤（“割/划/烫……自己”“把自己弄伤”“又在自残”、连续绝食等）定为 **L1 + 直接询问自杀意图（D3）**，并触发 **SIT-09-01 转介**。规则层为 `risk.yaml` `compositions` 的 `ASK_INTENT_SELF_INJURY_ACT` / `_HURT` / `_WORD`（ASK 级）与 `red_flags.yaml` 的 `RF_SELF_INJURY_ACT`（SIT-09-01 自述）；询问那一轮只问一句并附 L2 热线；回答“不是”的那一轮回到普通流程并附 SIT-09-01 转介卡，回答“是”、含糊或不回答即进入危机流程。过去已结束的自伤（“以前……过”“曾经”）不询问。
+  2. **L1 升级**：连续 3 轮 L1 且没有好转 → 第 3 轮按 L2 进入危机流程（规则见上文“跨轮升级”，`safety/tracker.py`）。
+  3. **避风港里直接要方法即离开避风港**：$S_{haven}$ 中的直接索要与其他非危机状态一样进入 $S_{empower}$（`fsm/machine.py` 的 `DIRECT_REQUEST` 先于避风港判定）；之后保存着的低电量不会在下一轮把会话拉回避风港，只有新的电量读数才会（§4.2）；这张卡末尾附一句如何回到安静陪伴（`followups.haven_return`）。
+  4. **模型判 L3 而 L3 开关关闭时仍给急救号码**：模型模式下风险模型判 L3、但因 `model_plan_evidence` 关闭被仲裁压到 L2 时，流程仍是 L2，而本次危机余下各轮的 L2 卡最前面加上该地区的急救号码，按 L3 卡的方式呈现（`session.py` 的 `_crisis_card` → `LanguageEngine.render_crisis(..., urgent=True)`），L2 热线一条不少；该地区 L2 卡本已带急救号码时不变。
 
 ### 8.3 属地化与全球危机援助资源解析流水线 (GEO-01 ~ GEO-08)
 - **国家级基准线**：全国统一心理援助热线 `12356`（国家卫生健康委统一热线，每日不少于 18 小时，各地时段不同，部分地区夜间不接听，L3 同时给 110/120）；12355 青少年服务台仅在 `is_minor` 为真（ONB-05 婉拒路径）时呈现；
@@ -620,6 +658,12 @@ marked_by_user: false
 | **Step 6** C.H.A.N.G. & W.I.L.L.O.W. 生成 | 离线模板组装与留白塑形 | $0.5\text{ms}$ | $2.0\text{ms}$ | 纯静态插槽填充 |
 | **汇总** | **离线控制回路端到端总时延** | **$28.0\text{ms}$** | **$55.0\text{ms}$** | **单核 CPU 极致流畅可信** |
 
+*实现说明（2026-10-24）*：
+- **Step 1 不截断**：危机筛查（短语、配对与组合线索）读取整条规范化后的消息。
+- **Step 2 有两种窗口**：规则感知桩与内省器用 `safety/normalize.py` 的 `clip_for_perception`，保留开头 128 + 结尾 256 字符（`PERCEPTION_HEAD` / `PERCEPTION_TAIL`）；模型模式的学生自行截断为开头 48 + 结尾 112 字（`student_config.json` 的 `max_len` 160、`head_chars` 48），风险头与其余各头都看这个窗口。
+- **Step 3**：3D 检索已实现但规则模式不接入（§3.3，裁定 19、35），“最近 10 条”的降级未实现。
+- **Step 4–6 的容灾**统一在 `Session.turn` 里实现（修复 F2b），不按步骤分别降级：危机筛查最先运行，之后任何一步抛异常时都不把异常交给用户，而是给降级回复——本轮筛查为 L2/L3、会话已在危机中或本轮应读 D3 回答时，给带该地区卡上全部号码的最简危机卡；否则给当前人格不带槽位的一句在场陪伴（`ReplyKind.HAVEN`）。`inspect["reason"]` 为 `DEGRADED`、`inspect["degraded"]` 为异常类名；不写日志，不保留用户原文。
+
 ### 10.2 内部可观测性遥测面板规范
 ```
 ╔════════════════════════════════════════════════════════════════════════════════════════╗
@@ -636,46 +680,65 @@ marked_by_user: false
 ╚════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
+*实现（裁定 27，`olivia chat --inspect`，`cli.inspect_panel`）*：上面的版式是设计稿。实际面板每轮在回复之后打印，只读 `TurnResult.inspect` 中列入白名单的键、回复类型与资源卡的国家级地区，**从不显示用户原文、回复原文或城市**。没有人格行（人格只在 `olivia persona` 中查看）、没有运行模式与本地校验器行（AI 增强属 P7），危机置信度不单独显示（模型模式显示模型分数）。下面是规则模式下第 3 轮（直接要方法）的真实输出，可用动作列表有删节：
+
+```
+┌ inspect · 第 3 轮
+│ 风险 L0（本轮筛查 L0） · 危机中 否 · 线索 - · 关怀问候 否
+│ 状态 S_explore → S_empower（DIRECT_REQUEST） · 纯倾听锁 否
+│ 唤醒 0.25 · 电量 0.70 · 谱系 - · 红线 -
+│ 禁忌 - · 情境 -
+│ 效价 0.00 · 情绪 calm · 意图 INFORMATION · 姿态 CONGRUENT · 准备度 0.50
+│ 认知扭曲 - · 图式 - · 渴望 SAFETY
+│ 可用动作 01,02,03,06,…,74,75（共 36 个） · 选中 70 · 反馈 -
+│ 回复 CARD · 审查拦截 -
+│ 风险模型 rules-only · 模型判断 - · 模型分数 -
+└ 热线数据 builtin（no override）
+```
+
+按需追加的字段：`图式镜像`（模型模式，D4）、反馈来源、资源卡地区与等级、`意图确认`（D3）、`安全计划 已展示`（B10）、风险模型不可用的原因、热线覆盖包未启用的原因。
+
 ---
 
 ## 11. 逻辑架构与工程模块组件映射索引 (Modular Implementation Mapping)
 
 为了实现系统设计与工程代码实现的无缝对接，本设计规范各章节在逻辑实现层严格映射至核心模块接口规范：
 
-状态标注：`[已实现 / 步骤]` 表示代码已合并（步骤号见路线图 `docs/superpowers/plans/2026-10-22-remaining-roadmap.md` 或下一阶段计划 `2026-10-23-next-phase.md`）；`[待实现 / 步骤]` 表示计划中的模块，接口以实现时为准。本表于 2026-10-23（计划步骤 A5）按代码逐行核对。
+状态标注：`[已实现 / 步骤]` 表示代码已合并（步骤号见路线图 `docs/superpowers/plans/2026-10-22-remaining-roadmap.md` 或下一阶段计划 `2026-10-23-next-phase.md`）；`[待实现 / 步骤]` 表示计划中的模块，接口以实现时为准。本表于 2026-10-23（计划步骤 A5）首次按代码逐行核对，2026-10-24 在 F1–F4 与第八轮学生打包之后（提交 0f669ca）再次核对。
 
 | 设计规范章节 | 领域逻辑职责 | 核心代码实现模块路径 | 核心导出接口与类型契约 |
 | :--- | :--- | :--- | :--- |
 | **§ 2 通用领域模型** | 全局类型与数据契约 | `olivia/core/models.py` [已实现 / P0] | `PersonaProfile`, `SessionState`, `PerceptionContext`, `ActionSkeleton`, `UserRegion`（枚举：`CrisisLevel`, `HelpStage`, `PersonaSpectrum`, `SafetyGrade`, `ActionType`）；`SessionState.consecutive_l1_count` 只是 `CrisisTracker.consecutive_l1_count` 的镜像，由 `fsm.step` 每轮写入 |
-| **§ 2.1 画像持久化** | 画像读写与快照恢复 | `olivia/core/chang/profile.py` [已实现 / P0] | `ProfileStore(base_dir: Path \| None = None)`: `.path`, `.load() -> PersonaProfile \| None`, `.save(profile: PersonaProfile) -> None`; `ProfileCorruptError`（`clinical_history` 目前仍为明文，加密 [待实现 / B1]） |
+| **§ 2.1 画像持久化** | 画像读写与快照恢复（唯一保留 3 份快照的存储）；健康信息始终加密，ONB-06 打开时整份加密（§6.6） | `olivia/core/chang/profile.py` [已实现 / P0、B1] | `ProfileStore(base_dir: Path \| None = None, vault: Vault \| None = None)`: `.path`, `.vault`, `.load() -> PersonaProfile \| None`, `.save(profile: PersonaProfile) -> None`, `.can_protect_sensitive() -> bool`, `.dropped_sensitive_data`; `ProfileCorruptError`, `ProfileLockedError`, `SENSITIVE_FIELDS`, `PROFILE_STORE` |
 | **§ 3.1 感知分类基准** | SSOT 分类标准与阈值访问 | `olivia/core/taxonomy.py` [已实现 / P0] | `load_taxonomy(path: Path \| None = None) -> Taxonomy`; `Taxonomy.version`, `.threshold(dotted_path) -> float`, `.values(name) -> tuple[str, ...]`, `.canonical_label(kind, label) -> str`, `.spectrum_ids()`, `.methods()`, `.grade_a_ids()`, `.action_registry()`, `.canonical_action_id(action_id) -> str`, `.red_flags()`, `.banned_tag_methods(tag)`, `.is_banned_tag(entry)`, `.stabilization_whitelist()`, `.emotion_profiles()`, `.emotion_name(emotion_id)`, `.bands(scale)`, `.band_of(scale, value)`, `.crisis_level_for_score(score) -> CrisisLevel`, `.crisis_exit_safe_turns(level) -> int`; `TaxonomyError`, `UnknownActionError` |
 | **§ 3.1 规则感知桩** | 规则模式下从词表与电量前缀填出 `PerceptionContext` 与本轮控制信号 | `olivia/core/perception/rule_stub.py`、`lexicon.py`、`signals.py` [已实现 / P3-1、P3-5、R-7b] | `RuleStub(tax, lexicon: PerceptionLexicon)`: `.perceive(text, assessment: CrisisAssessment) -> tuple[PerceptionContext, TurnSignals]`; `dominant_spectrum(distress_vector) -> str \| None`; `EmpathyIntent`; `load_perception_lexicon(tax, directory: Path \| None = None) -> PerceptionLexicon`, `strip_marks(text) -> str`, `PerceptionLexiconError`; `TurnSignals`（`battery`, `direct_request`, `listening_lock_on/off`, `aversion`, `intent_confirmed`, `command`, `feedback`, `feedback_unclear`, `answer` 等，只含标志与数值，不含原文）, `Command`, `Answer` |
-| **§ 3.1 / § 9 感知学生模型** | 纯 NumPy 字符级 CNN 学生模型的加载、校验与风险头推理（规则仍是底线）；打包的是三个 CNN 的集成（配置格式版本 2），单个 CNN 的格式版本 1 仍可加载 | `olivia/core/perception/student.py` [已实现 / P6-6a，默认关闭（R-P6a）]；其余感知头接入 [待实现 / C1] | `try_load_student(directory=None) -> StudentLoad`（不抛异常，失败给出原因）, `load_student(directory=None) -> StudentModel`, `default_student() -> StudentLoad`; `StudentModel.predict_heads(text)`, `.risk(text) -> tuple[CrisisLevel, float]`; `StudentRiskModel(student)`: `.predict(text) -> RiskPrediction`; `choose_risk_model(model: RiskModel \| None = None, *, student: bool = False) -> RiskChoice`; `StudentUnavailableError` |
+| **§ 3.1 / § 9 感知学生模型** | 纯 NumPy 字符级 CNN 学生模型的加载、校验与风险头推理（规则仍是底线）；打包的是三个 CNN 的集成（配置格式版本 2，第八轮 `variant_fingerprint` `4524170efaf8d8b0`，9 头），单个 CNN 的格式版本 1 仍可加载 | `olivia/core/perception/student.py` [已实现 / P6-6a、#79、第八轮重训，默认关闭（R-P6a）] | `try_load_student(directory=None) -> StudentLoad`（不抛异常，失败给出原因）, `load_student(directory=None) -> StudentModel`, `default_student() -> StudentLoad`; `StudentModel.predict_heads(text)`, `.risk(text) -> tuple[CrisisLevel, float]`; `StudentRiskModel(student)`: `.predict(text) -> RiskPrediction`; `choose_risk_model(model: RiskModel \| None = None, *, student: bool = False) -> RiskChoice`; `StudentUnavailableError`, `HeadValue`, `RULES_ONLY` |
+| **§ 2.3 / § 3.1 模型模式其余感知头** | 模型模式下用学生的效价、情绪、意图、姿态、准备度头替换规则值，唤醒取规则与模型的较高者，无谱系线索时取 `dominant_spectrum` 头；危机筛查与追踪仍读规则值，两种模式的危机处理相同；前向异常或输出越界时本轮保留规则值 | `olivia/core/perception/model_heads.py` [已实现 / C1（#48）]；`session.py` | `ModelHeads(tax, risk_model: StudentRiskModel)`: `.refine(text, rule: PerceptionContext) -> PerceptionContext`；`NO_SPECTRUM` |
 | **§ 3.2 萨提亚冰山内省器** | 认知扭曲、图式、渴望（两种模式，词表）；图式镜像与 C_2 核心信念确认（仅模型模式，决定 D4） | `olivia/core/perception/introspector.py`，词表 `perception.yaml` 的 `introspection` 段，镜像文案 `language/schema_mirror.yaml` [已实现 / C2] | `load_introspection_lexicon(tax, directory=None) -> IntrospectionLexicon`, `Introspector(lexicon)`: `.read(text) -> Introspection`, `.apply(text, context) -> PerceptionContext`; `SchemaMirror`, `read_mirror_answer(answers, text) -> MirrorAnswer \| None`, `MirrorStatus`, `load_mirror_lines(tax, directory=None)`, `shame_spiral(context) -> bool`（`TOXIC_SHAME_SPIRAL` 的感知来源）; `IntrospectionLexiconError`；状态机 `Reason.CLARIFY_CORE_BELIEF`、`TurnSignals.core_belief_confirmed` |
 | **§ 5.2 / PRD 特性四 叙事外化命名** | 内在批评者模式（图式 DEFECTIVENESS / PUNITIVENESS / UNRELENTING_STANDARDS / FAILURE 一个平稳轮次，或扭曲 SHOULD_STATEMENTS / ALL_OR_NOTHING 两个平稳轮次）时，每次会话至多一次提议给它起名字（2–3 个模板名字，可拒绝）；条件同图式镜像（仅模型模式，决定 D4），不与镜像同轮、不在读镜像回答的那一轮、镜像被否认后不提；接受后同一模式再出现时偶尔用名字指代（每 3 轮至多一次，只在 S_explore / S_clarify 的常规回复里，危机、避风港、卡片从不）；只存名字编号，只在本次会话 | `olivia/core/perception/externalize.py`，文案 `language/externalize.yaml`（草稿，待 G-0）[已实现 / C3]；`session.py` | `load_externalize_text(tax, directory=None) -> ExternalizeText`, `Externalizer(text, answers, *, enabled)`: `.answer(message, *, readable, stub_declined=False)`, `.observe(schemas, distortions, *, counts)`, `.due()`, `.mark_offered(offer)`, `.callback_due(schemas, distortions)`, `.mark_named()`, `.status`, `.name`; `read_naming_answer(answers, text, offered, message, *, stub_declined=False) -> NamingAnswer \| None`, `ExternalizeStatus`, `Offer`, `CRITIC_SCHEMAS`, `CRITIC_DISTORTIONS`, `NAMING_GAP`; `ExternalizeTextError`；`inspect["externalize"]`、`inspect["externalize_name"]` |
-| **§ 3.3 存储与数据根基** | 应用级持久化目录与影子写入 | `olivia/core/storage.py` [已实现 / P0] | `app_data_dir() -> Path`, `atomic_write_text(path: Path, text: str) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
+| **§ 3.3 / § 6.5 存储与数据根基** | 应用级持久化目录与影子写入；只有画像留快照，加密存储与密钥文件一律不留（§6.5） | `olivia/core/storage.py` [已实现 / P0、B1、B8] | `app_data_dir() -> Path`, `data_dir_location() -> Path`（不创建）, `atomic_write_text(path: Path, text: str) -> None`, `atomic_write_bytes(path: Path, data: bytes, *, snapshot: bool = True) -> None`, `remove_file(path: Path) -> None`, `read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str`, `snapshot_paths(path: Path) -> list[Path]`, `SNAPSHOT_KEEP = 3`, `StorageCorruptError` |
 | **§ 3.3 / § 6.6 静态加密与加密擦除** | 钥匙串主密钥、AES-256-GCM 文件信封、按存储数据密钥、加密擦除 | `olivia/core/crypto/` [已实现 / B1]；`olivia/core/chang/profile.py` | `seal_bytes(key, plaintext, *, store, label='')`, `open_bytes(...)`, `KeyBackend`, `KeyringBackend`, `Vault(base_dir, backend=None)` 及 `.available/.check/.seal/.open/.shred/.shred_all/.rotate_master_key`, `ProfileStore(base_dir=None, vault=None)`, `SENSITIVE_FIELDS`, `ProfileLockedError`, `CryptoError` 族 |
 | **§ 3.3 / § 6.5 透明账本** | 加密的会话摘要与用户要求记住的笔记（决定 D1） | `olivia/core/memory/ledger.py`、`notes.py`、`recorder.py`、`text.py` [已实现 / B2] | `Ledger(base_dir: Path \| None = None, vault: Vault \| None = None, *, text=None, method_titles: Mapping[str, str] \| None = None)`: `.available() -> bool`, `.append_summary(summary: SessionSummary, *, key: str) -> str`（同一 key 原地替换）, `.add_note(text: str, *, now: datetime \| None = None) -> str`, `.entries(since: datetime \| None = None) -> tuple[LedgerEntry, ...]`（旧到新）, `.notes() -> tuple[NoteEntry, ...]`, `.read_markdown(entry_id) -> str`, `.render(entry) -> str`, `.body(entry) -> str`（模板化小结或笔记原文）, `.forget_entry(entry_id) -> int`（B5：重新加密其余条目后擦除旧密钥，返回顺带清理的打不开条目数）, `REKEY_STORE`, `.shred() -> None`, `.take_unavailable_notice() -> bool`, `.skipped`; `SessionSummary`（`.entered_crisis`, `.significant`）, `MethodRecord`, `SummaryEntry`, `NoteEntry`, `LedgerEntry`, `LedgerUnavailableError(permanent)`, `NOTE_MAX_CHARS`; `SessionRecorder(ledger, session_id, now)`: `.observe(message, result: TurnResult) -> TurnResult`（可能追加笔记确认）, `.close() -> bool`, `.enabled`; `load_note_cues() -> NoteCues`（`.find(message) -> str \| None`）, `load_memory_text() -> MemoryText` |
 | **§ 3.3 / § 6.3 跨会话状态** | Thompson 后验与锦囊持久化（只存编号、数值与时间，始终加密，存储名 `state`，文件 `state.bin`，锦囊最多 10 条）；关怀标记见 A3 一行 | `olivia/core/memory/state.py` [已实现 / B3]；`session.py`、`cli.py` | `StateStore(base_dir=None, vault=None)`: `.load() -> CarriedState \| None`（损坏、更高版本、钥匙串锁定时为 None）, `.save(state) -> bool`（无钥匙串抛 `NoKeychainError`）, `.shred()`；`StateRecorder(store, baseline).observe(state)`（有变化才写）；`CarriedState(bandit, kit)`（`.to_dict()`, `.from_dict()`）, `KitEntry(action_id, shelved_at)`, `restore_sampler(tax, bandit) -> ThompsonSampler`, `KIT_MAX`, `FORMAT_VERSION`；`Session.open(..., carried=None)`, `Session.kit()`, `Session.carried_state()` |
 | **§ 3.3 / § 6.6 查看与遗忘** | `olivia memory`：只在屏幕上列出账本条目（旧到新编号，模板化小结、B6 周记记录与笔记原文，同一编号供 `--entry` 使用）与其余数据的名字，不显示健康信息与安全计划内容，打不开的条目只计数；`olivia forget`：一条记录（`Ledger.forget_entry` 重新加密其余条目并擦除旧账本密钥）、全部聊天记录（账本 + 关心提醒）、锦囊与方法偏好、安全计划（各自 `shred`：销毁数据密钥并轮换主密钥）、全部数据（`Vault.shred_all` 后删除 `DATA_FILES`/`DATA_DIRS` 下全部文件，含画像快照，下次 `chat` 重新首访）；每次删除需输入确认词（`--yes` 跳过），输入结束即取消；钥匙串被锁时前四项不改动，`--all` 照删文件并说明主密钥未删；未成年人拒绝记录保留（`--all` 删除其余数据并用 `kept_minor` 说明）。新增存储须登记到 `DATA_FILES` 或 `DATA_DIRS` | `olivia/core/memory/forget.py`，文案 `templates/forget.yaml` [已实现 / B5]；`cli.py` | `DataStores.open(base_dir=None, *, method_titles=None, on_forget_all=())`（共用一个 `Vault`；`on_forget_all` 在 `--all` 删除文件前运行，CLI 传入 B9 的删除定时任务）; `run_memory(say, stores, text=None) -> int`; `run_forget(ask, say, stores, *, target: Target \| None = None, entry: int \| None = None, assume_yes=False, text=None) -> int`; `forget_ledger(stores)`, `forget_kit(stores)`, `forget_safety_plan(stores)`, `forget_all(stores, *, keep=frozenset()) -> bool`（False：钥匙串未响应、主密钥未删）; `Target`, `MENU`, `DATA_FILES`, `DATA_DIRS`; `load_forget_text(directory=None) -> ForgetText`, `ForgetTextError` |
 | **§ 3.3 3D 检索** | 3D 艾宾浩斯检索 | `olivia/core/memory/retrieval.py` [已实现 / B4；规则模式未接入] | `MemoryIndex(entries: Iterable[LedgerEntry], *, text: MemoryText \| None = None, method_titles: Mapping[str, str] \| None = None)`: `.rank(query, now, k=TOP_K) -> list[tuple[LedgerEntry, float]]`, `.scores(query, now)`, `.similarities(query)`; `rank(query, entries, now, k=TOP_K, *, text=None, method_titles=None)`; `recency(entry, now)`, `searchable_text(entry, *, text=None, method_titles=None)`, `char_ngrams(text)`; `W_REC`、`W_SIM`、`W_SAL`、`ALPHA`、`TAU_DAYS`、`TOP_K` |
 | **§ 4.2 符号状态机** | 七状态 FSM 代数流转 | `olivia/core/fsm/machine.py`（由 `olivia/core/fsm/__init__.py` 导出）[已实现 / P3-2、P3-5] | `step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition`（纯函数，不修改入参）; `close_session(state: SessionState) -> Transition`; `TurnInput(perception, crisis: CrisisStatus, signals: TurnSignals, persona)`, `Transition(previous, state, reason, stabilization_only, offer_stabilization)`, `Reason` |
-| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；另有 `active_contraindications(tax, inp)`, `banned_actions(tax, flags)`, `M0_ACTION_ID`, `M0_SITUATIONS`；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`） |
+| **§ 4.3 协议与骨架编排** | 32 种 A 级动作与禁忌掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | `allowed_actions(tax, SolverInput) -> AllowedSet`（候选集、是否走 $m_0$、需转介的红线）→ 由 `methods/bandit.py` 的 `ThompsonSampler.choose` 选定 → `build_plan(tax, chosen_id, allowed) -> ActionPlan`（`ActionPlan` = 主动作 `ActionSkeleton` + 转介红线列表）；另有 `active_contraindications(tax, inp)`, `banned_actions(tax, flags)`, `M0_ACTION_ID`, `M0_SITUATIONS`；B/C 级科普卡候选 `info_cards(tax, inp: SolverInput, asked: str \| None = None) -> tuple[str, ...]`（A4：同样经红线封闭集、禁用、唤醒门控与阶段规则，红线用户只会得到转介卡）；方法 ID 用 taxonomy 形式（`"01"`、`"12:tipp_breathing"`）；可用集合为空时走 $m_0$，`AllowedSet.referral_flags` 只在命中红线时非空 |
 | **§ 4.3 禁忌症与情境接通** | 13 种禁忌症按各自 `detection_source` 推导（画像自述、红线、危机状态、感知线索），SIT-06-04 / SIT-11-01 情境（m0），会话内有效；D-2 起其余 51 份非红线档案的情境同样会话内有效，`detection_source` 点名的情境编号都会经此路径生效 | `olivia/core/methods/contraindications.py` [已实现 / A1（决定 D2）] | `SessionContraindications(tax, profile_contraindications)`: `.observe(signals, perception, status, red_flags) -> ActiveContext`, `.unsaved_disclosures()`, `.mark_hinted(ids)`; `source_links(tax) -> SourceLinks`; `ActiveContext(contraindications, situations)`；`PROFILE_CONTRAINDICATIONS`（`models.py`） |
 | **PRD § 8.2 困扰档案接入** | 60 份档案（`situations/`，taxonomy `distress_spectra`）的运行时接入：53 份非红线档案由 `perception.yaml` `situation_cues` 从对话识别（具体短语，不与 `risk.yaml`/`red_flags.yaml` 互相包含，加载器拒绝红线编号），7 份红线档案仍由红线检测器识别；识别到的情境会话内有效，`inspect["situations"]` 列出编号。隐喻槽优先取该情境的档案意象（`metaphors.yaml` `by_situation`），其次谱系 × 渴望格，最后 fallback；S_clarify 的那一次 B 级镜头优先取档案点名的 B 级方法（`grade_bc_info.yaml` `situation_lenses`，仍经 `info_cards` 全部掩码），否则用谱系镜头。不改危机筛查、危机回复、红线转介与 m0 规则；档案没有可映射到禁忌枚举的新禁忌（见覆盖率报告） | `olivia/core/language/dossiers.py`、`language/data.py`、`language/engine.py`、`perception/lexicon.py`、`session.py`；`scripts/dossier_coverage.py` [已实现 / D-2] | `situation_images(by_situation, situations) -> tuple[str, ...]`, `lens_pool(allowed, situation_lenses, situations, spectrum_lenses) -> list[str]`; `MetaphorData.by_situation`, `LanguageData.situation_lenses`; `LanguageEngine.metaphor_phrase(spectrum_id, yearning_id, situations=frozenset())`, `.build_slots(..., situations=frozenset())`; `python scripts/dossier_coverage.py`（每份档案的线索数、意象、镜头、禁忌与总计） |
 | **§ 6.3 Thompson 采样** | Beta-Bernoulli 后验、三档反馈、软衰减、高唤醒只利用 | `olivia/core/methods/bandit.py` [已实现 / P3-4；跨会话持久化已实现 / B3，见 `memory/state.py`] | `ThompsonSampler(tax, state: Mapping[str, object] \| None = None)`: `.choose(candidates, spectrum, arousal, rng, now) -> str`, `.update(action_id, spectrum, feedback: Feedback, now) -> None`, `.posterior(action_id, spectrum, now) -> tuple[float, float]`, `.to_dict()`; `Feedback`（`HELPFUL` / `UNHELPFUL` / `NOT_NOW`） |
 | **PRD §9 危机后轻度安全问候** | 跨会话关怀标记（只存时间与 L2/L3/ASK_DENIED，始终加密，存储名 `care`，7 天有效，用一次即清除） | `olivia/core/chang/care.py` [已实现 / A3]；`session.py`、`cli.py` | `CareStore(base_dir=None, vault=None)`: `.save(marker) -> bool`, `.take(now) -> CareMarker \| None`, `.shred()`；`CareRecorder(store, clock).observe(result, snapshot)`；`care_kind(result, snapshot) -> CareKind \| None`；`CareMarker(at, kind)`, `CareKind`, `MAX_AGE`；`Session.care_greeting(*, light=False) -> str`，`inspect["care_greeting"]` |
 | **PRD §9 个人安全计划** | Stanley-Brown 式安全计划（五部分，每部分可跳过），只在 `olivia safety-plan` 里填写、查看、修改和清空；始终加密（存储名 `safety_plan`），无钥匙串不保存；危机回复展示第 2–4 部分（L2 在热线卡之前、L3 与带急救号码的卡在其后），第 5 部分从不进入危机回复；计划号码只对该条回复放行，网关拦截时只丢计划不丢卡；首次 $S_{closing}$ 每台电脑提示一次命令（决定 D8） | `olivia/core/chang/safety_plan.py`，文案 `templates/safety_plan.yaml` [已实现 / B10]；`session.py`、`language/engine.py`、`cli.py` | `SafetyPlan`（`.lines(section)`, `.is_empty`, `.to_json()`, `.from_json(raw)`）, `Contact(name, phone)`, `Section`, `SECTIONS`, `CRISIS_SECTIONS`; `SafetyPlanStore(base_dir=None, vault=None)`: `.load()`, `.load_quietly()`, `.save(plan)`, `.clear()`, `.shred()`, `.should_suggest()`, `.mark_suggested()`; `SafetyPlanDamagedError`; `crisis_block(plan, text=None) -> str`; `run_command(ask, say, store, text=None) -> int`; `load_safety_plan_text(directory=None)`; `Session.open(..., safety_plan=None, suggest_safety_plan=False)`, `Session.safety_plan_suggested`, `inspect["safety_plan_shown"]`; `LanguageEngine.render_crisis(card, slots, *, plan_block="")`, `.last_plan_gate` |
 | **§ 6.1 健康信息查看与修改** | `olivia health`：临床史编号与三项自述禁忌症（心肺不稳、人身安全险境、精神病性体验；决定 D2，第三项为 2026-10-23 决定），加密保存；首访在授权后多一步勾选清单；旧画像没有第三项照常读取 | `olivia/core/chang/health.py` [已实现 / A1] | `HealthEditor(tax, store, now, text=None)`: `.prompt() -> HealthPrompt`, `.answer(text) -> HealthPrompt \| HealthDone`, `.outcome`; `parse_choices(reply, keys)`（`onboarding.py`） |
-| **§ 6.1 首访角色契约** | 首访流程 ONB-01~05、07、08（18+ 门禁先于采集任何个人信息） | `olivia/core/chang/onboarding.py` [已实现 / P4-2] | `OnboardingFlow(tax, store: ProfileStore, now: datetime, text: OnboardingText \| None = None)`: `.prompt() -> Prompt`, `.answer(text) -> Prompt \| Completed \| Refused`, `.step`, `.outcome`; `load_onboarding_text(directory=None) -> OnboardingText`（`.persona_labels`）, `canonical_timezone(raw) -> str \| None`, `persona_from_reply(reply, labels) -> PersonaSpectrum \| None`; `Step`, `RefusalReason`, `PERSONA_CHOICES`, `DEFAULT_PERSONA`（ONB-03 四选一，计划 D-1） |
+| **§ 6.1 首访角色契约** | 首访流程 ONB-01~08（18+ 门禁先于采集任何个人信息；ONB-06 加密开关 `Step.ENCRYPTION` 在门禁之后，默认关；没有钥匙串时跳过加密开关与健康信息各问） | `olivia/core/chang/onboarding.py` [已实现 / P4-2、B1、A1、D-1、F4] | `OnboardingFlow(tax, store: ProfileStore, now: datetime, text: OnboardingText \| None = None)`: `.prompt() -> Prompt`, `.answer(text) -> Prompt \| Completed \| Refused`, `.step`, `.outcome`; `load_onboarding_text(directory=None) -> OnboardingText`（`.persona_labels`）, `canonical_timezone(raw) -> str \| None`, `persona_from_reply(reply, labels) -> PersonaSpectrum \| None`; `Step`, `RefusalReason`, `PERSONA_CHOICES`, `DEFAULT_PERSONA`（ONB-03 四选一，计划 D-1） |
 | **§ 6.2 双通道校验网关** | 本地离线校验与降级 | `olivia/core/chang/gateway.py` [待实现 / P7（裁定 35）] | `validate_ai_response(response, skeleton) -> bool`（草案） |
 | **§ 6.4 情绪周记与自评** | 滚动 7 天周记（只读账本，模板化，危机周转庄重口吻）、会话前后 0–10 自评（只存账本摘要）、开场周记提示（窗口内 ≥ 2 次会话且 7 天内没提过）、满意度（有 / 没有）；`olivia journal` 随时查看 | `olivia/core/chang/journal.py`，文案 `templates/journal.yaml` [已实现 / B6]；`memory/ledger.py`（`journal` 条目）、`memory/recorder.py`、`cli.py` | `ChatChecks(tax, ledger, recorder, ask, say, *, method_titles=None, text=None)`: `.opening(now) -> Carry`, `.observe(result)`, `.after_turn(state) -> Carry`, `.at_exit(state) -> Carry`, `.may_ask_after(state)`; `Carry(line, ended)`; `gather(ledger, now) -> Week`, `is_due(week)`, `render_journal(week, text, memory, method_titles=None) -> str`, `run_command(ask, say, ledger, now, *, method_titles=None, text=None) -> int`; `parse_rating(text)`, `parse_yes_no(text, words)`, `load_journal_text(directory=None)`; `WINDOW`, `MIN_SESSIONS`; `Ledger.record_journal(offered_at, *, shown, helpful=None, entry_id=None) -> str`, `JournalEntry`; `SessionRecorder.rate_before(r)`, `.rate_after(r) -> bool`, `.closed_segment`, `.segment_open` |
 | **§ 6.4a 系统提醒（可选，D5；PRD SOP 5、RSK-07）** | 默认关闭（画像 `notifications`，非敏感）；`olivia settings` 编号菜单开关，开启前说明要安装的一个定时任务及位置并再确认一次，关闭或 `forget --all` 即删除。定时任务每天本地 20:30 运行隐藏命令 `olivia notify-check`：周日且 B6 周记到期 → 「这周的小结写好了……」（当天最多一次）；7 天没有会话 → 「很久没聊了……」（7 天最多一次）；其余不发。通知不含任何内容、称呼或数字；钥匙串被锁或不可用时不发。macOS：`~/Library/LaunchAgents/com.olivia.notify.plist` + `launchctl bootstrap gui/<uid>`，`osascript` 通知；Windows：计划任务 `OLIVIA-notify`（`schtasks`），PowerShell + 内置 `Windows.UI.Notifications` 弹窗，失败退回 `msg`；Linux：有 `systemctl --user` 用 `olivia-notify.service/.timer`，否则一行带 `# olivia-notify` 标记的 crontab，`notify-send` 通知。“上次提醒”存于数据目录 `notify.json`（两个日期，无用户数据）。所有系统调用经可注入的 `Host.run`（argv 列表，不经 shell） | `olivia/notify/`（`system.py`、`jobs.py`、`check.py`、`settings.py`），文案 `templates/notify.yaml` [已实现 / B9]；`cli.py`、`models.py`、`memory/forget.py` | `Host`、`current_host()`、`system_runner(argv, stdin)`、`olivia_command()`; `choose(host) -> Mechanism \| Unsupported`, `install(host, mechanism) -> bool`, `uninstall(host) -> bool`, `send(host, title, body) -> bool`, `launchd_plist(argv)`, `schtasks_create(argv)`, `systemd_service(argv)`, `systemd_timer()`, `cron_line(argv)`; `decide(now, week, since, state) -> Reminder \| None`, `run_check(host, base, now) -> Reminder \| None`; `run_settings(ask, say, profile, *, save, host, base, keychain_ok, now) -> int`, `remove_reminders(host, base) -> bool`; `load_notify_text(directory=None)` |
-| **PRD § 11.1 / RSK-07 防依赖提示** | 会话满 45 分钟的休息提醒、深夜（taxonomy `late_night`，按画像时区）关怀、现实支持引导占比；只上常规回复，不上危机、卡片与跟进句（决定 D5） | `olivia/core/chang/wellbeing.py` [已实现 / B7]；文案在 `gentle_holding.yaml` 的 `wellbeing` | `Wellbeing(tax, timezone, started_at)`: `.prompt(reply, *, now, stage, eligible, locked, templates, render) -> Prompted`, `.due(now)`, `.is_late_night(now)`, `.real_support_share`; `Reminder`, `BREAK_AFTER`; `Taxonomy.late_night_window()`；`inspect["reminder"]`、`inspect["real_support_share"]` |
+| **PRD § 11.1 / RSK-07 防依赖提示** | 会话满 45 分钟的休息提醒、深夜（taxonomy `late_night`，按画像时区）关怀、现实支持引导占比；只上常规回复，不上危机、卡片与跟进句（决定 D5） | `olivia/core/chang/wellbeing.py` [已实现 / B7]；文案在四份人格模板（`gentle_holding.yaml`、`zen_philosopher.yaml`、`rational_peer.yaml`、`silent_anchor.yaml`，D-1）各自的 `wellbeing` | `Wellbeing(tax, timezone, started_at)`: `.prompt(reply, *, now, stage, eligible, locked, templates, render) -> Prompted`, `.due(now)`, `.is_late_night(now)`, `.real_support_share`; `Reminder`, `BREAK_AFTER`; `Taxonomy.late_night_window()`；`inspect["reminder"]`、`inspect["real_support_share"]` |
 | **§ 8.3 危机资源签名数据** | Ed25519 分离式签名校验与覆盖包选择（GEO-08） | `olivia/core/resources/bundle.py`、`keys.py` [已实现 / P2-3] | `load_hotlines_bytes(override_dir: Path \| None, *, today: date) -> LoadedBundle`（`LoadedBundle(data: bytes, source: "override" \| "builtin", reason: str \| None)`；内置数据验签失败抛 `BundleIntegrityError`）; `verify_signature(data: bytes, signature_b64: bytes, public_key_b64: str) -> bool`; `REASON_*` 常量; `keys.HOTLINE_PUBLIC_KEY_B64` |
 | **§ 8.3 属地热线动态解析** | GEO 属地与多模式解析器 | `olivia/core/resources/resolver.py`、`store.py`、`card.py` [已实现 / P2-1、P2-2] | `resolve(store, region, level, *, mode: CardMode, today, is_minor=False) -> ResourceCard`, `resolve_region_code(store, region) -> str`; `parse_store(data) -> ResourceStore`, `load_store(path=None) -> ResourceStore`, `ResourceDataError`; `ResourceCard.stale`, `.lines_by_kind()` |
-| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/language/engine.py` [已实现 / P4-3a] | `LanguageEngine.render_crisis(card: ResourceCard, slots) -> str`（急救号码在前；被网关拦截时仍保留卡上全部号码） |
-| **§ 5.1–5.3 语言引擎** | 模板组合、隐喻、字数窗口 | `olivia/core/language/engine.py`、`data.py` [已实现 / P4-3a；`render_info` 运行时接入待实现 / A4] | `LanguageEngine(tax, *, rng, data: LanguageData \| None = None)`: `.build_slots(...)`, `.compose(stage, slots, *, card="", returning_after_crisis=False)`, `.render_card(skeleton)`, `.render_info(method_id)`, `.render_referral(flags)`, `.window_penalty(stage, text)`; `load_language_data(tax, root=None, *, persona=GENTLE_HOLDING) -> LanguageData`（`.personas`、`.for_persona(persona)`，四种人格模板，计划 D-1）, `PERSONA_TEMPLATE_FILES`, `load_willow(root=None) -> WillowData`, `ContentKind` |
+| **§ 8.3 危机卡片文案渲染** | 属地化危机求助卡文本渲染 | `olivia/core/language/engine.py` [已实现 / P4-3a] | `LanguageEngine.render_crisis(card: ResourceCard, slots, *, plan_block: str = "", urgent: bool = False) -> str`（急救号码在前；被网关拦截时退回仍保留卡上全部号码的最简卡；`plan_block` 为 B10 安全计划段；`urgent=True` 把 L2 卡上的急救号码按 L3 卡的方式呈现，见 §8.2 决定 4）；`render_safety_check(card, slots, stage) -> str`（D3 询问 + 该地区 L2 热线）；`render_referral(flags, country="CN") -> str`（转介去处按保存的地区措辞，F4） |
+| **§ 5.1–5.3 语言引擎** | 模板组合、隐喻、字数窗口 | `olivia/core/language/engine.py`、`data.py` [已实现 / P4-3a、A2、A4、D-1、F3] | `LanguageEngine(tax, *, rng, data: LanguageData \| None = None)`: `.build_slots(*, user_name, agent_name, user_text="", emotion_id=None, yearning_id=None, spectrum_id=None, card_title="", situations=frozenset())`, `.compose(stage, slots, *, card="", light=False, returning_after_crisis=False, short=False)`（`light`：A2 低电量下 S_empower 的轻启动衔接；`short`：F3 短输入两段式）, `.render_card(skeleton, *, at_work=True)`, `.card_for(method_id) -> ExerciseCard`, `.render_info(method_id)`, `.render_info_reply(method_id, *, lens: bool)`（A4 已接入会话）, `.render_referral(flags, country="CN")`, `.feeling_word(emotion_id, user_text="")`、`.boundary_line(user_text)`（F3）, `.window_penalty(stage, text, *, short=False)`; `is_short_input(text)`, `count_cjk(text)`, `count_all(text)`; `load_language_data(tax, root=None, *, persona=GENTLE_HOLDING) -> LanguageData`（`.personas`、`.for_persona(persona)`，四种人格模板，计划 D-1）, `PERSONA_TEMPLATE_FILES`, `load_willow(root=None) -> WillowData`, `ContentKind` |
 | **§ 4.1 代词镜像** | 代词安全镜像重述 | `olivia/core/language/mirror.py` [已实现 / P4-3a] | `mirror(user_text) -> str` |
 | **§ 5.1 WILLOW 过滤与输出审查网关** | 说教改写、去病理化、诊断词拦截、号码与越级方法名拦截 | `olivia/core/language/filters.py`、`gate.py` [已实现 / P4-3a] | `apply_willow(text, kind)`、`OutputGate(tax, data)`: `.check(text, *, kind, stage, allowed_numbers=()) -> GateResult`, `.reasons(...)` |
 | ~~**§ 8.3 属地行政区划索引**~~ | ~~国标行政区划与国际城市库~~ | ~~`olivia/core/resources/divisions.py`、`world_cities.py`~~ **[已废弃，不实现]** | §8.3 只按国家/地区解析，大陆 12356 按来电地自动转接，不需要城市/省级路由或行政区划索引（2026-10-22 官方核验） |
@@ -684,11 +747,14 @@ marked_by_user: false
 | **§ 8.4 转介红线过滤网** | 7 处强制转介红线安全掩码 | `olivia/core/methods/solver.py` [已实现 / P3-3] | 红线掩码在 `allowed_actions` 内完成：多个红线的 `allowed_actions` 取交集、禁用取并集；有任一红线时 `AllowedSet.referral_flags` 非空，必须呈现转介卡 |
 | **§ 8.1 输入归一化与感知截断** | 风险匹配前的文本折叠（NFKC、大小写、繁体转简体、弯引号转直引号、去除空白与不可见字符）与感知窗口截取 | `olivia/core/safety/normalize.py` [已实现 / P1] | `normalize(text: str) -> str`, `clip_for_perception(text: str) -> str`, `PERCEPTION_HEAD = 128`, `PERCEPTION_TAIL = 256` |
 | **§ 8.1 多模式短语匹配** | 单遍扫描的 Aho-Corasick 短语匹配 | `olivia/core/safety/matcher.py` [已实现 / P1] | `PhraseMatcher(phrases: Mapping[str, str])`: `.find_all(text: str) -> list[Match]`; `Match(key: str, start: int, end: int)` |
-| **§ 8.1 安全词表加载** | 危机与红线词表的加载与校验 | `olivia/core/safety/lexicon.py` [已实现 / P1] | `load_safety_lexicons(tax: Taxonomy, directory: Path \| None = None) -> SafetyLexicons`; `SafetyLexicons.cues(section: RiskSection) -> tuple[RiskCue, ...]`; `RiskCue`, `RedFlagCue`, `LexiconError` |
-| **§ 8.1 单一会话入口** | 每轮按固定顺序串联安全筛查 → 感知 → 危机跟踪 → 红线 → 状态机 → 求解 → 语言与输出网关 → 反馈，调用方无法跳过 | `olivia/core/session.py` [已实现 / P4-3b] | `Session.open(tax, profile, *, rng, now, model: RiskModel \| None = None, student: bool = False, carried: CarriedState \| None = None) -> Session`（`carried` 为 B3 的跨会话状态；`student=True` 即 `olivia chat --model`，默认只用规则；18+ 门禁未过抛 `AgeGateRefusedError`）; `.turn(text) -> TurnResult`（`reply`, `reply_kind`, `stage`, `crisis_level`, `in_crisis`, `resource_card`, `action_id`, `referral_flags`, `inspect`）; `.state -> SessionState`（副本）; `.snapshot() -> dict`（不含原文）; `ReplyKind`, `FeedbackSource` |
-| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1、SAFE-2] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None, *, model_plan_evidence: bool = False)`: `.assess(text: str) -> CrisisAssessment`（`model_plan_evidence` 只能以关键字传入，见 §8.2，出厂关闭）; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
-| **§ 8.2 危机态进出追踪** | 会话级危机进入、升级与退出判定 | `olivia/core/safety/tracker.py` [已实现 / P1、SAFE-1] | `CrisisTracker(tax: Taxonomy, lexicons: SafetyLexicons)`: `.observe(assessment: CrisisAssessment, text: str, valence: float \| None = None) -> CrisisStatus`, `.consecutive_l1_count -> int`（只读，L1 计数的唯一来源）; `CrisisStatus`（含 `consecutive_l1_count`） |
+| **§ 8.1 安全词表加载** | 危机与红线词表的加载与校验 | `olivia/core/safety/lexicon.py` [已实现 / P1] | `load_safety_lexicons(tax: Taxonomy, directory: Path \| None = None) -> SafetyLexicons`; `SafetyLexicons.cues(section: RiskSection) -> tuple[RiskCue, ...]`, `.pairs` / `.ask_pairs`（`PairCue`：R-MS 方法询问与 D3 委婉询问的配对线索）, `.intent_answers`（`IntentAnswers`，A7）, `.compositions`（`CompositionRules` / `Composition`，F1）; `RiskCue`, `RedFlagCue`, `RedFlagTier`, `LexiconError` |
+| **§ 8.1 组合式危机线索** | 两组词在同一分句内跨小间隔的组合匹配，统一排除否定、他人主语、阻断词、缺语境与日常/过去时抵消词；L3 组合为 Stage 1 计划证据，L1/L2 组合受遮罩，ASK 组合置 `asks_intent`（§8.1 实现说明） | `olivia/core/safety/compose.py`，词表 `risk.yaml` 的 `compositions` [已实现 / F1（#82）]；`crisis.py` | `Composer(rules: CompositionRules)`: `.find(text) -> list[CompositionHit]`; `CompositionHit(entry, start, end)`；测试 `tests/safety/composition_cases.yaml` |
+| **§ 8.2 D3 回答判读** | 读 D3 直接询问之后那一轮的回答：明确否认（且该轮规则筛查为 L0、无含糊词）回到正常流程，其余一律按 L2 | `olivia/core/safety/intent_check.py` [已实现 / A7（#50）]；`session.py` | `read_intent_answer(answers: IntentAnswers, text, assessment: CrisisAssessment) -> IntentAnswer`; `IntentAnswer`（`AFFIRMED` / `DENIED` / `UNCLEAR`）, `IntentAnswers` |
+| **§ 8.1 单一会话入口** | 每轮按固定顺序串联安全筛查 → 感知 → 危机跟踪 → 红线 → 状态机 → 求解 → 语言与输出网关 → 反馈，调用方无法跳过 | `olivia/core/session.py` [已实现 / P4-3b；F2b 起异常降级（§10.1）] | `Session.open(tax, profile, *, rng, now, model: RiskModel \| None = None, student: bool = False, carried: CarriedState \| None = None, safety_plan: SafetyPlan \| None = None, suggest_safety_plan: bool = False) -> Session`（`carried` 为 B3 的跨会话状态；`student=True` 即 `olivia chat --model`，默认只用规则；`safety_plan` / `suggest_safety_plan` 见 B10；18+ 门禁未过抛 `AgeGateRefusedError`）; `.turn(text) -> TurnResult`（危机筛查之后任何一步抛异常都给降级回复，`inspect["reason"] == "DEGRADED"`）（`reply`, `reply_kind`, `stage`, `crisis_level`, `in_crisis`, `resource_card`, `action_id`, `referral_flags`, `inspect`）; `.state -> SessionState`（副本）; `.snapshot() -> dict`（不含原文）; `ReplyKind`, `FeedbackSource` |
+| **§ 8.1 / § 8.2 危机分级与仲裁** | 两阶段危机筛查与等级仲裁 | `olivia/core/safety/crisis.py` [已实现 / P1、SAFE-2、A7、F1] | `SafetyScreen(tax: Taxonomy, lexicons: SafetyLexicons, model: RiskModel \| None = None, *, model_plan_evidence: bool = False)`: `.assess(text: str) -> CrisisAssessment`（`model_plan_evidence` 只能以关键字传入，见 §8.2，出厂关闭）; `RiskModel.predict(text: str) -> RiskPrediction`; `RuleRiskModel(tax, lexicons)`; `arbitrate(tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool) -> CrisisLevel`; `CrisisAssessment`, `RiskPrediction` |
+| **§ 8.2 危机态进出追踪** | 会话级危机进入、升级与退出判定：连续 `risk.ewma_streak`（3）轮 L1 且无好转 → L2（无效价证据时 `valence=None`，不算好转）；退出需确认安全（`safety_confirm` 短语去掉“已经 / 现在 / 都”后匹配，等待确认期间整句的简短肯定也算）+ L2 2 轮 / L3 3 轮 L0 | `olivia/core/safety/tracker.py` [已实现 / P1、SAFE-1、F2a] | `CrisisTracker(tax: Taxonomy, lexicons: SafetyLexicons)`: `.observe(assessment: CrisisAssessment, text: str, valence: float \| None = None) -> CrisisStatus`, `.consecutive_l1_count -> int`（只读，L1 计数的唯一来源）; `CrisisStatus`（含 `consecutive_l1_count`） |
 | **§ 3.3 / § 6.6 隐私说明、单独同意与自动隐私审计（G-4 自动部分）** | `olivia privacy`：打印简短隐私说明（数据目录位置、全程离线、哪些始终加密、哪些从不保存、用 `olivia memory` 查看、用 `olivia health` / `olivia forget` 删除），只定位数据目录、不创建、不读画像与钥匙串；首访健康信息授权与 `olivia health` 的授权前都原样展示独立的敏感个人信息告知 `sensitive_notice`（收集什么：临床史编号与三项情况清单；用途；只加密存本机、不上传；不记录无影响；如何撤回），不增加步骤（PIPL 第 28–30 条）；安全计划首次填写的告知在 `safety_plan.yaml` 的 `command.intro`。`scripts/privacy_audit.py`（裁定 32，`check.sh` 一步，约 2 秒）在进程内两次跑脚本化会话（ONB-06 开关关/开，临时 `OLIVIA_HOME`、内存钥匙串，绝不触及系统钥匙串）：包内无联网模块（AST）、运行时无套接字连接、数据只在 `OLIVIA_HOME`、文件里没有用户输入的句子及其 ≥ 4 字节片段（开关关闭时画像的称呼与雷区话题除外）、敏感存储均为 `OLVD`/`OLVK`、主密钥不落盘、目录 0700/文件 0600（Windows 跳过）、stderr/日志/警告/观测面板无用户原文（屏幕上的例外逐条列明）、`forget --all` 后无文件无钥匙串条目 | `olivia/core/chang/privacy.py`，文案 `templates/privacy.yaml`、`templates/onboarding.yaml` 的 `sensitive_notice` [已实现 / B8]；`olivia/core/storage.py`；`scripts/privacy_audit.py`；`cli.py` | `load_privacy_text(directory=None) -> PrivacyText`, `privacy_notice(data_dir: Path, text=None) -> str`, `PrivacyTextError`；`data_dir_location() -> Path`（不创建）；`OnboardingText.sensitive_notice`（槽位 `{sensitive_notice}`）；审计脚本 `network_imports(package_dir)`, `NetworkBlock`, `fragments(text, min_bytes=4)`, `leaked_text(files, typed, profile_plain=())`, `unsealed(files, whole, *, health_recorded)`, `keys_on_disk(files, keychain_items)`, `permission_problems(modes)`, `output_leaks(capture, typed)`, `panel_leaks(capture, typed)`, `run_scripted(whole) -> Run`, `audit() -> list[Result]`, `main() -> int` |
-| **§ 10.2 命令行与观测面板** | `olivia chat [--inspect] [--model]`、`olivia resources`、`olivia region`、`olivia health`（查看与修改加密的健康信息，A1）、`olivia persona [序号或简称]`（查看与切换人格，JTBD 4）、`olivia safety-plan`（B10）、`olivia memory` 与 `olivia forget [--entry N \| --ledger \| --kit \| --safety-plan \| --all] [--yes]`（查看与遗忘，JTBD 4，B5）、`olivia privacy`（隐私说明，B8） | `olivia/cli.py` [已实现 / P2-4、P4-4、A1、D-1、B10、B5、B8] | `main(argv=None, *, stdin=None, stdout=None, clock=None, rng=None) -> int`, `build_parser()`, `inspect_panel(result: TurnResult) -> list[str]`（不显示原文与城市）, `render_browsing(card, tax) -> str` |
+| **§ 10.2 命令行与观测面板** | `olivia chat [--inspect] [--model]`、`olivia resources`、`olivia region [地区 [--timezone 时区] \| --clear]`（地区代码或常用名称，F4）、`olivia health`（查看与修改加密的健康信息，A1）、`olivia persona [序号、简称或别名]`（查看与切换人格，JTBD 4）、`olivia safety-plan`（B10）、`olivia journal`（周记，B6）、`olivia memory` 与 `olivia forget [--entry N \| --ledger \| --kit \| --safety-plan \| --all] [--yes]`（查看与遗忘，JTBD 4，B5）、`olivia privacy`（隐私说明，B8）、`olivia settings`（系统提醒开关，B9）、隐藏的 `olivia notify-check`（定时任务调用，B9）、`olivia --version`（E-dist）；帮助与参数错误为中文，退出码统一为 0 / 1 / 2（F4） | `olivia/cli.py` [已实现 / P2-4、P4-4、A1、D-1、B10、B5、B6、B8、B9、E-dist、F4] | `main(argv=None, *, stdin=None, stdout=None, clock=None, rng=None) -> int`, `build_parser()`, `inspect_panel(result: TurnResult) -> list[str]`（不显示原文与城市，样例见 §10.2）, `render_browsing(card, tax) -> str`, `package_version() -> str` |
+| **§ 8.2 负责人 2026-10-24 安全决定** | ① 当前自伤 → L1 + D3 直接询问 + SIT-09-01 转介；② 连续 3 轮 L1 无好转 → L2；③ 避风港里直接要方法 → 离开避风港进入 $S_{empower}$；④ 模型判 L3 而 `model_plan_evidence` 关闭 → 仍按 L2 流程，但 L2 卡最前面加急救号码 | ① `risk.yaml` `compositions` 的 `ASK_INTENT_SELF_INJURY_*`、`red_flags.yaml` 的 `RF_SELF_INJURY_ACT`（F1）；② `safety/tracker.py`（F2a）；③ `fsm/machine.py` `_route` 的 `DIRECT_REQUEST` 先于避风港判定（F2a）、`session.py` 的 `followups.haven_return`（F2b）；④ `session.py` `_crisis_card` 与 `LanguageEngine.render_crisis(..., urgent=True)`（F2b） [已实现] | 测试：`tests/safety/composition_cases.yaml`、`tests/session/test_session_flow.py`（`_urgent`） |
 
 本系统设计规范全面确立了 **O.L.I.V.I.A.** 四位一体的工程架构标准，具备高工业级鲁棒性与严谨临床心理伦理双重标准。
