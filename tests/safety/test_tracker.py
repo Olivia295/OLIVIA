@@ -398,3 +398,32 @@ def test_model_only_l1_turns_do_not_join_a_rule_l1_run(tax, lex):
     assert not tracker.observe(_model_l1(), "x").in_crisis
     assert tracker.consecutive_l1_count == 2
     assert tracker.observe(rule_l1, "x").escalated
+
+
+def _denial(uncapped=L.L2):
+    # F10: a denial the screen capped at L1 (the model alone said L2).
+    return CrisisAssessment(
+        L.L1, 0.6, "STAGE2", False, ("FAKE",), rule_level=L.L0, uncapped_level=uncapped
+    )
+
+
+def test_a_capped_denial_outside_a_crisis_is_a_model_only_l1(tax, lex):
+    t = CrisisTracker(tax, lex)
+    statuses = [t.observe(_denial(), "我已经好多了") for _ in range(4)]
+    assert all(s.level is L.L1 and not s.in_crisis for s in statuses)
+    assert t.consecutive_l1_count == 0
+
+
+def test_in_a_crisis_a_capped_denial_is_tracked_at_its_uncapped_level(run, tax, lex):
+    t = CrisisTracker(tax, lex)
+    screen = SafetyScreen(tax, lex)
+    t.observe(screen.assess("我想死"), "我想死")
+    # Awaiting a confirmation: an all-clear is no confirmation, and its L2 is a relapse.
+    s = t.observe(_denial(), "我已经好多了")
+    assert (s.level, s.in_crisis, s.awaiting_confirmation) == (L.L2, True, True)
+    # "我不会伤害自己" is an explicit confirmation: the model's L2 alone does not void it (F8a).
+    s = t.observe(_denial(), "我不会伤害自己")
+    assert s.in_crisis and not s.awaiting_confirmation
+    # After it, the uncapped L2 is a relapse as before F10.
+    s = t.observe(_denial(), "我没事")
+    assert (s.level, s.awaiting_confirmation) == (L.L2, True)

@@ -342,9 +342,9 @@ def test_injected_model_is_at_most_l1_where_a_hyperbole_cue_covers_every_risk_ph
     [
         # A real risk phrase next to the idiom is not covered by the hyperbole cue.
         ("想死你了，可是我最近真的想死", L.L2),
-        # Negation masks get no cap: the model's L2 on a double negation is kept.
-        ("我没有想死", L.L2),
-        ("我不想死，只是很累", L.L2),
+        # Negation masks get no hyperbole cap: the model's L2 on a double negation is kept.
+        ("很难说我不想死", L.L2),
+        ("说我不想死，那是假的", L.L2),
     ],
 )
 def test_the_hyperbole_cap_needs_every_risk_phrase_figurative(tax, text, level):
@@ -366,3 +366,75 @@ def test_rule_level_is_the_rules_own_level(tax, screen):
     assert screen.assess("活着好累，每天都一样").rule_level is L.L1
     a = _screen_with(tax, _FixedModel(L.L2, 0.7)).assess("今天吃了面")
     assert (a.level, a.rule_level) == (L.L2, L.L0)
+
+
+_DENIALS = [
+    "我不会伤害自己",
+    "我没有想死",
+    "我不想死，只是很累",
+    "我已经好多了",
+    "就是有点烦，不是想死",
+]
+
+
+@pytest.mark.parametrize("text", _DENIALS)
+def test_injected_model_is_at_most_l1_on_a_first_person_denial(tax, text):
+    # F10: only the model rates these L2/L3; the cap keeps a crisis from opening on them.
+    for model, uncapped in ((_FixedModel(L.L2, 0.5), L.L2), (_FixedModel(L.L3, 0.9), L.L2)):
+        a = _screen_with(tax, model).assess(text)
+        assert (a.level, a.rule_level, a.uncapped_level) == (L.L1, L.L0, uncapped)
+        assert a.cue_ids[-1] == "FAKE" and not a.has_plan_evidence
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A contrast after the denial, whatever follows it.
+        "我不想死，可是真的撑不下去了",
+        "我不想死，但是那个念头一直都在",
+        "我没事，不过有时候会想很多",
+        # Double negations, retractions and hedges.
+        "我不是不想死",
+        "其实我没有不想死",
+        "不是我不想死",
+        "谁说我不想死",
+        "很难说我不想死",
+        "说我不想死，那是假的",
+        "我现在还不想死",
+        "我暂时不会伤害自己",
+        "我今天不想死",
+        "I don't want to die today, just venting",
+        # Means, time, farewell and preparation.
+        "我不想死，但药已经买好了",
+        "我没事，今晚就去",
+        "我不会伤害自己，东西都准备好了",
+        "我已经好多了，跟大家说声再见",
+        # A risk phrase the denial does not cover.
+        "我没事，就是想消失",
+    ],
+)
+def test_the_denial_cap_needs_a_plain_denial(tax, text):
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
+    assert a.level >= L.L2 and a.uncapped_level is None
+
+
+def test_a_model_failure_on_a_denial_still_fails_safe_to_l2(tax):
+    a = _screen_with(tax, _RaisingModel()).assess("我没有想死")
+    assert a.level is L.L2 and a.cue_ids[-1] == "MODEL_FAILURE" and a.uncapped_level is None
+
+
+@pytest.mark.parametrize("model", [_FixedModel(L.L0, 0.1), _FixedModel(L.L1, 0.3)])
+def test_the_denial_cap_leaves_a_model_l0_or_l1_alone(tax, model):
+    a = _screen_with(tax, model).assess("我没有想死")
+    assert a.uncapped_level is None and a.level <= L.L1
+
+
+def test_the_denial_cap_blocks_model_plan_evidence(tax):
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.95)).assess("我不会伤害自己")
+    assert (a.level, a.uncapped_level, a.has_plan_evidence) == (L.L1, L.L3, False)
+
+
+@pytest.mark.parametrize("text", _DENIALS)
+def test_the_rules_alone_are_unchanged_by_the_denial_cap(screen, text):
+    a = screen.assess(text)
+    assert a.level is L.L0 and a.uncapped_level is None

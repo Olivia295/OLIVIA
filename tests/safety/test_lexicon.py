@@ -222,3 +222,29 @@ def test_pair_phrase_may_repeat_across_entries(tax):
     lex = load_safety_lexicons(tax)
     manner, means = sorted(lex.pairs, key=lambda p: p.id)
     assert set(manner.anchors) & set(means.anchors)
+
+
+def test_denial_section_loads(tax):
+    denial = load_safety_lexicons(tax).denial
+    assert "我不会伤害自己" in denial.phrases and "我已经好多了" in denial.phrases
+    assert "可是" in denial.contrasts and "假的" in denial.vetoes and "不是" in denial.negators
+
+
+def test_denial_section_is_optional(tax, tmp_path):
+    lex = load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=lambda d: d.pop("denial")))
+    assert lex.denial.phrases == ()
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda d: d["denial"]["phrases"].append("我不想死，可是"), "contains contrasts"),
+        (lambda d: d["denial"]["phrases"].append("我不想离开这个世界"), "contains vetoes"),
+        (lambda d: d["denial"]["vetoes"].append("药"), "repeated"),
+        (lambda d: d["denial"].pop("contrasts"), "non-empty list"),
+        (lambda d: d["denial"].update(extra=["x"]), "unknown keys"),
+    ],
+)
+def test_rejects_malformed_denial_section(tax, tmp_path, mutate, match):
+    with pytest.raises(LexiconError, match=match):
+        load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=mutate))

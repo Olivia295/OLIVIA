@@ -17,6 +17,14 @@ counts at most as L1 (F8a). Negation masks get no such cap: the model's L2 on a 
 negation is what the rules miss. ``CrisisAssessment.rule_level`` carries the rules' own
 level, which the tracker reads (``tracker.py``).
 
+The denial cap (F10) is narrower still: where the rules rate a message L0, a ``denial``
+phrase ("我不会伤害自己", "我不想死，只是很累", "我已经好多了") covers every Stage 2 phrase, no
+negator stands right before a denial, no contrast follows the first one, no veto (double
+negation, retraction, hedge, time, means, farewell, preparation) and no composition is in
+the message and the model did not fail, the model's level counts at most as L1. The
+uncapped level rides along as ``CrisisAssessment.uncapped_level``; in a crisis the
+tracker reads it, so the cap only changes a turn outside a crisis.
+
 With ``model_plan_evidence=True`` (off by default, enabled only after the injected model
 passes an independent evaluation), an injected model's own in-contract L3 prediction
 counts as plan evidence, so Stage 2 can answer L3. The rule model's prediction and a
@@ -38,14 +46,20 @@ from __future__ import annotations
 import math
 import numbers
 from bisect import bisect_right
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import accumulate
 from typing import Final, Literal, Protocol
 
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.compose import Composer, CompositionHit
-from olivia.core.safety.lexicon import PairCue, RiskCue, RiskSection, SafetyLexicons
+from olivia.core.safety.lexicon import (
+    DenialRules,
+    PairCue,
+    RiskCue,
+    RiskSection,
+    SafetyLexicons,
+)
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
@@ -88,6 +102,10 @@ class CrisisAssessment:
     ``level`` without a model. The tracker reads it: an L1 only a model gives does not join
     an L1 run, and a model's L2 alone does not turn an awaited explicit safety confirmation
     into a relapse. ``None`` when not set (no rule exemption applies)."""
+    uncapped_level: CrisisLevel | None = None
+    """The turn's level without the denial cap (F10), set only when that cap lowered it:
+    outside a crisis a first-person denial or all-clear that only an injected model rates
+    L2/L3 counts as L1, and in a crisis the tracker reads this level instead."""
 
 
 def arbitrate(
@@ -96,7 +114,8 @@ def arbitrate(
     """Take the higher of the classifier level and the score band; L3 needs plan evidence.
 
     ``SafetyScreen`` passes the rule score here and folds an injected model's score band
-    into the model's level first, so that the hyperbole cap (F8a) can apply to both."""
+    into the model's level first, so that the hyperbole cap (F8a) and the denial cap (F10)
+    can apply to it."""
     level = max(l_cls, tax.crisis_level_for_score(score))
     if level is CrisisLevel.L3 and not has_plan_evidence:
         return CrisisLevel.L2
@@ -125,6 +144,7 @@ class _CueIndex:
         self.cues: dict[str, RiskCue] = cues
         self.pairs: tuple[PairCue, ...] = pairs
         self.composer = Composer(lexicons.compositions)
+        self.denial = _DenialIndex(lexicons.denial)
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
@@ -162,6 +182,35 @@ class _CueIndex:
             if any(not cover.contains(m) for m in anchors):
                 fired.append(pair)
         return fired
+
+
+class _DenialIndex:
+    """The ``denial`` phrases (F10) with their negators, contrasts and vetoes."""
+
+    def __init__(self, rules: DenialRules) -> None:
+        self._phrases = PhraseMatcher({p: p for p in rules.phrases}) if rules.phrases else None
+        self._contrasts = PhraseMatcher({p: p for p in rules.contrasts})
+        self._vetoes = PhraseMatcher({p: p for p in rules.vetoes})
+        self._negators = tuple(rules.negators)
+
+    def denies(
+        self, normalized: str, matches: Sequence[Match], cues: Mapping[str, RiskCue]
+    ) -> bool:
+        """A denial covers every Stage 2 phrase, with no negator right before any denial,
+        no contrast after the first one and no veto anywhere in the message."""
+        if self._phrases is None:
+            return False
+        hits = self._phrases.find_all(normalized)
+        if not hits or any(normalized[: h.start].endswith(self._negators) for h in hits):
+            return False
+        if self._vetoes.find_all(normalized):
+            return False
+        first_end = min(h.end for h in hits)
+        if any(c.start >= first_end for c in self._contrasts.find_all(normalized)):
+            return False
+        cover = _MaskCover(hits)
+        stage2 = [m for m in matches if m.key in cues and cues[m.key].section == "stage2"]
+        return all(cover.contains(m) for m in stage2)
 
 
 def _unique_ids(ids: Iterable[str]) -> tuple[str, ...]:
@@ -308,6 +357,7 @@ class SafetyScreen:
         prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False
+        uncapped: CrisisLevel | None = None
         if self._model is not None:
             model_prediction = self._predict_safely(self._model, text)
             failed = model_prediction is self._model_failure
@@ -323,12 +373,31 @@ class SafetyScreen:
             if figurative:
                 # The rules read every risk phrase as a figure of speech (F8a): at most L1.
                 model_level = min(model_level, CrisisLevel.L1)
+            denial = (
+                not failed
+                and not figurative
+                and model_level >= CrisisLevel.L2
+                and rule_prediction.level is CrisisLevel.L0
+                and not composed
+                and self._index.denial.denies(normalized, matches, cues)
+            )
+            if denial:
+                # A first-person denial or all-clear and nothing else (F10): at most L1
+                # outside a crisis; the tracker reads the uncapped level in one.
+                uncapped = arbitrate(
+                    self._tax,
+                    max(rule_prediction.level, model_level),
+                    rule_prediction.score,
+                    self._model_plan_evidence and model_prediction.level is CrisisLevel.L3,
+                )
+                model_level = CrisisLevel.L1
             # Only the injected model's own L3 counts; the failure prediction is L2, never L3,
             # and a score band is never plan evidence.
             has_plan_evidence = (
                 self._model_plan_evidence
                 and not failed
                 and not figurative
+                and not denial
                 and model_prediction.level is CrisisLevel.L3
             )
             prediction = _with_floor(
@@ -345,6 +414,7 @@ class SafetyScreen:
             prediction.cue_ids,
             asks_intent,
             rule_prediction.level,
+            None if uncapped is None or uncapped is level else uncapped,
         )
 
     def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:

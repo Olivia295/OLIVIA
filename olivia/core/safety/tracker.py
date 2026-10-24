@@ -19,6 +19,10 @@ tracked at the rules' level, so the model's L2 alone does not make it a relapse 
 Outside a crisis, an L1 turn that only an injected model gives (the rules' level is L0)
 is reported as L1 but counts for the escalation trend as an L0 turn would (F8a), so a
 run of everyday turns the student alone rates L1 never escalates into crisis.
+The screen's denial cap (F10: a first-person denial or all-clear that only an injected
+model rates L2/L3 counts as L1) is for a turn outside a crisis: in a crisis the tracker
+reads the turn's uncapped level (``CrisisAssessment.uncapped_level``), so in a crisis
+such a turn is tracked exactly as without the cap.
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -26,7 +30,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from olivia.core.models import CrisisLevel
@@ -147,6 +151,9 @@ class CrisisTracker:
         self, assessment: CrisisAssessment, text: str, valence: float | None = None
     ) -> CrisisStatus:
         """Track one user turn. ``valence`` is ``None`` when there is no emotion evidence."""
+        if self._in_crisis and assessment.uncapped_level is not None:
+            # The denial cap (F10) applies outside a crisis only.
+            assessment = replace(assessment, level=assessment.uncapped_level)
         rules_level = self._model_only_relapse(assessment, text)
         assessed = assessment.level if rules_level is None else rules_level
         usable = valence if valence is not None and math.isfinite(valence) else None
