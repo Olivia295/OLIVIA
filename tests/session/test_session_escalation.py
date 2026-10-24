@@ -39,38 +39,34 @@ _BAND_L1 = (
     "confirmation pauses the exit"
 )
 # Case id -> reason (first difference in the case). Regenerate from a model-mode run.
+# F8a removed seven: an awaited explicit confirmation that only the student puts at L2/L3
+# is tracked at the rules' level, so s06, s11, s19, s44, s48, s49, s53 pass. s29, s30,
+# s35, s38 lost that relapse; their first difference is now the score band's L1.
 MODEL_DIFFERS: dict[str, str] = {
     "s01_strong_l1_escalates_on_third_turn": _EARLY,
     "s03_isolated_l0_does_not_break_run": _EARLY,
     "s04_three_l0_turns_clear_run": _EARLY,
     "s05_l2_exit_after_confirmation_and_two_safe_turns": _BAND_L1,
-    "s06_l3_exit_after_confirmation_and_three_safe_turns": _RELAPSE,
     "s09_relapse_to_l3_during_exit": _BAND_L1,
-    "s11_reenter_after_exit": _RELAPSE,
     "s14_negated_and_sarcastic_confirmation_do_not_count": _RELAPSE,
-    "s19_multiple_stage1_cues_then_exit": _RELAPSE,
     "s21_unsafe_confirmation_01": _RELAPSE,
     "s22_unsafe_confirmation_02": _BAND_L1,
     "s25_unsafe_confirmation_05": _RELAPSE,
     "s26_unsafe_confirmation_06": _RELAPSE,
     "s27_unsafe_confirmation_07": _RELAPSE,
-    "s29_unsafe_confirmation_09": _RELAPSE,
-    "s30_promise_not_to_harm_self_confirms": _RELAPSE,
+    "s29_unsafe_confirmation_09": _BAND_L1,
+    "s30_promise_not_to_harm_self_confirms": _BAND_L1,
     "s33_hedged_confirmation": _BAND_L1,
     "s34_hedged_confirmation": _RELAPSE,
-    "s35_hedged_confirmation": _RELAPSE,
+    "s35_hedged_confirmation": _BAND_L1,
     "s37_hedged_confirmation": _RELAPSE,
-    "s38_hedged_confirmation": _RELAPSE,
+    "s38_hedged_confirmation": _BAND_L1,
     "s39_hedged_confirmation": _BAND_L1,
     "s40_hedged_confirmation": _RELAPSE,
     "s41_hedged_confirmation": _RELAPSE,
-    "s44_plain_confirmation_with_thanks_exits": _RELAPSE,
     "s45_friend_coming_exits": _BAND_L1,
     "s46_veto_cost_bu_zhidao_keeps_crisis": _RELAPSE,
-    "s48_l1_before_safe_turns_pauses_exit": _RELAPSE,
-    "s49_l1_between_safe_turns_keeps_count": _RELAPSE,
     "s50_weary_run_escalates_on_third_turn": _EARLY,
-    "s53_gap_tolerant_reached_friend_confirms": _RELAPSE,
     "s57_yes_with_cue_is_not_a_confirmation": _RELAPSE,
 }
 

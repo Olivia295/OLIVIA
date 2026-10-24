@@ -330,3 +330,71 @@ def test_short_answer_after_relapse_needs_a_new_answer(run):
     assert s.awaiting_confirmation
     assert run("嗯").awaiting_confirmation
     assert not run("安全的").awaiting_confirmation
+
+
+def _model_l2(rule_level, cue_ids=("FAKE",)):
+    return CrisisAssessment(L.L2, 0.6, "STAGE2", False, cue_ids, rule_level=rule_level)
+
+
+def _in_crisis(tax, lex):
+    tracker = CrisisTracker(tax, lex)
+    assert tracker.observe(_a(L.L2, 0.7), "x").in_crisis
+    return tracker
+
+
+def test_an_awaited_confirmation_only_a_model_raises_is_not_a_relapse(tax, lex):
+    # F8a: the rules read the confirmation at L0; the model's L2 alone does not void it.
+    tracker = _in_crisis(tax, lex)
+    status = tracker.observe(_model_l2(L.L0), "我不会伤害自己")
+    assert status.level is L.L0 and status.in_crisis and not status.awaiting_confirmation
+    assert tracker.observe(_a(L.L0, 0.0), "今天天气不错").in_crisis
+    assert tracker.observe(_a(L.L0, 0.0), "我去吃饭了").just_exited
+
+
+@pytest.mark.parametrize(
+    ("assessment", "text"),
+    [
+        # A model failure is not the model's own L2: it still fails toward crisis.
+        (_model_l2(L.L0, ("MODEL_FAILURE",)), "我不会伤害自己"),
+        # The rules themselves put the turn at L2.
+        (_model_l2(L.L2), "我不会伤害自己"),
+        # No explicit confirmation.
+        (_model_l2(L.L0), "今天天气不错"),
+        (_model_l2(L.L0), "我不觉得我是安全的"),
+        # No rule level (an assessment built elsewhere).
+        (_model_l2(None), "我不会伤害自己"),
+    ],
+)
+def test_other_model_l2_turns_in_crisis_stay_relapses(tax, lex, assessment, text):
+    tracker = _in_crisis(tax, lex)
+    status = tracker.observe(assessment, text)
+    assert status.level is L.L2 and status.awaiting_confirmation
+
+
+def test_after_confirmation_a_model_l2_turn_is_still_a_relapse(tax, lex):
+    tracker = _in_crisis(tax, lex)
+    assert not tracker.observe(_a(L.L0, 0.0), "我现在是安全的").awaiting_confirmation
+    status = tracker.observe(_model_l2(L.L0), "我不会伤害自己")
+    assert status.level is L.L2 and status.awaiting_confirmation
+
+
+def _model_l1():
+    return CrisisAssessment(L.L1, 0.3, "STAGE2", False, ("FAKE",), rule_level=L.L0)
+
+
+def test_model_only_l1_turns_do_not_escalate(tax, lex):
+    # F8a: an L1 only an injected model gives is reported as L1 but is not part of a run.
+    tracker = CrisisTracker(tax, lex)
+    statuses = [tracker.observe(_model_l1(), "x") for _ in range(5)]
+    assert all(s.level is L.L1 and not s.in_crisis for s in statuses)
+    assert tracker.consecutive_l1_count == 0
+
+
+def test_model_only_l1_turns_do_not_join_a_rule_l1_run(tax, lex):
+    tracker = CrisisTracker(tax, lex)
+    rule_l1 = CrisisAssessment(L.L1, 0.4, "STAGE2", False, ("L1_WEARY",), rule_level=L.L1)
+    tracker.observe(rule_l1, "x")
+    tracker.observe(rule_l1, "x")
+    assert not tracker.observe(_model_l1(), "x").in_crisis
+    assert tracker.consecutive_l1_count == 2
+    assert tracker.observe(rule_l1, "x").escalated
