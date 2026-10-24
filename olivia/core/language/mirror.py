@@ -83,6 +83,10 @@ class Utterance(StrEnum):
     """Only a goodbye for now ("今天就到这里吧", "我去睡了"), F5b."""
     FOREIGN = "FOREIGN"
     """No Chinese at all (the mirror would only echo another language back)."""
+    HAVEN_EXIT = "HAVEN_EXIT"
+    """The words that leave the quiet company ("我好多了", "换个话题吧"; FSM-15, F10). Only
+    the session sets it, on the turn that leaves S_haven on them; :func:`utterance_kind`
+    never returns it."""
 
 
 class _Tag(StrEnum):

@@ -259,15 +259,16 @@ class LanguageEngine:
             self._used_images.add(image)
             self._last_image = image
 
-    def safe_mirror(self, user_text: str) -> str:
+    def safe_mirror(self, user_text: str, kind: Utterance | None = None) -> str:
         """:func:`mirror` for a statement, an acknowledgement for anything else, replaced
         by a neutral line if it would trip the gate.
 
         A question, request, greeting, thanks, note, one-word answer or message without
         Chinese is not mirrored (F3): its kind's ``utterances.yaml`` acknowledgement is
-        used, picked from the text itself so it draws no random number.
+        used, picked from the text itself so it draws no random number. ``kind`` overrides
+        the kind read from the text (the session's ``Utterance.HAVEN_EXIT``, F10).
         """
-        kind = utterance_kind(user_text)
+        kind = utterance_kind(user_text) if kind is None else kind
         acks = self._data.utterances.acks.get(kind.value, ())
         if kind is not Utterance.STATEMENT and acks:
             raw = acks[sum(map(ord, user_text)) % len(acks)]
@@ -317,12 +318,13 @@ class LanguageEngine:
         spectrum_id: str | None = None,
         card_title: str = "",
         situations: Set[str] = frozenset(),
+        utterance: Utterance | None = None,
     ) -> Slots:
         return Slots(
             user_name=user_name,
             agent_name=agent_name,
             emotion=self.feeling_word(emotion_id, user_text),
-            mirror=self.safe_mirror(user_text) if user_text.strip() else "",
+            mirror=self.safe_mirror(user_text, utterance) if user_text.strip() else "",
             metaphor=self.metaphor_phrase(spectrum_id, yearning_id, situations),
             need=self.need_phrase(yearning_id) if yearning_id is not None else "",
             card_title=card_title,

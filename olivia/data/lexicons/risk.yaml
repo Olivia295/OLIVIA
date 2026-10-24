@@ -848,3 +848,47 @@ confirm_veto:
                "挂了", "以为", "要是", "不知道",
                "不确定", "但是", "可是", "可他", "可他们", "不信我", "说不出", "让我等", "没空",
                "暂时", "没办法", "但还是", "今晚"]
+# First-person denials and all-clears outside a crisis (fix F10, 2026-10-24): "我不会伤害
+# 自己", "我没有想死", "我不想死，只是很累", "我已经好多了". Read by crisis.py: where the rules
+# rate a message L0 and every Stage 2 phrase in it lies inside a `phrases` hit, an injected
+# model's level counts at most as L1, unless
+#   - a `negators` word stands right before the denial (a double negation: 不是我不想死,
+#     谁说我不想死),
+#   - a `contrasts` word follows the first denial (我不想死，可是…; whatever comes after),
+#   - a `vetoes` phrase lies anywhere in the message: a double negation or retraction
+#     (不是不, 没有不, 并非, 骗你, 假的, 要说), a hedge (可能, 暂时, 至少, 现在还), a time
+#     (今晚, 明天, 以后), a means or place (药, 绳, 刀, 炭, 楼顶, 跳), a farewell or
+#     preparation (再见, 遗书, 后事, 准备, 攒, 打算, 解脱, 离开, 消失),
+#   - a composition matched at all, or the model failed.
+# The cap is for a turn outside a crisis only: in a crisis the tracker reads the uncapped
+# level, and these all-clears are still no safety confirmation (safety_confirm above).
+# Its phrases go to a matcher of their own and may repeat phrases of other sections; none
+# may contain a contrast or a veto (lexicon validation).
+denial:
+  phrases: ["我不想死", "我没想死", "我没有想死", "我不会去死", "我不想去死", "我没想过去死", "我没有想过去死",
+            "我不想自杀", "我不会自杀", "我没想自杀", "我没有想自杀", "我没想过自杀", "我没有想过自杀",
+            "我没有自杀的念头", "我没有自杀的想法", "我不会轻生", "我没有轻生的念头", "我没有轻生的想法",
+            "我不会寻短见", "我不会想不开", "我没有想不开", "我没想不开", "我不会做傻事",
+            "我不会伤害自己", "我不会去伤害自己", "我不想伤害自己", "我没想伤害自己", "我没有想伤害自己",
+            "我好多了", "我已经好多了", "我现在好多了", "我好些了", "我好一些了", "我没事", "我真的没事",
+            "我挺好的", "我会好好活着", "我想好好活着", "我会好好活下去",
+            "idon'twanttodie", "i'mnotsuicidal", "iwon'thurtmyself", "i'mnotgoingtohurtmyself",
+            "i'mfeelingbetter",
+            # The denials without 我 (选型 on the dev set, F10): "就是有点烦，不是想死".
+            "不想死", "没想死", "没有想死", "不是想死", "不会去死", "不会想死", "没想过去死", "不想要去死",
+            "不会自杀", "不想自杀", "没想过自杀", "没想自杀", "没有想自杀", "不是想自杀", "没有自杀的念头",
+            "没有自杀的想法", "不会寻死", "不会想不开", "不想结束自己的生命", "不想结束生命", "没想过结束生命",
+            "不会伤害自己", "不想伤害自己"]
+  negators: ["不是", "没有", "并非", "不", "没", "非", "谁说", "以为", "哪里", "不等于"]
+  contrasts: ["但", "可是", "不过", "然而", "却", "只不过", "可惜", "偏偏", "but", "however"]
+  vetoes: ["不是不", "没有不", "不是没", "没有没", "并非", "谁说", "骗你", "骗人", "假的", "不是真",
+           "撒谎", "说谎", "谎话", "没办法说", "没法说", "不能说", "不敢说", "很难说", "要说",
+           "说不定", "也许", "可能", "不一定", "不确定", "不知道", "不好说", "暂时", "目前", "还没",
+           "现在还", "至少", "如果", "要是", "万一", "除非", "以为",
+           "今晚", "今天晚上", "明天", "后天", "待会", "等会", "一会儿", "过几天", "以后", "将来",
+           "迟早", "早晚", "很快", "今天不", "今天没", "today", "tonight", "tomorrow", "yet",
+           "fornow", "rightnow", "anymore",
+           "药", "绳", "刀", "炭", "农药", "煤气", "楼顶", "天台", "阳台", "桥", "铁轨", "跳", "割",
+           "再见", "永别", "告别", "道别", "最后", "遗书", "遗言", "后事", "交代", "安排好", "准备",
+           "买好", "攒", "囤", "计划", "打算", "决定", "想好了", "下定决心", "一了百了", "这一切",
+           "解脱", "离开", "不在了", "消失", "那边", "团聚"]

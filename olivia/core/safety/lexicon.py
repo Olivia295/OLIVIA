@@ -36,6 +36,8 @@ _ANSWER_SECTION: Final = "intent_answers"
 _ANSWER_LISTS: Final = ("deny_whole", "deny_start", "affirm_start", "unsure")
 _PAIR_ROLES: Final = ("anchors", "requests", "exceptions")
 _COMP_SECTION: Final = "compositions"
+_DENIAL_SECTION: Final = "denial"
+_DENIAL_LISTS: Final = ("phrases", "negators", "contrasts", "vetoes")
 _COMP_GLOBAL_LISTS: Final = (
     "negators",
     "non_negators",
@@ -193,6 +195,25 @@ class IntentAnswers:
 
 
 @dataclass(frozen=True)
+class DenialRules:
+    """The ``denial`` section (F10): a first-person denial or all-clear outside a crisis.
+
+    Where every Stage 2 phrase of a message lies inside a ``phrases`` hit and the rules
+    rate the message L0, an injected model's level counts at most as L1 (``crisis.py``),
+    unless a ``negators`` word stands right before the denial (a double negation), a
+    ``contrasts`` word follows it, or a ``vetoes`` phrase (means, plan, time, farewell,
+    preparation, hedge or retraction) lies anywhere in the message. Folded with
+    :func:`~olivia.core.safety.normalize.normalize`; no phrase contains a contrast or a
+    veto, since it could then never apply. Empty when the section is absent: no cap.
+    """
+
+    phrases: tuple[str, ...] = ()
+    negators: tuple[str, ...] = ()
+    contrasts: tuple[str, ...] = ()
+    vetoes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -211,6 +232,7 @@ class SafetyLexicons:
     intent when one fires on a turn below L2."""
     intent_answers: IntentAnswers = IntentAnswers()
     compositions: CompositionRules = CompositionRules()
+    denial: DenialRules = DenialRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -231,6 +253,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     # Composition ask cues do not make the answers required: without them every answer
     # reads as unclear, which the session treats as L2 (fail-safe).
     answers = _parse_answers(risk_doc, required=bool(ask_pairs))
+    denial = _parse_denial(risk_doc)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -240,6 +263,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         ask_pairs=ask_pairs,
         intent_answers=answers,
         compositions=compositions,
+        denial=denial,
     )
 
 
@@ -329,7 +353,15 @@ def _claim_patterns(
 def _parse_risk(
     tax: Taxonomy, doc: Mapping[str, Any], seen_ids: dict[str, str]
 ) -> dict[str, RiskCue]:
-    allowed = {"version", *_SECTIONS, _PAIR_SECTION, _ASK_SECTION, _ANSWER_SECTION, _COMP_SECTION}
+    allowed = {
+        "version",
+        *_SECTIONS,
+        _PAIR_SECTION,
+        _ASK_SECTION,
+        _ANSWER_SECTION,
+        _COMP_SECTION,
+        _DENIAL_SECTION,
+    }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
     cues: dict[str, RiskCue] = {}
@@ -616,6 +648,33 @@ def _parse_answers(doc: Mapping[str, Any], *, required: bool) -> IntentAnswers:
             folded.append(phrase)
         lists[name] = tuple(folded)
     return IntentAnswers(**lists)
+
+
+def _parse_denial(doc: Mapping[str, Any]) -> DenialRules:
+    """Parse the optional ``denial`` section (F10). Its phrases go to a matcher of their
+    own, so they may repeat a phrase of any other section."""
+    if _DENIAL_SECTION not in doc:
+        return DenialRules()
+    where = f"{_RISK_FILE} {_DENIAL_SECTION}"
+    node = doc[_DENIAL_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, set(_DENIAL_LISTS), where)
+    lists: dict[str, tuple[str, ...]] = {}
+    for name in _DENIAL_LISTS:
+        phrases = _normalized_list(node.get(name), f"{where} {name}")
+        repeated = sorted({p for p in phrases if phrases.count(p) > 1})
+        if repeated:
+            raise LexiconError(f"{where} {name}: phrases {repeated} are repeated")
+        lists[name] = phrases
+    for phrase in lists["phrases"]:
+        for name in ("contrasts", "vetoes"):
+            inside = [word for word in lists[name] if word in phrase]
+            if inside:
+                raise LexiconError(
+                    f"{where}: phrase {phrase!r} contains {name} {inside}, so it never applies"
+                )
+    return DenialRules(**lists)
 
 
 # -- red_flags.yaml ----------------------------------------------------------------

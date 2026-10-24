@@ -5,8 +5,8 @@ Usage testing: in S_explore and S_clarify, with no practice card waiting for fee
 listening reply, and in S_clarify sometimes the once-per-session lens card as well. Such
 a turn now gets one ``S_ready.after_close`` line, with no card and no information card;
 the state machine is unchanged (S_closing follows a practice only, SDD §4.2). A turn the
-screen rates L1 or above keeps its own reply (safety first), and a waiting card still
-reads the phrase as not_now (F5a).
+rules rate L1 or above keeps its own reply (safety first), an L1 only the model's score
+band gives does not (F10), and a waiting card still reads the phrase as not_now (F5a).
 """
 
 from __future__ import annotations
@@ -23,7 +23,13 @@ from olivia.core.taxonomy import load_taxonomy
 TAX = load_taxonomy()
 NOW = datetime(2026, 10, 24, 21, 0, tzinfo=UTC)
 MODES = [pytest.param(False, id="rules"), pytest.param(True, id="model")]
-LEAVING = ["我想睡觉了", "我去睡了", "我想试着睡一下", "嗯，今天就到这里吧"]
+LEAVING = [
+    "我想睡觉了",
+    "我去睡了",
+    "我想试着睡一下",
+    "嗯，今天就到这里吧",
+    "不说了，今天就到这里吧",
+]
 # Turns before the goodbye, and the stage the goodbye turn lands in.
 BEFORE = {
     "explore": (["今天上班好累"], HelpStage.S_EXPLORE),
@@ -66,13 +72,13 @@ def test_leaving_with_no_card_waiting_gets_a_goodbye(student: bool, where: str, 
         session.turn(before)
     result = session.turn(text)
     assert not result.in_crisis
-    if result.inspect["assessed_level"] != "L0":
-        # Model mode: the student rates "嗯，今天就到这里吧" L1 (score band, no rule cue);
-        # an L1 turn keeps the L1 reply.
-        assert student, text
-        assert not _is_goodbye(session, result), text
-        return
-    assert result.stage is stage  # the state machine moves as before: no closing
+    # F10: in model mode the student's score band lifts "嗯，今天就到这里吧" to L1 with no
+    # rule cue; that model-only L1 still gets the goodbye.
+    assert result.inspect["assessed_level"] in (("L0", "L1") if student else ("L0",)), text
+    # The state machine moves as before: no closing (an L1 turn does not advance past
+    # S_explore, ruling 5).
+    model_l1 = result.inspect["assessed_level"] == "L1"
+    assert result.stage is (HelpStage.S_EXPLORE if model_l1 else stage), text
     assert _is_goodbye(session, result), (text, result.reply)
 
 

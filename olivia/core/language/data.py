@@ -93,6 +93,7 @@ _FOLLOWUPS: Final = (
     "haven_return",
     "haven_exit_hint",
     "therapy_referred",
+    "grief_request",
 )
 # Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
 _WELLBEING: Final = (
@@ -265,6 +266,10 @@ class Templates:
     therapy_referred: tuple[str, ...]
     """A red-flag user asks what a therapy is (F9): no explainer is allowed, so one
     neutral line pointing at a doctor or counsellor; the referral card follows."""
+    grief_request: tuple[str, ...]
+    """Prolonged grief (SIT-06-04) puts a direct request on m0 (F10): one line before the
+    companionship reply that hears the request, says why no practice comes now and names
+    grief counselling (no hotline, no number, no question)."""
 
 
 @dataclass(frozen=True)
@@ -846,11 +851,23 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         **_plain_lines(data, "wellbeing", _WELLBEING, where),
     }
     for text in lines["haven_exit_hint"]:
-        # It stands in for the haven line: no question, one line, the words quoted.
-        if any(mark in text for mark in ("吗", "？", "?", "\n")) or "「" not in text:
+        # It stands in for the haven line: no question, one line, both ways out quoted
+        # (F10: the battery and the topic one; perception.yaml haven_exit reads them).
+        if any(mark in text for mark in ("吗", "？", "?", "\n")) or text.count("「") < 2:
             raise LanguageDataError(
-                f"{where} followups.haven_exit_hint asks nothing and quotes the words that"
-                f" leave the haven in 「」: {text!r}"
+                f"{where} followups.haven_exit_hint asks nothing and quotes both ways out of"
+                f" the haven in 「」: {text!r}"
+            )
+    for text in lines["grief_request"]:
+        # Not a crisis line and not m0's own reply: no question, no number, a counsellor.
+        if (
+            any(mark in text for mark in ("吗", "？", "?", "\n"))
+            or any(ch.isdigit() for ch in text)
+            or "咨询" not in text
+        ):
+            raise LanguageDataError(
+                f"{where} followups.grief_request asks nothing, has no number and names"
+                f" grief counselling (咨询): {text!r}"
             )
     return Templates(
         persona=persona,
@@ -894,6 +911,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         haven_return=lines["haven_return"],
         haven_exit_hint=lines["haven_exit_hint"],
         therapy_referred=lines["therapy_referred"],
+        grief_request=lines["grief_request"],
         break_reminder=lines["break_reminder"],
         break_reminder_haven=lines["break_reminder_haven"],
         late_night=lines["late_night"],

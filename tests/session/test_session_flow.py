@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -403,6 +404,34 @@ def test_saying_the_words_leaves_the_haven_and_stays_out(words: str) -> None:
     assert left.reply_kind is ReplyKind.NORMAL and left.inspect["battery"] == 0.35
     after = session.turn("其实今天被领导说了一顿")
     assert after.stage is HelpStage.S_EXPLORE and after.inspect["reason"] == "STAY"
+
+
+@pytest.mark.parametrize("words", ["我好多了", "换个话题吧"])
+@pytest.mark.parametrize("student", [False, True])
+def test_the_exit_turn_does_not_echo_the_exit_words(words: str, student: bool) -> None:
+    # F10: not "你提到换个话题吧。", a gentle HAVEN_EXIT acknowledgement instead.
+    session = _open(student=student)
+    session.turn(HAVEN_OPEN)
+    left = session.turn(words)
+    assert left.inspect["reason"] == "HAVEN_EXIT_ASKED"
+    assert words not in left.reply and "你好多了" not in left.reply, left.reply
+    acks = session._engine.data.utterances.acks["HAVEN_EXIT"]
+    assert any(ack in left.reply for ack in acks), left.reply
+    # The next turn is mirrored as usual.
+    assert "学做饭" in session.turn("我最近在学做饭").reply
+
+
+@pytest.mark.parametrize("student", [False, True])
+def test_every_way_out_the_haven_hint_quotes_leaves_the_haven(student: bool) -> None:
+    # F10: each hint variant quotes both ways out, and each quote leaves the haven.
+    quotes = {q for v in TEMPLATES.haven_exit_hint for q in re.findall("「(.+?)」", v)}
+    assert {"我好多了", "换个话题吧"} <= quotes
+    for variant in TEMPLATES.haven_exit_hint:
+        assert len(re.findall("「(.+?)」", variant)) >= 2, variant
+    for words in sorted(quotes):
+        session = _open(student=student)
+        session.turn(HAVEN_OPEN)
+        assert session.turn(words).inspect["reason"] == "HAVEN_EXIT_ASKED", words
 
 
 def test_a_negated_wish_or_a_new_low_reading_stays_in_the_haven() -> None:

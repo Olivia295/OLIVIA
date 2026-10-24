@@ -69,8 +69,9 @@ Stage handling:
   from ``after_close_daytime`` (F6b).
 * ``S_haven``: ``compose(stage, slots)``; the first calm S_haven reply of a session that
   carries no wellbeing reminder is ``followups.haven_exit_hint`` instead, which keeps the
-  company and says how to leave ("说「我好多了」"; FSM-15, F9). Those words, or
-  "换个话题吧", take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``).
+  company and says how to leave ("说「我好多了」或「换个话题吧」"; FSM-15, F9, F10). Those
+  words take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``); that turn's
+  mirror slot is a ``HAVEN_EXIT`` acknowledgement, never the exit words echoed (F10).
 * Every other stage: ``compose(stage, slots)``.
 
 Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
@@ -84,11 +85,12 @@ Leaving for now (F5d): with no card waiting for feedback, a turn whose message t
 leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
 ``S_ready.after_close`` line instead of the stage reply, with no card and no information
 card (the S_clarify lens included), and the stage moves as the state machine says (S_closing
-still follows a practice only, SDD §4.2). Only on a calm screen: below L1 for the turn's
-screen and the rule screen, outside a crisis, not the D3 question or its answer, not a
-command or a note, and not in S_crisis, S_closing or S_ready (those keep their own
-replies), so "活着好累，我去睡了" (L1) gets the L1 reply. A card waiting for feedback
-reads the same phrase as not_now instead (F5a).
+still follows a practice only, SDD §4.2). Only on a calm screen: the rule screen below L1
+and the turn's screen at most L1 (an L1 only an injected model gives, F10: "嗯，今天就到
+这里吧" at a model score of 0.22 is still a goodbye), outside a crisis, not the D3
+question or its answer, not a command or a note, and not in S_crisis, S_closing or
+S_ready (those keep their own replies), so "活着好累，我去睡了" (a rule L1) gets the L1
+reply. A card waiting for feedback reads the same phrase as not_now instead (F5a).
 
 Failures (SDD §10.1): the crisis screen runs first and its own failures are its own
 (model failures already fail toward L2). Anything that raises after it gives a degraded
@@ -300,7 +302,7 @@ from olivia.core.language.engine import (
     is_short_input,
 )
 from olivia.core.language.filters import apply_willow
-from olivia.core.language.mirror import FALLBACK_MIRROR
+from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance
 from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
 from olivia.core.methods.bandit import Feedback
@@ -382,6 +384,8 @@ _ASK_REPLY_STAGES: Final = frozenset(
 )
 # Stages whose replies a leave-taking turn does not replace (F5d).
 _OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, HelpStage.S_READY})
+# The m0 situation whose direct request gets ``followups.grief_request`` (F10).
+_PROLONGED_GRIEF: Final = "SIT-06-04"
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
 SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
@@ -585,6 +589,8 @@ class Session:
         self._care_greeting = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
+        # The mirror kind this turn overrides (F10: Utterance.HAVEN_EXIT), else None.
+        self._utterance: Utterance | None = None
         self._last_spectrum: str | None = None
         self._lens_shown = False
         start = started_at if started_at is not None else now()
@@ -696,6 +702,7 @@ class Session:
         otherwise the persona's slot-free presence line. Nothing is logged."""
         now = self._now()
         self._gate_notes = []
+        self._utterance = None
 
         assessment = self._screen.assess(text)
         asking = self._asking
@@ -806,18 +813,25 @@ class Session:
             reason = CLOSING_REOPEN
         self._state = transition.state
         stage = transition.state.current_stage
+        # The turn that leaves S_haven on the user's words (F10): the reply does not echo
+        # "换个话题吧" back; its mirror slot is a gentle ``HAVEN_EXIT`` acknowledgement.
+        self._utterance = (
+            Utterance.HAVEN_EXIT if transition.reason is Reason.HAVEN_EXIT_ASKED else None
+        )
         feedback = self._feedback_for(pending, transition, signals)
         if spectrum is not None:
             self._last_spectrum = spectrum
         note = self._shared.note_cues.find(text) is not None
-        # Leaving for now with no card waiting (F5d): a short goodbye, nothing else.
+        # Leaving for now with no card waiting (F5d): a short goodbye, nothing else. The
+        # rules screen the turn L0; an L1 only an injected model's score band gives (F10,
+        # as the tracker's model-only L1) does not hold the goodbye back.
         leaving = (
             signals.leave_taking
             and pending is None
             and signals.command is None
             and not note
             and not status.in_crisis
-            and assessment.level is CrisisLevel.L0
+            and assessment.level <= CrisisLevel.L1
             and rules.level is CrisisLevel.L0
             and not ask
             and answer is None
@@ -947,6 +961,7 @@ class Session:
                     mirror_text,
                     now,
                     requested=signals.therapy_request,
+                    asked=signals.direct_request,
                 )
         elif (
             stage is HelpStage.S_EXPLORE
@@ -1280,6 +1295,7 @@ class Session:
         *,
         recall: bool = False,
         requested: str | None = None,
+        asked: bool = False,
     ) -> _Rendered:
         """Sample and show a card in S_empower, or a stabilization card in S_explore.
 
@@ -1289,6 +1305,8 @@ class Session:
         ``requested`` is a practice the user asked for by name ("带我做一下正念", F3): it
         is shown when the solver allows it now, otherwise a card is sampled as usual. The
         card's context line follows the user's local time (working hours or not).
+        ``asked``: the turn asks for a method outright; when prolonged grief (SIT-06-04)
+        then puts it on m0, ``followups.grief_request`` leads the reply (F10).
         """
         tax = self._tax
         shelved = self._state.user_shelved_actions
@@ -1362,6 +1380,11 @@ class Session:
             )
             if stage is HelpStage.S_EMPOWER:
                 rendered.action_id = M0_ACTION_ID
+            if asked and _PROLONGED_GRIEF in self._context.situations:
+                # The request is heard and the m0 answer explained (F10, 草稿：待 G-0).
+                self._add_line(
+                    rendered, self._engine.data.templates.grief_request, stage, first=True
+                )
         else:  # the gate blocked the card: show nothing rather than a broken card
             rendered = _Rendered(self._engine.gate.fallback, ReplyKind.HAVEN)
         if chosen is not None and chosen in shelved and rendered.action_id != chosen:
@@ -1553,6 +1576,7 @@ class Session:
             spectrum_id=spectrum,
             card_title=card_title,
             situations=self._context.situations,
+            utterance=self._utterance,
         )
         if not slots.mirror:
             slots = replace(slots, mirror=FALLBACK_MIRROR)
