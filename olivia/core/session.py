@@ -69,8 +69,9 @@ Stage handling:
   from ``after_close_daytime`` (F6b).
 * ``S_haven``: ``compose(stage, slots)``; the first calm S_haven reply of a session that
   carries no wellbeing reminder is ``followups.haven_exit_hint`` instead, which keeps the
-  company and says how to leave ("说「我好多了」"; FSM-15, F9). Those words, or
-  "换个话题吧", take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``).
+  company and says how to leave ("说「我好多了」或「换个话题吧」"; FSM-15, F9, F10). Those
+  words take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``); that turn's
+  mirror slot is a ``HAVEN_EXIT`` acknowledgement, never the exit words echoed (F10).
 * Every other stage: ``compose(stage, slots)``.
 
 Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
@@ -301,7 +302,7 @@ from olivia.core.language.engine import (
     is_short_input,
 )
 from olivia.core.language.filters import apply_willow
-from olivia.core.language.mirror import FALLBACK_MIRROR
+from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance
 from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
 from olivia.core.methods.bandit import Feedback
@@ -588,6 +589,8 @@ class Session:
         self._care_greeting = False
         self._referred: set[str] = set()
         self._gate_notes: list[str] = []
+        # The mirror kind this turn overrides (F10: Utterance.HAVEN_EXIT), else None.
+        self._utterance: Utterance | None = None
         self._last_spectrum: str | None = None
         self._lens_shown = False
         start = started_at if started_at is not None else now()
@@ -699,6 +702,7 @@ class Session:
         otherwise the persona's slot-free presence line. Nothing is logged."""
         now = self._now()
         self._gate_notes = []
+        self._utterance = None
 
         assessment = self._screen.assess(text)
         asking = self._asking
@@ -809,6 +813,11 @@ class Session:
             reason = CLOSING_REOPEN
         self._state = transition.state
         stage = transition.state.current_stage
+        # The turn that leaves S_haven on the user's words (F10): the reply does not echo
+        # "换个话题吧" back; its mirror slot is a gentle ``HAVEN_EXIT`` acknowledgement.
+        self._utterance = (
+            Utterance.HAVEN_EXIT if transition.reason is Reason.HAVEN_EXIT_ASKED else None
+        )
         feedback = self._feedback_for(pending, transition, signals)
         if spectrum is not None:
             self._last_spectrum = spectrum
@@ -1567,6 +1576,7 @@ class Session:
             spectrum_id=spectrum,
             card_title=card_title,
             situations=self._context.situations,
+            utterance=self._utterance,
         )
         if not slots.mirror:
             slots = replace(slots, mirror=FALLBACK_MIRROR)

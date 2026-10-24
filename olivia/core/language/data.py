@@ -851,11 +851,12 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         **_plain_lines(data, "wellbeing", _WELLBEING, where),
     }
     for text in lines["haven_exit_hint"]:
-        # It stands in for the haven line: no question, one line, the words quoted.
-        if any(mark in text for mark in ("吗", "？", "?", "\n")) or "「" not in text:
+        # It stands in for the haven line: no question, one line, both ways out quoted
+        # (F10: the battery and the topic one; perception.yaml haven_exit reads them).
+        if any(mark in text for mark in ("吗", "？", "?", "\n")) or text.count("「") < 2:
             raise LanguageDataError(
-                f"{where} followups.haven_exit_hint asks nothing and quotes the words that"
-                f" leave the haven in 「」: {text!r}"
+                f"{where} followups.haven_exit_hint asks nothing and quotes both ways out of"
+                f" the haven in 「」: {text!r}"
             )
     for text in lines["grief_request"]:
         # Not a crisis line and not m0's own reply: no question, no number, a counsellor.

@@ -186,6 +186,14 @@ def _haven_exit_hint_without_the_words(d: dict[str, Any]) -> None:
     ]
 
 
+def _haven_exit_hint_with_one_way_out(d: dict[str, Any]) -> None:
+    # F10: both ways out are quoted, not only 「我好多了」.
+    d["followups"]["haven_exit_hint"] = [
+        "我就在这里陪着你。想聊别的时，说一句「我好多了」就好。",
+        "{user_name}，想聊别的，说「我好多了」或「换个话题吧」就好。",
+    ]
+
+
 def _followup_missing(d: dict[str, Any]) -> None:
     del d["followups"]["kit_empty"]
 
@@ -245,6 +253,7 @@ def _unknown_window_key(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _haven_exit_hint_asks),
         ("templates/silent_anchor.yaml", _haven_exit_hint_without_the_words),
         ("templates/rational_peer.yaml", _grief_request_with_a_number),
+        ("templates/gentle_holding.yaml", _haven_exit_hint_with_one_way_out),
         ("templates/zen_philosopher.yaml", _grief_request_without_counselling),
         ("templates/gentle_holding.yaml", _followup_with_mirror),
         ("templates/gentle_holding.yaml", _followup_without_plain_variant),
