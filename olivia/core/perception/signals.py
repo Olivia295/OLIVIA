@@ -56,6 +56,10 @@ class TurnSignals:
     gives it a meaning."""
     kit_recall: bool = False
     """The user asks to see a method they shelved earlier ("锦囊里那个再给我看看")."""
+    haven_exit: bool = False
+    """The user says they feel better or want another topic ("我好多了", "换个话题吧";
+    FSM-15): a non-negated ``haven_exit`` phrase. Only S_haven reads it, and leaves for
+    S_explore."""
     leave_taking: bool = False
     """The user is leaving for now ("我去睡了", "今天就到这里吧"; F5d): a non-negated
     ``leave_taking`` phrase that is not asked as a question ("今天就到这里？" is not).

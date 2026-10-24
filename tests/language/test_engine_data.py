@@ -156,6 +156,21 @@ def _daytime_goodbyes_need_a_slot_free_line(d: dict[str, Any]) -> None:
     ]
 
 
+def _haven_exit_hint_asks(d: dict[str, Any]) -> None:
+    # F9: it replaces the haven line, so it never asks.
+    d["followups"]["haven_exit_hint"] = [
+        "想聊别的吗？说「我好多了」就好。",
+        "我在这里陪着你，慢慢歇。",
+    ]
+
+
+def _haven_exit_hint_without_the_words(d: dict[str, Any]) -> None:
+    d["followups"]["haven_exit_hint"] = [
+        "我在这里陪着你，慢慢歇一歇。",
+        "{user_name}，我一直都在。",
+    ]
+
+
 def _followup_missing(d: dict[str, Any]) -> None:
     del d["followups"]["kit_empty"]
 
@@ -212,6 +227,8 @@ def _unknown_window_key(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _unknown_slot),
         ("templates/gentle_holding.yaml", _template_without_haven_fallback),
         ("templates/gentle_holding.yaml", _followup_missing),
+        ("templates/gentle_holding.yaml", _haven_exit_hint_asks),
+        ("templates/silent_anchor.yaml", _haven_exit_hint_without_the_words),
         ("templates/gentle_holding.yaml", _followup_with_mirror),
         ("templates/gentle_holding.yaml", _followup_without_plain_variant),
         ("templates/gentle_holding.yaml", _wellbeing_missing),

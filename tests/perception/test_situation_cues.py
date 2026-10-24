@@ -8,13 +8,15 @@ two m0 situations of A1.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from olivia.core.models import CrisisLevel
+from olivia.core.language.data import load_language_data
+from olivia.core.models import CrisisLevel, PersonaSpectrum
 from olivia.core.perception.lexicon import PerceptionLexiconError, load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
 from olivia.core.safety.crisis import CrisisAssessment
@@ -127,6 +129,72 @@ def test_no_cue_shadows_an_m0_cue() -> None:
         cue for code, cues in LEX.situation_cues.items() if code not in M0_CODES for cue in cues
     ]
     assert not [(a, b) for a in others for b in m0 if a in b or b in a]
+
+
+# -- prolonged grief (COLBO-06b, PRD 特性一-4; draft, G-0) -------------------------------
+
+PROLONGED_GRIEF = [
+    "妈妈去世一年多了，我还是走不出来",
+    "我爸过世两年了，我到现在都没法接受",
+    "奶奶走了半年，我还是每天想她",
+    "外公离开我们好几年了，我一直放不下",
+    "一年前我妈去世了，到现在还是接受不了",
+    "[60%] 爸爸不在了快三年，我还是缓不过来",
+]
+NOT_PROLONGED_GRIEF = [
+    "外婆去世好几年了，现在想起来更多是温暖",
+    "宠物走了一年了，我已经慢慢好了",
+    "妈妈去世一年多了",  # no unresolved grief named
+    "这一年我还是走不出来",  # no death named
+    "奶奶去世了，我还是放不下",  # no long time since
+    "妈妈去世一年多了，我并不是走不出来",  # the unresolved part is negated
+    "工作了一年多，还是放不下手机",
+]
+
+
+@pytest.mark.parametrize("text", PROLONGED_GRIEF)
+def test_prolonged_grief_sets_the_bereavement_situation(text: str) -> None:
+    assert "SIT-06-04" in _situations(text)
+
+
+@pytest.mark.parametrize("text", NOT_PROLONGED_GRIEF)
+def test_a_settled_or_partial_loss_is_no_prolonged_grief(text: str) -> None:
+    assert "SIT-06-04" not in _situations(text)
+
+
+def test_prolonged_grief_lists_are_loaded_and_distinct() -> None:
+    lists = LEX.prolonged_grief
+    assert set(lists) == {"loss", "duration", "unresolved"}
+    assert all(lists.values())
+    words = [w for ws in lists.values() for w in ws]
+    assert len(words) == len(set(words))
+
+
+# -- leaving the haven (FSM-15, F9) --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text", ["我好多了", "我感觉好多了", "我想聊点别的", "换个话题吧", "可以换个话题吗", "缓过来了"]
+)
+def test_haven_exit_words(text: str) -> None:
+    assert STUB.perceive(text, CALM)[1].haven_exit
+
+
+@pytest.mark.parametrize("text", ["好累", "不想换个话题", "还没缓过来", "我不想聊点别的", "嗯"])
+def test_not_haven_exit_words(text: str) -> None:
+    assert not STUB.perceive(text, CALM)[1].haven_exit
+
+
+def test_every_haven_hint_quotes_words_that_leave_the_haven() -> None:
+    """The S_haven hint tells the user what to say: each quoted phrase must work."""
+    lang = load_language_data(TAX)
+    quoted = re.compile(r"「([^」]+)」")
+    for persona in PersonaSpectrum:
+        for variant in lang.personas[persona].haven_exit_hint:
+            words = quoted.findall(variant)
+            assert words, variant
+            for said in words:
+                assert STUB.perceive(said, CALM)[1].haven_exit, (persona, said)
 
 
 def test_situation_cue_keys_must_not_be_red_flag_codes(tax: Taxonomy, tmp_path: Path) -> None:

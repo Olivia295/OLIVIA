@@ -26,7 +26,9 @@ user can ask about or ask to do by a common name (F3: 正念, CBT, 呼吸练习 
 
 ``situation_cues`` maps taxonomy situation codes, and ``contraindication_cues`` taxonomy
 contraindication enum ids, to the phrases that reveal them in conversation (roadmap
-next-phase A1); a phrase belongs to one key of its section only.
+next-phase A1); a phrase belongs to one key of its section only. ``prolonged_grief``
+holds three phrase lists (``loss``, ``duration``, ``unresolved``) that reveal SIT-06-04
+only together, in one message (COLBO-06b; draft, G-0); a phrase belongs to one list.
 """
 
 from __future__ import annotations
@@ -61,6 +63,7 @@ _PHRASE_SECTIONS: Final = (
     "kit_recall",
     "therapy_question_cues",
     "therapy_request_cues",
+    "haven_exit",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -75,6 +78,7 @@ _SECTIONS: Final = frozenset(
         # Read and validated by perception/introspector.py (step C2).
         "introspection",
         "situation_cues",
+        "prolonged_grief",
         "contraindication_cues",
         "leave_taking",
         "leave_taking_whole",
@@ -97,6 +101,7 @@ _SIGNAL_GROUP: Final = (
 )
 _FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
 _ANSWER_KEYS: Final = ("affirm", "decline")
+GRIEF_KEYS: Final = ("loss", "duration", "unresolved")
 _INFO_GRADES: Final = frozenset({SafetyGrade.GRADE_B, SafetyGrade.GRADE_C})
 _CARD_ACTION_TYPES: Final = frozenset({ActionType.STABILIZATION, ActionType.MICRO_EXERCISE})
 
@@ -158,8 +163,14 @@ class PerceptionLexicon:
     """Words that make a named therapy a question ("是什么", "有用吗")."""
     therapy_request_cues: tuple[str, ...]
     """Words that ask to do a named practice ("带我做一下", "教我练"; F3)."""
+    haven_exit: tuple[str, ...]
+    """The user feels better or wants another topic ("我好多了", "换个话题吧"; FSM-15): in
+    S_haven the state machine goes back to S_explore."""
     situation_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy situation code -> folded phrases (A1: SIT-06-04, SIT-11-01)."""
+    prolonged_grief: Mapping[str, tuple[str, ...]]
+    """``GRIEF_KEYS`` -> folded phrases: a death, a long time since, still not borne; a
+    message with a live hit of all three reveals SIT-06-04 (COLBO-06b; draft, G-0)."""
     contraindication_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy contraindication enum id -> folded phrases (A1)."""
 
@@ -248,7 +259,9 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
         therapy_question_cues=phrases["therapy_question_cues"],
         therapy_request_cues=phrases["therapy_request_cues"],
+        haven_exit=phrases["haven_exit"],
         situation_cues=MappingProxyType(_situation_cues(tax, doc.get("situation_cues"))),
+        prolonged_grief=MappingProxyType(_prolonged_grief(doc.get("prolonged_grief"))),
         contraindication_cues=MappingProxyType(
             _keyed_cues(
                 doc.get("contraindication_cues"),
@@ -431,6 +444,16 @@ def _situation_cues(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
             f"{_FILE}: situation_cues: {flagged} is a red-flag code (red_flags.yaml reads it)"
         )
     return cues
+
+
+def _prolonged_grief(node: Any) -> dict[str, tuple[str, ...]]:
+    section = _mapping(node, "prolonged_grief")
+    extra = sorted(str(key) for key in section if key not in GRIEF_KEYS)
+    if extra:
+        raise PerceptionLexiconError(f"{_FILE}: prolonged_grief: unknown keys {extra}")
+    lists = {key: _phrases(section.get(key), f"prolonged_grief.{key}") for key in GRIEF_KEYS}
+    _check_distinct(lists, "prolonged_grief")
+    return lists
 
 
 def _negation(node: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:

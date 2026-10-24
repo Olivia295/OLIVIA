@@ -184,6 +184,12 @@ EXIT_COMMAND: Final = "/exit"
 
 GOODBYE: Final = "好，今天就先聊到这里。想说话的时候，随时回来。"
 CHAT_HINT: Final = "想结束的时候，输入 /exit 就好。"
+# ``olivia chat -h`` (F9, FSM-15; draft, G-0): how to ask for quiet company and how to
+# leave it; the quoted words are perception.yaml ``haven_exit`` phrases.
+CHAT_HELP: Final = (
+    "很累的时候，在消息开头写上电量，比如 [5%]，我就安安静静地陪着你；"
+    "想聊别的了，说一句「我好多了」或「换个话题吧」就好。想结束时输入 /exit。"
+)
 USER_PROMPT: Final = "你："
 ANSWER_PROMPT: Final = "> "
 PROFILE_CORRUPT: Final = "本地的设置文件读不出来了。为了不弄丢你的信息，我没有改动它。"
@@ -251,6 +257,7 @@ _UNKNOWN_HOURS: Final = "unknown"
 USER_TEXTS: Final = (
     GOODBYE,
     CHAT_HINT,
+    CHAT_HELP,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     HEALTH_NOT_SAVED,
@@ -1045,7 +1052,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(
         dest="command", required=True, metavar="<命令>", title=HELP_COMMANDS
     )
-    chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
+    chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）", description=CHAT_HELP)
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")
     # Model mode is the default (owner decision 2026-10-24); --model is kept for old scripts
     # and hidden, since a flag that changes nothing would only confuse the help.

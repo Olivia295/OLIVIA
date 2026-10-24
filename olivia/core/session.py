@@ -67,6 +67,10 @@ Stage handling:
   ``after_close`` line that points at the evening ("愿你今晚…", "早点休息") is used only
   from 18:00 local time through the B7 late-night window; at other hours the line comes
   from ``after_close_daytime`` (F6b).
+* ``S_haven``: ``compose(stage, slots)``; the first calm S_haven reply of a session that
+  carries no wellbeing reminder is ``followups.haven_exit_hint`` instead, which keeps the
+  company and says how to leave ("说「我好多了」"; FSM-15, F9). Those words, or
+  "换个话题吧", take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``).
 * Every other stage: ``compose(stage, slots)``.
 
 Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
@@ -100,6 +104,12 @@ flag per session. A plan in S_empower or a stabilization card also appends the r
 for its plan's flags every time, since the solver requires the card with every plan; when
 the same card was shown on the turn before, it comes with a short intro and every
 destination, without the closing paragraph (F5b).
+
+A red-flag user who asks what a therapy is ("CBT是什么", ``therapy_question``; F9) gets
+no explainer, since the red-flag closure allows none: in an ordinary stage, on a calm
+turn without feedback or a direct request, the reply is one ``followups.therapy_referred``
+line (neutral, pointing at a doctor or counsellor, no practice) followed by the
+referral card again, not an ordinary reply that ignores the question.
 
 Grade B/C information cards (PRD §8.1, roadmap next-phase A4), never on a crisis turn
 (the tracker's crisis or an L1-L3 screen), with feedback for a waiting card, or with a
@@ -278,7 +288,7 @@ from typing import Final
 from uuid import uuid4
 
 from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
-from olivia.core.chang.wellbeing import Wellbeing
+from olivia.core.chang.wellbeing import Reminder, Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
 from olivia.core.language.dossiers import fitting_spectra, lens_pool
@@ -366,6 +376,10 @@ _COMMAND_FEEDBACK: Final = {
 
 
 _NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
+# Where a question about a therapy is answered at all (as the solver's info stages).
+_ASK_REPLY_STAGES: Final = frozenset(
+    {HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING}
+)
 # Stages whose replies a leave-taking turn does not replace (F5d).
 _OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, HelpStage.S_READY})
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
@@ -596,6 +610,8 @@ class Session:
         self._urgent = False
         # The last closing ritual or after-close line, never sent twice in a row.
         self._last_closing: str | None = None
+        # The S_haven line said how to leave the haven (F9, FSM-15): once per session.
+        self._haven_hinted = False
         # The how-to-confirm hint was shown in this crisis (F5b): once per crisis.
         self._confirm_hinted = False
         # The last referral card: its codes, the turn it was shown on and how many times in
@@ -815,6 +831,20 @@ class Session:
         if note:
             # A note turn is answered by the recorder's confirmation, never with a card.
             info = None
+        # A red-flag user asks what a therapy is (F9): the closure allows no explainer,
+        # so one neutral line and the referral card again, never an ordinary reply.
+        referred_question = (
+            info is None
+            and not leaving
+            and not note
+            and bool(flags)
+            and signals.therapy_question is not None
+            and not signals.direct_request
+            and feedback is None
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L1
+            and stage in _ASK_REPLY_STAGES
+        )
         # The waiting card is still on screen, in the stage it was shown in.
         still_waiting = (
             pending is not None
@@ -889,6 +919,9 @@ class Session:
             ordinary = True
         elif info is not None:
             rendered = self._info(info, stage, perception, spectrum, mirror_text)
+        elif referred_question:
+            rendered = self._followup(templates.therapy_referred, stage)
+            rendered.referral_flags = tuple(c for c in self._tax.red_flags() if c in flags)
         elif stage in (HelpStage.S_CLOSING, HelpStage.S_READY):
             # After the ritual: a short warm line, never the ritual again.
             rendered = self._closing(self._after_close(now), stage)
@@ -977,6 +1010,15 @@ class Session:
             render=lambda variant: self._wellbeing_line(variant, stage),
         )
         rendered.reply = prompted.reply
+        if (
+            stage is HelpStage.S_HAVEN
+            and ordinary
+            and settled
+            and rendered.kind is ReplyKind.HAVEN
+            and prompted.reminder is Reminder.NONE
+            and not self._haven_hinted
+        ):
+            self._hint_haven_exit(rendered, stage)
 
         if stage is not HelpStage.S_CRISIS and not ask and not status.in_crisis:
             # A dose or "am I X?" question gets one plain line before the reply (F3).
@@ -1781,6 +1823,18 @@ class Session:
         rendered.referral_flags = codes
         if rendered.kind is not ReplyKind.CARD:
             rendered.kind = ReplyKind.REFERRAL
+
+    def _hint_haven_exit(self, rendered: _Rendered, stage: HelpStage) -> None:
+        """Swap the haven line for the one that also says how to leave (FSM-15), once.
+
+        The first variant in file order that passes the gate, the taboo filter and the
+        haven window: no random draw, so the rest of the session reads as it would have."""
+        for variant in self._engine.data.templates.haven_exit_hint:
+            line = self._wellbeing_line(variant, stage)
+            if line is not None and self._engine.window_penalty(stage, line) == 0:
+                rendered.reply = line
+                self._haven_hinted = True
+                return
 
     def _append_health_hint(self, rendered: _Rendered, stage: HelpStage) -> None:
         """Say once that a disclosure heard in the conversation can be saved (D2)."""

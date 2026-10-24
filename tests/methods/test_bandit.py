@@ -124,6 +124,23 @@ def test_exploit_only_does_not_consume_randomness(tax: Taxonomy) -> None:
     assert rng.getstate() == random.Random(7).getstate()
 
 
+def test_exploration_boundary_samples_at_0_60_and_exploits_at_0_61(tax: Taxonomy) -> None:
+    # CHANG-03b: "Arousal > 0.60" is exploit only, so 0.60 itself still samples.
+    assert tax.threshold("arousal.thresholds.exploration_allow") == 0.60
+    first, second = _two_level_i_methods(tax)
+    sampler = ThompsonSampler(tax)  # equal priors: only a draw can pick the second arm
+    sampled = set()
+    for seed in range(40):
+        rng = random.Random(seed)
+        sampled.add(sampler.choose([first, second], "01", 0.60, rng, NOW))
+        assert rng.getstate() != random.Random(seed).getstate()  # a Beta draw was made
+    assert sampled == {first, second}
+    for seed in range(40):
+        rng = random.Random(seed)
+        assert sampler.choose([first, second], "01", 0.61, rng, NOW) == first
+        assert rng.getstate() == random.Random(seed).getstate()  # no draw: exploit only
+
+
 def test_sampling_below_threshold_favours_much_better_arm(tax: Taxonomy) -> None:
     good, bad = _two_level_i_methods(tax)
     sampler = ThompsonSampler(tax)

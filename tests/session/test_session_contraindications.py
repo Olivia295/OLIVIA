@@ -147,6 +147,28 @@ def test_m0_situations_yield_m0(text, situation):
         assert result.reply_kind is ReplyKind.NORMAL
 
 
+def test_prolonged_grief_asking_for_a_method_gets_m0():
+    """COLBO-06b: grief a year on, asked for a method, gets m0 and no exercise card."""
+    for seed in SEEDS:
+        result = _open(seed).turn("[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法")
+        assert result.inspect["situations"] == ["SIT-06-04"]
+        assert result.inspect["candidates"] == []
+        assert result.action_id == M0_ACTION_ID
+        assert result.reply_kind is ReplyKind.NORMAL
+
+
+def test_a_settled_loss_still_gets_an_ordinary_card():
+    result = _open().turn("[80%] 外婆去世好几年了，现在想起来更多是温暖，给我一个方法")
+    assert result.inspect["situations"] == []
+    assert result.reply_kind is ReplyKind.CARD
+
+
+def test_prolonged_grief_never_masks_a_crisis():
+    result = _open().turn("妈妈去世一年多了，我还是走不出来，我不想活了")
+    assert result.reply_kind is ReplyKind.CRISIS
+    assert result.inspect["situations"] == ["SIT-06-04"]
+
+
 def test_a_situation_holds_for_the_session():
     session = _open()
     session.turn("我奶奶刚去世")

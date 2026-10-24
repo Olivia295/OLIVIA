@@ -178,6 +178,55 @@ def test_red_flag_gets_the_referral_and_no_info(flag: str) -> None:
     _no_info(session.turn("进食障碍强化认知行为疗法是什么"))
 
 
+# F9: a red-flag user's question about a therapy is answered, briefly and neutrally,
+# without an explainer or a practice, and the referral card comes again.
+REFERRED_LINES = {
+    persona: {v.replace("{user_name}", "小林") for v in LANG.personas[persona].therapy_referred}
+    for persona in LANG.personas
+}
+ALL_REFERRED = set().union(*REFERRED_LINES.values())
+
+
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("question", ["CBT是什么？", "正念是什么", "EMDR 有用吗"])
+@pytest.mark.parametrize("opening", ["我最近躁狂发作，好几天没睡", "我是边缘型人格，确诊两年了"])
+def test_red_flag_question_gets_a_neutral_line_and_the_referral(
+    seed: int, question: str, opening: str
+) -> None:
+    session = _open(seed)
+    first = session.turn(opening)
+    assert first.referral_flags
+    result = session.turn(question)
+    _no_info(result)
+    assert result.reply_kind is ReplyKind.REFERRAL
+    assert result.referral_flags == first.referral_flags
+    assert result.action_id is None and result.inspect["candidates"] == []
+    head, _, rest = result.reply.partition("\n\n")
+    assert head in ALL_REFERRED, head
+    assert rest  # the referral card follows the line
+    assert "？" not in head and "练习" not in head
+
+
+def test_red_flag_question_from_the_profile_also_gets_the_line() -> None:
+    session = _open(clinical_history=("SIT-02-04",))
+    result = session.turn("CBT是什么？")
+    assert result.reply_kind is ReplyKind.REFERRAL
+    assert result.reply.split("\n\n", 1)[0] in ALL_REFERRED
+
+
+def test_without_a_red_flag_the_question_still_gets_its_explainer() -> None:
+    result = _open().turn("CBT是什么？")
+    assert result.reply_kind is ReplyKind.INFO
+    assert not any(line in result.reply for line in ALL_REFERRED)
+
+
+def test_red_flag_question_in_a_crisis_gets_the_crisis_card() -> None:
+    session = _open()
+    session.turn("我最近躁狂发作，好几天没睡")
+    result = session.turn("我不想活了，CBT是什么？")
+    assert result.reply_kind is ReplyKind.CRISIS
+
+
 def test_red_flag_blocks_the_lens() -> None:
     session = _open(clinical_history=("SIT-02-06",))
     for text in TO_CLARIFY:
