@@ -64,7 +64,7 @@ import tempfile
 import time
 import zipfile
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -390,7 +390,16 @@ def _nothing() -> Iterator[None]:
 
 
 def peak_rss() -> int | None:
-    """This process's peak resident set size in bytes; None where unmeasurable."""
+    """This process's peak resident set size in bytes; None where unmeasurable.
+
+    On Linux ``ru_maxrss`` keeps the high-water mark of the image before ``exec``, so a
+    worker forked from pytest reports pytest's own peak; ``VmHWM`` is this image's alone.
+    """
+    if sys.platform.startswith("linux"):
+        with suppress(OSError, ValueError):
+            for line in Path("/proc/self/status").read_text(encoding="ascii").splitlines():
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024  # kB
     try:
         import resource
     except ImportError:  # Windows
