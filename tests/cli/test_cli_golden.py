@@ -113,7 +113,11 @@ def test_sop2_low_battery_never_hides_a_crisis(run_cli, data_home):
 # -- SOP 4: zero-guilt shelving --------------------------------------------------------------
 
 METHOD_REQUEST = "最近拖延很严重，给我一个方法"
-HESITATION = "我今天真的提不起劲做这个"
+# Phrase feedback counts only on an L0 screen. The round-8 student (4524170efaf8d8b0) screens
+# the earlier "我今天真的提不起劲做这个" L1, so SOP 4 uses another low-energy NOT_NOW
+# phrase that stays L0 in both modes (the old one is still covered in rules mode by
+# tests/session/test_session_nl_feedback.py and tests/perception/test_feedback_phrases.py).
+HESITATION = "今天真的没力气做这个"
 
 
 @BOTH_MODES

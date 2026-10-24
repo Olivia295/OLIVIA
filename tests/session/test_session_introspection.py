@@ -33,11 +33,13 @@ LINES = load_mirror_lines(TAX)
 ALL_LINES = frozenset(line for lines in LINES.values() for line in lines)
 NOW = datetime(2026, 10, 22, 15, 0, tzinfo=UTC)
 # Two S_explore turns, then S_clarify; APPROVAL_SEEKING is seen on turns 2 and 3,
-# SUBJUGATION on turn 4. Every turn screens L0 in both modes.
+# SUBJUGATION on turn 4. Every turn screens L0 in both modes. Turn 3 was "一直在讨好别人，
+# 挺累的" until the round-8 student (4524170efaf8d8b0), which screens it L1 (an L1 screen
+# keeps S_explore), so it ends "挺辛苦的": same schema, same path, L0 in both modes.
 TO_CLARIFY = (
     "最近工作压力有点大",
     "我很在意别人怎么看我",
-    "一直在讨好别人，挺累的",
+    "一直在讨好别人，挺辛苦的",
 )
 MORE_SCHEMA = "我的意见不重要，总是顺着别人"
 
