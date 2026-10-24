@@ -8,6 +8,15 @@ An injected model can only raise the Stage 2 level above the rule model's, never
 it, and a model that raises or answers out of contract counts as an L2 prediction
 (``MODEL_FAILURE``): ``assess`` never raises because of the model.
 
+An injected model's level is the higher of its own level and its score's band (owner
+decision 2026-10-24, F8a: the band keeps the model's recall). A rule score always lies
+in its own level's band (lexicon validation), so for the rules the band changes nothing.
+Where the rules read every risk phrase of the message as a figure of speech (a hyperbole
+cue such as ``HYP_MISS_YOU`` covers each one, and no other cue fires), that model level
+counts at most as L1 (F8a). Negation masks get no such cap: the model's L2 on a double
+negation is what the rules miss. ``CrisisAssessment.rule_level`` carries the rules' own
+level, which the tracker reads (``tracker.py``).
+
 With ``model_plan_evidence=True`` (off by default, enabled only after the injected model
 passes an independent evaluation), an injected model's own in-contract L3 prediction
 counts as plan evidence, so Stage 2 can answer L3. The rule model's prediction and a
@@ -55,7 +64,10 @@ class RiskPrediction:
 
 
 class RiskModel(Protocol):
-    """Stage 2 predictor; ``level`` is the 4-class head, ``score`` the crisis confidence."""
+    """Stage 2 predictor; ``level`` is the 4-class head, ``score`` the crisis confidence.
+
+    For an injected model the screen takes the higher of ``level`` and the band of
+    ``score`` (see the module docstring for the hyperbole cap)."""
 
     def predict(self, text: str) -> RiskPrediction: ...
 
@@ -71,12 +83,20 @@ class CrisisAssessment:
     """An ``ASK_INTENT`` rule cue fired (decision D3): a euphemistic request for a way to
     end a life. Only the rules set it, never an injected model. The cue itself is L1; the
     session asks one direct question when the turn's level stays below L2."""
+    rule_level: CrisisLevel | None = None
+    """The rules' own level for the turn, before any injected model (F8a): equal to
+    ``level`` without a model. The tracker reads it: an L1 only a model gives does not join
+    an L1 run, and a model's L2 alone does not turn an awaited explicit safety confirmation
+    into a relapse. ``None`` when not set (no rule exemption applies)."""
 
 
 def arbitrate(
     tax: Taxonomy, l_cls: CrisisLevel, score: float, has_plan_evidence: bool
 ) -> CrisisLevel:
-    """Take the higher of the classifier level and the score band; L3 needs plan evidence."""
+    """Take the higher of the classifier level and the score band; L3 needs plan evidence.
+
+    ``SafetyScreen`` passes the rule score here and folds an injected model's score band
+    into the model's level first, so that the hyperbole cap (F8a) can apply to both."""
     level = max(l_cls, tax.crisis_level_for_score(score))
     if level is CrisisLevel.L3 and not has_plan_evidence:
         return CrisisLevel.L2
@@ -114,6 +134,13 @@ class _CueIndex:
 
     def scan(self, text: str) -> list[Match]:
         return self.matcher.find_all(text)
+
+    def figurative_only(self, matches: Sequence[Match]) -> bool:
+        """At least one Stage 2 phrase matched and a hyperbole cue covers every one (F8a)."""
+        sections = [(m, self.cues[m.key].section) for m in matches if m.key in self.cues]
+        stage2 = [m for m, section in sections if section == "stage2"]
+        cover = _MaskCover(m for m, section in sections if section == "hyperbole")
+        return bool(stage2) and all(cover.contains(m) for m in stage2)
 
     def compose(self, text: str) -> list[CompositionHit]:
         return self.composer.find(text)
@@ -274,22 +301,50 @@ class SafetyScreen:
         if stage1 or plans:
             score = max([_cue_score(cues[m.key]) for m in stage1] + [c.score for c in plans])
             ids = _unique_ids([*(m.key for m in stage1), *(c.id for c in plans)])
-            return CrisisAssessment(CrisisLevel.L3, score, "STAGE1", True, ids)
-        prediction = self._rule_model.predict_matches(matches, composed)
+            return CrisisAssessment(
+                CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
+            )
+        rule_prediction = self._rule_model.predict_matches(matches, composed)
+        prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False
         if self._model is not None:
             model_prediction = self._predict_safely(self._model, text)
-            # Only the injected model's own L3 counts; the failure prediction is L2, never L3.
+            failed = model_prediction is self._model_failure
+            # The model's level and its score's band, the higher of the two.
+            model_level = max(
+                model_prediction.level, self._tax.crisis_level_for_score(model_prediction.score)
+            )
+            figurative = (
+                not failed
+                and rule_prediction.level is CrisisLevel.L0
+                and self._index.figurative_only(matches)
+            )
+            if figurative:
+                # The rules read every risk phrase as a figure of speech (F8a): at most L1.
+                model_level = min(model_level, CrisisLevel.L1)
+            # Only the injected model's own L3 counts; the failure prediction is L2, never L3,
+            # and a score band is never plan evidence.
             has_plan_evidence = (
                 self._model_plan_evidence
-                and model_prediction is not self._model_failure
+                and not failed
+                and not figurative
                 and model_prediction.level is CrisisLevel.L3
             )
-            prediction = _with_floor(prediction, model_prediction)
-        level = arbitrate(self._tax, prediction.level, prediction.score, has_plan_evidence)
+            prediction = _with_floor(
+                prediction,
+                RiskPrediction(model_level, model_prediction.score, model_prediction.cue_ids),
+            )
+        # The model's band is already in its level; the rule score's band is its level.
+        level = arbitrate(self._tax, prediction.level, rule_prediction.score, has_plan_evidence)
         return CrisisAssessment(
-            level, prediction.score, "STAGE2", has_plan_evidence, prediction.cue_ids, asks_intent
+            level,
+            prediction.score,
+            "STAGE2",
+            has_plan_evidence,
+            prediction.cue_ids,
+            asks_intent,
+            rule_prediction.level,
         )
 
     def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:

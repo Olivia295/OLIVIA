@@ -21,6 +21,9 @@
 # passive_ideation). Against the first ensemble it no longer raises rt124 or rt232 and
 # raises one new everyday_hyperbole case (rt214); rt038 and rt143 keep failing at a lower
 # highest level (L0 and L1).
+# F8a (2026-10-24: a student-only L1 does not join an L1 run; the student at most L1 where
+# a hyperbole cue covers every risk phrase; an awaited confirmation the student alone puts
+# at L2 is tracked at the rules' level) changes no case here: regenerated, same list.
 # R-MS closes none of the self_harm_method cases below: none names an act of ending a life
 # in words the rules recognise (rt041 names one but asks for no way or manner).
 # The cases the direct question about intent closed (decision D3, step A7: rt040, rt052,

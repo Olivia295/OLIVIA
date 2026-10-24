@@ -13,6 +13,12 @@ L2 or above, crisis entry included, and crisis exit reset it too.
 Exit from crisis needs an explicit safety confirmation followed by N safe (L0) turns, so
 a single calm message never switches emergency resources off. After confirmation an L1
 turn pauses the count: it neither counts as safe nor resets the turns already counted.
+While a confirmation is awaited, an explicit confirmation that only an injected model
+raises to L2 or L3 (the turn's ``rule_level`` is below L2, and the model did not fail) is
+tracked at the rules' level, so the model's L2 alone does not make it a relapse (F8a).
+Outside a crisis, an L1 turn that only an injected model gives (the rules' level is L0)
+is reported as L1 but counts for the escalation trend as an L0 turn would (F8a), so a
+run of everyday turns the student alone rates L1 never escalates into crisis.
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -24,7 +30,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from olivia.core.models import CrisisLevel
-from olivia.core.safety.crisis import CrisisAssessment
+from olivia.core.safety.crisis import MODEL_FAILURE, CrisisAssessment
 from olivia.core.safety.lexicon import SafetyLexicons
 from olivia.core.safety.matcher import PhraseMatcher
 from olivia.core.safety.normalize import normalize
@@ -141,12 +147,20 @@ class CrisisTracker:
         self, assessment: CrisisAssessment, text: str, valence: float | None = None
     ) -> CrisisStatus:
         """Track one user turn. ``valence`` is ``None`` when there is no emotion evidence."""
-        assessed = assessment.level
+        rules_level = self._model_only_relapse(assessment, text)
+        assessed = assessment.level if rules_level is None else rules_level
         usable = valence if valence is not None and math.isfinite(valence) else None
-        self._update_trend(assessed, usable)
+        trend = assessed
+        if (
+            not self._in_crisis
+            and assessed is CrisisLevel.L1
+            and assessment.rule_level is CrisisLevel.L0
+        ):
+            trend = CrisisLevel.L0  # a model-only L1 is not part of an L1 run (F8a)
+        self._update_trend(trend, usable)
 
         level = assessed
-        escalated = assessed is CrisisLevel.L1 and self._run >= self._streak
+        escalated = trend is CrisisLevel.L1 and self._run >= self._streak
         if escalated:
             level = CrisisLevel.L2
 
@@ -168,6 +182,21 @@ class CrisisTracker:
             just_exited = self._observe_safe_candidate(level, text)
 
         return self._status(level, escalated, just_entered, just_exited)
+
+    def _model_only_relapse(self, assessment: CrisisAssessment, text: str) -> CrisisLevel | None:
+        """The rules' level of an awaited explicit confirmation that only an injected model
+        puts at L2 or above (F8a), else None."""
+        rule = assessment.rule_level
+        if (
+            self._in_crisis
+            and not self._confirmed
+            and rule is not None
+            and rule < CrisisLevel.L2 <= assessment.level
+            and MODEL_FAILURE not in assessment.cue_ids
+            and self._is_explicit_confirmation(normalize(text))
+        ):
+            return rule
+        return None
 
     def _update_trend(self, assessed: CrisisLevel, valence: float | None) -> None:
         if assessed is CrisisLevel.L1:

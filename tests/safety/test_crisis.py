@@ -305,3 +305,64 @@ def test_model_plan_evidence_leaves_stage1_unchanged(tax, screen, model):
     a = _evidence_screen(tax, model).assess("药已经买好了，今晚")
     assert a == screen.assess("药已经买好了，今晚")
     assert (a.level, a.stage, a.has_plan_evidence) == (L.L3, "STAGE1", True)
+
+
+@pytest.mark.parametrize(
+    ("level", "score", "expected"),
+    [
+        (L.L0, 0.25, L.L1),
+        (L.L0, 0.6, L.L2),
+        (L.L1, 0.6, L.L2),
+        (L.L1, 0.85, L.L2),  # the L3 band without plan evidence is L2
+        (L.L2, 0.1, L.L2),
+    ],
+)
+def test_injected_model_level_is_the_higher_of_its_level_and_score_band(
+    tax, level, score, expected
+):
+    a = _screen_with(tax, _FixedModel(level, score)).assess("今天吃了面")
+    assert a.level is expected and a.rule_level is L.L0 and a.score == pytest.approx(score)
+
+
+def test_rule_level_stays_the_floor_under_a_low_model_score(tax):
+    a = _screen_with(tax, _FixedModel(L.L0, 0.0)).assess("活着好累，每天都一样")
+    assert a.level is L.L1 and a.score == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize("text", ["我想死你们了", "真想死他了", "想死你了，好久没见"])
+def test_injected_model_is_at_most_l1_where_a_hyperbole_cue_covers_every_risk_phrase(tax, text):
+    # F8a: the rules read "想死" here as "miss you"; the model's L2 or L3 counts as L1.
+    for level in (L.L2, L.L3):
+        a = _screen_with(tax, _FixedModel(level, 0.9)).assess(text)
+        assert a.level is L.L1 and a.rule_level is L.L0 and a.cue_ids[-1] == "FAKE"
+
+
+@pytest.mark.parametrize(
+    ("text", "level"),
+    [
+        # A real risk phrase next to the idiom is not covered by the hyperbole cue.
+        ("想死你了，可是我最近真的想死", L.L2),
+        # Negation masks get no cap: the model's L2 on a double negation is kept.
+        ("我没有想死", L.L2),
+        ("我不想死，只是很累", L.L2),
+    ],
+)
+def test_the_hyperbole_cap_needs_every_risk_phrase_figurative(tax, text, level):
+    assert _screen_with(tax, _FixedModel(L.L2, 0.9)).assess(text).level is level
+
+
+def test_a_model_failure_on_an_idiom_still_fails_safe_to_l2(tax):
+    a = _screen_with(tax, _RaisingModel()).assess("我想死你们了")
+    assert a.level is L.L2 and a.cue_ids[-1] == "MODEL_FAILURE"
+
+
+@pytest.mark.parametrize("model", [_FixedModel(L.L0, 0.0), _FixedModel(L.L1, 0.3)])
+def test_negation_with_means_stays_l3_whatever_the_model_says(tax, model):
+    a = _screen_with(tax, model).assess("我不想死，但药已经买好了")
+    assert (a.level, a.stage, a.rule_level) == (L.L3, "STAGE1", L.L3)
+
+
+def test_rule_level_is_the_rules_own_level(tax, screen):
+    assert screen.assess("活着好累，每天都一样").rule_level is L.L1
+    a = _screen_with(tax, _FixedModel(L.L2, 0.7)).assess("今天吃了面")
+    assert (a.level, a.rule_level) == (L.L2, L.L0)
