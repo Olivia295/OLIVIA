@@ -126,4 +126,4 @@ def test_readme_commands_table_lists_every_command_and_the_exit_codes():
     assert "退出码" in readme
     for code in ("`0`", "`1`", "`2`"):
         assert code in readme
-    assert "--model" in readme
+    assert "olivia chat --rules" in readme

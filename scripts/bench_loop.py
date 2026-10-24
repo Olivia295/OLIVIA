@@ -2,9 +2,10 @@
 
     python scripts/bench_loop.py [--turns N] [--modes rules,model] [--wheel PATH] [--json]
 
-Runs N scripted turns through ``Session.turn`` in rules mode and in ``--model`` mode (the
-packaged perception student), each mode in its own child process with numerical
-libraries held to one thread (the single-core reference of ruling 32), and prints:
+Runs N scripted turns through ``Session.turn`` in rules mode (``olivia chat --rules``) and
+in model mode (the packaged perception student; ``olivia chat``'s default since F7), each
+mode in its own child process with numerical libraries held to one thread (the
+single-core reference of ruling 32), and prints:
 
 * per turn: P50/P95/P99 of ``Session.turn`` (an uninstrumented pass);
 * per step (an instrumented pass; each step's exclusive time per turn): perception (rule
@@ -29,15 +30,18 @@ memory retrieval       2 ms         SDD §10.1 Step 3 (not in the loop; see note
 FSM step               1.5 ms       SDD §0 SLO; SDD §10.1 Step 4
 solver                 3 ms         SDD §10.1 Step 5
 generation + gate      2 ms         SDD §10.1 Step 6
-peak RSS               < 50 MB      SDD §0 Resource Envelope (the PRD sets none)
+peak RSS               <= 100 MB    SDD §0 Resource Envelope (the PRD sets none)
 installed size         < 4 MB       SDD §0 Resource Envelope: weights and knowledge
                                     data; applied to the whole installed package
 =====================  ===========  ===============================================
 
 The PRD itself only fixes the control loop (G-3: P99 <= 55 ms on one core) and the
 perception pass (MIYI-01: P99 <= 45 ms); the plan's RSS and size numbers come from the
-SDD's resource envelope. Memory retrieval (SDD §3.3) is not wired into the rules-mode
-loop, so it has no row here; ``tests/memory/test_retrieval_performance.py`` guards it.
+SDD's resource envelope. The RSS budget was < 50 MB until the owner raised it to <= 100 MB
+on 2026-10-24 (F7), with model mode the default: measured about 52-58 MB in rules mode
+and about 78-83 MB in model mode (NumPy and the three-CNN student) on a desktop Mac.
+Memory retrieval (SDD §3.3) is not wired into the rules-mode loop, so it has no row
+here; ``tests/memory/test_retrieval_performance.py`` guards it.
 With the environment variable ``CI`` set, latency budgets are relaxed three times, as in
 the pytest guards: shared runners are not the reference machine.
 
@@ -124,7 +128,7 @@ BUDGETS: tuple[Budget, ...] = (
     Budget("fsm", 0.0015, "s", "SDD §10.1 Step 4"),
     Budget("solver", 0.003, "s", "SDD §10.1 Step 5"),
     Budget("generation", 0.002, "s", "SDD §10.1 Step 6"),
-    Budget("rss", 50 * MB, "B", "SDD §0 Resource Envelope", latency=False),
+    Budget("rss", 100 * MB, "B", "SDD §0 Resource Envelope", latency=False),
     Budget("installed", 4 * MB, "B", "SDD §0 Resource Envelope", latency=False),
 )
 
@@ -540,9 +544,9 @@ def report(results: dict[str, dict[str, Any]], size: dict[str, Any], turns: int)
             print(f"{mode:<24}{'n/a':>12}{rss_limit / MB:>10.1f}  skipped (no resource module)")
             continue
         gated = mode != "baseline"
-        verdict = ("pass" if rss < rss_limit else "FAIL") if gated else "(import olivia.cli only)"
-        if gated and rss >= rss_limit:
-            failures.append(f"{mode} peak RSS {rss / MB:.1f} MB >= {rss_limit / MB:.0f} MB")
+        verdict = ("pass" if rss <= rss_limit else "FAIL") if gated else "(import olivia.cli only)"
+        if gated and rss > rss_limit:
+            failures.append(f"{mode} peak RSS {rss / MB:.1f} MB > {rss_limit / MB:.0f} MB")
         print(f"{mode:<24}{rss / MB:>12.1f}{rss_limit / MB:>10.1f}  {verdict}")
     print()
     print(f"{'size':<24}{'MB':>12}{'budget':>10}  result")

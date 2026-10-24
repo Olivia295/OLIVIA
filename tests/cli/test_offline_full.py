@@ -12,8 +12,9 @@ talk, a card and ``/done``, the closing self-rating, a 「记住：」 note, a c
 confirmed exit, the care greeting on the next chat, the opening self-rating, the journal
 offer after two sessions, ``olivia journal``, ``olivia safety-plan`` and the plan in a
 crisis reply, ``olivia health``, ``olivia persona``, ``olivia resources``, ``olivia
-region``, ``olivia memory``, ``olivia forget --entry``, ``chat --model`` (the packaged
-perception student) and ``olivia forget --all`` followed by a fresh onboarding.
+region``, ``olivia memory``, ``olivia forget --entry``, a plain ``chat`` (model mode, the
+default since F7: the packaged perception student) and ``olivia forget --all`` followed by a
+fresh onboarding. The other chats pass ``--rules``, so their flow stays the rule screen's.
 """
 
 from __future__ import annotations
@@ -120,7 +121,7 @@ def _replies(run: Run) -> list[ReplyKind]:
 def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     # -- first visit: onboarding, talk, card, note, crisis and its exit -----------------------
     first = run_cli(
-        ["chat", "--inspect"],
+        ["chat", "--rules", "--inspect"],
         [
             *ONBOARD_ALL,
             "4",  # the opening self-rating
@@ -168,7 +169,9 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     assert any(s.entered_crisis for s in summaries)
 
     # -- the next day: the care greeting opens the chat ----------------------------------------
-    second = run_cli(["chat", "--inspect"], ["今天还行", "/exit", "6"], now=NOW + timedelta(days=1))
+    second = run_cli(
+        ["chat", "--rules", "--inspect"], ["今天还行", "/exit", "6"], now=NOW + timedelta(days=1)
+    )
     assert second.code == 0
     assert "关怀问候 是" in "\n".join(second.panel)
     assert JOURNAL.prompts["offer"] not in second.out  # a care opening stays alone
@@ -176,7 +179,7 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
 
     # -- two days on: the opening rating and the journal offer -------------------------------
     third = run_cli(
-        ["chat"], ["5", "好", "有", "今天还行", "/exit", ""], now=NOW + timedelta(days=2)
+        ["chat", "--rules"], ["5", "好", "有", "今天还行", "/exit", ""], now=NOW + timedelta(days=2)
     )
     assert third.code == 0
     out = third.out
@@ -194,7 +197,7 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     # -- the safety plan, then a crisis reply that shows it ------------------------------------
     filled = run_cli(["safety-plan"], PLAN_FILL, now=later)
     assert filled.code == 0 and PLAN.command["saved"] in filled.out
-    planned = run_cli(["chat", "--inspect"], [L3_SENTENCE, "/exit"], now=later)
+    planned = run_cli(["chat", "--rules", "--inspect"], [L3_SENTENCE, "/exit"], now=later)
     (plan_crisis,) = planned.results
     assert plan_crisis.reply_kind is ReplyKind.CRISIS
     assert plan_crisis.inspect["safety_plan_shown"] is True
@@ -230,8 +233,8 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     assert _ledger(data_home).notes() == ()
     assert NOTE not in run_cli(["memory"], now=later).out
 
-    # -- the perception student (--model) ------------------------------------------------------
-    modelled = run_cli(["chat", "--model", "--inspect"], ["今天上班好累", "/exit"], now=later)
+    # -- the perception student (the default chat, F7) -----------------------------------------
+    modelled = run_cli(["chat", "--inspect"], ["今天上班好累", "/exit"], now=later)
     assert modelled.code == 0 and modelled.results
     risk_model = modelled.results[0].inspect["risk_model"]
     assert isinstance(risk_model, str) and risk_model.startswith("student:")
@@ -241,7 +244,7 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
     gone = run_cli(["forget", "--all", "--yes"], now=later)
     assert gone.code == 0 and gone.lines[-1] == FORGET.forget["done_all"]
     assert files_under(data_home) == [] and keychain.items == {}
-    again = run_cli(["chat"], [], now=later)
+    again = run_cli(["chat", "--rules"], [], now=later)
     assert again.code == 1 and cli.CHAT_HINT not in again.out  # input ended before setup
     assert ProfileStore(data_home).load() is None
 

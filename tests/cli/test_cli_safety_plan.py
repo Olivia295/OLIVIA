@@ -156,7 +156,7 @@ def test_chat_shows_the_plan_in_a_crisis_reply(run_cli, data_home):
     save_profile(data_home)
     SafetyPlanStore(data_home).save(FILLED)
     before = (data_home / SAFETY_PLAN_FILENAME).read_bytes()
-    chat = run_cli(["chat", "--inspect"], ["今天上班好累", L3_SENTENCE])
+    chat = run_cli(["chat", "--rules", "--inspect"], ["今天上班好累", L3_SENTENCE])
     ordinary, crisis = chat.results
     assert crisis.reply_kind is ReplyKind.CRISIS
     assert crisis.inspect["safety_plan_shown"] is True
@@ -173,28 +173,28 @@ def test_chat_shows_the_plan_in_a_crisis_reply(run_cli, data_home):
 def test_chat_suggests_the_command_once_per_device(run_cli, data_home):
     save_profile(data_home)
     script = ["今天上班好累", "给我一个方法吧", "/done"]
-    first = run_cli(["chat"], script)
+    first = run_cli(["chat", "--rules"], script)
     closing = first.results[-1]
     assert closing.stage is HelpStage.S_CLOSING
     assert closing.reply.endswith(TEXT.suggestion)
     assert first.out.count(TEXT.suggestion) == 1
     assert (data_home / SUGGESTED_FILENAME).read_bytes() == b""
-    second = run_cli(["chat"], script, now=NOW + timedelta(days=1))
+    second = run_cli(["chat", "--rules"], script, now=NOW + timedelta(days=1))
     assert TEXT.suggestion not in second.out
 
 
 def test_no_suggestion_with_a_plan_or_in_a_crisis(run_cli, data_home):
     save_profile(data_home)
-    crisis = run_cli(["chat"], [L3_SENTENCE, "我现在安全了", "嗯", "嗯", "嗯"])
+    crisis = run_cli(["chat", "--rules"], [L3_SENTENCE, "我现在安全了", "嗯", "嗯", "嗯"])
     assert TEXT.suggestion not in crisis.out
     assert not (data_home / SUGGESTED_FILENAME).exists()
     SafetyPlanStore(data_home).save(FILLED)
-    planned = run_cli(["chat"], ["今天上班好累", "给我一个方法吧", "/done"])
+    planned = run_cli(["chat", "--rules"], ["今天上班好累", "给我一个方法吧", "/done"])
     assert TEXT.suggestion not in planned.out
 
 
 def test_no_suggestion_without_a_keychain(run_cli, data_home, keychain):
     save_profile(data_home)
     keychain.broken = NoKeychainError("none")
-    chat = run_cli(["chat"], ["今天上班好累", "给我一个方法吧", "/done"])
+    chat = run_cli(["chat", "--rules"], ["今天上班好累", "给我一个方法吧", "/done"])
     assert chat.code == 0 and TEXT.suggestion not in chat.out

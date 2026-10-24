@@ -377,7 +377,7 @@ def test_region_cannot_be_set_before_onboarding(run_cli, data_home, argv):
 def test_region_changes_reach_the_next_chat(run_cli, data_home):
     save_profile(data_home)
     assert run_cli(["region", "HK"]).code == 0
-    run = run_cli(["chat"], ["我不想活了"])
+    run = run_cli(["chat", "--rules"], ["我不想活了"])
     (result,) = run.results
     assert result.resource_card is not None and result.resource_card.region_used == "HK"
     assert "12356" not in run.out

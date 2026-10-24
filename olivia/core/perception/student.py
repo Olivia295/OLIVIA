@@ -678,12 +678,15 @@ class RiskChoice:
 def choose_risk_model(model: RiskModel | None = None, *, student: bool = False) -> RiskChoice:
     """The session's Stage 2 model: an injected one, the packaged student, or rules only.
 
-    Rules only is the default (owner decision 2026-10-24) until a student passes the release
-    gate (P6-6a). On the 267-case red team the packaged student (the three-CNN ensemble)
-    sends 11 of the 169 cases with ``crisis_below`` into S_crisis that the rules keep out
-    (round 4: 27) and reaches the crisis level of 11 of the 22 cases the rules miss (round
-    4: 13). ``student=True`` asks for the packaged student; one that fails to load falls
-    back to rules only, with its reason.
+    Rules only stays this function's (and ``Session.open``'s) default; the product default
+    is model mode, chosen by ``olivia chat`` (owner decision 2026-10-24, F7: on an
+    independent evaluation set the rules catch 28 of 140 crisis sentences and model mode
+    113, with 3 and 4 false alarms on 100 ordinary ones). On the 267-case red team the
+    packaged student (the three-CNN ensemble) sends 11 of the 169 cases with
+    ``crisis_below`` into S_crisis that the rules keep out (round 4: 27) and reaches the
+    crisis level of 11 of the 22 cases the rules miss (round 4: 13). ``student=True`` asks
+    for the packaged student; one that fails to load falls back to rules only, with its
+    reason.
     """
     if model is not None and student:
         raise ValueError("an injected risk model and student are mutually exclusive")

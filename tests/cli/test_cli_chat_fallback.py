@@ -23,7 +23,7 @@ def test_failed_screen_still_shows_every_number(
         return original(self, text)
 
     monkeypatch.setattr(SafetyScreen, "assess", assess)
-    run = run_cli(["chat"], [BROKEN, "今天上班好累", "/exit"])
+    run = run_cli(["chat", "--rules"], [BROKEN, "今天上班好累", "/exit"])
     assert run.code == 0
     for number in ("110", "120", "12356"):
         assert number in run.out

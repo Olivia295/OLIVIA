@@ -15,12 +15,12 @@ from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
 from olivia.core.session import ReplyKind
 
-# SOP 2 and SOP 4 run in both modes. The packaged perception student (the three-CNN
-# ensemble, format version 2) passes both in model mode: unlike the round-4 student it keeps
-# SOP 4's opening method request ("最近拖延很严重，给我一个方法") below L2, so that run is no
-# longer a strict xfail (P6-6a).
+# SOP 2 and SOP 4 run in both modes: ``--rules`` and the default (model mode, F7). The
+# packaged perception student (the three-CNN ensemble, format version 2) passes both in model
+# mode: unlike the round-4 student it keeps SOP 4's opening method request
+# ("最近拖延很严重，给我一个方法") below L2, so that run is no longer a strict xfail (P6-6a).
 BOTH_MODES = pytest.mark.parametrize(
-    "mode_flags", [pytest.param([], id="rules"), pytest.param(["--model"], id="model")]
+    "mode_flags", [pytest.param(["--rules"], id="rules"), pytest.param([], id="model")]
 )
 
 # -- SOP 1: first-visit covenant (age gate first, ruling 22) ---------------------------------
@@ -28,7 +28,7 @@ BOTH_MODES = pytest.mark.parametrize(
 
 def test_sop1_covenant_then_first_session(run_cli, data_home):
     answers = ["1", "1", "", "小林", "阿柳", "", "考试、前任", "5", "2", "跳过"]
-    run = run_cli(["chat"], [*answers, "今天上班好累", "/exit"])
+    run = run_cli(["chat", "--rules"], [*answers, "今天上班好累", "/exit"])
     assert run.code == 0
     out = run.out
     # Disclaimer, then the 18+ gate, the storage choice (ONB-06), names, persona, taboo
@@ -56,20 +56,20 @@ def test_sop1_covenant_then_first_session(run_cli, data_home):
 
 
 def test_sop1_declined_disclaimer_saves_nothing(run_cli, data_home):
-    run = run_cli(["chat"], ["2"])
+    run = run_cli(["chat", "--rules"], ["2"])
     assert run.code == 1 and run.sessions == []
     assert "没有你的同意" in run.out
     assert not (data_home / PROFILE_FILENAME).exists()
 
 
 def test_sop1_minor_is_refused_now_and_on_every_later_launch(run_cli, data_home):
-    first = run_cli(["chat"], ["1", "2", "1", "小林"])
+    first = run_cli(["chat", "--rules"], ["1", "2", "1", "小林"])
     assert first.code == 1 and first.sessions == []
     assert "12355" in first.out and "怎么称呼你" not in first.out
     record = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
     assert record["age_gate_refused_at"] is not None and record["region"] is None
 
-    again = run_cli(["chat"], ["1", "1", "我其实成年了"])
+    again = run_cli(["chat", "--rules"], ["1", "1", "我其实成年了"])
     assert again.code == 1 and again.sessions == []
     assert "欢迎来到这里" not in again.out and "12355" in again.out
     region = run_cli(["region", "CN"])
@@ -104,7 +104,7 @@ def test_sop2_low_battery_late_at_night_gets_the_haven(run_cli, data_home, mode_
 
 def test_sop2_low_battery_never_hides_a_crisis(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["[5%] 不想活了"])
+    run = run_cli(["chat", "--rules"], ["[5%] 不想活了"])
     (result,) = run.results
     assert result.stage is HelpStage.S_CRISIS and result.reply_kind is ReplyKind.CRISIS
     assert "12356" in run.out
@@ -143,7 +143,9 @@ def test_sop4_hesitation_itself_shelves_without_penalty(run_cli, data_home, mode
 
 def test_sop4_not_now_command_still_shelves_without_penalty(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], [METHOD_REQUEST, "嗯，我看看", "/not-now", "/exit"])
+    run = run_cli(
+        ["chat", "--rules", "--inspect"], [METHOD_REQUEST, "嗯，我看看", "/not-now", "/exit"]
+    )
     card, waiting, shelved = run.results
     (session,) = run.sessions
     shown = card.action_id
@@ -164,7 +166,8 @@ def test_sop4_not_now_command_still_shelves_without_penalty(run_cli, data_home):
 def test_sop4_kit_recall_shows_the_shelved_card_again(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(
-        ["chat", "--inspect"], [METHOD_REQUEST, HESITATION, "锦囊里那个再给我看看", "/exit"]
+        ["chat", "--rules", "--inspect"],
+        [METHOD_REQUEST, HESITATION, "锦囊里那个再给我看看", "/exit"],
     )
     card, _shelved, recalled = run.results
     (session,) = run.sessions
@@ -189,7 +192,7 @@ TO_CLARIFY = [
 # the screen under-rates).
 def test_grade_b_lens_in_clarify_then_grade_c_on_request(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], [*TO_CLARIFY, "那 EMDR 有用吗？", "/exit"])
+    run = run_cli(["chat", "--rules", "--inspect"], [*TO_CLARIFY, "那 EMDR 有用吗？", "/exit"])
     *explore, lens, asked = run.results
     assert all(r.reply_kind is ReplyKind.NORMAL for r in explore)
     # S_clarify adds one Grade B perspective after its reflection, never an exercise.
@@ -206,14 +209,14 @@ def test_grade_b_lens_in_clarify_then_grade_c_on_request(run_cli, data_home):
 
 def test_red_flag_user_asking_about_a_grade_c_therapy_gets_the_referral(run_cli, data_home):
     save_profile(data_home, clinical_history=("SIT-06-01",))
-    run = run_cli(["chat"], ["EMDR 是什么", "/exit"])
+    run = run_cli(["chat", "--rules"], ["EMDR 是什么", "/exit"])
     (result,) = run.results
     assert result.reply_kind is ReplyKind.REFERRAL and result.inspect["info"] is None
     assert "眼动脱敏与再加工疗法" not in run.out and "精神科" in result.reply
 
 
 def test_onboarding_answers_cover_the_cn_default(run_cli, data_home):
-    run = run_cli(["chat"], ONBOARD_CN)
+    run = run_cli(["chat", "--rules"], ONBOARD_CN)
     assert run.code == 0
     profile = ProfileStore(data_home).load()
     assert profile is not None and profile.region == UserRegion("CN", "Asia/Shanghai")
@@ -259,7 +262,7 @@ def test_d3_euphemism_question_then_no_returns_to_the_conversation(run_cli, data
 
 def test_d3_question_uses_the_saved_region(run_cli, data_home):
     save_profile(data_home, region=UserRegion("US", "America/New_York"))
-    run = run_cli(["chat"], ["How do I end it without pain?", "/exit"])
+    run = run_cli(["chat", "--rules"], ["How do I end it without pain?", "/exit"])
     (asked,) = run.results
     assert asked.reply_kind is ReplyKind.SAFETY_CHECK
     assert "988" in run.out and "12356" not in run.out

@@ -12,7 +12,14 @@ from importlib import metadata
 from pathlib import Path
 
 import pytest
-from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
+from cli_support import (
+    L3_SENTENCE,
+    NOW,
+    ONBOARD_CN,
+    PANEL_PREFIXES,
+    files_under,
+    save_profile,
+)
 
 import olivia
 from olivia import cli
@@ -23,6 +30,8 @@ from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import OutputGate
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, UserRegion
+from olivia.core.perception import student as student_module
+from olivia.core.perception.student import StudentLoad
 from olivia.core.session import ReplyKind
 from olivia.core.taxonomy import load_taxonomy
 
@@ -35,7 +44,7 @@ SECRET_FRAGMENTS = ("蓝色风筝", "外婆", "院子")
 
 
 def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
-    run = run_cli(["chat"], [*ONBOARD_CN, "今天上班好累", L3_SENTENCE, "/exit"])
+    run = run_cli(["chat", "--rules"], [*ONBOARD_CN, "今天上班好累", L3_SENTENCE, "/exit"])
     assert run.code == 0
     assert run.texts == ["今天上班好累", L3_SENTENCE]  # /exit never reaches the session
     talk, crisis = run.results
@@ -55,7 +64,7 @@ def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
 
 def test_returning_user_skips_onboarding(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["今天上班好累"])
+    run = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert run.code == 0
     assert "欢迎来到这里" not in run.out
     assert [r.reply_kind for r in run.results] == [ReplyKind.NORMAL]
@@ -64,7 +73,7 @@ def test_returning_user_skips_onboarding(run_cli, data_home):
 
 def test_end_of_input_exits_cleanly(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], [])
+    run = run_cli(["chat", "--rules"], [])
     assert run.code == 0 and run.results == []
     assert run.lines[-1] == cli.GOODBYE
 
@@ -76,19 +85,21 @@ def test_ctrl_c_exits_cleanly(run_cli, data_home):
         def readline(self, size: int | None = -1) -> str:
             raise KeyboardInterrupt
 
-    run = run_cli(["chat"], stdin=Interrupting())
+    run = run_cli(["chat", "--rules"], stdin=Interrupting())
     assert run.code == 0
     assert run.lines[-1] == cli.GOODBYE
 
 
 def test_blank_lines_are_skipped_and_commands_reach_the_session(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["", "   ", "给我一个方法", "/done", "/not-now", "/unhelpful", "/exit"])
+    run = run_cli(
+        ["chat", "--rules"], ["", "   ", "给我一个方法", "/done", "/not-now", "/unhelpful", "/exit"]
+    )
     assert run.texts == ["给我一个方法", "/done", "/not-now", "/unhelpful"]
 
 
 def test_end_of_input_during_onboarding_saves_nothing(run_cli, data_home):
-    run = run_cli(["chat"], ONBOARD_CN[:5])
+    run = run_cli(["chat", "--rules"], ONBOARD_CN[:5])
     assert run.code == 1 and run.lines[-1] == cli.GOODBYE  # nothing was set up
     assert not (data_home / PROFILE_FILENAME).exists()
     assert run.sessions == []
@@ -97,7 +108,7 @@ def test_end_of_input_during_onboarding_saves_nothing(run_cli, data_home):
 def test_corrupt_profile_is_reported_and_left_alone(run_cli, data_home):
     data_home.mkdir(parents=True)
     (data_home / PROFILE_FILENAME).write_text("{not json", encoding="utf-8")
-    run = run_cli(["chat"], ["你好"])
+    run = run_cli(["chat", "--rules"], ["你好"])
     assert run.code == 1
     assert cli.PROFILE_CORRUPT in run.out
     assert (data_home / PROFILE_FILENAME).read_text(encoding="utf-8") == "{not json"
@@ -121,7 +132,7 @@ def test_inspect_panel_never_shows_user_text_or_city(run_cli, data_home):
         ),
     )
     run = run_cli(
-        ["chat", "--inspect"],
+        ["chat", "--rules", "--inspect"],
         [f"我想起{SECRET}，心里很难受", f"给我一个方法吧，{SECRET}", L3_SENTENCE, "/exit"],
     )
     assert len(run.results) == 3
@@ -142,7 +153,7 @@ def test_inspect_panel_never_shows_user_text_or_city(run_cli, data_home):
 
 def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect", "--model"], ["最近压力很大，给我一个方法", L3_SENTENCE])
+    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法", L3_SENTENCE])
     card_turn, crisis_turn = run.results
     first, second = run.out.split("┌ inspect")[1:]
     data = card_turn.inspect
@@ -165,7 +176,7 @@ def test_inspect_panel_carries_the_ruling_27_fields(run_cli, data_home):
     assert crisis_turn.inspect["hotline_reason"] == "no override"
 
 
-@pytest.mark.parametrize("mode_flags", [[], ["--model"]], ids=["rules", "model"])
+@pytest.mark.parametrize("mode_flags", [["--rules"], []], ids=["rules", "model"])
 def test_inspect_panel_shows_the_perception_fields(run_cli, data_home, mode_flags):
     save_profile(data_home)
     run = run_cli(["chat", "--inspect", *mode_flags], ["今天上班好累"])
@@ -175,11 +186,11 @@ def test_inspect_panel_shows_the_perception_fields(run_cli, data_home, mode_flag
         f"│ 效价 {data['valence']:.2f} · 情绪 {data['emotion']} · 意图 {data['intent']}"
         f" · 姿态 {data['stance']} · 准备度 {data['readiness']:.2f}"
     ) in run.panel
-    if not mode_flags:  # rules mode: the stub's placeholders
+    if mode_flags:  # rules mode: the stub's placeholders
         assert (data["stance"], data["readiness"]) == ("CONGRUENT", 0.5)
 
 
-@pytest.mark.parametrize("mode_flags", [[], ["--model"]], ids=["rules", "model"])
+@pytest.mark.parametrize("mode_flags", [["--rules"], []], ids=["rules", "model"])
 def test_inspect_panel_shows_the_introspection_ids(run_cli, data_home, mode_flags):
     # Decision D4, step C2: ids only, never the matched words.
     save_profile(data_home)
@@ -197,9 +208,23 @@ def test_inspect_panel_shows_the_introspection_ids(run_cli, data_home, mode_flag
         assert forbidden not in panel
 
 
-def test_rules_only_by_default_and_says_so(run_cli, data_home):
+# -- F7: model mode by default (owner decision 2026-10-24), --rules opts out ------------------
+
+
+@pytest.mark.parametrize("flags", [[], ["--model"]], ids=["default", "old --model"])
+def test_model_mode_by_default_and_says_so(run_cli, data_home, flags):
     save_profile(data_home)
-    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法"])
+    run = run_cli(["chat", "--inspect", *flags], ["今天上班好累"])
+    (result,) = run.results
+    label = result.inspect["risk_model"]
+    assert isinstance(label, str) and label.startswith("student:")
+    assert result.inspect["risk_model_reason"] is None
+    assert f"风险模型 {label} · 模型判断" in run.out
+
+
+def test_rules_flag_screens_with_the_rules_alone_and_says_so(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--rules", "--inspect"], ["最近压力很大，给我一个方法"])
     (result,) = run.results
     assert result.inspect["risk_model"] == "rules-only"
     assert result.inspect["risk_model_reason"] is None
@@ -208,9 +233,43 @@ def test_rules_only_by_default_and_says_so(run_cli, data_home):
     assert result.stage is HelpStage.S_EMPOWER and result.reply_kind is ReplyKind.CARD
 
 
+@pytest.mark.parametrize("argv", [["--model", "--rules"], ["--rules", "--model"]])
+def test_model_and_rules_together_are_a_command_line_error(data_home, argv):
+    save_profile(data_home)
+    err = io.StringIO()
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["chat", *argv], stdin=io.StringIO(""), stdout=io.StringIO(), stderr=err)
+    assert exc.value.code == 2
+    assert "不能和" in err.getvalue() and "命令有误" in err.getvalue()
+
+
+def test_unavailable_student_falls_back_to_the_rules_and_says_why(
+    run_cli, data_home, monkeypatch: pytest.MonkeyPatch
+):
+    # A missing or unverifiable packaged student: chat still runs, on the rules alone.
+    monkeypatch.setattr(
+        student_module, "default_student", lambda: StudentLoad(None, "missing student.npz")
+    )
+    save_profile(data_home)
+    run = run_cli(["chat", "--inspect"], ["最近压力很大，给我一个方法", L3_SENTENCE, "/exit"])
+    assert run.code == 0
+    card, crisis = run.results
+    assert card.inspect["risk_model"] == "rules-only"
+    assert card.inspect["risk_model_reason"] == "missing student.npz"
+    assert "风险模型 rules-only（missing student.npz） · 模型判断 - · 模型分数 -" in run.out
+    assert card.stage is HelpStage.S_EMPOWER and card.reply_kind is ReplyKind.CARD
+    # The rule screen still answers a crisis on its own.
+    assert crisis.reply_kind is ReplyKind.CRISIS and crisis.crisis_level is CrisisLevel.L3
+    assert "12356" in crisis.reply
+    # Ordinary users see no notice about the model: only the panel says it.
+    assert "missing student.npz" not in "\n".join(
+        line for line in run.lines if not line.startswith(PANEL_PREFIXES)
+    )
+
+
 def test_no_panel_without_inspect(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["今天上班好累"])
+    run = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert run.panel == []
 
 
@@ -218,13 +277,19 @@ def test_locked_keychain_is_reported_and_nothing_changes(run_cli, data_home, key
     save_profile(data_home, clinical_history=(next(iter(load_taxonomy().red_flags())),))
     before = {p: p.read_bytes() for p in files_under(data_home)}
     keychain.broken = KeychainUnavailableError("locked")
-    for argv in (["chat"], ["resources"], ["region"], ["region", "HK"], ["region", "--clear"]):
+    for argv in (
+        ["chat", "--rules"],
+        ["resources"],
+        ["region"],
+        ["region", "HK"],
+        ["region", "--clear"],
+    ):
         run = run_cli(argv, ["你好"])
         assert run.code == 1 and cli.PROFILE_LOCKED in run.out
         assert run.sessions == []
     assert {p: p.read_bytes() for p in files_under(data_home)} == before
     keychain.broken = None
-    assert run_cli(["chat"], ["今天上班好累"]).code == 0
+    assert run_cli(["chat", "--rules"], ["今天上班好累"]).code == 0
 
 
 @pytest.mark.parametrize("argv", [["region", "HK"], ["region", "--clear"]])
@@ -248,11 +313,11 @@ def test_legacy_health_information_is_dropped_without_keychain(run_cli, data_hom
     legacy = profile.to_dict() | {"clinical_history": [code]}
     (data_home / PROFILE_FILENAME).write_text(json.dumps(legacy, ensure_ascii=False), "utf-8")
     keychain.broken = NoKeychainError("none")
-    run = run_cli(["chat"], ["今天上班好累"])
+    run = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert run.code == 0 and cli.HEALTH_NOT_SAVED in run.out
     for path in files_under(data_home):
         assert code.encode() not in path.read_bytes(), path
-    again = run_cli(["chat"], ["今天上班好累"])
+    again = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert cli.HEALTH_NOT_SAVED not in again.out
 
 
@@ -261,7 +326,7 @@ def test_legacy_health_information_is_dropped_without_keychain(run_cli, data_hom
 
 def test_only_the_profile_is_written_and_it_holds_no_conversation(run_cli, data_home):
     run = run_cli(
-        ["chat", "--inspect"],
+        ["chat", "--rules", "--inspect"],
         [*ONBOARD_CN, f"我想起{SECRET}", "[5%] 好累", L3_SENTENCE, "/done"],
     )
     assert run.code == 0
@@ -315,7 +380,7 @@ def test_full_scripted_chat_makes_no_network_calls(run_cli, data_home, monkeypat
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket, "getaddrinfo", no_network)
     chat = run_cli(
-        ["chat", "--inspect"],
+        ["chat", "--rules", "--inspect"],
         [*ONBOARD_CN, "今天上班好累", "给我一个方法", "/done", L3_SENTENCE, "/exit"],
     )
     assert chat.code == 0

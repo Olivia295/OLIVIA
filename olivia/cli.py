@@ -1,13 +1,19 @@
 """The ``olivia`` command line (roadmap P2-4, P4-4).
 
-``olivia chat [--inspect] [--model]``
+``olivia chat [--inspect] [--rules]``
     First visit runs onboarding (``chang/onboarding.py``); then each line goes to
     ``Session.turn`` and the reply is printed exactly as returned, crisis cards included.
-    The crisis screen uses the rules alone; ``--model`` (experimental, off by default
-    until a student passes the release gate) also consults the packaged perception
-    student, which can only raise the rule level and is capped at L2, and takes valence,
-    emotion, intent, stance, readiness and (without a spectrum cue) the spectrum from its
-    other heads; arousal is the higher of the rule and model values (roadmap C1).
+    By default (owner decision 2026-10-24, F7) the crisis screen also consults the
+    packaged perception student, which can only raise the rule level and is capped at L2
+    (its L3 is not plan evidence: the L2 card then leads with the emergency numbers), and
+    takes valence, emotion, intent, stance, readiness and (without a spectrum cue) the
+    spectrum from its other heads; arousal is the higher of the rule and model values
+    (roadmap C1). A student that is missing or fails verification falls back to the rules
+    alone, and ``--inspect`` shows which one ran (``风险模型 rules-only（reason）``).
+    ``--rules`` screens with the rules alone. The old ``--model`` is still accepted (it is
+    the default now, so it is hidden from the help), and giving it with ``--rules`` is a
+    command-line error (exit 2). ``Session.open`` keeps ``student=False`` as its default:
+    the product default is the CLI's.
     ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
     feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
     as are natural-language replies to a card ("今天先不做了"): the session's perception
@@ -427,7 +433,7 @@ def _chat(
     clock: Clock,
     rng: random.Random | None,
     *,
-    student: bool = False,
+    student: bool = True,
 ) -> int:
     tax = _taxonomy()
     store = ProfileStore()
@@ -1041,9 +1047,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     chat = commands.add_parser("chat", help="开始聊天（第一次会先完成设置）")
     chat.add_argument("--inspect", action="store_true", help="每轮显示内部状态面板（不含原文）")
-    chat.add_argument(
-        "--model", action="store_true", help="试验：危机筛查同时参考感知模型（默认只用规则）"
-    )
+    # Model mode is the default (owner decision 2026-10-24); --model is kept for old scripts
+    # and hidden, since a flag that changes nothing would only confuse the help.
+    mode = chat.add_mutually_exclusive_group()
+    mode.add_argument("--rules", action="store_true", help="只用规则做危机筛查（不参考本机模型）")
+    mode.add_argument("--model", action="store_true", help=argparse.SUPPRESS)
     commands.add_parser("resources", help="查看所在地区的求助电话")
     region = commands.add_parser("region", help="查看或修改所在的国家/地区")
     region.add_argument(
@@ -1121,7 +1129,7 @@ def main(
     now = clock if clock is not None else _system_clock
     try:
         if args.command == "chat":
-            return _chat(console, args.inspect, now, rng, student=args.model)
+            return _chat(console, args.inspect, now, rng, student=not args.rules)
         if args.command == "resources":
             return _resources(console, now)
         if args.command == "health":

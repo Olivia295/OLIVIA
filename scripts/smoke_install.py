@@ -13,8 +13,8 @@ Checks:
    model, the signed hotline file and its ``.sig`` included).
 2. ``olivia --version`` matches the wheel; ``olivia --help`` lists the commands.
 3. A scripted first visit (onboarding, one message, ``/exit``) exits 0 and saves the
-   profile; ``olivia resources`` then shows the CN card, and ``olivia chat --model
-   --inspect`` shows the packaged perception student in use.
+   profile; ``olivia resources`` then shows the CN card, and ``olivia chat --inspect``
+   shows the packaged perception student in use (model mode is the default since F7).
 """
 
 from __future__ import annotations
@@ -130,10 +130,8 @@ def smoke(exe: Path, version: str, home: Path) -> None:
         raise SystemExit("resources did not show the CN card")
     # A student that fails to load falls back to rules only without an error, so check
     # the inspect panel names it: that proves the packaged model files load from the wheel.
-    if "风险模型 student:" not in run(
-        exe, ["chat", "--model", "--inspect"], home, [MESSAGE, "/exit"]
-    ):
-        raise SystemExit("chat --model did not load the packaged perception student")
+    if "风险模型 student:" not in run(exe, ["chat", "--inspect"], home, [MESSAGE, "/exit"]):
+        raise SystemExit("chat did not load the packaged perception student by default")
 
 
 def main() -> None:

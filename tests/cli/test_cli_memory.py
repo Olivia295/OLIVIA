@@ -25,12 +25,13 @@ def _ledger(home) -> Ledger:
 
 def test_two_sessions_each_leave_one_summary_and_the_note_survives(run_cli, data_home):
     save_profile(data_home)
-    first = run_cli(["chat"], ["记住：下周三面试，我有点紧张", "今天上班好累", "/exit"])
+    first = run_cli(["chat", "--rules"], ["记住：下周三面试，我有点紧张", "今天上班好累", "/exit"])
     assert first.code == 0
     assert TEXT.replies["note_saved"] in first.out
     assert first.lines[-1] == cli.GOODBYE
     later = NOW + timedelta(days=1)
-    second = run_cli(["chat"], ["给我一个方法", "/done", L3_SENTENCE], now=later)  # ends at EOF
+    # ends at EOF
+    second = run_cli(["chat", "--rules"], ["给我一个方法", "/done", L3_SENTENCE], now=later)
     assert second.code == 0
 
     ledger = _ledger(data_home)
@@ -66,7 +67,7 @@ def test_ctrl_c_still_writes_the_summary(run_cli, data_home):
                 raise KeyboardInterrupt
             return line
 
-    run = run_cli(["chat"], stdin=Interrupting())
+    run = run_cli(["chat", "--rules"], stdin=Interrupting())
     assert run.code == 0 and run.lines[-1] == cli.GOODBYE
     (entry,) = _ledger(data_home).entries()
     assert isinstance(entry, SummaryEntry)
@@ -74,7 +75,7 @@ def test_ctrl_c_still_writes_the_summary(run_cli, data_home):
 
 def test_exit_right_away_writes_nothing(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["/exit"])
+    run = run_cli(["chat", "--rules"], ["/exit"])
     assert run.code == 0
     assert not (data_home / LEDGER_DIRNAME).exists()
 
@@ -83,13 +84,13 @@ def test_no_keychain_is_told_once_and_nothing_is_remembered(run_cli, data_home, 
     save_profile(data_home)
     keychain.broken = NoKeychainError("none")
     notice = TEXT.replies["memory_unavailable"]
-    first = run_cli(["chat"], ["记住：下周三面试", "今天上班好累"])
+    first = run_cli(["chat", "--rules"], ["记住：下周三面试", "今天上班好累"])
     assert first.code == 0
     assert first.out.count(notice) == 1
     assert first.out.index(notice) < first.out.index(cli.CHAT_HINT)
     assert TEXT.replies["note_unavailable"] in first.out
     assert TEXT.replies["note_saved"] not in first.out
-    again = run_cli(["chat"], ["今天上班好累"])
+    again = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert notice not in again.out
     ledger_files = files_under(data_home / LEDGER_DIRNAME)
     assert [p.read_bytes() for p in ledger_files] == [b""]  # only the "told" marker
@@ -103,7 +104,7 @@ def test_a_summary_lost_to_a_locked_keychain_is_mentioned(run_cli, data_home, mo
         return False
 
     monkeypatch.setattr(recorder_module.SessionRecorder, "close", lost)
-    run = run_cli(["chat"], ["今天上班好累"])
+    run = run_cli(["chat", "--rules"], ["今天上班好累"])
     assert TEXT.replies["summary_not_saved"] in run.out
     assert run.lines[-1] == cli.GOODBYE
 
@@ -111,5 +112,5 @@ def test_a_summary_lost_to_a_locked_keychain_is_mentioned(run_cli, data_home, mo
 @pytest.mark.parametrize("message", ["我记住了他说的话", "今天好累，记住：别再加班"])
 def test_ordinary_messages_are_never_stored(run_cli, data_home, message):
     save_profile(data_home)
-    run_cli(["chat"], [message])
+    run_cli(["chat", "--rules"], [message])
     assert _ledger(data_home).notes() == ()

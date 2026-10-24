@@ -5,19 +5,13 @@ cites the PRD and SDD section of each); this is its fast form for ``scripts/chec
 Each step's P99 is its exclusive time per turn in an instrumented run, in rules mode and in
 model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performance.py``.
 
-One budget is not met yet and is marked ``xfail``. It is not strict: peak RSS differs by
-platform and runner (a GitHub macOS runner stays under 50 MB where a desktop Mac reaches
-about 58 MB), so an XPASS there is reported, not failed; drop the marker once every
-platform passes:
-
-* peak RSS (SDD §0, < 50 MB): about 58 MB after a rules-mode run on macOS. NumPy,
-  ``keyring`` and ``cryptography`` now load only where they are used (importing
-  ``olivia.cli`` alone is about 36 MB), but a chat seals its ledger with the OS keychain:
-  ``cryptography`` (about 4 MB) and ``keyring`` (about 11 MB, mostly ``urllib.request``
-  and the macOS frameworks behind it) are on the rules path, and the shared lexicons,
-  matchers and templates add about 6 MB. Model mode (no test yet) loads NumPy and the
-  packaged student on top: about 81 MB with the three-CNN ensemble (about 1.2 M weights
-  held as float32), up from about 73 MB with the round-4 single CNN.
+Peak RSS (SDD §0) is guarded in both modes against <= 100 MB, the envelope the owner set
+on 2026-10-24 (F7, with model mode the default; it was < 50 MB, which rules mode never met
+on a desktop Mac). Measured on macOS: about 52-58 MB after a rules-mode run (importing
+``olivia.cli`` alone is about 36 MB; a chat seals its ledger with the OS keychain, so
+``cryptography``, about 4 MB, and ``keyring``, about 11 MB, are on the path, and the shared
+lexicons, matchers and templates add about 6 MB), and about 78-83 MB in model mode, which
+loads NumPy and the packaged three-CNN student (about 1.2 M weights held as float32).
 """
 
 from __future__ import annotations
@@ -109,11 +103,11 @@ def test_the_instrumented_run_times_every_step(tmp_path):
 
 @untraced
 @pytest.mark.skipif(sys.platform == "win32", reason="no resource module on Windows")
-@pytest.mark.xfail(reason="peak RSS about 58 MB in rules mode on a desktop Mac (budget < 50 MB)")
-def test_peak_rss_of_a_rules_mode_run_is_within_the_envelope():
+@pytest.mark.parametrize("mode", ["rules", "model"])
+def test_peak_rss_of_a_run_is_within_the_envelope(mode: str):
     env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
     done = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "bench_loop.py"), "--worker", "rules"]
+        [sys.executable, str(ROOT / "scripts" / "bench_loop.py"), "--worker", mode]
         + ["--turns", str(3 * len(BENCH.SCRIPT))],
         capture_output=True,
         text=True,
@@ -121,7 +115,7 @@ def test_peak_rss_of_a_rules_mode_run_is_within_the_envelope():
         check=True,
     )
     rss = json.loads(done.stdout.splitlines()[-1])["rss"]
-    assert rss < BENCH.budget_for("rss"), f"peak RSS {rss / BENCH.MB:.1f} MB"
+    assert rss <= BENCH.budget_for("rss"), f"{mode} peak RSS {rss / BENCH.MB:.1f} MB"
 
 
 def test_installed_package_and_its_data_are_within_the_size_envelope():

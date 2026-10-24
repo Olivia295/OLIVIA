@@ -1,6 +1,6 @@
 """Model-mode perception (roadmap C1, P6-6b): the student's heads over the rule stub.
 
-Only with the student on (``Session.open(student=True)``, ``olivia chat --model``);
+Only with the student on (``Session.open(student=True)``, ``olivia chat`` by default);
 rules mode never builds this. :meth:`ModelHeads.refine` takes the rule stub's
 ``PerceptionContext`` for the turn and replaces the fields the student has a head for:
 
