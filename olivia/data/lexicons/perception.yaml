@@ -1754,6 +1754,30 @@ therapy_request_cues:
   - 一起做
   - 一起练
 
+# Leaving the haven (FSM-15, SDD §4.2 S_haven row "用户心力恢复或发起新探索议题"; 草稿：待 G-0).
+# A non-negated hit sets TurnSignals.haven_exit; only S_haven reads it and goes back to
+# S_explore, crisis first as always. Matched anywhere in the message. The "想…" entries
+# are there so a negated wish is void as a whole ("不想换个话题": the longer "想换个话题"
+# wins and is negated). The S_haven hint (followups.haven_exit_hint) quotes 「我好多了」
+# and 「换个话题吧」, so both must stay listed.
+haven_exit:
+  - 我好多了
+  - 感觉好多了
+  - 已经好多了
+  - 现在好多了
+  - 我好一点了
+  - 我好些了
+  - 缓过来了
+  - 有力气了
+  - 换个话题
+  - 想换个话题
+  - 聊点别的
+  - 想聊点别的
+  - 聊聊别的
+  - 想聊聊别的
+  - 说点别的
+  - 想说点别的
+
 # Introspector (decision D4, step C2; SDD §3.2, PRD 特性三 / MIYI-03). Read by
 # olivia/core/perception/introspector.py, not by the rule stub. Draft pending G-0.
 #

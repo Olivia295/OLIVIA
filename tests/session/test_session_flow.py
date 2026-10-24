@@ -378,6 +378,56 @@ def test_direct_request_in_haven_gets_a_card_and_the_way_back() -> None:
     assert result.reply.rsplit("\n\n", 1)[1] in _filled(TEMPLATES.haven_return)
 
 
+# -- F9: leaving S_haven by asking (FSM-15) --------------------------------------------------
+
+HAVEN_OPEN = "[5%] 好累，今天不想动脑，只想躺着"
+
+
+def test_the_first_haven_reply_says_how_to_leave_once_per_session() -> None:
+    session = _open()
+    hint = _filled(TEMPLATES.haven_exit_hint)
+    replies = [session.turn(text) for text in (HAVEN_OPEN, "嗯", "还是累", "嗯")]
+    assert all(r.stage is HelpStage.S_HAVEN for r in replies)
+    assert all(r.reply_kind is ReplyKind.HAVEN for r in replies)
+    assert replies[0].reply in hint
+    assert not any(r.reply in hint for r in replies[1:])
+    assert all("？" not in r.reply for r in replies)
+
+
+@pytest.mark.parametrize("words", ["我好多了", "我想聊点别的", "换个话题吧"])
+def test_saying_the_words_leaves_the_haven_and_stays_out(words: str) -> None:
+    session = _open()
+    session.turn(HAVEN_OPEN)
+    left = session.turn(words)
+    assert (left.stage, left.inspect["reason"]) == (HelpStage.S_EXPLORE, "HAVEN_EXIT_ASKED")
+    assert left.reply_kind is ReplyKind.NORMAL and left.inspect["battery"] == 0.35
+    after = session.turn("其实今天被领导说了一顿")
+    assert after.stage is HelpStage.S_EXPLORE and after.inspect["reason"] == "STAY"
+
+
+def test_a_negated_wish_or_a_new_low_reading_stays_in_the_haven() -> None:
+    session = _open()
+    session.turn(HAVEN_OPEN)
+    assert session.turn("不想换个话题").stage is HelpStage.S_HAVEN
+    assert session.turn("[5%] 我好多了").stage is HelpStage.S_HAVEN
+
+
+def test_crisis_wins_over_the_haven_exit_words() -> None:
+    session = _open()
+    session.turn(HAVEN_OPEN)
+    result = session.turn("换个话题吧，我不想活了")
+    assert result.stage is HelpStage.S_CRISIS and result.reply_kind is ReplyKind.CRISIS
+
+
+def test_a_late_night_haven_reply_keeps_its_reminder_and_hints_later() -> None:
+    late = datetime(2026, 10, 22, 17, 30, tzinfo=UTC)  # 01:30 in Asia/Shanghai
+    session = Session.open(TAX, _profile(), rng=random.Random(7), now=lambda: late)
+    hint = _filled(TEMPLATES.haven_exit_hint)
+    first = session.turn(HAVEN_OPEN)
+    assert first.inspect["reminder"] == "late_night" and first.reply not in hint
+    assert session.turn("嗯").reply in hint
+
+
 # -- fix 10: a memory-wipe request in the chat ------------------------------------------------
 
 

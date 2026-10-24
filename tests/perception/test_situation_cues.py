@@ -8,13 +8,15 @@ two m0 situations of A1.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from olivia.core.models import CrisisLevel
+from olivia.core.language.data import load_language_data
+from olivia.core.models import CrisisLevel, PersonaSpectrum
 from olivia.core.perception.lexicon import PerceptionLexiconError, load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
 from olivia.core.safety.crisis import CrisisAssessment
@@ -166,6 +168,33 @@ def test_prolonged_grief_lists_are_loaded_and_distinct() -> None:
     assert all(lists.values())
     words = [w for ws in lists.values() for w in ws]
     assert len(words) == len(set(words))
+
+
+# -- leaving the haven (FSM-15, F9) --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text", ["我好多了", "我感觉好多了", "我想聊点别的", "换个话题吧", "可以换个话题吗", "缓过来了"]
+)
+def test_haven_exit_words(text: str) -> None:
+    assert STUB.perceive(text, CALM)[1].haven_exit
+
+
+@pytest.mark.parametrize("text", ["好累", "不想换个话题", "还没缓过来", "我不想聊点别的", "嗯"])
+def test_not_haven_exit_words(text: str) -> None:
+    assert not STUB.perceive(text, CALM)[1].haven_exit
+
+
+def test_every_haven_hint_quotes_words_that_leave_the_haven() -> None:
+    """The S_haven hint tells the user what to say: each quoted phrase must work."""
+    lang = load_language_data(TAX)
+    quoted = re.compile(r"「([^」]+)」")
+    for persona in PersonaSpectrum:
+        for variant in lang.personas[persona].haven_exit_hint:
+            words = quoted.findall(variant)
+            assert words, variant
+            for said in words:
+                assert STUB.perceive(said, CALM)[1].haven_exit, (persona, said)
 
 
 def test_situation_cue_keys_must_not_be_red_flag_codes(tax: Taxonomy, tmp_path: Path) -> None:

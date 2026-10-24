@@ -151,6 +151,7 @@ F2B_LINES = (
     "safety_confirmed",
     "forget_hint",
     "haven_return",
+    "haven_exit_hint",
 )
 
 
@@ -661,6 +662,8 @@ def test_session_meta_lines(lang: LanguageData, persona: PersonaSpectrum) -> Non
         assert "olivia forget --all" in variant and "olivia memory" in variant, variant
     for variant in tpl.haven_return:
         assert "[5%]" in variant, variant
+    for variant in tpl.haven_exit_hint:
+        assert "「" in variant and "」" in variant, variant
     for variant in tpl.safety_confirmed:
         assert "安全" in variant, variant
         assert not any(ch.isdigit() for ch in variant), variant

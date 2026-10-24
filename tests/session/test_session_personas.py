@@ -80,6 +80,8 @@ def test_sop2_haven_in_the_personas_voice(persona: PersonaSpectrum, seed: int) -
     haven, still, back = (session.turn(text) for text in HAVEN_SCRIPT)
     tpl = _tpl(persona)
     lines = {_names(v) for v in tpl.haven}
+    # F9 (FSM-15): the first calm haven reply also says how to leave, once.
+    hint = {_names(v) for v in tpl.haven_exit_hint}
     for result in (haven, still):
         assert result.stage is HelpStage.S_HAVEN and result.reply_kind is ReplyKind.HAVEN
         assert result.inspect["assessed_level"] == "L0" and not result.in_crisis
@@ -87,7 +89,7 @@ def test_sop2_haven_in_the_personas_voice(persona: PersonaSpectrum, seed: int) -
         # No questions, no reframing, no action (CHANG-02), in this persona's words.
         assert "？" not in result.reply and "?" not in result.reply
         assert result.action_id is None and result.inspect["candidates"] == []
-        assert result.reply in lines
+        assert result.reply in (hint if result is haven else lines)
         assert _within(result.reply, tpl.haven_window), result.reply
     assert haven.inspect["reason"] == "HAVEN_ENTER"
     assert back.stage is HelpStage.S_EXPLORE and back.inspect["reason"] == "HAVEN_EXIT"
@@ -331,7 +333,7 @@ def test_haven_reminders_replace_the_haven_line_in_its_window(persona: PersonaSp
     tpl = _tpl(persona)
     clock = Clock(DAY)
     session = _clocked(persona, clock)
-    assert session.turn(HAVEN_SCRIPT[0]).reply in {_names(v) for v in tpl.haven}
+    assert session.turn(HAVEN_SCRIPT[0]).reply in {_names(v) for v in tpl.haven_exit_hint}
     clock.now = DAY + timedelta(minutes=46)
     rest = session.turn("嗯")
     assert rest.stage is HelpStage.S_HAVEN and rest.inspect["reminder"] == "break"

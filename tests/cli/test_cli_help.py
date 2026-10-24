@@ -56,6 +56,13 @@ def test_help_is_in_chinese(argv, capsys):
     assert not [word for word in ENGLISH if word in lowered], out
 
 
+def test_chat_help_says_how_to_enter_and_leave_the_haven(capsys):
+    # F9 (FSM-15): the battery prefix, and the words that leave the quiet company.
+    out = "".join(_help(["chat", "-h"], capsys).split())
+    assert "".join(cli.CHAT_HELP.split()) in out
+    assert "[5%]" in out and "「我好多了」" in out and "「换个话题吧」" in out
+
+
 @pytest.mark.parametrize("argv", [["--help"], ["region", "-h"], ["persona", "-h"]], ids=str)
 def test_help_headings_end_with_a_full_width_colon(argv, capsys):
     out = _help(argv, capsys)

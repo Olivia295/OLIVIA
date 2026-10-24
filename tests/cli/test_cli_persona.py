@@ -57,7 +57,8 @@ def test_the_next_chat_speaks_with_the_new_persona(run_cli, data_home):
     (haven,) = run.results
     assert haven.stage is HelpStage.S_HAVEN and haven.reply_kind is ReplyKind.HAVEN
     silent = {
-        v.replace("{user_name}", "小林") for v in TEMPLATES[PersonaSpectrum.SILENT_ANCHOR].haven
+        v.replace("{user_name}", "小林")
+        for v in TEMPLATES[PersonaSpectrum.SILENT_ANCHOR].haven_exit_hint
     }
     assert haven.reply in silent
 
@@ -71,7 +72,8 @@ def test_onboarding_choice_reaches_the_first_session(run_cli, data_home):
     assert profile is not None and profile.persona_spectrum is PersonaSpectrum.RATIONAL_PEER
     (haven,) = run.results
     rational = {
-        v.replace("{user_name}", "小林") for v in TEMPLATES[PersonaSpectrum.RATIONAL_PEER].haven
+        v.replace("{user_name}", "小林")
+        for v in TEMPLATES[PersonaSpectrum.RATIONAL_PEER].haven_exit_hint
     }
     assert haven.reply in rational
 

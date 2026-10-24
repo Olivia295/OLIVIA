@@ -75,6 +75,9 @@ A Grade A practice ("正念", "CBT") with a non-negated ``therapy_request_cues``
 ("带我做一下") is a ``therapy_request`` and a direct request; otherwise any named method
 with a ``therapy_question_cues`` phrase, or a Grade B/C method with a request phrase
 (those are explained, never done alone), is a ``therapy_question``.
+``haven_exit`` when a non-negated ``haven_exit`` phrase matched ("我好多了", "换个话题吧";
+FSM-15); the phrases are their own group, so "不想换个话题" is void through its longer
+"想换个话题" entry.
 ``situation_codes`` and ``contraindication_cues``: the keys of every non-negated
 ``situation_cues`` / ``contraindication_cues`` hit (roadmap next-phase A1); the session
 decides what they mean (``methods/contraindications.py``). ``SIT-06-04`` is also set by a
@@ -168,6 +171,7 @@ _THERAPY_CUE: Final = "therapy_cue"
 _THERAPY_REQUEST: Final = "therapy_request"
 _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
+_HAVEN_EXIT: Final = "haven_exit"
 # COLBO-06b: prolonged grief is the SIT-06-04 dossier (延长哀伤障碍与未完成丧失悲恸).
 PROLONGED_GRIEF_CODE: Final = "SIT-06-04"
 _GRIEF_GROUPS: Final = tuple(f"grief_{key}" for key in GRIEF_KEYS)
@@ -253,6 +257,7 @@ class RuleStub:
             add(_THERAPY, method_id, phrases)
         add(_THERAPY_CUE, _THERAPY_CUE, lexicon.therapy_question_cues)
         add(_THERAPY_REQUEST, _THERAPY_REQUEST, lexicon.therapy_request_cues)
+        add(_HAVEN_EXIT, _HAVEN_EXIT, lexicon.haven_exit)
         self._practices = frozenset(
             mid
             for mid in lexicon.therapy_names
@@ -380,6 +385,7 @@ class RuleStub:
             feedback_unclear=unclear,
             answer=answer,
             kit_recall=_RECALL in labels,
+            haven_exit=bool(hits.get(_HAVEN_EXIT)),
             leave_taking=leaving,
             therapy_question=asked,
             therapy_request=requested,

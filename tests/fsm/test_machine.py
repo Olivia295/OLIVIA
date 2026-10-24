@@ -499,7 +499,7 @@ def test_walkthrough_with_aversion_and_intent():
 
 
 def test_reason_has_one_member_per_row_plus_stay():
-    assert len(Reason) == 17 and Reason.STAY in Reason
+    assert len(Reason) == 18 and Reason.STAY in Reason
 
 
 def test_turn_thresholds_must_be_whole_numbers():
@@ -550,6 +550,7 @@ def inputs(draw):
             aversion=draw(st.booleans()),
             intent_confirmed=draw(st.booleans()),
             command=draw(st.none() | st.sampled_from(Command)),
+            haven_exit=draw(st.booleans()),
         ),
         persona=draw(st.sampled_from(PersonaSpectrum)),
     )
@@ -748,6 +749,62 @@ def test_empower_left_from_haven_stays_until_a_new_reading_or_an_exit():
     done = run(t.state, turn(command=Command.DONE))
     assert done.state.current_stage is S.S_CLOSING
     assert run(done.state, turn()).state.current_stage is S.S_HAVEN
+
+
+# --- F9: leaving the haven by asking (FSM-15) ----------------------------------------------
+
+
+def test_haven_exit_words_leave_the_haven_and_hold_on_the_next_turn():
+    t = run(state(S.S_HAVEN, battery=0.05), turn(haven_exit=True))
+    assert (t.previous, t.state.current_stage, t.reason) == (
+        S.S_HAVEN,
+        S.S_EXPLORE,
+        Reason.HAVEN_EXIT_ASKED,
+    )
+    # The words stand for a recovery to the exit line, not beyond it.
+    assert t.state.social_battery == 0.35
+    after = run(t.state, turn())
+    assert after.state.current_stage is S.S_EXPLORE and after.reason is Reason.STAY
+    # Clarify needs 0.40: the next turns stay in S_explore until a real reading.
+    later = run(after.state, turn())
+    assert later.state.current_stage is S.S_EXPLORE
+
+
+def test_haven_exit_words_work_inside_the_hysteresis_band():
+    # 0.30 stays in the haven by battery alone (enter 0.20, exit 0.35); the words leave it.
+    assert run(state(S.S_HAVEN, battery=0.30), turn()).state.current_stage is S.S_HAVEN
+    t = run(state(S.S_HAVEN, battery=0.30), turn(haven_exit=True))
+    assert t.reason is Reason.HAVEN_EXIT_ASKED and t.state.social_battery == 0.35
+
+
+def test_a_new_low_reading_beats_the_haven_exit_words():
+    t = run(state(S.S_HAVEN, battery=0.05), turn(battery=0.10, haven_exit=True))
+    assert t.state.current_stage is S.S_HAVEN and t.reason is Reason.STAY
+    assert t.state.social_battery == 0.10
+
+
+def test_a_higher_reading_with_the_words_leaves_with_that_reading():
+    t = run(state(S.S_HAVEN, battery=0.05), turn(battery=0.25, haven_exit=True))
+    assert t.reason is Reason.HAVEN_EXIT_ASKED and t.state.social_battery == 0.35
+    t = run(state(S.S_HAVEN, battery=0.05), turn(battery=0.7, haven_exit=True))
+    assert t.reason is Reason.HAVEN_EXIT_ASKED and t.state.social_battery == 0.7
+
+
+@pytest.mark.parametrize("stage", [s for s in NON_CRISIS if s is not S.S_HAVEN])
+def test_haven_exit_words_mean_nothing_outside_the_haven(stage):
+    plain = run(state(stage, battery=0.6, entry=0.5), turn())
+    worded = run(state(stage, battery=0.6, entry=0.5), turn(haven_exit=True))
+    assert worded.state.current_stage is plain.state.current_stage
+    assert worded.reason is plain.reason
+    assert worded.state.social_battery == plain.state.social_battery
+
+
+def test_crisis_and_direct_request_beat_the_haven_exit_words():
+    t = run(state(S.S_HAVEN, battery=0.05), turn(status=crisis(in_crisis=True), haven_exit=True))
+    assert t.state.current_stage is S.S_CRISIS and t.reason is Reason.CRISIS_ENTER
+    t = run(state(S.S_HAVEN, battery=0.05), turn(direct_request=True, haven_exit=True))
+    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.DIRECT_REQUEST
+    assert t.state.social_battery == 0.05
 
 
 def test_crisis_still_beats_direct_request_in_haven():

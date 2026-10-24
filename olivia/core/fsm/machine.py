@@ -12,12 +12,19 @@ Precedence, highest first:
 2. Direct request. Asking outright for a method moves any other non-crisis stage to
    S_empower (COLBO-03), for every persona, S_haven included (owner decision 2026-10-24),
    and also at L1 (ruling 5), where ``Transition.stabilization_only`` limits the card.
-3. Haven. Outside crisis, an effective battery at or below the haven threshold puts the
+3. Leaving the haven by asking (FSM-15). In S_haven a turn whose signals carry
+   ``haven_exit`` ("我好多了", "换个话题吧") goes back to S_explore
+   (``HAVEN_EXIT_ASKED``), unless the same turn brings a new battery reading at or below
+   the haven threshold (the number the user typed wins). The words stand for a recovery to
+   the exit line: the stored battery is raised to ``haven_exit`` (0.35) if it was lower,
+   so the old low reading does not pull the session straight back, and the clarify and
+   right-wing gates (0.40) still wait for a real reading.
+4. Haven. Outside crisis, an effective battery at or below the haven threshold puts the
    session in S_haven from any stage, except that S_empower re-enters the haven only on a
    new battery reading: a direct request out of the haven is not undone on the next turn
    by the stored low battery. Once S_empower is left the ordinary way, the stored battery
    applies again.
-4. The per-stage rows of the transition table. In S_empower an arousal spike is judged
+5. The per-stage rows of the transition table. In S_empower an arousal spike is judged
    first, then aversion, then the commands. In S_clarify an arousal at or above the
    somatic line retreats to S_explore (``CLARIFY_AROUSAL_RETREAT``) before any advance.
 
@@ -120,6 +127,9 @@ class Reason(StrEnum):
     """S_empower -> S_closing: ``/done`` or ``/not-now``."""
     HAVEN_EXIT = "HAVEN_EXIT"
     """S_haven -> S_explore: battery recovered to haven_exit or above."""
+    HAVEN_EXIT_ASKED = "HAVEN_EXIT_ASKED"
+    """S_haven -> S_explore: the user says they feel better or want another topic (FSM-15
+    "发起新探索议题"); the stored battery is raised to haven_exit."""
     CLOSING_INTENT_CONFIRMED = "CLOSING_INTENT_CONFIRMED"
     """S_closing -> S_ready: the user confirms the implementation intention (SDD 4.2)."""
     CLOSING_TO_READY = "CLOSING_TO_READY"
@@ -193,6 +203,8 @@ def step(tax: Taxonomy, state: SessionState, inp: TurnInput) -> Transition:
 
     previous = state.current_stage
     stage, reason = _route(gates, state, inp, battery, locked)
+    if reason is Reason.HAVEN_EXIT_ASKED:
+        battery = max(battery, gates.haven_exit)
     changed = stage is not previous
     l1_turn = inp.crisis.level is CrisisLevel.L1 and not inp.crisis.in_crisis
     new_state = replace(
@@ -256,6 +268,9 @@ def _route(
     if inp.signals.direct_request and previous is not HelpStage.S_EMPOWER:
         return HelpStage.S_EMPOWER, Reason.DIRECT_REQUEST
     fresh_reading = inp.signals.battery is not None
+    low_reading = fresh_reading and battery <= gates.haven_enter
+    if previous is HelpStage.S_HAVEN and inp.signals.haven_exit and not low_reading:
+        return HelpStage.S_EXPLORE, Reason.HAVEN_EXIT_ASKED
     if battery <= gates.haven_enter and (previous is not HelpStage.S_EMPOWER or fresh_reading):
         return HelpStage.S_HAVEN, _enter_or_stay(previous, HelpStage.S_HAVEN, Reason.HAVEN_ENTER)
 

@@ -86,6 +86,10 @@
 #   followups.forget_hint     聊天里说“清空所有记忆”时：告诉用户用 olivia forget --all、olivia memory，
 #                             不复述原话。
 #   followups.haven_return    在静默陪伴中直接要方法、离开 S_haven 时，卡片之后告诉用户怎么回到安静陪伴。
+#   followups.haven_exit_hint F9（FSM-15，草稿：待 G-0）：每次会话第一次在 S_haven 平稳地陪伴时，整条替换
+#                             那句陪伴语：仍是陪伴，再用一句告诉用户怎么离开（说「我好多了」或「换个话题吧」，
+#                             这两句在 perception.yaml 的 haven_exit 里）。按 S_haven 窗口写，不提问，
+#                             必须用「」引出要说的话（加载时校验）。
 persona: GENTLE_HOLDING
 window: {normal: [140, 260], paragraph_max: 80, haven: [15, 40], short: [60, 170]}
 
@@ -359,6 +363,9 @@ followups:
   haven_return:
     - "想再安静待一会儿的话，在开头写上 [5%]，我就安安静静地陪着你。"
     - "{user_name}，随时想回到安静陪伴，在消息开头写上 [5%] 就好。"
+  haven_exit_hint:
+    - "我就在这里陪着你。想聊别的时，说一句「我好多了」就好。"
+    - "{user_name}，累了就歇着。想聊别的，说「换个话题吧」就行。"
 
 wellbeing:
   break_reminder:

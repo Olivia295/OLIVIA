@@ -63,6 +63,7 @@ _PHRASE_SECTIONS: Final = (
     "kit_recall",
     "therapy_question_cues",
     "therapy_request_cues",
+    "haven_exit",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -162,6 +163,9 @@ class PerceptionLexicon:
     """Words that make a named therapy a question ("是什么", "有用吗")."""
     therapy_request_cues: tuple[str, ...]
     """Words that ask to do a named practice ("带我做一下", "教我练"; F3)."""
+    haven_exit: tuple[str, ...]
+    """The user feels better or wants another topic ("我好多了", "换个话题吧"; FSM-15): in
+    S_haven the state machine goes back to S_explore."""
     situation_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy situation code -> folded phrases (A1: SIT-06-04, SIT-11-01)."""
     prolonged_grief: Mapping[str, tuple[str, ...]]
@@ -255,6 +259,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         therapy_names=MappingProxyType(_therapy_names(tax, doc.get("therapy_names"))),
         therapy_question_cues=phrases["therapy_question_cues"],
         therapy_request_cues=phrases["therapy_request_cues"],
+        haven_exit=phrases["haven_exit"],
         situation_cues=MappingProxyType(_situation_cues(tax, doc.get("situation_cues"))),
         prolonged_grief=MappingProxyType(_prolonged_grief(doc.get("prolonged_grief"))),
         contraindication_cues=MappingProxyType(

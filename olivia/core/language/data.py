@@ -91,6 +91,7 @@ _FOLLOWUPS: Final = (
     "safety_confirmed",
     "forget_hint",
     "haven_return",
+    "haven_exit_hint",
 )
 # Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
 _WELLBEING: Final = (
@@ -257,6 +258,9 @@ class Templates:
     """A request in the chat to wipe the memory: how to do it (``olivia forget --all``)."""
     haven_return: tuple[str, ...]
     """After a card that left S_haven on a direct request: how to get back to quiet company."""
+    haven_exit_hint: tuple[str, ...]
+    """Once per session, replacing the S_haven line: still company, plus the words that leave
+    the haven, quoted in 「」 (FSM-15; haven window, no question)."""
 
 
 @dataclass(frozen=True)
@@ -837,6 +841,13 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         **_plain_lines(data, "followups", _FOLLOWUPS, where),
         **_plain_lines(data, "wellbeing", _WELLBEING, where),
     }
+    for text in lines["haven_exit_hint"]:
+        # It stands in for the haven line: no question, one line, the words quoted.
+        if any(mark in text for mark in ("吗", "？", "?", "\n")) or "「" not in text:
+            raise LanguageDataError(
+                f"{where} followups.haven_exit_hint asks nothing and quotes the words that"
+                f" leave the haven in 「」: {text!r}"
+            )
     return Templates(
         persona=persona,
         normal_window=normal_window,
@@ -877,6 +888,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         safety_confirmed=lines["safety_confirmed"],
         forget_hint=lines["forget_hint"],
         haven_return=lines["haven_return"],
+        haven_exit_hint=lines["haven_exit_hint"],
         break_reminder=lines["break_reminder"],
         break_reminder_haven=lines["break_reminder_haven"],
         late_night=lines["late_night"],

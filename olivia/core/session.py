@@ -67,6 +67,10 @@ Stage handling:
   ``after_close`` line that points at the evening ("愿你今晚…", "早点休息") is used only
   from 18:00 local time through the B7 late-night window; at other hours the line comes
   from ``after_close_daytime`` (F6b).
+* ``S_haven``: ``compose(stage, slots)``; the first calm S_haven reply of a session that
+  carries no wellbeing reminder is ``followups.haven_exit_hint`` instead, which keeps the
+  company and says how to leave ("说「我好多了」"; FSM-15, F9). Those words, or
+  "换个话题吧", take the session back to S_explore (``Reason.HAVEN_EXIT_ASKED``).
 * Every other stage: ``compose(stage, slots)``.
 
 Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
@@ -278,7 +282,7 @@ from typing import Final
 from uuid import uuid4
 
 from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
-from olivia.core.chang.wellbeing import Wellbeing
+from olivia.core.chang.wellbeing import Reminder, Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
 from olivia.core.language.dossiers import fitting_spectra, lens_pool
@@ -596,6 +600,8 @@ class Session:
         self._urgent = False
         # The last closing ritual or after-close line, never sent twice in a row.
         self._last_closing: str | None = None
+        # The S_haven line said how to leave the haven (F9, FSM-15): once per session.
+        self._haven_hinted = False
         # The how-to-confirm hint was shown in this crisis (F5b): once per crisis.
         self._confirm_hinted = False
         # The last referral card: its codes, the turn it was shown on and how many times in
@@ -977,6 +983,15 @@ class Session:
             render=lambda variant: self._wellbeing_line(variant, stage),
         )
         rendered.reply = prompted.reply
+        if (
+            stage is HelpStage.S_HAVEN
+            and ordinary
+            and settled
+            and rendered.kind is ReplyKind.HAVEN
+            and prompted.reminder is Reminder.NONE
+            and not self._haven_hinted
+        ):
+            self._hint_haven_exit(rendered, stage)
 
         if stage is not HelpStage.S_CRISIS and not ask and not status.in_crisis:
             # A dose or "am I X?" question gets one plain line before the reply (F3).
@@ -1781,6 +1796,18 @@ class Session:
         rendered.referral_flags = codes
         if rendered.kind is not ReplyKind.CARD:
             rendered.kind = ReplyKind.REFERRAL
+
+    def _hint_haven_exit(self, rendered: _Rendered, stage: HelpStage) -> None:
+        """Swap the haven line for the one that also says how to leave (FSM-15), once.
+
+        The first variant in file order that passes the gate, the taboo filter and the
+        haven window: no random draw, so the rest of the session reads as it would have."""
+        for variant in self._engine.data.templates.haven_exit_hint:
+            line = self._wellbeing_line(variant, stage)
+            if line is not None and self._engine.window_penalty(stage, line) == 0:
+                rendered.reply = line
+                self._haven_hinted = True
+                return
 
     def _append_health_hint(self, rendered: _Rendered, stage: HelpStage) -> None:
         """Say once that a disclosure heard in the conversation can be saved (D2)."""
