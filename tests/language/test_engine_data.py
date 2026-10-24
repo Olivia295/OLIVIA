@@ -164,6 +164,21 @@ def _haven_exit_hint_asks(d: dict[str, Any]) -> None:
     ]
 
 
+def _grief_request_with_a_number(d: dict[str, Any]) -> None:
+    # F10: not a crisis line, so no hotline number.
+    d["followups"]["grief_request"] = [
+        "你想要一个方法，我听见了。可以打 12356 找人聊聊哀伤咨询。",
+        "{user_name}，也可以找做哀伤咨询的心理咨询师。",
+    ]
+
+
+def _grief_request_without_counselling(d: dict[str, Any]) -> None:
+    d["followups"]["grief_request"] = [
+        "你想要一个方法，我听见了，我们先慢慢说。",
+        "{user_name}，先慢慢说就好。",
+    ]
+
+
 def _haven_exit_hint_without_the_words(d: dict[str, Any]) -> None:
     d["followups"]["haven_exit_hint"] = [
         "我在这里陪着你，慢慢歇一歇。",
@@ -229,6 +244,8 @@ def _unknown_window_key(d: dict[str, Any]) -> None:
         ("templates/gentle_holding.yaml", _followup_missing),
         ("templates/gentle_holding.yaml", _haven_exit_hint_asks),
         ("templates/silent_anchor.yaml", _haven_exit_hint_without_the_words),
+        ("templates/rational_peer.yaml", _grief_request_with_a_number),
+        ("templates/zen_philosopher.yaml", _grief_request_without_counselling),
         ("templates/gentle_holding.yaml", _followup_with_mirror),
         ("templates/gentle_holding.yaml", _followup_without_plain_variant),
         ("templates/gentle_holding.yaml", _wellbeing_missing),

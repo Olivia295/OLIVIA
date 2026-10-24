@@ -383,6 +383,8 @@ _ASK_REPLY_STAGES: Final = frozenset(
 )
 # Stages whose replies a leave-taking turn does not replace (F5d).
 _OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, HelpStage.S_READY})
+# The m0 situation whose direct request gets ``followups.grief_request`` (F10).
+_PROLONGED_GRIEF: Final = "SIT-06-04"
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
 SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
@@ -950,6 +952,7 @@ class Session:
                     mirror_text,
                     now,
                     requested=signals.therapy_request,
+                    asked=signals.direct_request,
                 )
         elif (
             stage is HelpStage.S_EXPLORE
@@ -1283,6 +1286,7 @@ class Session:
         *,
         recall: bool = False,
         requested: str | None = None,
+        asked: bool = False,
     ) -> _Rendered:
         """Sample and show a card in S_empower, or a stabilization card in S_explore.
 
@@ -1292,6 +1296,8 @@ class Session:
         ``requested`` is a practice the user asked for by name ("带我做一下正念", F3): it
         is shown when the solver allows it now, otherwise a card is sampled as usual. The
         card's context line follows the user's local time (working hours or not).
+        ``asked``: the turn asks for a method outright; when prolonged grief (SIT-06-04)
+        then puts it on m0, ``followups.grief_request`` leads the reply (F10).
         """
         tax = self._tax
         shelved = self._state.user_shelved_actions
@@ -1365,6 +1371,11 @@ class Session:
             )
             if stage is HelpStage.S_EMPOWER:
                 rendered.action_id = M0_ACTION_ID
+            if asked and _PROLONGED_GRIEF in self._context.situations:
+                # The request is heard and the m0 answer explained (F10, 草稿：待 G-0).
+                self._add_line(
+                    rendered, self._engine.data.templates.grief_request, stage, first=True
+                )
         else:  # the gate blocked the card: show nothing rather than a broken card
             rendered = _Rendered(self._engine.gate.fallback, ReplyKind.HAVEN)
         if chosen is not None and chosen in shelved and rendered.action_id != chosen:

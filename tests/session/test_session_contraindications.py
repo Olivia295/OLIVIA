@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from olivia.core.methods.solver import M0_ACTION_ID
-from olivia.core.models import PersonaProfile, UserRegion
+from olivia.core.models import PersonaProfile, PersonaSpectrum, UserRegion
 from olivia.core.session import ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
 
@@ -197,3 +197,42 @@ def test_inspect_lists_arousal_overload_with_the_derived_ids():
     result = _open().turn("心慌得要命，喘不上气")
     assert result.inspect["contraindications"] == ["ACUTE_AROUSAL_OVERLOAD"]
     assert result.inspect["situations"] == []
+
+
+# -- F10: the m0 answer to a grief request is explained -------------------------------------
+
+
+def _grief_lines(session: Session) -> set[str]:
+    return {v.replace("{user_name}", "小林") for v in session._engine.data.templates.grief_request}
+
+
+@pytest.mark.parametrize("persona", list(PersonaSpectrum))
+@pytest.mark.parametrize(
+    "text",
+    ["[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法", "[80%] 我奶奶刚去世，给我一个方法"],
+)
+def test_a_grief_request_on_m0_is_heard_and_points_at_grief_counselling(persona, text):
+    session = _open(persona_spectrum=persona)
+    result = session.turn(text)
+    assert result.action_id == M0_ACTION_ID and result.reply_kind is ReplyKind.NORMAL
+    first, _, rest = result.reply.partition("\n\n")
+    assert first in _grief_lines(session) and rest, result.reply
+    assert result.resource_card is None  # not a crisis: no hotline card
+
+
+def test_grief_without_a_request_gets_no_grief_line():
+    session = _open()
+    result = session.turn("[80%] 妈妈去世一年多了，我还是走不出来")
+    assert not any(line in result.reply for line in _grief_lines(session))
+    # A later turn on m0 with no request of its own gets none either.
+    session = _open()
+    session.turn("[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法")
+    later = session.turn("嗯")
+    assert not any(line in later.reply for line in _grief_lines(session))
+
+
+def test_meaninglessness_on_m0_gets_no_grief_line():
+    session = _open()
+    result = session.turn("[80%] 感觉一切都没有意义，给我一个方法")
+    assert result.action_id == M0_ACTION_ID
+    assert not any(line in result.reply for line in _grief_lines(session))
