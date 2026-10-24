@@ -29,9 +29,13 @@ Stage handling:
   card leads with the region's emergency numbers, framed as on an L3 card, for the rest
   of that crisis; every L2 line stays and the flow stays L2 (owner decision 2026-10-24).
   On the turn the tracker hears an explicit safety confirmation, one
-  ``followups.safety_confirmed`` line comes before the card. No compact card exists
-  (SDD §8.2's "精简版"; render data has only the gate-fallback minimal card), so every
-  crisis turn repeats the full card.
+  ``followups.safety_confirmed`` line comes before the card. From that turn until the
+  crisis ends (or a new L2/L3 turn voids the confirmation) the opening is an
+  ``S_crisis.after_confirmed`` one, which does not ask about safety again (F5b). An
+  "我没事"-like message (``utterances.yaml`` ``reassurance``) that the tracker does not
+  count as a confirmation gets ``crisis.confirm_hint`` after the opening, once per
+  crisis. No compact card exists (SDD §8.2's "精简版"; render data has only the
+  gate-fallback minimal card), so every crisis turn repeats the full card.
 * ``S_empower``: the solver's available set, minus actions that have no follow-along card
   (``12:tipp_cold_water`` is excluded from the deck pending G-0), is sampled by Thompson
   sampling in the dominant spectrum. A turn with no spectrum cue uses the conversation's
@@ -80,7 +84,9 @@ name; nothing is logged and no user text is kept.
 Red-flag referral (SDD §8.4): the first non-crisis turn on which a flag is active (from
 the profile, or newly detected in the text) appends ``render_referral`` for it, once per
 flag per session. A plan in S_empower or a stabilization card also appends the referral
-for its plan's flags every time, since the solver requires the card with every plan.
+for its plan's flags every time, since the solver requires the card with every plan; when
+the same card was shown on the turn before, it comes with a short intro and every
+destination, without the closing paragraph (F5b).
 
 Grade B/C information cards (PRD §8.1, roadmap next-phase A4), never on a crisis turn
 (the tracker's crisis or an L1-L3 screen), with feedback for a waiting card, or with a
@@ -96,6 +102,10 @@ gate and stage rules, so a red-flag user only ever gets the referral card:
   when the masks leave one, else from the ``clarify_lenses`` entry of the most recent
   spectrum the conversation showed (``language/dossiers.py``). Not for SILENT_ANCHOR,
   which only listens.
+
+A request to remember something ("记住：……", the note cues of ``memory.yaml``) never
+gets an information card (F5b): the recorder answers that turn with its short
+confirmation.
 
 Persona (PRD ONB-03, plan D-1): the profile's ``persona_spectrum`` picks the reply
 templates and word windows (``LanguageData.for_persona``); crisis resource lines and the
@@ -261,6 +271,7 @@ from olivia.core.language.dossiers import fitting_spectra, lens_pool
 from olivia.core.language.engine import LanguageEngine, Slots, at_work, is_short_input
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
+from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
 from olivia.core.methods.bandit import Feedback
 from olivia.core.methods.contraindications import ActiveContext, SessionContraindications
@@ -405,6 +416,8 @@ class _Shared:
     mirror_answers: MirrorAnswers
     mirror_lines: Mapping[str, tuple[str, ...]]
     externalize: ExternalizeText
+    note_cues: NoteCues
+    """The recorder's "记住：……" cues: a note turn gets no information card (F5b)."""
 
 
 @lru_cache(maxsize=4)
@@ -425,6 +438,7 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         mirror_answers=introspection.answers,
         mirror_lines=load_mirror_lines(tax),
         externalize=load_externalize_text(tax),
+        note_cues=load_note_cues(),
     )
 
 
@@ -552,6 +566,12 @@ class Session:
         self._urgent = False
         # The last closing ritual or after-close line, never sent twice in a row.
         self._last_closing: str | None = None
+        # The how-to-confirm hint was shown in this crisis (F5b): once per crisis.
+        self._confirm_hinted = False
+        # The last referral card: its codes, the turn it was shown on and how many times in
+        # a row it has come again (F5b).
+        self._last_referral: tuple[tuple[str, ...], int] | None = None
+        self._referral_again = 0
 
     @classmethod
     def open(
@@ -661,6 +681,8 @@ class Session:
             self._urgent = False
         elif model_level == CrisisLevel.L3.name:
             self._urgent = True
+        if not status.in_crisis or status.just_entered:
+            self._confirm_hinted = False
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
@@ -739,9 +761,13 @@ class Session:
         feedback = self._feedback_for(pending, transition, signals)
         if spectrum is not None:
             self._last_spectrum = spectrum
+        note = self._shared.note_cues.find(text) is not None
         info = self._info_choice(
             stage, perception, flags, signals, status, assessment.level, feedback, transition
         )
+        if note:
+            # A note turn is answered by the recorder's confirmation, never with a card.
+            info = None
         # The waiting card is still on screen, in the stage it was shown in.
         still_waiting = (
             pending is not None
@@ -773,7 +799,19 @@ class Session:
         # Only the plain composed reply of the current stage carries a wellbeing prompt.
         ordinary = False
         if stage is HelpStage.S_CRISIS:
-            rendered = self._crisis(status, now)
+            # After a confirmation the crisis waits to end: no second safety question.
+            waiting = status.in_crisis and not status.awaiting_confirmation
+            hint = (
+                status.in_crisis
+                and status.awaiting_confirmation
+                and not status.just_entered
+                and status.level < CrisisLevel.L2
+                and not self._confirm_hinted
+                and self._engine.reassures(text)
+            )
+            rendered = self._crisis(status, now, confirmed=waiting, hint=hint)
+            if hint:
+                self._confirm_hinted = True
             if confirmed:
                 # The user just said they are safe: say we heard it, then the card.
                 self._add_line(rendered, templates.safety_confirmed, stage, first=True)
@@ -1072,12 +1110,21 @@ class Session:
         )
         return urgent, True
 
-    def _crisis(self, status: CrisisStatus, now: datetime) -> _Rendered:
+    def _crisis(
+        self, status: CrisisStatus, now: datetime, *, confirmed: bool = False, hint: bool = False
+    ) -> _Rendered:
+        """The crisis reply; ``confirmed`` and ``hint`` pick the opening (F5b), the card is
+        the same either way."""
         level = max(CrisisLevel.L2, status.level, status.entry_level or CrisisLevel.L0)
         card, urgent = self._crisis_card(level, now)
         self._engine.last_gate = None
         reply = self._engine.render_crisis(
-            card, self._plain_slots(), plan_block=self._plan_block, urgent=urgent
+            card,
+            self._plain_slots(),
+            plan_block=self._plan_block,
+            urgent=urgent,
+            confirmed=confirmed,
+            hint=hint,
         )
         planned = self._engine.last_plan_gate
         if planned is not None and not planned.ok:
@@ -1636,10 +1683,18 @@ class Session:
         if not wanted:
             return
         codes = tuple(code for code in self._tax.red_flags() if code in wanted)
+        # The same card on the turn right after: short intro, every destination (F5b).
+        turn_no = self._state.global_turn_count
+        last = self._last_referral
+        again = last is not None and last == (codes, turn_no - 1)
+        self._referral_again = self._referral_again + 1 if again else 0
+        self._last_referral = (codes, turn_no)
         self._engine.last_gate = None
         region = self._profile.region
         referral = self._engine.render_referral(
-            codes, region.country_code if region is not None else UNKNOWN_COUNTRY
+            codes,
+            region.country_code if region is not None else UNKNOWN_COUNTRY,
+            again=self._referral_again,
         )
         self._note_gate()
         self._referred |= wanted

@@ -25,11 +25,22 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    leading "我觉得/我感觉…" is dropped. "我觉得你根本不在乎我" -> "你感到对方根本不
    在乎你" (never "你觉得我不在乎你").
 5. Exclamations "X死我了" become "你X坏了" ("气死我了" -> "你气坏了").
-6. The result starts with 你: as it is when the first clause already does; with 你 in
-   front of a leading time word ("今天上班好累" -> "你今天上班好累") when that clause
-   names nobody else; otherwise framed as the user's feeling ("你感到…").
+6. The result starts with 你, with at most one frame (F5b: "你感到" frames only a
+   feeling or a view): as it is when the first clause already does; with 你 in front of a
+   leading time word ("今天上班好累" -> "你今天上班好累") when that clause names nobody
+   else; with a subject 我 in the middle brought to the front ("每次组会我都很紧张" ->
+   "你每次组会都很紧张"). In a third-party conflict about the user it is the user's view
+   ("你感到领导当众批评你", COLBO-01); a relative's news takes 你 ("外婆上个月走了" ->
+   "你外婆上个月走了"), other news is reported ("你提到他走了"). Otherwise a feeling or
+   state is "你感到…" ("活着好累" -> "你感到活着好累"), a clause that drops its subject
+   takes 你 ("在美国读博第三年" -> "你在美国读博第三年"), and any other fact is reported
+   ("你提到…"). Never "你感到每次组会你都…".
 7. Trim to at most 20 characters at a clause boundary (，); a single over-long first clause
-   is cut at the last boundary that does not split a Latin word.
+   is cut at the last boundary that does not split a Latin word. A clause the user repeats
+   is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b).
+
+A message whose statements are only a goodbye for now ("今天就到这里吧", "我去睡了") is
+CLOSING, and a one-character or one-word answer ("有") is BRIEF: neither is mirrored.
 
 The result never contains the pronoun 我 (words like 自我 are kept as written) and always
 starts with 你.
@@ -45,6 +56,8 @@ from typing import Final
 MAX_MIRROR: Final = 20
 FALLBACK_MIRROR: Final = "你心里装着不少事"
 _FEEL_PREFIX: Final = "你感到"
+# F5b: a fact or someone else's news is reported, never framed as a feeling.
+_SAID_PREFIX: Final = "你提到"
 
 
 class Utterance(StrEnum):
@@ -59,6 +72,8 @@ class Utterance(StrEnum):
     """A request to remember something ("记住：……")."""
     BRIEF = "BRIEF"
     """A one-word answer, an emoji or punctuation only."""
+    CLOSING = "CLOSING"
+    """Only a goodbye for now ("今天就到这里吧", "我去睡了"), F5b."""
     FOREIGN = "FOREIGN"
     """No Chinese at all (the mirror would only echo another language back)."""
 
@@ -69,6 +84,7 @@ class _Tag(StrEnum):
     REQUEST = "request"
     GREETING = "greeting"
     THANKS = "thanks"
+    CLOSING = "closing"
     FILLER = "filler"
 
 
@@ -192,6 +208,8 @@ _REFLEXIVE_VERBS: Final = (
 )
 # "X死我了" exclamations; X -> the mirrored wording, else "你X坏了".
 _EXCLAIM_RE: Final = re.compile(r"^(.{1,3}?)死我了$")
+# "累死了" says the same about the speaker, for these words only (F5b).
+_EXCLAIM_BARE_RE: Final = re.compile(r"^(累|烦|气|困|急|忙|吓|难受)死了$")
 _EXCLAIM_WORDS: Final = {"烦": "你烦透了", "难受": "你难受极了"}
 _TIME_WORDS: Final = (
     "这段时间",
@@ -204,8 +222,11 @@ _TIME_WORDS: Final = (
     "今天",
     "昨天",
     "前天",
+    "明天",
+    "后天",
     "今晚",
     "昨晚",
+    "明晚",
     "每天",
     "天天",
     "晚上",
@@ -252,9 +273,41 @@ _FILLERS: Final = frozenset(
         "好吧",
     }
 )
+# Fillers dropped from a clause's front ("就是想有人听我说说", F5b).
+_LEAD_FILLERS: Final = (
+    "怎么说呢",
+    "说真的",
+    "就是",
+    "其实",
+    "然后",
+    "反正",
+    "嗯嗯",
+    "嗯",
+    "唉",
+    "哎",
+)
 # Whole-message one-word answers (punctuation stripped).
 _BRIEF: Final = frozenset(
     {
+        "有",
+        "有的",
+        "有啊",
+        "有吧",
+        "会",
+        "会的",
+        "不会",
+        "能",
+        "不能",
+        "还行",
+        "一般",
+        "一般般",
+        "差不多",
+        "没呢",
+        "是啊",
+        "对啊",
+        "好啊",
+        "好呀",
+        "行吧",
         "嗯",
         "嗯嗯",
         "嗯呢",
@@ -307,6 +360,34 @@ _GREETINGS: Final = frozenset(
     }
 )
 _THANKS: Final = ("谢谢", "感谢", "多谢", "谢了", "thank", "thx")
+# A clause that is only a goodbye for now (F5b): one of these at its end, once the
+# trailing particles are dropped, with at most _CLOSING_SLACK characters in front.
+_CLOSINGS: Final = (
+    "就到这里",
+    "先到这里",
+    "到此为止",
+    "聊到这里",
+    "先这样",
+    "不聊了",
+    "下次再聊",
+    "改天再聊",
+    "晚点再聊",
+    "回头再聊",
+    "明天再聊",
+    "先下了",
+    "去睡了",
+    "去睡觉了",
+    "要睡了",
+    "睡觉了",
+    "想睡了",
+    "下线了",
+    "拜拜",
+    "再见",
+)
+_CLOSING_PARTICLES: Final = "吧啦呀哦啊"
+_CLOSING_SLACK: Final = 4
+# Not a goodbye when the words in front negate it ("我不想睡觉了").
+_CLOSING_NEGATIONS: Final = "不没别"
 _NOTE_CUES: Final = (
     "请帮我记住",
     "请帮我记一下",
@@ -391,11 +472,158 @@ _QUESTION_ENDS: Final = (
     "多少",
     "对吧",
     "是吧",
+    # F5b: "褪黑素一次吃多少比较好", "那个人是谁来着".
+    "比较好",
+    "比较合适",
+    "多少合适",
+    "怎么做",
+    "怎么弄",
+    "咋办",
+    "咋整",
+    "为啥",
+    "来着",
+    "好呢",
+    "什么时候",
+    "多久",
 )
 _QUESTION_PARTICLES: Final = ("吗", "嘛")
 # Words ending in 么 that are not the question particle.
 _NOT_PARTICLE_ME: Final = ("什么", "怎么", "那么", "这么", "多么", "要么")
 _UNSURE: Final = ("不知道", "不清楚", "不明白", "说不清", "想知道", "在想", "考虑", "犹豫", "纠结")
+# F5b framing: only a clause with a feeling or a state ("活着好累", "心里堵得慌",
+# "工作好多") may be framed "你感到…".
+_FEELINGS: Final = (
+    "累",
+    "难过",
+    "难受",
+    "伤心",
+    "委屈",
+    "孤单",
+    "孤独",
+    "寂寞",
+    "烦",
+    "焦虑",
+    "紧张",
+    "害怕",
+    "怕",
+    "慌",
+    "崩溃",
+    "绝望",
+    "无力",
+    "迷茫",
+    "失落",
+    "压抑",
+    "痛苦",
+    "空虚",
+    "没意思",
+    "没劲",
+    "撑不住",
+    "受不了",
+    "丢人",
+    "丢脸",
+    "愧疚",
+    "内疚",
+    "自责",
+    "后悔",
+    "生气",
+    "郁闷",
+    "不安",
+    "疲惫",
+    "无聊",
+    "沮丧",
+    "堵",
+    "闷",
+    "心酸",
+    "心疼",
+    "舍不得",
+    "好受",
+    "舒服",
+    "开心",
+    "高兴",
+    "轻松",
+    "踏实",
+    "安心",
+    "难熬",
+    "煎熬",
+)
+# A degree word and a short predicate at the clause's end is a state ("工作好多").
+_STATE_RE: Final = re.compile(
+    r"(?:好|很|太|真|超|挺|蛮|特别|非常|有点|有些|越来越|那么|这么)[一-鿿]{1,4}[了啊呀哦的]?$"
+)
+# A clause that opens with one of these has dropped its subject, the user
+# ("在美国读博第三年", "想有人听我说说"): 你 goes in front.
+_SUBJECTLESS: Final = (
+    "想",
+    "不",
+    "没",
+    "又",
+    "还",
+    "也",
+    "刚",
+    "已经",
+    "一直",
+    "总",
+    "老",
+    "在",
+    "要",
+    "得",
+    "会",
+    "能",
+    "一",
+    "看到",
+    "听到",
+    "看着",
+    "每次",
+    "每天",
+    "天天",
+    "经常",
+    "被",
+    "怕",
+    "担心",
+    "希望",
+    "睡",
+    "吃不",
+    "失眠",
+    "哭",
+    "加班",
+    "考",
+)
+# A clause that opens with a view verb already frames itself: never "你感到觉得…".
+_VIEW_VERBS: Final = ("总是觉得", "总觉得", "觉得", "感觉到", "感觉", "感到", "认为", "觉着")
+# Of those, the ones that keep the user as subject when the user is also their object
+# ("想有人听我说说" -> "你想有人听你说说", but "没人理我" -> "你感到没人理你").
+_WANTING: Final = ("想", "希望", "怕", "担心", "看到", "听到", "看着")
+# Relatives: their news takes 你 in front ("外婆上个月走了" -> "你外婆上个月走了").
+_KIN: Final = (
+    "外婆",
+    "外公",
+    "奶奶",
+    "爷爷",
+    "姥姥",
+    "姥爷",
+    "妈",
+    "爸",
+    "父母",
+    "家里",
+    "家人",
+    "哥",
+    "姐",
+    "弟",
+    "妹",
+    "老公",
+    "老婆",
+    "孩子",
+    "男朋友",
+    "女朋友",
+    "男友",
+    "女友",
+)
+# The character before 我 that makes it an object ("听我说", "把我逼疯", "对我很不满意").
+_OBJECT_MARKERS: Final = frozenset(
+    "把被让叫给对跟和同与向替为帮陪找听骂说问教逼管催烦怪打看理等带喊劝求夸爱恨疼懂害惹吵嫌评骗厌欢使令"
+)
+# The character after a subject 我 in the middle of a clause ("每次组会我都很紧张").
+_SUBJECT_FOLLOWERS: Final = frozenset("都也就还又总一已真很好太特有不没会要是在才却常经老")
 
 
 def utterance_kind(user_text: str) -> Utterance:
@@ -415,12 +643,13 @@ def utterance_kind(user_text: str) -> Utterance:
     plain = _plain(text)
     if plain in _GREETINGS:
         return Utterance.GREETING
-    if plain in _BRIEF:
+    if plain in _BRIEF or (len(plain) == 1 and not _feeling(plain)):
         return Utterance.BRIEF
     tags = [c.tag for sentence in _sentences(raw) for c in sentence]
     if _Tag.STATEMENT in tags:
         return Utterance.STATEMENT
     for tag, kind in (
+        (_Tag.CLOSING, Utterance.CLOSING),
         (_Tag.THANKS, Utterance.THANKS),
         (_Tag.REQUEST, Utterance.REQUEST),
         (_Tag.QUESTION, Utterance.QUESTION),
@@ -452,7 +681,7 @@ def mirror(user_text: str) -> str:
                     break
         body = _swap(body, conflict)
         if i == 0 and not body.startswith("你"):
-            body = _lead(clause, body)
+            body = _lead(clause, body, conflict)
         out.append(body)
     return _trim(out)
 
@@ -470,11 +699,25 @@ def _sentences(text: str) -> list[list[_Clause]]:
         if not body:
             continue
         asked = "?" in end or "？" in end
-        raw = [c.strip(_EDGE_PUNCT) for c in _CLAUSE_RE.split(body)]
+        raw = [_drop_lead_fillers(c.strip(_EDGE_PUNCT)) for c in _CLAUSE_RE.split(body)]
         raw = [c for c in raw if c]
         tagged = [_Clause(c, _tag(c, asked=asked and j == len(raw) - 1)) for j, c in enumerate(raw)]
         sentences.append(tagged)
     return sentences
+
+
+def _drop_lead_fillers(clause: str) -> str:
+    """``clause`` without the fillers at its front, unless that leaves nothing (F5b)."""
+    stripped = True
+    while stripped:
+        stripped = False
+        for filler in _LEAD_FILLERS:
+            rest = clause[len(filler) :].lstrip(_EDGE_PUNCT)
+            if clause.startswith(filler) and rest:
+                clause = rest
+                stripped = True
+                break
+    return clause
 
 
 def _pick_clauses(text: str) -> list[str]:
@@ -484,7 +727,9 @@ def _pick_clauses(text: str) -> list[str]:
     statements = [s for s in statements if s]
     if not statements:
         return []
-    return next((s for s in statements if any(_speaks_first_person(c) for c in s)), statements[0])
+    picked = next((s for s in statements if any(_speaks_first_person(c) for c in s)), statements[0])
+    # A clause the user repeats ("最近真的很乱，最近真的很乱") is mirrored once (F5b).
+    return list(dict.fromkeys(picked))
 
 
 def _tag(clause: str, *, asked: bool) -> _Tag:
@@ -495,6 +740,8 @@ def _tag(clause: str, *, asked: bool) -> _Tag:
         return _Tag.GREETING
     if any(t in plain for t in _THANKS):
         return _Tag.THANKS
+    if _closing(plain):
+        return _Tag.CLOSING
     if _directive(clause):
         return _Tag.REQUEST
     if asked or _question(clause):
@@ -526,6 +773,25 @@ def _question(clause: str) -> bool:
     if clause.endswith(_QUESTION_ENDS):
         return True
     return any(pattern in clause for pattern in _A_NOT_A)
+
+
+def _closing(plain: str) -> bool:
+    """The clause (punctuation removed) is only a goodbye for now (F5b)."""
+    bare = plain.rstrip(_CLOSING_PARTICLES)
+    for phrase in _CLOSINGS:
+        front = bare[: len(bare) - len(phrase)]
+        if (
+            bare.endswith(phrase)
+            and len(front) <= _CLOSING_SLACK
+            and not any(ch in _CLOSING_NEGATIONS for ch in front)
+        ):
+            return True
+    return False
+
+
+def _feeling(text: str) -> bool:
+    """``text`` names a feeling or a state: only such a clause is "你感到…" (F5b)."""
+    return any(word in text for word in _FEELINGS) or _STATE_RE.search(text) is not None
 
 
 def _is_note(text: str) -> bool:
@@ -564,13 +830,19 @@ def _strip_non_pronouns(text: str) -> str:
     return text
 
 
-def _lead(clause: str, body: str) -> str:
-    """``body`` (the swapped ``clause``) made to start with 你.
+def _lead(clause: str, body: str, conflict: bool) -> str:
+    """``body`` (the swapped ``clause``) made to start with 你, with at most one frame.
 
     A clause that opens with a time word takes 你 in front when the user is not in the
     rest of it ("今天上班好累" -> "你今天上班好累", "上个月外婆也走了" -> "你上个月外婆
-    也走了") or is its subject ("最近我老是失眠" -> "你最近老是失眠"); anything else is
-    framed as the user's feeling ("你感到领导当众批评你").
+    也走了") or is its subject ("最近我老是失眠" -> "你最近老是失眠"); so does a subject
+    我 in the middle ("每次组会我都很紧张" -> "你每次组会都很紧张"). In a third-party
+    conflict about the user the clause is the user's view ("你感到领导当众批评你",
+    COLBO-01); a relative's news takes 你 ("你外婆上个月走了"), other news is reported
+    ("你提到他走了"). Otherwise (F5b): a feeling or state is "你感到…" ("你感到活着好
+    累"), a clause that drops its subject takes 你 ("你在美国读博第三年", "你想有人听你
+    说说而已"), a clause about the user is still the user's view, and any other fact is
+    reported ("你提到考研又没考上").
     """
     word = next((w for w in _TIME_WORDS if clause.startswith(w)), None)
     if word is not None:
@@ -579,11 +851,74 @@ def _lead(clause: str, body: str) -> str:
             return "你" + body
         if rest.startswith("你") and not rest.startswith("你们"):
             return "你" + word + rest[1:]
-    return _FEEL_PREFIX + body
+    fronted = _front_subject(clause, body)
+    if fronted is not None:
+        return fronted
+    about_user = bool(_me_positions(clause))
+    view = next((v for v in _VIEW_VERBS if clause.startswith(v) and len(body) > len(v)), None)
+    if view is not None:
+        # "觉得好孤单" -> "你觉得好孤单"; "觉得他不爱我了" -> "你感到他不爱你了".
+        return _FEEL_PREFIX + body[len(view) :] if conflict and about_user else "你" + body
+    if conflict:
+        if about_user:
+            return _FEEL_PREFIX + body
+        if clause.startswith(_KIN) or clause.startswith(_SUBJECTLESS):
+            return "你" + body
+        if _feeling(clause):
+            return _FEEL_PREFIX + body
+        return _SAID_PREFIX + body
+    if _feeling(clause) and not about_user:
+        return _FEEL_PREFIX + body
+    if clause.startswith(_SUBJECTLESS) and not about_user:
+        return "你" + body
+    if about_user and _only_object_me(clause) and clause.startswith(_WANTING):
+        return "你" + body
+    if about_user:
+        return _FEEL_PREFIX + body
+    return _SAID_PREFIX + body
+
+
+def _me_positions(clause: str) -> list[int]:
+    """Where the pronoun 我 stands in ``clause`` (not 我们 or a word like 自我)."""
+    found: list[int] = []
+    i = 0
+    while i < len(clause):
+        word = next((w for w in _NON_PRONOUN if clause.startswith(w, i)), None)
+        if word is not None:
+            i += len(word)
+            continue
+        if clause.startswith("我们", i):
+            i += 2
+            continue
+        if clause[i] == "我":
+            found.append(i)
+        i += 1
+    return found
+
+
+def _only_object_me(clause: str) -> bool:
+    """Every 我 in ``clause`` is someone's object ("听我说说", "把我逼疯")."""
+    return all(i > 0 and clause[i - 1] in _OBJECT_MARKERS for i in _me_positions(clause))
+
+
+def _front_subject(clause: str, body: str) -> str | None:
+    """The one subject 我 in the middle of ``clause`` brought to the front ("每次组会我
+    都很紧张" -> "你每次组会都很紧张"); None when there is no such 我."""
+    positions = _me_positions(clause)
+    if len(positions) != 1 or len(clause) != len(body):
+        return None
+    i = positions[0]
+    if i == 0 or i + 1 >= len(clause) or clause[i - 1] in _OBJECT_MARKERS:
+        return None
+    if clause[i + 1] not in _SUBJECT_FOLLOWERS or _has_conflict(clause[:i]):
+        return None
+    if body[i] != "你":
+        return None
+    return "你" + body[:i] + body[i + 1 :]
 
 
 def _exclamation(clause: str) -> str | None:
-    match = _EXCLAIM_RE.match(clause)
+    match = _EXCLAIM_RE.match(clause) or _EXCLAIM_BARE_RE.match(clause)
     if match is None:
         return None
     word = match.group(1)

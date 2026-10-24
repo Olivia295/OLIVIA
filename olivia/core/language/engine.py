@@ -28,6 +28,16 @@ Quality fixes (F3):
   paragraphs (the middle one left out) inside the persona's ``window.short``.
 * Personas with their own images (``metaphors.yaml`` ``by_persona``) never get the
   nature images.
+
+Session-language fixes (F5b):
+
+* An image a reply of this engine (one session) has already used is not drawn again
+  while the image tiers still hold an unused one; when every one has been used, never
+  the image of the reply before (:meth:`LanguageEngine.metaphor_phrase`).
+* Once the user has confirmed being safe, the crisis opening comes from
+  ``S_crisis.after_confirmed`` and asks no safety question; the card is unchanged.
+* The same referral card on consecutive turns is shown with a short intro and every
+  destination, without the closing paragraph (:meth:`LanguageEngine.render_referral`).
 """
 
 from __future__ import annotations
@@ -148,6 +158,9 @@ class LanguageEngine:
         # Paragraphs of the last few composed replies, never repeated verbatim (F3).
         self._recent: deque[frozenset[str]] = deque(maxlen=RECENT_REPLIES)
         self._last_crisis_opening: str | None = None
+        # Images the composed replies used (F5b): each at most once while others are left.
+        self._used_images: set[str] = set()
+        self._last_image: str | None = None
 
     @property
     def data(self) -> LanguageData:
@@ -203,18 +216,38 @@ class LanguageEngine:
         ``language/dossiers.py``).
         """
         own = self._data.metaphors.by_persona.get(self._data.templates.persona)
+        tiers: list[Sequence[str]]
         if own is not None:
             listed = own.by_spectrum.get(spectrum_id or "")
-            return self._rng.choice(listed if listed else own.fallback)
-        dossier = situation_images(self._data.metaphors.by_situation, situations)
-        if dossier:
-            return self._rng.choice(dossier)
-        grid = self._data.metaphors.by_spectrum_yearning
-        if spectrum_id is not None and spectrum_id in grid and yearning_id is not None:
-            cell = grid[spectrum_id]
-            canonical = self._tax.canonical_label("yearning", yearning_id)
-            return self._rng.choice(cell[canonical])
-        return self._rng.choice(self._data.metaphors.fallback)
+            tiers = [listed, own.fallback] if listed else [own.fallback]
+        else:
+            tiers = []
+            dossier = situation_images(self._data.metaphors.by_situation, situations)
+            if dossier:
+                tiers.append(dossier)
+            grid = self._data.metaphors.by_spectrum_yearning
+            if spectrum_id is not None and spectrum_id in grid and yearning_id is not None:
+                canonical = self._tax.canonical_label("yearning", yearning_id)
+                tiers.append(grid[spectrum_id][canonical])
+            tiers.append(self._data.metaphors.fallback)
+        # The draw is the one it always was (same tier, same rng call); only an image a
+        # reply already used is passed over, for the next unused one in tier order (F5b).
+        drawn = self._rng.choice(tiers[0])
+        if drawn not in self._used_images:
+            return drawn
+        start = tiers[0].index(drawn)
+        first = [tiers[0][(start + k) % len(tiers[0])] for k in range(len(tiers[0]))]
+        ordered = [*first, *(image for tier in tiers[1:] for image in tier)]
+        unused = next((image for image in ordered if image not in self._used_images), None)
+        if unused is not None:
+            return unused
+        return next((image for image in first if image != self._last_image), drawn)
+
+    def note_image(self, text: str, image: str) -> None:
+        """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""
+        if image and image in text:
+            self._used_images.add(image)
+            self._last_image = image
 
     def safe_mirror(self, user_text: str) -> str:
         """:func:`mirror` for a statement, an acknowledgement for anything else, replaced
@@ -234,6 +267,12 @@ class LanguageEngine:
         if not text or self._gate.reasons(text, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):
             return FALLBACK_MIRROR
         return text
+
+    def reassures(self, user_text: str) -> bool:
+        """``user_text`` says something like "我没事" (``utterances.yaml`` ``reassurance``),
+        which is not a safety confirmation (F5b)."""
+        text = normalize(user_text)
+        return any(cue in text for cue in self._data.utterances.reassurance)
 
     def boundary_line(self, user_text: str) -> str:
         """The plain line for a medication or diagnosis question, "" for anything else.
@@ -374,6 +413,7 @@ class LanguageEngine:
         assert best is not None
         text = best[1]
         self._recent.append(frozenset(paragraphs(text)))
+        self.note_image(text, slots.metaphor)
         if stage is HelpStage.S_EMPOWER:
             head, sep, tail = text.rpartition("\n\n")
             text = f"{head}{sep}{card.strip()}\n\n{tail}"
@@ -520,11 +560,15 @@ class LanguageEngine:
             ]
         )
 
-    def render_referral(self, flags: Iterable[str], country: str = "CN") -> str:
+    def render_referral(self, flags: Iterable[str], country: str = "CN", *, again: int = 0) -> str:
         """The specialist referral card for active red-flag codes (taxonomy order).
 
         ``country`` (the profile's country code, ``ZZ`` when unknown) picks the wording of
         the destinations: mainland China, Hong Kong / Macao / Taiwan, or elsewhere.
+
+        ``again`` > 0 is the same card shown again on the next turn (F5b): one of the
+        short ``referral.again`` intros (in turn), every destination as before, and no
+        closing paragraph.
         """
         active = set(flags)
         render = self._data.render
@@ -541,7 +585,11 @@ class LanguageEngine:
             raise ValueError("a referral card needs at least one red flag")
         places = list(dict.fromkeys(destinations[c] for c in self._tax.red_flags() if c in active))
         r = self._data.render
-        lines = [r.referral_intro, *(f"· {p}" for p in places), "", r.referral_closing]
+        if again > 0 and r.referral_again:
+            intro = r.referral_again[(again - 1) % len(r.referral_again)]
+            lines = [intro, *(f"· {p}" for p in places)]
+        else:
+            lines = [r.referral_intro, *(f"· {p}" for p in places), "", r.referral_closing]
         text = apply_willow("\n".join(lines), ContentKind.REFERRAL, self._data.willow)
         # Any non-S_empower stage keeps the Grade A title check on for referral text.
         return self._checked(text, ContentKind.REFERRAL, HelpStage.S_EXPLORE)
@@ -549,7 +597,14 @@ class LanguageEngine:
     # -- crisis ----------------------------------------------------------------------------
 
     def render_crisis(
-        self, card: ResourceCard, slots: Slots, *, plan_block: str = "", urgent: bool = False
+        self,
+        card: ResourceCard,
+        slots: Slots,
+        *,
+        plan_block: str = "",
+        urgent: bool = False,
+        confirmed: bool = False,
+        hint: bool = False,
     ) -> str:
         """S_crisis wording plus the card's numbers: emergency first, stale entries marked.
 
@@ -570,11 +625,20 @@ class LanguageEngine:
         session passes it, with the region's emergency numbers added to its L2 card, when
         the risk model scored L3 but its L3 does not count as plan evidence (owner decision
         2026-10-24): the emergency numbers lead, every L2 line stays, the flow stays L2.
+
+        ``confirmed`` (F5b): the user has confirmed being safe and the crisis is waiting to
+        end, so the opening is an ``after_confirmed`` one that asks no safety question;
+        ``hint`` adds ``crisis.confirm_hint`` (how to say one is safe) after the opening.
+        Neither changes the numbers.
         """
         if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
             raise ValueError("render_crisis needs a CRISIS-mode card at L2 or L3")
         values = slots.values()
-        usable = [t for t in self._data.templates.crisis if all(values[s] for s in slots_of(t))]
+        tpl = self._data.templates
+        pool = (
+            tpl.crisis_after_confirmed if confirmed and tpl.crisis_after_confirmed else tpl.crisis
+        )
+        usable = [t for t in pool if all(values[s] for s in slots_of(t))]
         if not usable:
             raise ValueError("no S_crisis variant can be filled from these slots")
         picked = self._rng.choice(usable)
@@ -583,6 +647,8 @@ class LanguageEngine:
             picked = usable[(usable.index(picked) + 1) % len(usable)]
         self._last_crisis_opening = picked
         opening = _fill(picked, values)
+        if hint:
+            opening = f"{opening}\n\n{self._data.render.crisis_confirm_hint}"
         resources = self._resource_blocks(card, urgent=urgent)
         numbers = _numbers(card)
         self.last_plan_gate = None

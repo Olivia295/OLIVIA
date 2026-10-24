@@ -49,7 +49,8 @@ SWAP_TABLE = [
     ("说出来好受一点了，谢谢", "你感到说出来好受一点了"),
     # Not a pronoun.
     ("我总在自我怀疑", "你总在自我怀疑"),
-    ("其他事我都还好", "你感到其他事你都还好"),
+    # F5b: a subject 我 in the middle comes to the front, never "你感到其他事你都还好".
+    ("其他事我都还好", "你其他事都还好"),
     # Sentence and clause choice, battery prefix, fillers.
     ("唉。我真的好累", "你真的好累"),
     ("唉，我真的好累", "你真的好累"),
@@ -80,6 +81,68 @@ def test_mirror_cases(user_text: str, expected: str) -> None:
 
 def test_swap_table_is_large_enough() -> None:
     assert len(SWAP_TABLE) >= 40
+
+
+# F5b: the sick mirrors from the usage run. "你感到" frames only a feeling or a view, a
+# fact is not "你感到在美国读博第三年", never two frames, a repeat is mirrored once.
+F5B_TABLE = [
+    ("在美国读博第三年，导师最近对我很不满意", "你在美国读博第三年，导师最近对你很不满意"),
+    ("每次组会我都很紧张，汇报的时候脑子一片空白", "你每次组会都很紧张"),
+    ("就是想有人听我说说而已", "你想有人听你说说而已"),
+    (
+        "最近真的很乱，最近真的很乱，最近真的很乱，我也不知道从哪里说起",
+        "你最近真的很乱，你也不知道从哪里说起",
+    ),
+    ("又失眠了，现在两点多还醒着", "你又失眠了，现在两点多还醒着"),
+    ("外婆上个月走了", "你外婆上个月走了"),
+    ("看到他留下的杯子就忍不住哭", "你看到他留下的杯子就忍不住哭"),
+    ("明天要答辩，我紧张得手都在抖", "你明天要答辩，你紧张得手都在抖"),
+    ("一个人在出租屋里，好孤单", "你一个人在出租屋里，好孤单"),
+    ("考研又没考上", "你考研又没考上"),
+    ("睡不着，刷了一晚上手机", "你睡不着，刷了一晚上手机"),
+    ("就是觉得好孤单，没有人可以说", "你觉得好孤单，没有人可以说"),
+    ("觉得他不爱我了", "你感到他不爱你了"),
+    ("房租又涨了", "你提到房租又涨了"),
+    # A feeling next to someone else's news keeps its frame.
+    ("好一点了，想聊聊我和室友的事情", "你感到好一点了，想聊聊你和室友的事情"),
+    ("他走了", "你提到他走了"),
+    ("累死了，不想上班了", "你累坏了，不想上班了"),
+    # A feeling or state keeps the frame.
+    ("活着好累，不想再撑了", "你感到活着好累，不想再撑了"),
+    ("心里堵得慌", "你感到心里堵得慌"),
+    ("这个bug要把我逼疯了", "你感到这个bug要把你逼疯了"),
+]
+
+
+@pytest.mark.parametrize(("user_text", "expected"), F5B_TABLE)
+def test_f5b_mirror_cases(user_text: str, expected: str) -> None:
+    assert mirror(user_text) == expected
+
+
+@pytest.mark.parametrize(
+    ("user_text", "kind"),
+    [
+        ("有", Utterance.BRIEF),
+        ("会", Utterance.BRIEF),
+        ("嗯，今天就到这里吧", Utterance.CLOSING),
+        ("今天就到这里吧", Utterance.CLOSING),
+        ("晚点再聊", Utterance.CLOSING),
+        ("我去睡了", Utterance.CLOSING),
+        ("褪黑素一次吃多少比较好", Utterance.QUESTION),
+        ("周四要见的那个人是谁来着", Utterance.QUESTION),
+        # Still statements: a feeling, and a goodbye after something else that is not one.
+        ("累", Utterance.STATEMENT),
+        ("最近好累，今天就到这里吧", Utterance.STATEMENT),
+        ("我想睡觉了但是睡不着", Utterance.STATEMENT),
+        ("我不想睡觉了", Utterance.STATEMENT),
+    ],
+)
+def test_f5b_utterance_kinds(user_text: str, kind: Utterance) -> None:
+    assert utterance_kind(user_text) is kind
+
+
+def test_f5b_a_goodbye_after_a_statement_is_left_out_of_the_mirror() -> None:
+    assert mirror("最近好累，今天就到这里吧") == "你最近好累"
 
 
 @pytest.mark.parametrize(
@@ -180,6 +243,8 @@ def test_mirror_invariants(user_text: str) -> None:
         plain = plain.replace(word, "")
     assert "我" not in plain, (user_text, out)
     assert "您" not in out
+    # F5b: one frame at most.
+    assert not out.startswith(("你感到你", "你提到你")), (user_text, out)
 
 
 def test_safe_mirror_hides_diagnosis_and_numbers(engine: LanguageEngine) -> None:
@@ -200,6 +265,10 @@ def test_safe_mirror_hides_diagnosis_and_numbers(engine: LanguageEngine) -> None
         "记住：我妈生日是11月3号",
         "I just feel so tired of everything",
         "你别给我建议",
+        # F5b: never "你感到有", "你今天就到这里吧", "你感到褪黑素一次吃多少比较好".
+        "有",
+        "嗯，今天就到这里吧",
+        "褪黑素一次吃多少比较好",
     ],
 )
 def test_non_statements_get_a_short_acknowledgement(engine: LanguageEngine, user_text: str) -> None:
