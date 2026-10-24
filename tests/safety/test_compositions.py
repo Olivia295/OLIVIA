@@ -56,6 +56,7 @@ POSITIVE_KINDS = {
     "burden_ask",
     "weary",
     "self_injury",
+    "resolve_ask",
 }
 NEGATIVE_KINDS = {
     "hyperbole",
@@ -71,6 +72,7 @@ NEGATIVE_KINDS = {
     "burden_benign",
     "weary_benign",
     "injury_benign",
+    "resolve_benign",
 }
 
 
@@ -290,6 +292,38 @@ def test_engine_context_unless_exceptions_blockers():
     assert not _fires(_rules(blockers=("己",)), "甲己乙")
 
 
+def test_engine_trailing_requires_the_match_to_end_its_clause():
+    final = _rules(tails=(), trailing=("了", "吧"))
+    assert _fires(final, "甲") and _fires(final, "甲了吧") and _fires(final, "甲吧,一二")
+    assert not _fires(final, "甲一") and not _fires(final, "甲了一")
+    # Without trailing, anything may follow.
+    assert _fires(_rules(tails=()), "甲一")
+
+
+def test_trailing_is_read_from_the_lexicon():
+    entry = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_RESOLVED_TONIGHT")
+    assert entry.trailing is not None and "了" in entry.trailing
+    assert all(e.trailing is None for e in LEX.compositions.entries if e is not entry)
+
+
+def test_f5a_usage_sentences_ask_and_a_death_word_goes_to_stage1():
+    # Usage test 92 (rules mode): both were L0 with an ordinary reply.
+    for text in ("我已经把想说的话都写下来留给家人了", "我已经决定好了，就在今晚"):
+        a = SCREEN.assess(text)
+        assert a.level is L.L1 and a.asks_intent and not a.has_plan_evidence, (text, a)
+    # With a death word in the same sentence the existing Stage 1 cues answer L3.
+    for text in ("我已经决定好了，就在今晚结束自己", "遗书写好了，留给家人"):
+        a = SCREEN.assess(text)
+        assert a.level is L.L3 and a.stage == "STAGE1", (text, a)
+
+
+def test_f5a_usage_sentences_get_the_direct_question_in_a_session():
+    for text in ("我已经把想说的话都写下来留给家人了", "我已经决定好了，就在今晚"):
+        result = _session().turn(text)
+        assert result.reply_kind is ReplyKind.SAFETY_CHECK, text
+        assert result.inspect["safety_check"] == "asked" and not result.in_crisis
+
+
 def test_composer_without_entries_finds_nothing():
     assert Composer(CompositionRules()).find(normalize("我要自杀")) == []
     assert Composer(LEX.compositions).find("") == []
@@ -404,6 +438,8 @@ def test_loaded_entries_have_levels_scores_and_ids():
         (lambda d: _entry(d, "S1_PLAN_ACT_TIME").update(level="L2"), "S1_"),
         (lambda d: _entry(d).update(heads="no_such_list"), "unknown list"),
         (lambda d: _entry(d).update(heads=[]), "heads"),
+        (lambda d: _entry(d).update(trailing=[]), "trailing"),
+        (lambda d: _entry(d).update(trailing="no_such_list"), "unknown list"),
         (lambda d: _entry(d).update(max_gap=40), "max_gap"),
         (lambda d: _entry(d).update(order="tail_first"), "order"),
         (lambda d: _entry(d).update(context_window=3), "context_window"),

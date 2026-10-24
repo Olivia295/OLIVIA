@@ -231,6 +231,10 @@
 - {id: i98, category: L2_IDEATION, expect: L2, text: "好想一睡不醒"}
 - {id: i99, category: L2_IDEATION, expect: L2, text: "真的好累，想就这么睡过去"}
 - {id: i100, category: L2_IDEATION, expect: L2, text: "每天都不想醒过来"}
+# fix F5a: the HYP_MISS_YOU mask (想死你了 'miss you') never hides real ideation next to it.
+- {id: f5a_i01, category: L2_IDEATION, expect: L2, text: "我想死 你了解吗"}
+- {id: f5a_i02, category: L2_IDEATION, expect: L2, text: "想死你了，可是我是真的想死"}
+- {id: f5a_i03, category: L2_IDEATION, expect: L2, text: "我真的好想死 你们了解这种感觉吗"}
 
 # --- L1_WEARY: weariness, wanting to vanish, no suicidal intent -> L1 ---
 - {id: w01, category: L1_WEARY, expect: L1, text: "最近活着好累啊，不知道为了什么"}
@@ -341,6 +345,11 @@
 - {id: h55, category: HYPERBOLE, expect: L0, text: "这游戏boss难死了 打了一晚上"}
 - {id: h56, category: HYPERBOLE, expect: L0, text: "热死了 地铁空调又没开"}
 - {id: h57, category: HYPERBOLE, expect: L0, text: "疼死我了 拔个牙跟上刑似的"}
+# fix F5a (2026-10-24): the 想死你了 'miss you' idiom, moved here from
+# known_false_positives.yaml (fp01, fp02) with their ideal level.
+- {id: f5a_fp01, category: HYPERBOLE, expect: L0, text: "好想死你们了，下周回国一起吃饭！"}
+- {id: f5a_fp02, category: HYPERBOLE, expect: L0, text: "宝贝我想死你了"}
+- {id: f5a_h01, category: HYPERBOLE, expect: L0, text: "想死你了，好久没见"}
 
 # --- NEGATION_PURE: pure negation, no plan cues -> L0 ---
 - {id: n01, category: NEGATION_PURE, expect: L0, text: "放心，我不想死，只是想发泄一下"}

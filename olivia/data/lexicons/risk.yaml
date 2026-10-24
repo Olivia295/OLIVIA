@@ -59,6 +59,10 @@ stage2:
                "想就这样死掉", "让我去死", "我还是去死", "怎么去死", "恨不得现在就死", "恨不得去死",
                "想自尽", "要自尽", "去自尽", "想上吊", "上吊自杀", "想卧轨", "wanttodie", "killmyself",
                "要去死", "不如去死", "要不要去死",
+               # Longer than the HYP_MISS_YOU masks: 想死 + 你/我/他 + 了解 is ideation
+               # followed by "do you understand", not "miss you".
+               "想死你了解", "想死你们了解", "想死您了解", "想死我了解", "想死他了解", "想死她了解",
+               "想死他们了解", "想死她们了解", "想死你了不了解", "想死你们了不了解",
                # 想到死 only with a frequency adverb: bare 想到死 also hits 死党 / 死机 / 死亡.
                "常想到死", "总想到死", "总是想到死", "老想到死", "老是想到死", "一直想到死",
                "又想到死", "反复想到死", "天天想到死", "整天想到死", "每天都想到死"]
@@ -373,7 +377,9 @@ intent_answers:
 #     `listeners` word (谢谢你，);
 #   - `context` is given and none of its phrases lies within `context_window` characters of
 #     the match (anywhere in the message when no window is given);
-#   - an `unless` phrase lies within `unless_window` characters of the match, same clause.
+#   - an `unless` phrase lies within `unless_window` characters of the match, same clause;
+#   - `trailing` is given and anything other than its phrases (sentence particles) follows
+#     the match before the clause ends ("…，就在今晚" fires, "…，就在今晚吃火锅" does not).
 # Levels: L1 / L2 are rule-model cues, voided by the negation and hyperbole masks like the
 # stage2 phrases; L3 is Stage 1 plan evidence (id S1_*), never masked; ASK is an L1 D3 cue
 # (id ASK_INTENT*) that sets CrisisAssessment.asks_intent, never masked. Phrases here go to
@@ -592,6 +598,40 @@ compositions:
       context: ["密码", "银行卡", "存款", "积蓄", "遗产", "财产", "房产", "东西都送人", "东西全送人", "东西都送掉",
                 "都留给", "都给了"]
       context_window: 15
+    # Last words already left for the family, said without 遗书 / 遗言 (遗书 written another
+    # way). No death word, so L1 + the direct question, not Stage 1 (S1_NOTE_PREPARED
+    # takes the 遗书 forms). The tail names the family or everyone; a finished act (已经,
+    # 都, 写好 ...) must be near, so a plan to write a card or a letter is not asked about.
+    # Cards, gifts, occasions, trips and the past void it in the same clause.
+    - id: ASK_INTENT_WORDS_LEFT
+      level: ASK
+      heads: ["想说的话", "想说的", "要说的话", "该说的话", "最后的话", "最后想说的", "心里话",
+              "想交代的", "要交代的", "该交代的"]
+      tails: ["留给家人", "留给家里人", "留给家里", "留给爸妈", "留给父母", "留给爸爸", "留给妈妈",
+              "留给我爸", "留给我妈", "留给大家", "留给你们", "留给所有人", "留给他们", "留给老公",
+              "留给老婆", "留给爱人", "留给了家人", "留给了家里人", "留给了爸妈", "留给了父母",
+              "留给了爸爸", "留给了妈妈", "留给了大家", "留给了你们", "留给了所有人", "留给了他们"]
+      max_gap: 8
+      context: ["已经", "都", "写好", "写完", "录好", "录完", "留好", "好了"]
+      context_window: 8
+      unless: ["生日", "礼物", "贺卡", "卡片", "明信片", "纪念", "周年", "婚礼", "毕业", "同学录",
+               "日记", "节日", "新年", "春节", "中秋", "母亲节", "父亲节", "时光胶囊", "长大",
+               "出国", "出差", "留学", "搬家", "旅行", "旅游", "以前", "曾经", "小时候", "那时候",
+               "当年", "那年"]
+      unless_window: 12
+    # A stated resolve, then the moment and nothing else: "我已经决定好了，就在今晚". No
+    # act and no death word, so L1 + the direct question (decision D3). Narrow on purpose,
+    # since a resolve and a time are everyday plans ("我决定好了，今晚吃火锅"): the resolve
+    # is the speaker's own (我…, not 我们 or 他), the time clause is only 就(在/是) + tonight
+    # or now and ends there (`trailing`), so "就在今晚吃火锅" or "就今晚去看电影" never ask.
+    - id: ASK_INTENT_RESOLVED_TONIGHT
+      level: ASK
+      heads: ["就在今晚", "就今晚", "就是今晚", "就在今夜", "就今夜", "就是今夜", "就在今天晚上",
+              "就今天晚上", "就是今天晚上", "就在现在", "就现在", "就是现在"]
+      context: ["我已经决定好了", "我决定好了", "我已经决定了", "我决定了", "我已经想好了",
+                "我想好了", "我已经下定决心了", "我下定决心了", "我心意已决"]
+      context_window: 4
+      trailing: ["了", "吧", "啊", "呀", "哦", "嘛", "啦"]
     - id: ASK_INTENT_BURDEN
       level: ASK
       heads: ["我", "自己"]
@@ -642,6 +682,12 @@ compositions:
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
+  # "Miss you to death" (想死你了 = 很想你). The mask needs 了 / 啦 right after the person,
+  # and the L2_WANT_DIE phrases 想死你了解 ... stay longer than it, so "我想死 你了解吗"
+  # (spaces are dropped before matching) is still L2.
+  - id: HYP_MISS_YOU
+    patterns: ["想死你了", "想死你啦", "想死你们了", "想死你们啦", "想死您了", "想死我了", "想死我啦",
+               "想死他了", "想死她了", "想死他们了", "想死她们了"]
   - id: HYP_X_TO_DEATH
     patterns: ["累死了", "累死我了", "烦死了", "气死了", "气死我了", "笑死", "困死了", "饿死了", "热死了", "尴尬死了", "社死",
                "吓死我了", "吓死了", "热死我了", "饿死我了", "急死我了", "急死人", "烦死人",

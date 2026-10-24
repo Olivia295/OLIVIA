@@ -81,3 +81,5 @@
 - {id: fr35, text: "我好想就这么睡着不再醒来", expect: L2}
 - {id: fr36, text: "有时候觉得世界没我会更好", expect: L1}
 - {id: fr37, text: "感觉人生一点意义都没有", expect: L1}
+# Fix F5a (2026-10-24): the 想死X了 'miss you' idiom (HYP_MISS_YOU); visible as kl_fr50.
+- {id: fr50, text: "我男朋友说他想死我了", expect: L0}

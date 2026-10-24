@@ -23,9 +23,10 @@
 #                    died -> L1 + D3 question
 #   weary            living / life + meaningless or tiring, with a word in between -> L1
 #   self_injury      current or recent self-injury -> L1 + D3 question + SIT-09-01
+#   resolve_ask      a resolve of my own, then only "就(在) tonight / now" -> L1 + D3 (F5a)
 # kinds (negatives): hyperbole, benign_object, third_person, negation, past, fiction,
 #   prep_benign, farewell_benign, place_benign, sleep_benign, burden_benign, weary_benign,
-#   injury_benign, method_benign
+#   injury_benign, method_benign, resolve_benign
 
 positives:
 # --- intent_act: L2 ---
@@ -195,6 +196,25 @@ positives:
 - {id: cp195, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我刚刚割伤了自己"}
 - {id: cp196, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "我总是用美工刀划自己"}
 - {id: cp197, kind: self_injury, level: L1, stage: STAGE2, ask: true, flag: true, text: "心情不好就会撞自己的头"}
+# --- fix F5a (2026-10-24): last words left for the family without 遗书 (farewell_ask), and
+# a resolve followed by nothing but tonight or now (resolve_ask). Both L1 + D3. ---
+- {id: cp200, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已经把想说的话都写下来留给家人了"}
+- {id: cp201, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我把最后的话都录好留给家人了"}
+- {id: cp202, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "该交代的我都写下来留给了爸妈"}
+- {id: cp203, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "心里话已经写好留给家里人了"}
+- {id: cp204, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已经把要说的话留给你们了"}
+- {id: cp205, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "想说的话我都写下来留给大家了"}
+- {id: cp206, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我把要交代的都写好留给老公了"}
+- {id: cp207, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已經把想說的話都寫下來留給家人了"}
+- {id: cp210, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我已经决定好了，就在今晚"}
+- {id: cp211, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我决定了，就今晚"}
+- {id: cp212, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我想好了，就是今晚了"}
+- {id: cp213, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我已经下定决心了，就在今夜"}
+- {id: cp214, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我决定好了，就现在吧"}
+- {id: cp215, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我心意已决，就在今天晚上"}
+- {id: cp216, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我已经想好了，就今晚吧。"}
+- {id: cp217, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我已经决定了。就是现在"}
+- {id: cp218, kind: resolve_ask, level: L1, stage: STAGE2, ask: true, text: "我已經決定好了，就在今晚"}
 
 negatives:
 # --- hyperbole: a trivial cause; levels as before the fix ---
@@ -347,3 +367,26 @@ negatives:
 - {id: cn190, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我在策划自己的生日会"}
 - {id: cn192, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "我想自己剪头发"}
 - {id: cn193, kind: injury_benign, level: L0, stage: STAGE2, ask: false, text: "他说要伤害自己，我陪着他打了热线"}
+# --- fix F5a (2026-10-24): everyday look-alikes of ASK_INTENT_WORDS_LEFT and
+# ASK_INTENT_RESOLVED_TONIGHT. An everyday plan asked about suicide hurts trust. ---
+- {id: cn200, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "我把想说的话都写下来留给自己看"}
+- {id: cn201, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "我想把想说的话写下来留给家人"}
+- {id: cn202, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "我把想说的话都写进生日贺卡留给妈妈了"}
+- {id: cn203, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "出国前我已经把想说的话都写下来留给家人了"}
+- {id: cn204, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "毕业时我把想说的话都写在同学录上留给大家"}
+- {id: cn205, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "我把想说的话写成一封信，打算明天亲手交给爸妈"}
+- {id: cn206, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他把想说的话都写下来留给家人了"}
+- {id: cn207, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "奶奶把想说的话都录好留给家人了"}
+- {id: cn208, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我没有把想说的话写下来留给家人"}
+- {id: cn209, kind: past, level: L0, stage: STAGE2, ask: false, text: "小时候我把想说的话都写下来留给爸妈"}
+- {id: cn210, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我决定好了，今晚吃火锅"}
+- {id: cn211, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我已经决定好了，就在今晚吃火锅"}
+- {id: cn212, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我决定了，就今晚去看电影"}
+- {id: cn213, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我想好了，就今晚跟他表白"}
+- {id: cn214, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "就在今晚，月亮最圆"}
+- {id: cn215, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我们已经决定好了，就在今晚"}
+- {id: cn216, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "我决定好了，现在就出发"}
+- {id: cn217, kind: resolve_benign, level: L0, stage: STAGE2, ask: false, text: "演唱会我决定了，就今晚那场吧"}
+- {id: cn218, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "他已经决定好了，就在今晚"}
+- {id: cn219, kind: negation, level: L0, stage: STAGE2, ask: false, text: "我还没决定好，就今晚吧"}
+- {id: cn220, kind: past, level: L0, stage: STAGE2, ask: false, text: "那时候我已经决定好了，就在那天晚上"}
