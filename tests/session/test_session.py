@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 import olivia.core.session as session_module
+from olivia.core.language.data import load_language_data
 from olivia.core.methods.solver import M0_ACTION_ID
 from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, UserRegion
 from olivia.core.safety.crisis import RiskPrediction
@@ -114,6 +115,29 @@ def test_hong_kong_l3_shows_999_and_never_12356():
     assert result.crisis_level is CrisisLevel.L3
     assert "999" in result.reply
     assert "12356" not in result.reply and "120" not in result.reply
+
+
+@BOTH_MODES
+def test_unknown_region_l3_points_to_the_nearest_emergency_room_and_l2_does_not(rules_only):
+    # GEO-07b: ZZ at L3 warns to go to the nearest emergency department (render.yaml
+    # unknown_region_l3) beside 112; the L2 card only guides to the help directories.
+    er = load_language_data(TAX).render.crisis_unknown_region_l3
+    assert "急诊" in er
+    zz = UserRegion("ZZ", "UTC")
+    l3 = _open(rules_only=rules_only, region=zz).turn("我已经写好遗书了")
+    assert l3.crisis_level is CrisisLevel.L3 and l3.reply_kind is ReplyKind.CRISIS
+    assert er in l3.reply and "112" in l3.reply
+    l2 = _open(rules_only=rules_only, region=zz).turn("我不想活了")
+    assert l2.crisis_level is CrisisLevel.L2 and l2.reply_kind is ReplyKind.CRISIS
+    assert er not in l2.reply and "急诊" not in l2.reply
+    assert "findahelpline.com" in l2.reply
+
+
+def test_known_region_l3_has_no_unknown_region_line():
+    er = load_language_data(TAX).render.crisis_unknown_region_l3
+    for region in (UserRegion("CN", "Asia/Shanghai"), UserRegion("US", "America/New_York")):
+        reply = _open(region=region).turn("我已经写好遗书了").reply
+        assert er not in reply, region
 
 
 def test_l3_card_keeps_emergency_numbers_for_the_whole_crisis():
