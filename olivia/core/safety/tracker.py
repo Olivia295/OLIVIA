@@ -45,7 +45,8 @@ _QUESTION_ENDINGS: Final[tuple[str, ...]] = ("吗", "么", "?")
 _CONFIRM_FILLERS: Final[tuple[str, ...]] = ("已经", "现在", "都")
 # Punctuation dropped before reading a short direct answer ("是的，安全的。").
 _ANSWER_PUNCTUATION: Final = str.maketrans("", "", ",.!~…、。！ ")
-# A short yes to the question every crisis reply asks ("你现在是安全的吗？"), as the whole
+# A short yes to the question every crisis reply asks until safety is confirmed
+# ("你现在是安全的吗？"), as the whole
 # message: an optional 嗯, an optional 是(的)/对(的), then an optional "(我)(是|很|挺)安全
 # (的|了|啦)". It must contain 是, 对 or 安全, so a bare "嗯" (an acknowledgement, not an
 # answer) never counts. Anything with a negation, a hedge or a new cue does not match.
@@ -215,8 +216,9 @@ class CrisisTracker:
     def _is_explicit_confirmation(self, normalized: str) -> bool:
         """A safety_confirm phrase, or a short yes to the crisis reply's safety question.
 
-        Every crisis reply asks whether the user is safe now, so while a confirmation is
-        awaited the previous reply always asked it: a whole-message yes ("是的", "安全的",
+        Every crisis reply asks whether the user is safe now until a confirmation counts
+        (after it, the opening no longer asks, F5b), so while a confirmation is awaited the
+        previous reply always asked it: a whole-message yes ("是的", "安全的",
         "嗯 安全") then answers it. That closed grammar leaves no room for a negation, a
         hedge or a crisis cue, so it is read whatever level a risk model gave the turn;
         vetoes, a question and a negation in front of a phrase still win over both paths.
