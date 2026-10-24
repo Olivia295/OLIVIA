@@ -92,6 +92,7 @@ _FOLLOWUPS: Final = (
     "forget_hint",
     "haven_return",
     "haven_exit_hint",
+    "therapy_referred",
 )
 # Anti-dependence prompts (next-phase B7, PRD NG-4 / RSK-07 / §11.1); same slot rules.
 _WELLBEING: Final = (
@@ -261,6 +262,9 @@ class Templates:
     haven_exit_hint: tuple[str, ...]
     """Once per session, replacing the S_haven line: still company, plus the words that leave
     the haven, quoted in 「」 (FSM-15; haven window, no question)."""
+    therapy_referred: tuple[str, ...]
+    """A red-flag user asks what a therapy is (F9): no explainer is allowed, so one
+    neutral line pointing at a doctor or counsellor; the referral card follows."""
 
 
 @dataclass(frozen=True)
@@ -889,6 +893,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         forget_hint=lines["forget_hint"],
         haven_return=lines["haven_return"],
         haven_exit_hint=lines["haven_exit_hint"],
+        therapy_referred=lines["therapy_referred"],
         break_reminder=lines["break_reminder"],
         break_reminder_haven=lines["break_reminder_haven"],
         late_night=lines["late_night"],

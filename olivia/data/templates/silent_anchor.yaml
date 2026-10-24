@@ -41,6 +41,9 @@
 #                             那句陪伴语：仍是陪伴，再用一句告诉用户怎么离开（说「我好多了」或「换个话题吧」，
 #                             这两句在 perception.yaml 的 haven_exit 里）。按 S_haven 窗口写，不提问，
 #                             必须用「」引出要说的话（加载时校验）。
+#   followups.therapy_referred F9（草稿：待 G-0）：有转介红线的用户问某个疗法或练习是什么（“CBT是什么”）
+#                             时的整条回复：红线的封闭上限不放行任何科普卡，所以不讲它、不推荐练习，
+#                             只简短、中性地回应，指向医生或心理咨询师；转介卡由会话附在后面。不提问。
 persona: SILENT_ANCHOR
 window: {normal: [10, 30], paragraph_max: 50, haven: [15, 30], empower: [10, 70]}
 
@@ -209,6 +212,9 @@ followups:
   haven_exit_hint:
     - "我在这里陪着。想聊别的了，说「我好多了」就好。"
     - "想聊别的时，说「换个话题吧」，我都在。"
+  therapy_referred:
+    - "你问的这个，医生或心理咨询师能讲得更清楚。"
+    - "{user_name}，这个问题，交给医生或心理咨询师来讲吧。"
 
 # 防依赖提示（B7）：都是陈述句，不提问；单独一段 ≤ 30 字，*_haven 按 [15, 30] 写。
 # real_support 只在三段式回复里替换 invite 段（chang/wellbeing.py），本人格的回复只有一段，

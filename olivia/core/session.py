@@ -105,6 +105,12 @@ for its plan's flags every time, since the solver requires the card with every p
 the same card was shown on the turn before, it comes with a short intro and every
 destination, without the closing paragraph (F5b).
 
+A red-flag user who asks what a therapy is ("CBT是什么", ``therapy_question``; F9) gets
+no explainer, since the red-flag closure allows none: in an ordinary stage, on a calm
+turn without feedback or a direct request, the reply is one ``followups.therapy_referred``
+line (neutral, pointing at a doctor or counsellor, no practice) followed by the
+referral card again, not an ordinary reply that ignores the question.
+
 Grade B/C information cards (PRD §8.1, roadmap next-phase A4), never on a crisis turn
 (the tracker's crisis or an L1-L3 screen), with feedback for a waiting card, or with a
 direct request; the solver's ``info_cards`` applies the red-flag closure, bans, arousal
@@ -370,6 +376,10 @@ _COMMAND_FEEDBACK: Final = {
 
 
 _NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
+# Where a question about a therapy is answered at all (as the solver's info stages).
+_ASK_REPLY_STAGES: Final = frozenset(
+    {HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING}
+)
 # Stages whose replies a leave-taking turn does not replace (F5d).
 _OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, HelpStage.S_READY})
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
@@ -821,6 +831,20 @@ class Session:
         if note:
             # A note turn is answered by the recorder's confirmation, never with a card.
             info = None
+        # A red-flag user asks what a therapy is (F9): the closure allows no explainer,
+        # so one neutral line and the referral card again, never an ordinary reply.
+        referred_question = (
+            info is None
+            and not leaving
+            and not note
+            and bool(flags)
+            and signals.therapy_question is not None
+            and not signals.direct_request
+            and feedback is None
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L1
+            and stage in _ASK_REPLY_STAGES
+        )
         # The waiting card is still on screen, in the stage it was shown in.
         still_waiting = (
             pending is not None
@@ -895,6 +919,9 @@ class Session:
             ordinary = True
         elif info is not None:
             rendered = self._info(info, stage, perception, spectrum, mirror_text)
+        elif referred_question:
+            rendered = self._followup(templates.therapy_referred, stage)
+            rendered.referral_flags = tuple(c for c in self._tax.red_flags() if c in flags)
         elif stage in (HelpStage.S_CLOSING, HelpStage.S_READY):
             # After the ritual: a short warm line, never the ritual again.
             rendered = self._closing(self._after_close(now), stage)

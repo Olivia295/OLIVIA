@@ -152,6 +152,7 @@ F2B_LINES = (
     "forget_hint",
     "haven_return",
     "haven_exit_hint",
+    "therapy_referred",
 )
 
 
@@ -664,6 +665,10 @@ def test_session_meta_lines(lang: LanguageData, persona: PersonaSpectrum) -> Non
         assert "[5%]" in variant, variant
     for variant in tpl.haven_exit_hint:
         assert "「" in variant and "」" in variant, variant
+    for variant in tpl.therapy_referred:
+        # F9: no explainer and no practice for a red-flag user, only who to ask.
+        assert "医生" in variant, variant
+        assert not any(w in variant for w in ("练习", "试试", "方法", "建议")), variant
     for variant in tpl.safety_confirmed:
         assert "安全" in variant, variant
         assert not any(ch.isdigit() for ch in variant), variant
