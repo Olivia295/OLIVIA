@@ -113,6 +113,8 @@ _PAIRS: Final = (
     "黷黩 鼴鼹 齊齐 齋斋 齒齿 齙龅 齜龇 齡龄 齣出 齦龈 齪龊 齬龉 龍龙 龐庞 龔龚 龜龟 "
     # Characters of the compositions section of risk.yaml (fix F1).
     "儀仪 囑嘱 崗岗 積积 "
+    # Cantonese finishing verbs of the 完咗佢 exceptions (fix F6a).
+    "傾倾 執执 "
 )
 
 TRAD_TO_SIMP: Final[dict[str, str]] = {pair[0]: pair[1] for pair in _PAIRS.split()}

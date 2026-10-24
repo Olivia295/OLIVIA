@@ -32,6 +32,8 @@ SAME_IN_TRADITIONAL = frozenset(
     "者聚脆船色花莫菜落蓄蜜衣角象跑蹲退重野院露"
     # fix F5a: ASK_INTENT_WORDS_LEFT (时光胶囊, 中秋) and the trailing particles.
     "光囊秋呀哦啊嘛"
+    # fix F6a: the veiled-request, farewell and Cantonese 完咗佢 cues and their exceptions.
+    "份佢剪加卸原吖咗咯喇嘢圈圾垃店搞改校煮玩痘睇篇耗餐餸麻黑"
 )
 
 

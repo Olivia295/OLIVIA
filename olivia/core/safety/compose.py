@@ -11,13 +11,15 @@ entry with ``trailing``, anything but a sentence particle after it in its clause
 described on :class:`~olivia.core.safety.lexicon.Composition`.
 
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
-Aho-Corasick scan over every phrase of the section, then a bounded search per entry.
+Aho-Corasick scan over every phrase of the section, then a bounded search per entry. An
+entry whose heads (or required context) do not occur costs one set lookup per phrase found
+in the message, not per phrase of the entry (F6a: the entries keep growing).
 """
 
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass
 from itertools import accumulate
 
@@ -74,10 +76,58 @@ class _Person:
     listener: bool
 
 
+@dataclass(frozen=True)
+class _Lists:
+    """The section's shared phrase lists as sets, built once per composer."""
+
+    negators: frozenset[str]
+    non_negators: frozenset[str]
+    selves: frozenset[str]
+    others: frozenset[str]
+    recipients: frozenset[str]
+    listeners: frozenset[str]
+
+    @classmethod
+    def of(cls, rules: CompositionRules) -> _Lists:
+        return cls(
+            negators=frozenset(rules.negators),
+            non_negators=frozenset(rules.non_negators),
+            selves=frozenset(rules.selves),
+            others=frozenset(rules.others),
+            recipients=frozenset(rules.recipients),
+            listeners=frozenset(rules.listeners),
+        )
+
+
+@dataclass(frozen=True)
+class _EntrySets:
+    """One entry's phrase lists as sets, built once per composer."""
+
+    heads: frozenset[str]
+    tails: frozenset[str]
+    exceptions: frozenset[str]
+    blockers: frozenset[str]
+    context: frozenset[str]
+    unless: frozenset[str]
+
+    @classmethod
+    def of(cls, entry: Composition) -> _EntrySets:
+        return cls(
+            heads=frozenset(entry.heads),
+            tails=frozenset(entry.tails),
+            exceptions=frozenset(entry.exceptions),
+            blockers=frozenset(entry.blockers),
+            context=frozenset(entry.context),
+            unless=frozenset(entry.unless),
+        )
+
+
 class _Text:
     """Per-message facts shared by every entry: clauses, negators and person words."""
 
-    def __init__(self, text: str, rules: CompositionRules, found: dict[str, list[Match]]) -> None:
+    def __init__(
+        self, text: str, rules: CompositionRules, lists: _Lists, found: dict[str, list[Match]]
+    ) -> None:
         n = len(text)
         self.text = text
         self.found = found
@@ -99,22 +149,26 @@ class _Text:
             if text[i] in rules.stops:
                 end = i
             self.clause_end[i] = end
-        self.negators = _Spans(self._real_negators(text, rules))
-        self.persons = self._subjects(rules)
+        self.negators = _Spans(self._real_negators(text, lists))
+        self.persons = self._subjects(lists)
         self._person_starts = [p.start for p in self.persons]
 
     def no_stop(self, a: int, b: int) -> bool:
         return self._stops_before[b] == self._stops_before[a]
 
-    def spans(self, phrases: Iterable[str]) -> list[Match]:
-        return [m for phrase in phrases for m in self.found.get(phrase, ())]
+    def spans(self, phrases: Set[str]) -> list[Match]:
+        """Every occurrence of ``phrases``, in no particular order."""
+        found = self.found
+        if len(phrases) < len(found):
+            return [m for phrase in phrases for m in found.get(phrase, ())]
+        return [m for phrase, ms in found.items() if phrase in phrases for m in ms]
 
-    def _real_negators(self, text: str, rules: CompositionRules) -> list[Match]:
+    def _real_negators(self, text: str, lists: _Lists) -> list[Match]:
         """Negator occurrences that negate: not inside a non-negating word (忍不住) and not
         the middle of an A-not-A question (要不要, 是不是, 有没有)."""
-        neutral = _Spans(self.spans(rules.non_negators))
+        neutral = _Spans(self.spans(lists.non_negators))
         real: list[Match] = []
-        for m in self.spans(rules.negators):
+        for m in self.spans(lists.negators):
             if neutral.covers(m):
                 continue
             if m.start > 0 and m.end < len(text) and text[m.start - 1] == text[m.end]:
@@ -122,14 +176,14 @@ class _Text:
             real.append(m)
         return real
 
-    def _subjects(self, rules: CompositionRules) -> list[_Person]:
+    def _subjects(self, lists: _Lists) -> list[_Person]:
         """Person words that can be a subject, sorted by start. One right after a recipient
         word (跟她说, 给我妈, 告诉妹妹) is an object and is left out."""
-        recipient_ends = {m.end for m in self.spans(rules.recipients)}
-        listeners = _Spans(self.spans(rules.listeners))
+        recipient_ends = {m.end for m in self.spans(lists.recipients)}
+        listeners = _Spans(self.spans(lists.listeners))
         people = [
             _Person(m.start, m.end, is_self, not is_self and listeners.covers(m))
-            for phrases, is_self in ((rules.selves, True), (rules.others, False))
+            for phrases, is_self in ((lists.selves, True), (lists.others, False))
             for m in self.spans(phrases)
         ]
         subjects = [
@@ -186,6 +240,8 @@ class Composer:
                 entry.blockers,
             )
         self._matcher = PhraseMatcher({phrase: phrase for phrase in phrases})
+        self._lists = _Lists.of(rules)
+        self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
 
     def find(self, text: str) -> list[CompositionHit]:
         """The first accepted match of each entry that fires, in entry order."""
@@ -194,25 +250,31 @@ class Composer:
         found: dict[str, list[Match]] = {}
         for match in self._matcher.find_all(text):
             found.setdefault(match.key, []).append(match)
-        facts = _Text(text, self._rules, found)
+        facts = _Text(text, self._rules, self._lists, found)
         hits: list[CompositionHit] = []
-        for entry in self._rules.entries:
-            hit = self._first_hit(entry, facts)
+        for entry, sets in self._sets:
+            hit = self._first_hit(entry, sets, facts)
             if hit is not None:
                 hits.append(hit)
         return hits
 
-    def _first_hit(self, entry: Composition, facts: _Text) -> CompositionHit | None:
-        own = _EntryFacts(
-            exceptions=_Spans(facts.spans(entry.exceptions)),
-            blockers=_Spans(facts.spans(entry.blockers)),
-            context=_Spans(facts.spans(entry.context)),
-            unless=_Spans(facts.spans(entry.unless)),
-        )
-        if entry.context and not own.context:
+    def _first_hit(
+        self, entry: Composition, sets: _EntrySets, facts: _Text
+    ) -> CompositionHit | None:
+        found_heads = facts.spans(sets.heads)
+        if not found_heads:
             return None
+        context = _Spans(facts.spans(sets.context))
+        if entry.context and not context:
+            return None
+        own = _EntryFacts(
+            exceptions=_Spans(facts.spans(sets.exceptions)),
+            blockers=_Spans(facts.spans(sets.blockers)),
+            context=context,
+            unless=_Spans(facts.spans(sets.unless)),
+        )
         heads = sorted(
-            (m for m in facts.spans(entry.heads) if not own.exceptions.covers(m)),
+            (m for m in found_heads if not own.exceptions.covers(m)),
             key=lambda m: (m.start, m.end),
         )
         if not heads:
@@ -223,7 +285,7 @@ class Composer:
                     return CompositionHit(entry, head.start, head.end)
             return None
         tails = sorted(
-            (m for m in facts.spans(entry.tails) if not own.exceptions.covers(m)),
+            (m for m in facts.spans(sets.tails) if not own.exceptions.covers(m)),
             key=lambda m: (m.start, m.end),
         )
         by_end = sorted(heads, key=lambda m: (m.end, m.start))

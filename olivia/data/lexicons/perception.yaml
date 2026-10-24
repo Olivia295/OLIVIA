@@ -1368,6 +1368,73 @@ leave_taking:
   - 我先下了
   - 我先撤了
 
+# Goodbyes that count only as a clause of their own (F6a): "拜拜", "好的，拜拜", "88",
+# "那我们下次聊", "先这样吧". Inside a longer clause they say something else (拜拜那段感情,
+# 我考了88, 这个方案先这样吧). The clause, marks stripped, may start with lead-ins and end
+# with particles (吧, 啦 ...); what is left must be one of these.
+leave_taking_whole:
+  - 拜拜
+  - 拜
+  - "88"
+  - "886"
+  - bye
+  - byebye
+  - 下次聊
+  - 改天聊
+  - 回聊
+  - 先这样
+  - 就先这样
+  - 今天先这样
+  - 今天就先这样
+  - 今天就这样
+
+# Words that may open a whole-clause goodbye ("好的，拜拜" is two clauses; "好的拜拜" is one).
+leave_taking_lead_ins:
+  - 好的
+  - 好吧
+  - 好
+  - 嗯嗯
+  - 嗯
+  - 行吧
+  - 行
+  - ok
+  - okay
+  - 那就
+  - 那我们
+  - 那我
+  - 那
+  - 我们
+  - 谢谢你
+  - 谢谢
+
+# Reported speech (F6a): a leave-taking phrase whose clause has one of these before it is
+# someone else's words or someone else leaving ("他跟我说今天就到这里吧", "老板说今天就到这
+# 里"), never the user's goodbye. A negated 说 (不说了, 不多说) is not reported speech.
+leave_taking_reported:
+  - 说
+  - 讲
+  - 告诉我
+  - 他
+  - 她
+  - 他们
+  - 她们
+  - 对方
+  - 老板
+  - 领导
+  - 老师
+  - 同事
+  - 朋友
+  - 室友
+  - 男朋友
+  - 女朋友
+  - 老公
+  - 老婆
+  - 对象
+  - 爸
+  - 妈
+  - 医生
+  - 别人
+
 # Whole messages (marks stripped) that ask for another method: "再给我一个" or "换一个"
 # alone. Inside a longer message they ask for anything ("再给我一个机会"), so only the
 # whole message counts; direct_request has the forms that name the method.
