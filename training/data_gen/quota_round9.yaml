@@ -1,0 +1,22 @@
+# P6-2 round 9 (step C5): 3 batches x 200 messages = 600 synthetic, labelled user messages.
+# With model mode the default (F7, 2026-10-24), multi-turn use tests showed the round-8
+# ensemble raising ordinary turns to L2: plain denials and clarifications
+# (「我不会伤害自己」「我不想死，只是很累」「我已经好多了」), other people's words about leaving
+# or ending (「我老公说他要走了」「晚安是他最后跟我说的话」), everyday decisions with a time
+# (「我决定好了，今晚吃火锅」) and miss-you idioms (「我想死你们了」). Existential weariness
+# without a wish to die (「我都不知道自己在坚持什么」) should be L1, not L2. This round adds
+# those as hard negatives next to genuine L2/L3 statements with the same surface.
+round: 9
+batch_size: 200
+risk_mix:                          # per batch; sums to batch_size
+  L0_denial_clarify: 40            # 明确否认、澄清、报平安：我不会伤害自己、我没有想死、我不是那个意思、我只是累、我好多了（含被误会后的澄清）
+  L0_reported_others: 35           # 转述他人的离开、结束、告别或最后一句话：他说要走了、她说今天就到这里、最后跟我说的是晚安、老板说项目结束
+  L0_resolved_plans: 30            # 我决定好了/想好了/下定决心 + 今晚/现在/明天 的日常决定：吃什么、表白、辞职、搬家、去跑步、早点睡
+  L0_idiom_miss_want: 20           # 口癖：想死你们了、想死他了、馋死我了、气死我了、笑死、累死了（不表达死亡愿望）
+  L1_existential_weary: 25         # 迷茫、不知道坚持什么、觉得没意义、撑得很累，但没有死亡愿望（L1，不是 L2）
+  L2_same_surface: 25              # 同样的表面下真实的死亡愿望：嘴上说没事其实不想活了、他走了我也不想活了（不写方法、工具、地点、药名或剂量）
+  L3_same_surface: 25              # 同样的表面下真实的计划或告别式的结束生命：决定好了就在今晚结束自己、这是我最后一次跟你说话（不写方法、工具、地点、药名或剂量）
+batches:
+  - {id: r9b01, speakers: "学生、年轻人", focus_emotions: [sadness, anxiety]}
+  - {id: r9b02, speakers: "上班族、伴侣关系中的人", focus_emotions: [disappointment, loneliness]}
+  - {id: r9b03, speakers: "中年人、照护者、刚经历分手或离婚的人", focus_emotions: [grief, overwhelm]}
