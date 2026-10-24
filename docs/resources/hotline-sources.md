@@ -168,7 +168,7 @@ adcode 说明：省级代码与吉林省统计局、芜湖市统计局网站转�
 
 ## 定期复核
 
-- **维护负责人**：`<待指定：姓名 / GitHub 账号>`（占位，确定后替换；负责人变更时同步更新这里）。
+- **维护负责人**：Olivia Pan (@Olivia295) / Claude（由 AI 协助每季度运行核对脚本并复核官方来源，产品负责人持有私钥签名确认）。
 - **频率**：每季度一次。GitHub Actions 工作流 `.github/workflows/hotline-freshness.yml` 在每年 1、4、7、10 月的 1 日自动运行 `scripts/check_hotline_freshness.py`，也可以在 Actions 页面手动触发（workflow_dispatch）。
 - **规则**：任何条目（紧急号码或热线）的 `verified_on` 早于运行当天 90 天，脚本就以非零状态退出，工作流显示失败，并列出过期条目的地区和 id。本地也可以运行：`python scripts/check_hotline_freshness.py`（`--today`、`--max-age-days`、`--store` 见脚本说明）。
 - **处理**：负责人按本文开头的规则，逐条回到官方来源重新核验，更新号码、时段与 `verified_on`，在本文件补记来源，然后用签名密钥重新签名 `hotlines.yaml`（`scripts/sign_hotlines.py`，密钥由负责人保管，不进仓库），按正常流程提交合并。
