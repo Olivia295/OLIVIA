@@ -92,7 +92,10 @@ stage2:
                # wish of one's own (想, 希望, 就好, 消失, 睡过去).
                "不想再醒来", "不想再醒过来", "不想再醒了", "不要再醒来", "不要再醒了", "让我再醒来",
                "想再也不醒来", "希望再也不醒来", "再也不醒来就好", "再也不醒来多好", "再也不醒来算了",
-               "消失,再也不醒来", "消失再也不醒来", "睡过去再也不醒来", "睡过去,再也不醒来"]
+               "消失,再也不醒来", "消失再也不醒来", "睡过去再也不醒来", "睡过去,再也不醒来",
+               # 睡过去 (fall asleep for good) + a bare 不醒 (F6a); 睡着 + 不醒 is left out
+               # because it also tells of deep sleep (睡着了怎么叫都不醒).
+               "睡过去不醒", "睡过去就不醒", "睡过去再不醒", "睡下去不醒", "睡下去就不醒"]
   - id: L2_SUICIDE_TERMS
     level: L2
     patterns: ["自杀的念头", "自杀的想法", "想到自杀", "zisha", "suicidal", "轻生的念头", "想轻生",
@@ -162,6 +165,7 @@ stage2:
                "怎么才能自杀", "怎样才能自杀", "如何才能自杀", "怎么轻生", "如何轻生", "怎样轻生",
                "怎么寻死", "如何寻死", "怎样寻死", "怎么自尽", "如何自尽", "怎样自尽", "怎么了结自己",
                "如何了结自己", "怎么才能一了百了", "怎样才能一了百了", "如何才能一了百了", "让自己一了百了",
+               "让我一了百了",
                "如何结束生命", "怎样结束生命", "怎么结束自己的生命", "如何结束自己的生命",
                "怎样结束自己的生命", "点样结束自己", "怎么杀死自己", "如何杀死自己", "怎样杀死自己",
                # 结束自己 with a manner word instead of an object (not 结束自己的项目)
@@ -479,6 +483,17 @@ compositions:
     wish: ["希望", "但愿", "真想", "好想", "想", "巴不得", "恨不得", "宁愿", "盼着"]
     no_wake: ["不要醒", "不用醒", "别醒", "别再醒", "不再醒", "不要再醒", "不用再醒", "永远不醒",
               "再也不醒", "醒不过来", "醒不来", "一睡不起", "一觉不醒", "长睡不醒", "不会醒来"]
+    # Asking for a way, a means or how to (F6a). The direct_request phrases of
+    # perception.yaml that name a way are all covered (有没有什么办法 holds 办法).
+    way_request: ["办法", "方法", "方式", "法子", "怎么才能", "怎样才能", "如何才能", "怎么样才能",
+                  "怎么做才能", "怎么做可以", "教我怎么", "教教我", "告诉我怎么", "告诉我该怎么",
+                  "什么能让我", "什么可以让我", "怎么让自己", "怎样让自己", "如何让自己"]
+    # Same-clause words that make the ending an everyday one: a short break, a problem, a
+    # chore or a task that ends (想消失一会儿, 从内耗里彻底解脱出来, 一了百了地解决这个 bug).
+    everyday_end: ["一会", "一下", "几天", "一阵", "一段时间", "片刻", "出来", "原地", "当场",
+                   "内耗", "焦虑", "压力", "失眠", "疼痛", "工作", "上班", "加班", "学习", "考试",
+                   "作业", "论文", "项目", "比赛", "游戏", "问题", "麻烦", "bug", "债", "家务",
+                   "这段关系", "婚姻", "解决", "处理", "搞定", "烦恼", "黑眼圈", "痘"]
     past: ["以前", "曾经", "过去", "小时候", "那时候", "那时", "当年", "年前", "初中", "高中",
            "大学时", "读书时", "不再", "戒掉", "好多了", "现在好了", "很久没", "已经好了"]
   entries:
@@ -568,6 +583,20 @@ compositions:
       heads: ["睡着", "睡过去", "睡下去", "睡下", "闭上眼", "一觉睡"]
       tails: ["不要醒", "别醒", "别再醒", "不再醒", "永远不醒", "不要再醒"]
       max_gap: 3
+    # Being made never to wake again (F6a): 让我 / 让自己 + no more waking, the same death
+    # wish as L2_WISH_NO_WAKE (C-SSRS item 1, PRD §9.1). Only the forms with 再 / 永远 /
+    # 再也: a bare 不用醒 is about the alarm (让我周末不用醒那么早), and 醒不过来 after 让 is
+    # grogginess (这药让我醒不过来).
+    - id: L2_LET_ME_NO_WAKE
+      level: L2
+      heads: ["让我", "让自己"]
+      tails: ["不用再醒", "不再醒", "不要再醒", "别再醒", "永远不醒", "再也不醒", "永远醒不",
+              "一睡不起", "一觉不醒", "长睡不醒"]
+      max_gap: 4
+      exceptions: ["不再醒着", "不用再醒着", "不要再醒着"]
+      unless: ["那么早", "这么早", "太早", "早起", "闹钟", "半夜", "夜里", "起夜", "吵醒", "惊醒",
+               "上班", "上课"]
+      unless_window: 10
     # --- Stage 2 L1: weariness with a word inserted ---
     - id: L1_LIVING_MEANINGLESS
       level: L1
@@ -587,6 +616,37 @@ compositions:
       exceptions: farewell_exceptions
       unless: leaving
       unless_window: 10
+    # A goodbye for good to the listener (F6a): never coming back, said next to leaving or a
+    # goodbye ("我走了，以后不会再来了"). A plain goodbye with a return (明天再来, 下周见) has
+    # no head; a place or an app that let the user down voids it in its clause (这家店以后
+    # 不会再来了). Someone else leaving (他走了，以后不会再来了) is voided by the person check.
+    - id: ASK_INTENT_FAREWELL_FOR_GOOD
+      level: ASK
+      heads: ["以后不会再来", "以后都不会再来", "以后再也不会来", "再也不会来了", "以后再也不来",
+              "以后都不来了", "不会再来了", "再也不来了", "以后不会再找你", "再也不会找你了",
+              "以后不会再跟你说话", "以后不会再和你说话", "再也不会跟你说话", "再也不会和你说话"]
+      context: ["我走了", "我要走了", "我该走了", "我先走了", "再见", "拜拜", "永别", "告别", "道别",
+                "就这样吧", "谢谢你"]
+      context_window: 12
+      unless: ["店", "餐厅", "饭店", "这家", "这地方", "这个地方", "这里吃", "公司", "学校", "医院",
+               "难用", "难吃", "太贵", "卸载", "退款", "垃圾"]
+      unless_window: 10
+    # A solemn goodbye that thanks the listener for staying with the user through these days
+    # (F6a): "再见了，谢谢你这些天一直陪着我". The thanks alone is everyday (谢谢你陪我聊天),
+    # so a final goodbye must be near: 再见了 / 拜拜了 / 我走了, never 再见 + a return.
+    # persons is off because the thanks itself names the listener (谢谢你). Known limit: a
+    # return said in a clause of its own ("…陪着我，明天见") does not void it.
+    - id: ASK_INTENT_FAREWELL_THANKS
+      level: ASK
+      heads: ["这些天一直陪着我", "这些天一直陪我", "这段时间一直陪着我", "这段时间一直陪我",
+              "这些日子一直陪着我", "这些日子陪着我", "这么久一直陪着我", "这么久以来一直陪着我",
+              "一直以来陪着我", "这些天陪着我", "这段时间陪着我", "陪了我这么久", "陪我走了这么久"]
+      context: ["再见了", "再见啦", "拜拜了", "永别", "我走了", "我要走了", "我该走了", "最后一次",
+                "以后不会", "再也不会", "不会再来"]
+      context_window: 12
+      unless: ["晚安", "明天", "下次", "改天", "下周", "回头", "再聊", "继续"]
+      unless_window: 10
+      persons: false
     - id: ASK_INTENT_LAST_WORDS
       level: ASK
       heads: ["托付给你", "最后一条消息", "最后一次跟你说话", "最后一次和你说话", "最后一次跟你聊"]
@@ -656,6 +716,50 @@ compositions:
       unless: ["留下", "遗物", "相册", "照片", "墓", "坟", "邻居", "老朋友", "东西", "遗像", "律师",
                "医生", "遗嘱"]
       unless_window: 10
+    # A way to end everything, asked without an act of dying or a manner word (F6a): "有没有
+    # 什么办法能让我永远解脱", "有什么办法能让我消失". L1 + the direct question, like the same
+    # euphemisms with a painless or fast manner (ASK_INTENT_EUPHEMISM): the bare method
+    # word asks less than a manner word, so it is not raised above that pair. A euphemism
+    # that is already L2 on its own (不再醒来, 离开这个世界, 让自己一了百了) is rated by its own
+    # cue. A wish to vanish (想消失) or for relief (想解脱) counts here only with the request.
+    - id: ASK_INTENT_VEILED_METHOD
+      level: ASK
+      heads: ["永远解脱", "彻底解脱", "永久解脱", "永远地解脱", "彻底地解脱", "让我解脱",
+              "让自己解脱", "永远消失", "彻底消失", "永远地消失", "彻底地消失", "让我消失",
+              "让自己消失", "从这个世界上消失", "从这个世界消失", "从世界上消失", "一切都结束",
+              "一切结束", "结束一切", "结束这一切", "让这一切都结束", "让一切都结束",
+              "让这一切结束", "让一切结束", "一了百了", "想消失", "想解脱"]
+      context: way_request
+      context_window: 12
+      unless: everyday_end
+      unless_window: 10
+    # The same euphemisms, final ones only, as the speaker's own wish with no request (F6a):
+    # "我想永远解脱", "好想让这一切都结束". Not bare 想消失 / 想永远消失: those stay the L1
+    # weariness cue L1_DISAPPEAR (sessions.yaml escalation cases rely on them asking nothing).
+    - id: ASK_INTENT_VEILED_WISH
+      level: ASK
+      heads: wish
+      tails: ["永远解脱", "彻底解脱", "永久解脱", "永远地解脱", "彻底地解脱", "一切都结束",
+              "这一切都结束", "这一切结束", "让这一切都结束", "让一切都结束", "让这一切结束",
+              "让一切结束"]
+      max_gap: 3
+      blockers: ["让", "把", "等"]
+      unless: everyday_end
+      unless_window: 10
+    # Cantonese 完咗佢 / 完咗自己 ("end it") as a clause of its own, with no request (owner
+    # decision 2026-10-24, SDD §8.2's D3 example): the clause must end with it (`trailing`),
+    # so an everyday object after it (完咗佢份功课, 完咗佢呢个project) voids it, and so does
+    # a finishing verb before it (做完咗佢 = finished doing it) or an object in its clause.
+    - id: ASK_INTENT_END_IT_YUE
+      level: ASK
+      heads: ["完咗佢", "完咗自己"]
+      exceptions: ["做完咗佢", "写完咗佢", "睇完咗佢", "食完咗佢", "搞完咗佢", "讲完咗佢", "听完咗佢",
+                   "洗完咗佢", "执完咗佢", "饮完咗佢", "玩完咗佢", "打完咗佢", "改完咗佢", "读完咗佢",
+                   "倾完咗佢", "煮完咗佢", "影完咗佢", "剪完咗佢", "唱完咗佢"]
+      unless: ["功课", "作业", "project", "报告", "份工", "工作", "嘢", "饭", "餸", "书", "套剧",
+               "游戏", "篇", "张", "单", "份", "个", "部", "啲"]
+      unless_window: 10
+      trailing: ["啦", "喇", "囉", "咯", "吖", "啊", "呀", "吧", "了", "算啦", "算了"]
     - id: ASK_INTENT_SELF_INJURY_ACT
       level: ASK
       heads: ["割", "划", "烫", "伤", "撞", "掐", "扎", "刺", "戳"]

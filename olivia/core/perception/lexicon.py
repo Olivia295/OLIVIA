@@ -77,6 +77,9 @@ _SECTIONS: Final = frozenset(
         "situation_cues",
         "contraindication_cues",
         "leave_taking",
+        "leave_taking_whole",
+        "leave_taking_lead_ins",
+        "leave_taking_reported",
         "direct_request_whole",
         *_PHRASE_SECTIONS,
     }
@@ -135,6 +138,13 @@ class PerceptionLexicon:
     leave_taking: tuple[str, ...]
     """The user is leaving for now ("我去睡了", "今天就到这里"), marks stripped: on a card
     that waits, the stub reads it as not now unless another feedback phrase says more."""
+    leave_taking_whole: tuple[str, ...]
+    """Goodbyes that count only as a whole clause ("拜拜", "88", "先这样"), marks stripped."""
+    leave_taking_lead_ins: tuple[str, ...]
+    """Words that may open a whole-clause goodbye ("好的", "那我们"), marks stripped."""
+    leave_taking_reported: tuple[str, ...]
+    """Reported speech or another person before a goodbye in its clause ("说", "他", "老板"):
+    the goodbye is someone else's (F6a)."""
     answer_affirm: tuple[str, ...]
     """Whole-message yes ("好的"), marks stripped."""
     answer_decline: tuple[str, ...]
@@ -178,6 +188,13 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
     feedback = _marked_section(doc.get("feedback"), "feedback", _FEEDBACK_KEYS)
     answers = _marked_section(doc.get("answers"), "answers", _ANSWER_KEYS)
     leave = _marked_list(doc.get("leave_taking"), "leave_taking")
+    leave_whole = _marked_list(doc.get("leave_taking_whole"), "leave_taking_whole")
+    lead_ins = _marked_list(doc.get("leave_taking_lead_ins"), "leave_taking_lead_ins")
+    reported = _marked_list(doc.get("leave_taking_reported"), "leave_taking_reported")
+    _check_distinct(
+        {"leave_taking_whole": leave_whole, "leave_taking_lead_ins": lead_ins},
+        "whole-clause goodbyes",
+    )
     whole_requests = _marked_list(doc.get("direct_request_whole"), "direct_request_whole")
     aversion = tuple(strip_marks(p) for p in phrases["aversion"])
     _check_distinct(
@@ -222,6 +239,9 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         feedback_unhelpful=feedback["unhelpful"],
         feedback_unclear=feedback["unclear"],
         leave_taking=leave,
+        leave_taking_whole=leave_whole,
+        leave_taking_lead_ins=lead_ins,
+        leave_taking_reported=reported,
         answer_affirm=answers["affirm"],
         answer_decline=answers["decline"],
         kit_recall=phrases["kit_recall"],

@@ -303,7 +303,10 @@ def test_engine_trailing_requires_the_match_to_end_its_clause():
 def test_trailing_is_read_from_the_lexicon():
     entry = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_RESOLVED_TONIGHT")
     assert entry.trailing is not None and "了" in entry.trailing
-    assert all(e.trailing is None for e in LEX.compositions.entries if e is not entry)
+    # F6a: the Cantonese 完咗佢 cue must end its clause too.
+    yue = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_END_IT_YUE")
+    assert yue.trailing is not None and "啦" in yue.trailing
+    assert all(e.trailing is None for e in LEX.compositions.entries if e not in (entry, yue))
 
 
 def test_f5a_usage_sentences_ask_and_a_death_word_goes_to_stage1():

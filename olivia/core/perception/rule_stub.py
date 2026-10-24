@@ -96,7 +96,13 @@ Natural-language feedback (roadmap R-7b), only on a turn that is not a slash com
   not negated) and its clause is not a question: no "？" right after it (trailing
   particles aside) and no "吗" ("今天就到这里？我还没说完" is no goodbye). It is set
   whatever other feedback the message has; the session reads it only with no card
-  waiting.
+  waiting. F6a: a phrase is someone else's words, and no goodbye, when its clause has a
+  ``leave_taking_reported`` word before it that is not negated ("他跟我说今天就到这里吧",
+  "老板说今天就到这里"; "不说了今天就到这里" still counts). A ``leave_taking_whole``
+  goodbye ("拜拜", "88", "先这样吧") counts only as a clause of its own: marks stripped,
+  ``leave_taking_lead_ins`` ("好的", "那我们") dropped from its start and particles from
+  its end, nothing else may be left ("拜拜那段感情" is no goodbye). Both kinds also count
+  as not_now for a waiting card, as above.
 
 The stub reads every turn on its own and knows nothing of the session: whether a card
 waits for feedback, or a question waits for an answer, is the session's call.
@@ -265,6 +271,10 @@ class RuleStub:
             for phrase in phrases:
                 feedback[strip_marks(phrase)] = label
         self._feedback_labels = feedback
+        self._leave_whole = frozenset(lexicon.leave_taking_whole)
+        # Longest first, so "好的" is dropped before "好".
+        self._lead_ins = tuple(sorted(lexicon.leave_taking_lead_ins, key=len, reverse=True))
+        self._reported = lexicon.leave_taking_reported
         self._feedback_matcher = PhraseMatcher({phrase: phrase for phrase in feedback})
         self._unclear = frozenset(lexicon.feedback_unclear)
         self._whole_requests = frozenset(lexicon.direct_request_whole)
@@ -291,8 +301,8 @@ class RuleStub:
         another = False
         leaving = False
         if command is None:
-            feedback, unclear = self._feedback(strip_marks(body))
-            leaving = self._leaving(body)
+            leave_live, leaving = self._leaving(body)
+            feedback, unclear = self._feedback(strip_marks(body), leave_live)
             reply = strip_marks(folded)
             unclear = unclear or (feedback is None and reply in self._unclear)
             answer = self._answers.get(reply)
@@ -387,22 +397,26 @@ class RuleStub:
                 result[group] = kept
         return result
 
-    def _feedback(self, text: str) -> tuple[Command | None, bool]:
-        """(feedback, unclear) from the marks-free message; see the module docstring."""
+    def _feedback(self, text: str, leaving: bool) -> tuple[Command | None, bool]:
+        """(feedback, unclear) from the marks-free message; see the module docstring.
+        ``leaving``: the message takes leave (``_leaving``'s first value)."""
         found = [(self._feedback_labels[m.key], m) for m in self._feedback_matcher.find_all(text)]
         live = [label for label, m in _outermost(found) if not self._negated(text, m.start)]
         classes = {label for label in live if isinstance(label, Command)}
         if Command.UNHELPFUL in classes:
             return Command.UNHELPFUL, False
-        if not classes and _LEAVE in live:
+        if not classes and leaving:
             return Command.NOT_NOW, False
         if len(classes) == 1:
             return classes.pop(), False
         return None, bool(classes)
 
-    def _leaving(self, body: str) -> bool:
-        """A live ``leave_taking`` hit in the marks-free ``body`` (as for feedback) whose
-        sentence is not a question: "今天就到这里？我还没说完" is no goodbye."""
+    def _leaving(self, body: str) -> tuple[bool, bool]:
+        """(takes leave, says goodbye). The first: a live ``leave_taking`` hit in the
+        marks-free ``body`` (as for feedback) that is not reported speech, or a whole-clause
+        goodbye. The second: one of them whose sentence is not a question either:
+        "今天就到这里？我还没说完" is no goodbye."""
+        live = goodbye = False
         # Index in ``body`` of each character that strip_marks keeps.
         kept = [i for i, ch in enumerate(body) if strip_marks(ch)]
         text = "".join(body[i] for i in kept)
@@ -410,9 +424,45 @@ class RuleStub:
         for label, match in _outermost(found):
             if label != _LEAVE or self._negated(text, match.start):
                 continue
+            if self._reported_before(body, kept[match.start]):
+                continue
+            live = True
             if not _asked(body[kept[match.end - 1] + 1 :]):
-                return True
+                goodbye = True
+        start = 0
+        for end in [*(m.start() for m in _CLAUSE_END.finditer(body)), len(body)]:
+            if self._whole_goodbye(body[start:end]):
+                live = True
+                if not _asked(body[end:]):
+                    goodbye = True
+            start = end + 1
+        return live, goodbye
+
+    def _reported_before(self, body: str, at: int) -> bool:
+        """A ``leave_taking_reported`` word, not negated, between the start of the clause
+        holding ``body[at]`` and ``at``: someone else said it or is leaving."""
+        ends = [m.end() for m in _CLAUSE_END.finditer(body, 0, at)]
+        before = strip_marks(body[ends[-1] if ends else 0 : at])
+        for word in self._reported:
+            i = before.find(word)
+            while i >= 0:
+                if not self._negated(before, i):
+                    return True
+                i = before.find(word, i + 1)
         return False
+
+    def _whole_goodbye(self, clause: str) -> bool:
+        """The clause, marks stripped, is a ``leave_taking_whole`` goodbye once its
+        lead-ins and trailing particles are dropped."""
+        bare = strip_marks(clause).rstrip(_TRAILING_PARTICLES)
+        dropped = True
+        while dropped:
+            dropped = False
+            for lead in self._lead_ins:
+                if bare.startswith(lead) and len(bare) > len(lead):
+                    bare, dropped = bare[len(lead) :], True
+                    break
+        return bare in self._leave_whole
 
     def _negated(self, text: str, start: int) -> bool:
         if any(text.endswith(word, 0, start) for word in self._exceptions):
