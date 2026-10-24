@@ -7,7 +7,7 @@
 # ones they get right are in tuned_probe.yaml): the honest measure of recall on unseen text.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 14
+#   L0 -> L2: 11
 #   L0 -> L3: 2
 #   L1 -> L0: 2
 #   L2 -> L0: 8
@@ -15,20 +15,23 @@
 #   L3 -> L0: 71
 #   L3 -> L1: 5
 #   L3 -> L2: 6
-#   by ideal: L0 16, L1 2, L2 11, L3 82
-#   by current: L0 81, L1 8, L2 20, L3 2
+#   by ideal: L0 13, L1 2, L2 11, L3 82
+#   by current: L0 81, L1 8, L2 17, L3 2
 #   below ideal (missed or under-rated): 95
-#   above ideal (false alarms): 16
-#   total: 111
+#   above ideal (false alarms): 13
+#   total: 108
 #
 # Fix F1 (2026-10-24, compositional cues): 12 entries reached their ideal level and moved
 # out (kl_nm02/04/06/07/12/15/16 to cases.yaml as f1_*, kl_fr17/33/35/36/37 to
 # tuned_probe.yaml); 9 rose but stay below ideal (their `why` ends with "fix F1: ...").
 # No entry moved away from its ideal.
 #
+# Fix F5a (2026-10-24, the 想死你了 'miss you' idiom): HYP_MISS_YOU masks 想死 + a person +
+# 了/啦, and L2_WANT_DIE keeps 想死你了解 ... longer than the mask, so the whitespace reading
+# '我想死 你了解吗' stays L2. fp01 and fp02 reached L0 and moved to cases.yaml (f5a_fp01,
+# f5a_fp02); kl_fr50 moved to tuned_probe.yaml (fr50).
+#
 # {id, text, ideal, current, why}
-- {id: fp01, ideal: L0, current: L2, text: "好想死你们了，下周回国一起吃饭！", why: "想死你们 'miss you' idiom; a mask would also hide '我想死 你们了解吗' after whitespace removal"}
-- {id: fp02, ideal: L0, current: L2, text: "宝贝我想死你了", why: "same idiom; masking 想死你 would hide '我想死 你懂吗'"}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
 - {id: fp04, ideal: L0, current: L2, text: "我可不想死在工位上", why: "不想死在 is kept for place talk (不想死在家里)"}
 - {id: fp05, ideal: L0, current: L2, text: "再加班我就去跳楼", why: "conditional threat; 就去跳楼 is L2 ideation without time/plan"}
@@ -137,4 +140,3 @@
 - {id: kl_fr34, ideal: L1, current: L0, text: "每天醒来都觉得很绝望", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr38, ideal: L1, current: L0, text: "我好累，什么都不想做了", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr47, ideal: L0, current: L2, text: "今晚就动手写论文", why: "FALSE POSITIVE, final-review fresh-author probe: 今晚就动手 (L2_PLAN_NO_ANCHOR) has benign masks only for 做 / 装修"}
-- {id: kl_fr50, ideal: L0, current: L2, text: "我男朋友说他想死我了", why: "FALSE POSITIVE, final-review fresh-author probe: the 想死X了 'miss you' idiom (see fp01, fp02)"}

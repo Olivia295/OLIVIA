@@ -7,11 +7,12 @@ two spectra, or two of the direct-request / lock-on / lock-off / aversion /
 intent-confirmed / kit-recall signals). The same phrase
 may appear in different groups, for example as an emotion cue and a spectrum cue.
 
-Feedback and answer phrases (roadmap R-7b) are folded once more with
-:func:`strip_marks`, since the stub matches them on the message without punctuation
-("试过了，没用" reads as "试过了没用"). Within the feedback group (done, not now,
-unhelpful, plus the aversion and kit-recall phrases, which the stub matches there too) and
-within the whole-message group (unclear, affirm, decline) a phrase may appear once.
+Feedback and answer phrases (roadmap R-7b), the leave-taking phrases and the
+whole-message requests are folded once more with :func:`strip_marks`, since the stub
+matches them on the message without punctuation ("试过了，没用" reads as "试过了没用").
+Within the feedback group (done, not now, unhelpful, leave-taking, plus the aversion and
+kit-recall phrases, which the stub matches there too) and within the whole-message group
+(unclear, affirm, decline, whole-message requests) a phrase may appear once.
 
 Emotion keys may be TAX emotion aliases; they are folded into the canonical id, and the
 key order is kept as the tie-break priority between emotions (first key wins).
@@ -74,6 +75,8 @@ _SECTIONS: Final = frozenset(
         "introspection",
         "situation_cues",
         "contraindication_cues",
+        "leave_taking",
+        "direct_request_whole",
         *_PHRASE_SECTIONS,
     }
 )
@@ -107,6 +110,8 @@ class PerceptionLexicon:
     spectrum_cues: Mapping[str, tuple[str, ...]]
     """TAX distress spectrum id ("01".."11") -> folded phrases, every spectrum present."""
     direct_request: tuple[str, ...]
+    direct_request_whole: tuple[str, ...]
+    """Whole messages, marks stripped, that ask for another method ("再给我一个", "换一个")."""
     lock_on: tuple[str, ...]
     lock_off: tuple[str, ...]
     aversion: tuple[str, ...]
@@ -126,6 +131,9 @@ class PerceptionLexicon:
     feedback_unhelpful: tuple[str, ...]
     feedback_unclear: tuple[str, ...]
     """Whole messages that may be about the card without saying which way ("唉")."""
+    leave_taking: tuple[str, ...]
+    """The user is leaving for now ("我去睡了", "今天就到这里"), marks stripped: on a card
+    that waits, the stub reads it as not now unless another feedback phrase says more."""
     answer_affirm: tuple[str, ...]
     """Whole-message yes ("好的"), marks stripped."""
     answer_decline: tuple[str, ...]
@@ -168,12 +176,15 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
     prefixes, exceptions = _negation(doc.get("negation"))
     feedback = _marked_section(doc.get("feedback"), "feedback", _FEEDBACK_KEYS)
     answers = _marked_section(doc.get("answers"), "answers", _ANSWER_KEYS)
+    leave = _marked_list(doc.get("leave_taking"), "leave_taking")
+    whole_requests = _marked_list(doc.get("direct_request_whole"), "direct_request_whole")
     aversion = tuple(strip_marks(p) for p in phrases["aversion"])
     _check_distinct(
         {
             "feedback.done": feedback["done"],
             "feedback.not_now": feedback["not_now"],
             "feedback.unhelpful": feedback["unhelpful"],
+            "leave_taking": leave,
             "aversion": aversion,
             "kit_recall": tuple(strip_marks(p) for p in phrases["kit_recall"]),
         },
@@ -184,6 +195,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
             "feedback.unclear": feedback["unclear"],
             "answers.affirm": answers["affirm"],
             "answers.decline": answers["decline"],
+            "direct_request_whole": whole_requests,
         },
         "whole-message replies",
     )
@@ -193,6 +205,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         lower_modifiers=lower_mods,
         spectrum_cues=MappingProxyType(spectra),
         direct_request=phrases["direct_request"],
+        direct_request_whole=whole_requests,
         lock_on=phrases["lock_on"],
         lock_off=phrases["lock_off"],
         aversion=phrases["aversion"],
@@ -207,6 +220,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         feedback_not_now=feedback["not_now"],
         feedback_unhelpful=feedback["unhelpful"],
         feedback_unclear=feedback["unclear"],
+        leave_taking=leave,
         answer_affirm=answers["affirm"],
         answer_decline=answers["decline"],
         kit_recall=phrases["kit_recall"],
@@ -270,19 +284,20 @@ def _marked_section(node: Any, where: str, keys: tuple[str, ...]) -> dict[str, t
     extra = sorted(str(key) for key in section if key not in keys)
     if extra:
         raise PerceptionLexiconError(f"{_FILE}: {where}: unknown keys {extra}")
-    out: dict[str, tuple[str, ...]] = {}
-    for key in keys:
-        name = f"{where}.{key}"
-        stripped: list[str] = []
-        for phrase in _phrases(section.get(key), name):
-            bare = strip_marks(phrase)
-            if not bare:
-                raise PerceptionLexiconError(f"{_FILE}: {name}: {phrase!r} is only marks")
-            if bare in stripped:
-                raise PerceptionLexiconError(f"{_FILE}: {name}: phrase {bare!r} is repeated")
-            stripped.append(bare)
-        out[key] = tuple(stripped)
-    return out
+    return {key: _marked_list(section.get(key), f"{where}.{key}") for key in keys}
+
+
+def _marked_list(node: Any, where: str) -> tuple[str, ...]:
+    """A phrase list, folded and then stripped of marks, with no repeats."""
+    stripped: list[str] = []
+    for phrase in _phrases(node, where):
+        bare = strip_marks(phrase)
+        if not bare:
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {phrase!r} is only marks")
+        if bare in stripped:
+            raise PerceptionLexiconError(f"{_FILE}: {where}: phrase {bare!r} is repeated")
+        stripped.append(bare)
+    return tuple(stripped)
 
 
 def _check_distinct(sections: Mapping[str, tuple[str, ...]], group: str) -> None:

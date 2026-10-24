@@ -6,7 +6,8 @@ section ``compositions``) instead joins two phrase lists, an intent verb and an 
 ending one's life for example, across a short gap without clause punctuation. The checks
 that keep it from firing on everyday text are generic: exceptions around a part, blocker
 words in the gap, a negator in the gap or just before the first part, a third person as
-the subject, a required context nearby and voiding words in the same clause. Each is
+the subject, a required context nearby, voiding words in the same clause and, for an
+entry with ``trailing``, anything but a sentence particle after it in its clause. Each is
 described on :class:`~olivia.core.safety.lexicon.Composition`.
 
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
@@ -78,6 +79,7 @@ class _Text:
 
     def __init__(self, text: str, rules: CompositionRules, found: dict[str, list[Match]]) -> None:
         n = len(text)
+        self.text = text
         self.found = found
         # clause_start[i]: first index of the clause holding position i; clause_end[i]: the
         # index of the first stop at or after i (n when none).
@@ -275,4 +277,16 @@ class Composer:
             b = min(facts.clause_end[second.end], second.end + entry.unless_window)
             if own.unless.any_inside(a, b):
                 return False
+        if entry.trailing is not None:
+            return _only(facts.text[second.end : facts.clause_end[second.end]], entry.trailing)
         return True
+
+
+def _only(rest: str, phrases: tuple[str, ...]) -> bool:
+    """Is ``rest`` made of ``phrases`` alone (any number, any order, possibly none)?"""
+    while rest:
+        phrase = next((p for p in phrases if rest.startswith(p)), None)
+        if phrase is None:
+            return False
+        rest = rest[len(phrase) :]
+    return True

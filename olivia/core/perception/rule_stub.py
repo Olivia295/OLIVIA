@@ -11,7 +11,9 @@ window (head 128 + tail 256 characters) and scanned once. Within each lexicon se
 hit fully inside a longer hit of the same section is dropped, then a hit directly
 preceded by a negation prefix is void, unless the prefix ends a non-negating word
 (``negation.exceptions``: 特别, 告别 ...), completes an A-not-A question (是不是, 有没有,
-会不会) or follows another negation (不是不). This mirrors the red-flag detector's check.
+会不会, or any one-character 不 / 没 between a character and a hit that starts with the
+same character: 能不能教我, 有没有什么办法) or follows another negation (不是不). This
+mirrors the red-flag detector's check.
 
 Rules, per field:
 
@@ -61,7 +63,8 @@ Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None witho
 ``command`` when the whole folded message is ``/done``, ``/not-now`` or ``/unhelpful``;
 ``direct_request``, ``listening_lock_on``, ``listening_lock_off``, ``aversion`` and
 ``intent_confirmed`` when a non-negated phrase of that section matched (a request for a
-named practice, below, is a direct request too). If both lock
+named practice, below, is a direct request too, and so is a whole message, marks
+stripped, that is a ``direct_request_whole`` entry: "再给我一个", "换一个"). If both lock
 phrases match, the later one in the message wins, since a turn cannot both set and
 release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
 reads them in different stages (S_empower, S_closing). ``kit_recall`` when a non-negated
@@ -82,7 +85,9 @@ Natural-language feedback (roadmap R-7b), only on a turn that is not a slash com
   scanned for the ``feedback`` phrases, the aversion phrases (read as unhelpful) and the
   kit-recall phrases (so "收进锦囊的那个" is a recall, not "收进锦囊"); a hit inside a
   longer hit is dropped and a negated hit is void, as above. Unhelpful wins over the
-  other classes; done together with not_now is unclear; one class is that command.
+  other classes; done together with not_now is unclear; one class is that command. A
+  ``leave_taking`` phrase ("我去睡了", "今天就到这里") counts as not_now only when no
+  other class matched, so "做完了，我去睡了" stays done.
 - ``feedback_unclear``: done and not_now together, or the whole marks-free message is a
   ``feedback.unclear`` entry ("唉", "再说吧") and no feedback phrase matched.
 - ``answer``: the whole marks-free message is an ``answers.affirm`` or
@@ -152,6 +157,7 @@ _CONTRAINDICATION: Final = "contraindication"
 # Labels of the feedback matcher: a command, or a kit recall (matched only to win
 # containment over a feedback phrase inside it).
 _FeedbackLabel = Command | str
+_LEAVE: Final = "leave_taking"
 
 _Tag = tuple[str, str]  # (group, label)
 _L = TypeVar("_L", bound=str)
@@ -245,12 +251,14 @@ class RuleStub:
             (Command.UNHELPFUL, lexicon.feedback_unhelpful),
             (Command.UNHELPFUL, lexicon.aversion),
             (_RECALL, lexicon.kit_recall),
+            (_LEAVE, lexicon.leave_taking),
         ):
             for phrase in phrases:
                 feedback[strip_marks(phrase)] = label
         self._feedback_labels = feedback
         self._feedback_matcher = PhraseMatcher({phrase: phrase for phrase in feedback})
         self._unclear = frozenset(lexicon.feedback_unclear)
+        self._whole_requests = frozenset(lexicon.direct_request_whole)
         self._answers = {
             **dict.fromkeys(lexicon.answer_affirm, Answer.AFFIRM),
             **dict.fromkeys(lexicon.answer_decline, Answer.DECLINE),
@@ -271,11 +279,13 @@ class RuleStub:
         feedback: Command | None = None
         unclear = False
         answer: Answer | None = None
+        another = False
         if command is None:
             feedback, unclear = self._feedback(strip_marks(body))
             reply = strip_marks(folded)
             unclear = unclear or (feedback is None and reply in self._unclear)
             answer = self._answers.get(reply)
+            another = reply in self._whole_requests
 
         emotion_hits = Counter(label for label, _ in hits.get(_EMOTION, ()))
         acute = bool(hits.get(_ACUTE))
@@ -296,7 +306,7 @@ class RuleStub:
         signals = hits.get(_SIGNAL, [])
         labels = {label for label, _ in signals}
         asked, requested = _therapy(body, hits, self._practices)
-        direct = _DIRECT in labels or requested is not None
+        direct = _DIRECT in labels or requested is not None or another
         lock_on, lock_off = _lock(signals)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
@@ -368,13 +378,12 @@ class RuleStub:
     def _feedback(self, text: str) -> tuple[Command | None, bool]:
         """(feedback, unclear) from the marks-free message; see the module docstring."""
         found = [(self._feedback_labels[m.key], m) for m in self._feedback_matcher.find_all(text)]
-        classes = {
-            label
-            for label, m in _outermost(found)
-            if isinstance(label, Command) and not self._negated(text, m.start)
-        }
+        live = [label for label, m in _outermost(found) if not self._negated(text, m.start)]
+        classes = {label for label in live if isinstance(label, Command)}
         if Command.UNHELPFUL in classes:
             return Command.UNHELPFUL, False
+        if not classes and _LEAVE in live:
+            return Command.NOT_NOW, False
         if len(classes) == 1:
             return classes.pop(), False
         return None, bool(classes)
@@ -388,6 +397,8 @@ class RuleStub:
             head = start - len(negation)
             if any(neg == negation and text.endswith(a, 0, head) for a, neg in _A_NOT_A):
                 continue
+            if len(negation) == 1 and head > 0 and text[head - 1] == text[start]:
+                continue  # A-not-A: 能不能教我, 有没有什么办法, 要不要试试
             if any(text.endswith(other, 0, head) for other in self._negations):
                 continue
             return True

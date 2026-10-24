@@ -30,6 +30,8 @@ SAME_IN_TRADITIONAL = frozenset(
     "妹始姐姥姻婆婚客宴密小居岩崖工差巴幸弟影待律患您情戒戳房所抓抗拍拜掐排攀收散文施旅星春"
     "晨景晾暖更曾替未末本李案楚款歌母毫水求清演火烤爬父班理瓜甩甭由男目研破禁福究立策管翻考"
     "者聚脆船色花莫菜落蓄蜜衣角象跑蹲退重野院露"
+    # fix F5a: ASK_INTENT_WORDS_LEFT (时光胶囊, 中秋) and the trailing particles.
+    "光囊秋呀哦啊嘛"
 )
 
 
@@ -45,7 +47,7 @@ def _lexicon_phrases() -> list[str]:
     phrases += list(rules.recipients)
     for entry in rules.entries:
         phrases += [*entry.heads, *entry.tails, *entry.context, *entry.unless]
-        phrases += [*entry.exceptions, *entry.blockers]
+        phrases += [*entry.exceptions, *entry.blockers, *(entry.trailing or ())]
     return phrases
 
 

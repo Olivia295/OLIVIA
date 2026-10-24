@@ -46,7 +46,15 @@ _COMP_GLOBAL_LISTS: Final = (
 _COMP_KEYS: Final = frozenset(
     {"stops", "lookback", "subject_window", "lists", "entries", *_COMP_GLOBAL_LISTS}
 )
-_COMP_PHRASE_KEYS: Final = ("heads", "tails", "context", "unless", "exceptions", "blockers")
+_COMP_PHRASE_KEYS: Final = (
+    "heads",
+    "tails",
+    "context",
+    "unless",
+    "exceptions",
+    "blockers",
+    "trailing",
+)
 _COMP_ENTRY_KEYS: Final = frozenset(
     {
         "id",
@@ -116,7 +124,10 @@ class Composition:
     person word before the second part names someone else (``persons``), no ``context``
     phrase lies within ``context_window`` characters of it (anywhere when the window is
     None), or an ``unless`` phrase lies within ``unless_window`` characters of it in the
-    same clause. ``ask`` marks a D3 cue (L1); a level of L3 is Stage 1 plan evidence.
+    same clause. With ``trailing``, the match must also end its clause: only ``trailing``
+    phrases (sentence particles such as 了, 吧) may stand between it and the next clause
+    punctuation or the end of the message. ``ask`` marks a D3 cue (L1); a level of L3 is
+    Stage 1 plan evidence.
     """
 
     id: str
@@ -134,6 +145,9 @@ class Composition:
     exceptions: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
     persons: bool = True
+    trailing: tuple[str, ...] | None = None
+    """None: anything may follow the match. Otherwise the match ends its clause: only
+    these phrases may follow it before the clause punctuation or the end of the text."""
 
 
 @dataclass(frozen=True)
@@ -564,6 +578,7 @@ def _parse_composition(
         exceptions=phrases["exceptions"],
         blockers=phrases["blockers"],
         persons=persons,
+        trailing=phrases["trailing"] if "trailing" in item else None,
     )
 
 

@@ -839,6 +839,67 @@ direct_request:
   - 有什么技巧
   - 怎么缓解
   - 怎么做才能
+  # "Any way / any good way" with 什么 or 好 in between (有没有 is an A-not-A question,
+  # not a negation, so "有没有什么办法" asks).
+  - 有没有什么办法
+  - 有没有什么好办法
+  - 有没有什么好方法
+  - 有没有好办法
+  - 有没有好方法
+  - 有什么好办法
+  - 有什么好方法
+  - 有没有什么技巧
+  - 有没有什么练习
+  - 有什么练习
+  # Another one, or a different one. The method word or 别的 / 换 is part of the phrase:
+  # "再给我一个机会" asks for no method. A bare "再给我一个" as the whole message is in
+  # direct_request_whole below.
+  - 再给我一个方法
+  - 再给我一个练习
+  - 再给我一个办法
+  - 再给我个方法
+  - 再给我个练习
+  - 再来一个方法
+  - 再来一个练习
+  - 再来个练习
+  - 给我一个别的
+  - 给我个别的
+  - 给我换一个
+  - 给我换个
+  - 换一个方法
+  - 换个方法
+  - 换一种方法
+  - 换种方法
+  - 换一个练习
+  - 换个练习
+  - 换一个办法
+  - 换个办法
+  - 有没有别的方法
+  - 有没有别的办法
+  - 有没有别的练习
+  - 有没有其他方法
+  - 有没有其他办法
+  - 有没有其他练习
+  - 还有别的方法吗
+  - 还有别的办法吗
+  - 还有别的练习吗
+  - 还有其他方法吗
+  - 还有其他办法吗
+  - 有别的方法吗
+  - 有别的办法吗
+  # Asking to be taught, addressed to the companion or as a question ("外婆总能教我很多
+  # 东西" tells a memory and asks for nothing).
+  - 你能教我
+  - 你可以教我
+  - 能不能教我
+  - 可不可以教我
+  - 能教教我
+  - 能教我一下
+  - 可以教我一下
+  - 教我一下
+  - 教我几招
+  - 教我一招
+  - 你教我
 
 # The user only wants to talk, not get advice (PRD Q-4 "只想说说/不要建议").
 lock_on:
@@ -866,6 +927,25 @@ lock_on:
   - 别讲道理
   - 不想听道理
   - 陪我说说话就好
+  - 陪我说说话
+  - 陪我说会儿话
+  - 陪我聊聊天
+  - 陪我聊会儿天
+  - 陪我聊一会儿
+  # Turning down methods in so many words ("我不需要什么方法"): the same as turning down
+  # advice. The negation is part of the phrase, so the negation check (which looks only
+  # in front of a hit) leaves it standing.
+  - 不需要什么方法
+  - 不需要方法
+  - 不用什么方法
+  - 不要什么方法
+  - 不想要什么方法
+  - 不需要什么办法
+  - 不需要办法
+  - 不需要什么建议
+  - 不用给我方法
+  - 不要给我方法
+  - 别给我方法
 
 # The user releases the listening lock (PRD Q-4 "我想听听你的建议/我们下一步该怎么做").
 lock_off:
@@ -1244,6 +1324,72 @@ answers:
     - 不了谢谢
     - 不用了谢谢
 
+# The user is leaving for now: going to sleep, or ending today's talk (marks stripped,
+# matched like the feedback phrases). On a card that waits for feedback it means "not
+# now", so the card goes into the kit and the closing ritual follows (S_empower ->
+# S_closing, the /not-now route); another feedback phrase in the same message wins
+# ("做完了，我去睡了" is done). Sleep phrases carry 我 or 试着 so "孩子去睡了" is no
+# leave-taking; anywhere else (no card waiting) the session does not read them.
+leave_taking:
+  - 我去睡了
+  - 我去睡觉了
+  - 我先去睡了
+  - 我先去睡觉了
+  - 我先睡了
+  - 我要去睡了
+  - 我要去睡觉了
+  - 我要睡了
+  - 我要睡觉了
+  - 我该睡了
+  - 我该睡觉了
+  - 我该去睡了
+  - 我想睡觉了
+  - 我想去睡了
+  - 我想去睡觉了
+  - 试着睡一下
+  - 试着睡一会
+  - 试着去睡
+  - 今天就到这里
+  - 今天先到这里
+  - 今天就先到这里
+  - 今天就聊到这
+  - 今天先聊到这
+  - 今天就先聊到这
+  - 就聊到这里吧
+  - 先聊到这里
+  - 先聊到这吧
+  - 下次再聊
+  - 改天再聊
+  - 回头再聊
+  - 明天再聊
+  - 先不聊了
+  - 我先下了
+  - 我先撤了
+
+# Whole messages (marks stripped) that ask for another method: "再给我一个" or "换一个"
+# alone. Inside a longer message they ask for anything ("再给我一个机会"), so only the
+# whole message counts; direct_request has the forms that name the method.
+direct_request_whole:
+  - 再给我一个
+  - 再给我一个吧
+  - 再给我个
+  - 再给我个吧
+  - 再给一个
+  - 再来一个
+  - 再来一个吧
+  - 再来个
+  - 再来个吧
+  - 换一个
+  - 换一个吧
+  - 换个
+  - 换个吧
+  - 再换一个
+  - 再换一个吧
+  - 还有别的吗
+  - 有别的吗
+  - 还有其他的吗
+  - 有没有别的
+
 # Knowledge questions (guide §4.2 step 4: knowledge, mechanism, method, "is this normal").
 information_cues:
   - 正常吗
@@ -1526,6 +1672,8 @@ therapy_request_cues:
   - 教我做
   - 教我练
   - 教教我
+  - 教我
+  - 教一下
   - 想试试
   - 想试一下
   - 想做一下
