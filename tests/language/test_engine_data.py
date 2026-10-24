@@ -139,6 +139,23 @@ def _template_without_haven_fallback(d: dict[str, Any]) -> None:
     d["stages"]["S_haven"]["variants"] = ["{user_name}，我在这里陪着你，慢慢歇一歇就好。"]
 
 
+def _goodbyes_only_for_the_evening(d: dict[str, Any]) -> None:
+    # F6b: one line without an evening word is not enough for the daytime.
+    d["stages"]["S_ready"]["after_close"] = [
+        "好，那就先这样。今天辛苦了，好好休息。",
+        "愿你今晚过得轻松一点，我一直在这里。",
+        "好的。今天就先停在这里，什么时候想回来聊聊，都可以。",
+    ]
+
+
+def _daytime_goodbyes_need_a_slot_free_line(d: dict[str, Any]) -> None:
+    d["stages"]["S_ready"]["after_close"] = [
+        "愿你今晚过得轻松一点，我一直在这里。",
+        "{user_name}，今天先停在这里。",
+        "{user_name}，嗯，我知道了，我一直在这里。",
+    ]
+
+
 def _followup_missing(d: dict[str, Any]) -> None:
     del d["followups"]["kit_empty"]
 
@@ -206,6 +223,8 @@ def _unknown_window_key(d: dict[str, Any]) -> None:
         ("templates/silent_anchor.yaml", _inverted_empower_window),
         ("templates/silent_anchor.yaml", _unknown_window_key),
         ("templates/silent_anchor.yaml", _template_without_haven_fallback),
+        ("templates/gentle_holding.yaml", _goodbyes_only_for_the_evening),
+        ("templates/zen_philosopher.yaml", _daytime_goodbyes_need_a_slot_free_line),
         ("language/needs.yaml", _missing_need),
         ("language/needs.yaml", _bad_version),
         ("cards/grade_a.yaml", _extra_card_step),

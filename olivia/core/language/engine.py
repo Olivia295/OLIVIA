@@ -132,15 +132,25 @@ def is_short_input(text: str) -> bool:
     return utterance_kind(text) is Utterance.BRIEF
 
 
-def at_work(now: datetime, timezone: str | None) -> bool:
-    """Whether ``now`` falls in working hours where the user lives (Mon-Fri 9-18)."""
-    local = now
+def _local(now: datetime, timezone: str | None) -> datetime:
     if timezone:
         try:
-            local = now.astimezone(ZoneInfo(timezone))
+            return now.astimezone(ZoneInfo(timezone))
         except (ZoneInfoNotFoundError, ValueError):
-            local = now
+            return now
+    return now
+
+
+def at_work(now: datetime, timezone: str | None) -> bool:
+    """Whether ``now`` falls in working hours where the user lives (Mon-Fri 9-18)."""
+    local = _local(now, timezone)
     return local.weekday() in _WORK_DAYS and local.hour in _WORK_HOURS
+
+
+def after_work_hours(now: datetime, timezone: str | None) -> bool:
+    """Whether ``now`` is past the end of the working day (18:00, any weekday) where the
+    user lives, up to midnight; the session adds the late-night window after that (F6b)."""
+    return _local(now, timezone).hour >= _WORK_HOURS.stop
 
 
 class LanguageEngine:

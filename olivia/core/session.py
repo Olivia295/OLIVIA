@@ -63,7 +63,10 @@ Stage handling:
   ``S_ready.after_close`` line, never the same closing text twice in a row; new content
   that is not plainly positive (not a yes or no, a command, a feedback phrase or a kit
   request) reopens listening in S_explore (``inspect["reason"]`` ``CLOSING_REOPEN``).
-  A yes that ends the session in S_ready also gets an ``after_close`` line.
+  A yes that ends the session in S_ready also gets an ``after_close`` line. An
+  ``after_close`` line that points at the evening ("愿你今晚…", "早点休息") is used only
+  from 18:00 local time through the B7 late-night window; at other hours the line comes
+  from ``after_close_daytime`` (F6b).
 * Every other stage: ``compose(stage, slots)``.
 
 Meta turns, outside a crisis and below an L2 screen: a feedback command with no card
@@ -106,7 +109,10 @@ gate and stage rules, so a red-flag user only ever gets the referral card:
 * asked: a Grade B/C therapy named in a question (``TurnSignals.therapy_question``) gets
   ``render_info_reply(lens=False)`` as the whole reply, Grade C in any ordinary stage and
   Grade B in S_clarify only. A card waiting for feedback keeps waiting.
-* lens: once per session, an S_clarify turn without the listening lock appends one Grade
+* lens: once per session, an S_clarify turn without the listening lock that is not heavy
+  (F6b: grief, sadness with a loss situation active, the bereavement spectrum, arousal
+  above ``exploration_allow`` or an L1 screen; the lens then waits for a calmer turn and
+  its once-per-session use is not spent) appends one Grade
   B explainer (``render_info_reply(lens=True)``) to the S_clarify reply, drawn from the
   Grade B methods the active situations' dossiers name (``situation_lenses``, plan D-2)
   when the masks leave one, else from the ``clarify_lenses`` entry of the most recent
@@ -276,7 +282,13 @@ from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
 from olivia.core.language.dossiers import fitting_spectra, lens_pool
-from olivia.core.language.engine import LanguageEngine, Slots, at_work, is_short_input
+from olivia.core.language.engine import (
+    LanguageEngine,
+    Slots,
+    after_work_hours,
+    at_work,
+    is_short_input,
+)
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR
 from olivia.core.memory.notes import NoteCues, load_note_cues
@@ -337,6 +349,12 @@ from olivia.core.yaml_load import safe_load
 FALLBACK_SPECTRUM: Final = "02"
 TABOO_RETRIES: Final = 5
 _SOMATIC_KEY: Final = "arousal.thresholds.somatic_priority"
+# F6b: a heavy turn gets no unasked S_clarify lens (``Session._heavy``). Arousal above the
+# line where the solver stops exploring (taxonomy ``exploration_allow``; <= 0.60 is still
+# calm) is heavy, and so is grief or loss: the trauma, stress and bereavement spectrum.
+_HEAVY_AROUSAL_KEY: Final = "arousal.thresholds.exploration_allow"
+_HEAVY_SPECTRUM: Final = "06"
+_LOSS_SITUATIONS: Final = "SIT-06-"
 _EMPOWER_EXITS: Final = frozenset(
     {Reason.EMPOWER_TO_CLOSING, Reason.EMPOWER_UNHELPFUL, Reason.EMPOWER_AVERSION}
 )
@@ -526,6 +544,7 @@ class Session:
         self._rng = rng
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
+        self._heavy_arousal = tax.threshold(_HEAVY_AROUSAL_KEY)
         self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
@@ -848,7 +867,7 @@ class Session:
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
         elif leaving:
-            rendered = self._closing(templates.after_close, stage)
+            rendered = self._closing(self._after_close(now), stage)
         elif follow.clarify and still_waiting:
             rendered = self._followup(templates.clarify_feedback, stage)
             self._clarifying = True
@@ -870,7 +889,7 @@ class Session:
             rendered = self._info(info, stage, perception, spectrum, mirror_text)
         elif stage in (HelpStage.S_CLOSING, HelpStage.S_READY):
             # After the ritual: a short warm line, never the ritual again.
-            rendered = self._closing(templates.after_close, stage)
+            rendered = self._closing(self._after_close(now), stage)
         elif stage is HelpStage.S_EMPOWER:
             # A card still waiting for feedback is not replaced: staying in S_empower, or
             # asking for a method right after an S_explore stabilization card, gets the
@@ -1356,6 +1375,9 @@ class Session:
             stage is HelpStage.S_CLARIFY
             and not self._lens_shown
             and not transition.state.pure_listening_locked
+            # Not while the user tells something heavy (F6b): the lens waits for a calmer
+            # turn, and its once-per-session use is not spent.
+            and not self._heavy(perception)
             # SILENT_ANCHOR only listens (SDD §6.1): no unasked perspective.
             and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
         ):
@@ -1378,6 +1400,22 @@ class Session:
         if not self._note_gate() or self._has_taboo(text, ""):
             return None
         return chosen, text, lens
+
+    def _heavy(self, perception: PerceptionContext) -> bool:
+        """Whether this turn tells something heavy (F6b): grief; sadness while a loss is
+        on the table (an active situation of the trauma, stress and bereavement spectrum,
+        e.g. SIT-06-03 a breakup, SIT-06-04 a bereavement); that spectrum as the turn's
+        own; or arousal above ``exploration_allow``. Plain tiredness ("今天上班好累",
+        read as sadness) is not heavy. An L1 screen never gets this far
+        (``_info_choice`` shows no card at L1 or above)."""
+        emotion = perception.fine_grained_emotion
+        loss = any(code.startswith(_LOSS_SITUATIONS) for code in self._context.situations)
+        return (
+            emotion == "grief"
+            or (emotion == "sadness" and loss)
+            or dominant_spectrum(perception.distress_vector) == _HEAVY_SPECTRUM
+            or perception.arousal > self._heavy_arousal
+        )
 
     def _info(
         self,
@@ -1623,6 +1661,17 @@ class Session:
     def _followup(self, variants: tuple[str, ...], stage: HelpStage) -> _Rendered:
         """A short follow-up line (roadmap R-7b), through the taboo filter and the gate."""
         return self._with_taboo_filter(lambda: self._plain_line(variants, stage), stage)
+
+    def _after_close(self, now: datetime) -> tuple[str, ...]:
+        """The ``after_close`` lines for the user's local hour (F6b): the ones that point at
+        the evening ("今晚", "早点休息") only from the end of the working day (18:00) through
+        the B7 late-night window, the others at any hour."""
+        templates = self._engine.data.templates
+        region = self._profile.region
+        zone = region.timezone if region is not None else None
+        if after_work_hours(now, zone) or self._wellbeing.is_late_night(now):
+            return templates.after_close
+        return templates.after_close_daytime
 
     def _closing(
         self, variants: tuple[str, ...], stage: HelpStage, *, window: bool = False

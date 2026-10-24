@@ -24,14 +24,19 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    领导、我妈): never flip mechanically. 你/您 -> 对方, 你们 -> 他们, every 我 -> 你, a
    leading "我觉得/我感觉…" is dropped. "我觉得你根本不在乎我" -> "你感到对方根本不
    在乎你" (never "你觉得我不在乎你").
-5. Exclamations "X死我了" become "你X坏了" ("气死我了" -> "你气坏了").
+5. Exclamations "X死我了" become "你X坏了" ("气死我了" -> "你气坏了"). The phrase
+   "想死你了" says how much the speaker misses someone (F6b): "你很想念对方", "你很想念
+   他"; "想死我了" is the speaker's longing: "你盼了很久". A bare "想死" is never this phrase.
 6. The result starts with 你, with at most one frame (F5b: "你感到" frames only a
    feeling or a view): as it is when the first clause already does; with 你 in front of a
    leading time word ("今天上班好累" -> "你今天上班好累") when that clause names nobody
    else; with a subject 我 in the middle brought to the front ("每次组会我都很紧张" ->
    "你每次组会都很紧张"). In a third-party conflict about the user it is the user's view
    ("你感到领导当众批评你", COLBO-01); a relative's news takes 你 ("外婆上个月走了" ->
-   "你外婆上个月走了"), other news is reported ("你提到他走了"). Otherwise a feeling or
+   "你外婆上个月走了"), other news is reported ("你提到他走了"), and so is what someone
+   else says or asks of the user (F6b: "爸妈总说让我别太累" -> "你爸妈总说让你别太累",
+   "老板要求我周末加班" -> "你提到老板要求你周末加班", never "你感到老板要求…"). A
+   view of someone else stays the user's view ("你感到她从来没夸过你"). Otherwise a feeling or
    state is "你感到…" ("活着好累" -> "你感到活着好累"), a clause that drops its subject
    takes 你 ("在美国读博第三年" -> "你在美国读博第三年"), and any other fact is reported
    ("你提到…"). Never "你感到每次组会你都…".
@@ -40,7 +45,9 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b).
 
 A message whose statements are only a goodbye for now ("今天就到这里吧", "我去睡了") is
-CLOSING, and a one-character or one-word answer ("有") is BRIEF: neither is mirrored.
+CLOSING, and a one-character or one-word answer ("有") is BRIEF: neither is mirrored. A
+clause that is only an acknowledgement ("好的", "行", "嗯好") is a filler, so "好的，拜拜"
+is CLOSING, never "你感到好的" (F6b).
 
 The result never contains the pronoun 我 (words like 自我 are kept as written) and always
 starts with 你.
@@ -211,6 +218,13 @@ _EXCLAIM_RE: Final = re.compile(r"^(.{1,3}?)死我了$")
 # "累死了" says the same about the speaker, for these words only (F5b).
 _EXCLAIM_BARE_RE: Final = re.compile(r"^(累|烦|气|困|急|忙|吓|难受)死了$")
 _EXCLAIM_WORDS: Final = {"烦": "你烦透了", "难受": "你难受极了"}
+# "想死你了": missing someone very much, never a wish to die (F6b). The person is named
+# after 死 and the clause ends with 了, so "我真的想死" or "想死了" never matches.
+_MISSING_RE: Final = re.compile(
+    r"^我?(?:真的?|好|可|太)?想死(你们|您们|他们|她们|大家|你|您|他|她|我)了[啊呀啦哦]*$"
+)
+_MISSED: Final = {"你": "对方", "您": "对方", "你们": "他们", "您们": "他们"}
+_LONGING: Final = "你盼了很久"
 _TIME_WORDS: Final = (
     "这段时间",
     "这阵子",
@@ -271,6 +285,20 @@ _FILLERS: Final = frozenset(
         "天哪",
         "天呐",
         "好吧",
+        # F6b: an acknowledgement clause ("好的，拜拜") is not a statement.
+        "好",
+        "好的",
+        "好啊",
+        "好呀",
+        "好嘞",
+        "嗯好",
+        "行",
+        "行吧",
+        "可以",
+        "收到",
+        "知道了",
+        "ok",
+        "okay",
     }
 )
 # Fillers dropped from a clause's front ("就是想有人听我说说", F5b).
@@ -314,6 +342,9 @@ _BRIEF: Final = frozenset(
         "好",
         "好的",
         "好吧",
+        "好嘞",
+        "嗯好",
+        "收到",
         "哦",
         "噢",
         "行",
@@ -618,6 +649,19 @@ _KIN: Final = (
     "男友",
     "女友",
 )
+# Someone else's words to or about the user, at the clause's front (F6b): reported, never
+# "你感到爸妈总说让你…". 让 counts only before an instruction ("让我别太累"), not as a
+# cause ("他让我很失望" is a feeling); 说的/说话 are not a report.
+_SPEECH_ADVERBS: Final = "总是|老是|一直|经常|常常|天天|每次都|总|老|又|还|也|都|就|非要|偏要|常"
+_REPORTED_RE: Final = re.compile(
+    "^(?:"
+    + "|".join(sorted((w for w in _THIRD_PARTY if _CJK_RE.match(w)), key=len, reverse=True))
+    + ")[妈爸哥姐弟妹们]?"
+    + f"(?:{_SPEECH_ADVERBS})?"
+    + "(?:跟我|对我|和我)?"
+    + "(?:说(?!的|话)|叫|要求|劝|催|告诉"
+    + "|让我?(?:别|不要|不许|不准|去|来|早点|赶紧|快|多|少|好好|必须|一定))"
+)
 # The character before 我 that makes it an object ("听我说", "把我逼疯", "对我很不满意").
 _OBJECT_MARKERS: Final = frozenset(
     "把被让叫给对跟和同与向替为帮陪找听骂说问教逼管催烦怪打看理等带喊劝求夸爱恨疼懂害惹吵嫌评骗厌欢使令"
@@ -670,6 +714,10 @@ def mirror(user_text: str) -> str:
     out: list[str] = []
     for i, clause in enumerate(clauses):
         body = clause
+        missed = _missing(body)
+        if missed is not None:
+            out.append(missed)
+            continue
         exclaimed = _exclamation(body)
         if exclaimed is not None:
             out.append(exclaimed)
@@ -838,11 +886,12 @@ def _lead(clause: str, body: str, conflict: bool) -> str:
     也走了") or is its subject ("最近我老是失眠" -> "你最近老是失眠"); so does a subject
     我 in the middle ("每次组会我都很紧张" -> "你每次组会都很紧张"). In a third-party
     conflict about the user the clause is the user's view ("你感到领导当众批评你",
-    COLBO-01); a relative's news takes 你 ("你外婆上个月走了"), other news is reported
-    ("你提到他走了"). Otherwise (F5b): a feeling or state is "你感到…" ("你感到活着好
-    累"), a clause that drops its subject takes 你 ("你在美国读博第三年", "你想有人听你
-    说说而已"), a clause about the user is still the user's view, and any other fact is
-    reported ("你提到考研又没考上").
+    COLBO-01), but someone else's words are reported (F6b: "你爸妈总说让你别太累",
+    "你提到老板要求你周末加班"); a relative's news takes 你 ("你外婆上个月走了"),
+    other news is reported ("你提到他走了"). Otherwise (F5b): a feeling or state is
+    "你感到…" ("你感到活着好累"), a clause that drops its subject takes 你
+    ("你在美国读博第三年", "你想有人听你说说而已"), a clause about the user is still the
+    user's view, and any other fact is reported ("你提到考研又没考上").
     """
     word = next((w for w in _TIME_WORDS if clause.startswith(w)), None)
     if word is not None:
@@ -854,6 +903,8 @@ def _lead(clause: str, body: str, conflict: bool) -> str:
     fronted = _front_subject(clause, body)
     if fronted is not None:
         return fronted
+    if _REPORTED_RE.match(clause):
+        return ("你" if clause.startswith(_KIN) else _SAID_PREFIX) + body
     about_user = bool(_me_positions(clause))
     view = next((v for v in _VIEW_VERBS if clause.startswith(v) and len(body) > len(v)), None)
     if view is not None:
@@ -915,6 +966,17 @@ def _front_subject(clause: str, body: str) -> str | None:
     if body[i] != "你":
         return None
     return "你" + body[:i] + body[i + 1 :]
+
+
+def _missing(clause: str) -> str | None:
+    """The "想死你了" phrase: "你很想念对方"; "想死我了": "你盼了很久" (F6b); else None."""
+    match = _MISSING_RE.match(clause)
+    if match is None:
+        return None
+    who = match.group(1)
+    if who == "我":
+        return _LONGING
+    return "你很想念" + _MISSED.get(who, who)
 
 
 def _exclamation(clause: str) -> str | None:

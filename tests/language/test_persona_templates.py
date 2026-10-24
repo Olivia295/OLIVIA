@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from olivia.core.language.data import (
+    EVENING_WORDS,
     PERSONA_TEMPLATE_FILES,
     ContentKind,
     LanguageData,
@@ -639,6 +640,12 @@ def test_after_close_is_one_short_line_without_a_question(
         assert set(SLOT.findall(variant)) <= {"user_name", "agent_name"}, variant
         assert "\n" not in variant and "？" not in variant, variant
         assert "欢迎回来" not in variant and "聊起" not in variant, variant
+    # F6b: the daytime goodbyes are the lines without an evening word, two or more.
+    assert tpl.after_close_daytime == tuple(
+        v for v in tpl.after_close if not any(w in v for w in EVENING_WORDS)
+    )
+    assert len(tpl.after_close_daytime) >= 2
+    assert any(not SLOT.findall(v) for v in tpl.after_close_daytime)
 
 
 @pytest.mark.parametrize("persona", PersonaSpectrum)
