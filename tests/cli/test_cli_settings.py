@@ -38,7 +38,7 @@ def _saved(home):
 
 
 def test_reminders_are_off_by_default_and_onboarding_mentions_settings(run_cli, data_home, machine):
-    chat = run_cli(["chat"], [*ONBOARD_CN, "/exit"])
+    chat = run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"])
     assert chat.code == 0 and "olivia settings" in chat.out
     assert _saved(data_home).notifications is False
     assert machine.calls == []

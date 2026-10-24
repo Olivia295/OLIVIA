@@ -7,8 +7,9 @@ The CSV has a header row with ``id,text,level`` and an optional ``category`` col
 (``docs/eval/volunteer-template.csv`` has this shape); ``level`` is ``L0`` to ``L3``.
 Every row goes through a fresh :class:`~olivia.core.session.Session` as a single turn,
 the way the product and the internal evaluation (``tests/redteam``) do: ``rules`` opens it
-with the rule screen alone (the default product setting), ``model`` with the packaged
-perception student as well (``olivia chat --model``; it can only raise the rule level).
+with the rule screen alone (``olivia chat --rules``), ``model`` with the packaged
+perception student as well (``olivia chat``'s default since F7; it can only raise the rule
+level).
 The level is the turn's ``crisis_level``; a turn that enters the crisis flow counts as
 L2 or above.
 

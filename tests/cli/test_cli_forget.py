@@ -203,7 +203,7 @@ def test_memory_with_a_locked_keychain(run_cli, data_home, keychain):
 
 
 def test_memory_for_an_age_gate_refusal_record(run_cli, data_home):
-    run_cli(["chat"], ["1", "2", "1"])  # accept, "under 18", confirmed
+    run_cli(["chat", "--rules"], ["1", "2", "1"])  # accept, "under 18", confirmed
     assert ProfileStore(data_home).load().is_age_gate_refusal
     run = run_cli(["memory"])
     assert run.code == 1 and run.lines == [M["adults_only"]]
@@ -349,7 +349,9 @@ def _use_everything(run_cli, home: Path) -> None:
     """Every writer the CLI has: profile (with a snapshot), ledger, kit and preferences,
     care marker, safety plan and its suggestion marker."""
     save_profile(home)
-    chat = run_cli(["chat"], ["给我一个方法", "今天先不做了", f"记住：{NOTE}", L3_SENTENCE])
+    chat = run_cli(
+        ["chat", "--rules"], ["给我一个方法", "今天先不做了", f"记住：{NOTE}", L3_SENTENCE]
+    )
     assert chat.code == 0
     assert run_cli(["journal"], []).code == 0  # shows the week, records the offer
     assert any(isinstance(e, JournalEntry) for e in Ledger(home, Vault(home)).entries())
@@ -388,7 +390,7 @@ def test_after_all_the_next_chat_starts_onboarding(run_cli, data_home, tmp_path)
     _use_everything(run_cli, data_home)
     assert run_cli(["forget", "--all", "--yes"]).code == 0
     first = OnboardingFlow(load_taxonomy(), ProfileStore(tmp_path / "blank"), NOW).prompt()
-    run = run_cli(["chat"], [])
+    run = run_cli(["chat", "--rules"], [])
     assert run.code == 1
     assert first.text in run.out and cli.CHAT_HINT not in run.out
     assert ProfileStore(data_home).load() is None
@@ -425,7 +427,7 @@ def test_all_without_a_keychain(run_cli, data_home, keychain):
 
 
 def test_an_age_gate_refusal_record_is_kept_and_said_so(run_cli, data_home):
-    run_cli(["chat"], ["1", "2", "1"])
+    run_cli(["chat", "--rules"], ["1", "2", "1"])
     before = files_under(data_home)
     run = run_cli(["forget", "--all"], [])
     assert run.code == 0 and run.lines == [F["kept_minor"]]
@@ -435,7 +437,7 @@ def test_an_age_gate_refusal_record_is_kept_and_said_so(run_cli, data_home):
 
 
 def test_all_beside_a_refusal_record_removes_the_rest(run_cli, data_home, keychain):
-    run_cli(["chat"], ["1", "2", "1"])
+    run_cli(["chat", "--rules"], ["1", "2", "1"])
     SafetyPlanStore(data_home).mark_suggested()
     StateStore(data_home).save(CarriedState(BANDIT))
     assert keychain.items

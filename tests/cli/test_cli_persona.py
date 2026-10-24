@@ -53,7 +53,7 @@ def test_switch_saves_the_persona_and_keeps_everything_else(run_cli, data_home, 
 def test_the_next_chat_speaks_with_the_new_persona(run_cli, data_home):
     save_profile(data_home)
     assert run_cli(["persona", "4"]).code == 0
-    run = run_cli(["chat"], ["[5%] 好累，今天不想动脑，只想躺着", "/exit"])
+    run = run_cli(["chat", "--rules"], ["[5%] 好累，今天不想动脑，只想躺着", "/exit"])
     (haven,) = run.results
     assert haven.stage is HelpStage.S_HAVEN and haven.reply_kind is ReplyKind.HAVEN
     silent = {
@@ -65,7 +65,7 @@ def test_the_next_chat_speaks_with_the_new_persona(run_cli, data_home):
 def test_onboarding_choice_reaches_the_first_session(run_cli, data_home):
     answers = list(ONBOARD_CN)
     answers[5] = "3"  # the persona step
-    run = run_cli(["chat"], [*answers, "[5%] 好累", "/exit"])
+    run = run_cli(["chat", "--rules"], [*answers, "[5%] 好累", "/exit"])
     assert run.code == 0
     profile = ProfileStore(data_home).load()
     assert profile is not None and profile.persona_spectrum is PersonaSpectrum.RATIONAL_PEER

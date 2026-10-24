@@ -626,7 +626,9 @@ class Session:
         packaged perception student (``perception/student.py``); otherwise, or when the
         student fails to load, the rule model runs alone. An injected model or the student
         can only raise the rule level and stays capped at L2. ``inspect`` reports which one
-        ran. With the student on, its other heads also refine perception
+        ran. ``student`` defaults to off here; the product default (model mode, owner
+        decision 2026-10-24) is decided by the CLI, ``olivia chat`` (``--rules`` opts
+        out). With the student on, its other heads also refine perception
         (``perception/model_heads.py``); an injected model leaves perception to the rules.
 
         ``safety_plan`` is the user's saved plan (B10), shown in crisis replies;

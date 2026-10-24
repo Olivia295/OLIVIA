@@ -10,10 +10,11 @@ part and is not replaced by this script.
 How it runs: the ``olivia`` command line is driven in this process, twice, on scripted
 input, each time in a fresh temporary ``OLIVIA_HOME``: once with the ONB-06 switch off
 (only sensitive data encrypted) and once with it on (everything encrypted). Each run
-goes through ``chat --inspect`` (onboarding with the health consent and a checklist item,
-an opening self-rating, a message, a card and its feedback, a note "记住：……", a crisis
-turn), ``health``, ``safety-plan``, ``journal``, ``memory``, ``privacy``, a second
-``chat --model --inspect`` (care greeting, model path), then ``forget --all``.
+goes through ``chat --rules --inspect`` (onboarding with the health consent and a checklist
+item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
+crisis turn), ``health``, ``safety-plan``, ``journal``, ``memory``, ``privacy``, a second
+``chat --inspect`` (care greeting, model path: the default since F7), then
+``forget --all``.
 
 The real OS keychain is never reached: ``PYTHON_KEYRING_BACKEND`` names keyring's failing
 backend before ``keyring`` is imported, ``keyring.get_keyring`` is replaced by a function
@@ -217,13 +218,13 @@ def script(whole: bool) -> list[tuple[list[str], list[str]]]:
     # olivia health numbers the clinical-history codes first, then the three checklist items.
     flags = len(load_taxonomy().red_flags())
     return [
-        (["chat", "--inspect"], first_chat),
+        (["chat", "--rules", "--inspect"], first_chat),
         (["health"], [f"{flags + 1}，{flags + 2}"]),  # the first two checklist items
         (["safety-plan"], plan),
         (["journal"], ["有"]),
         (["memory"], []),
         (["privacy"], []),
-        (["chat", "--model", "--inspect"], [SECOND_MESSAGE, "/exit", "/exit"]),
+        (["chat", "--inspect"], [SECOND_MESSAGE, "/exit", "/exit"]),
     ]
 
 

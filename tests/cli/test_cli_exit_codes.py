@@ -68,13 +68,13 @@ def test_commands_that_need_no_setup_succeed_without_it(run_cli, data_home, argv
 @pytest.mark.parametrize("answers", [[], ["2"], ["1", "2", "1"], ["1", "1", "小林"]])
 def test_chat_that_ends_without_a_profile_is_exit_1(run_cli, data_home, answers):
     """Input ended, the disclaimer was declined, or the user is under 18."""
-    run = run_cli(["chat"], answers)
+    run = run_cli(["chat", "--rules"], answers)
     assert run.code == 1 and run.sessions == []
 
 
 def test_chat_with_a_refusal_record_is_exit_1(run_cli, data_home):
     _refusal_record(data_home)
-    assert run_cli(["chat"], ["你好"]).code == 1
+    assert run_cli(["chat", "--rules"], ["你好"]).code == 1
 
 
 @pytest.mark.parametrize(
@@ -123,10 +123,10 @@ class _CtrlC(io.StringIO):
 @pytest.mark.parametrize(
     ("argv", "lines", "onboarded", "code"),
     [
-        (["chat"], [], False, 1),  # onboarding: nothing was set up
-        (["chat"], ONBOARD_CN[:3], False, 1),
-        (["chat"], [], True, 0),  # the conversation ends, like /exit
-        (["chat"], ["今天上班好累"], True, 0),
+        (["chat", "--rules"], [], False, 1),  # onboarding: nothing was set up
+        (["chat", "--rules"], ONBOARD_CN[:3], False, 1),
+        (["chat", "--rules"], [], True, 0),  # the conversation ends, like /exit
+        (["chat", "--rules"], ["今天上班好累"], True, 0),
         (["health"], [], True, 0),
         (["safety-plan"], [], True, 0),
         (["forget"], [], True, 0),
@@ -142,7 +142,7 @@ def test_ctrl_c_exits_like_end_of_input(run_cli, data_home, argv, lines, onboard
     interrupted = run_cli(argv, stdin=_CtrlC(script))
     assert interrupted.code == code, interrupted.out
     assert run_cli(argv, lines).code == code
-    if argv == ["chat"]:
+    if argv == ["chat", "--rules"]:
         assert interrupted.lines[-1] == cli.GOODBYE
     if not onboarded:
         assert not (data_home / PROFILE_FILENAME).exists()

@@ -162,7 +162,7 @@ def test_health_is_a_listed_command():
 def test_onboarding_checklist_is_saved_and_used_by_the_session(run_cli, data_home):
     # Consent, no clinical-history code, then the second checklist item (home safety).
     answers = [*ONBOARD_CN[:-1], TEXT.consent_sentence, "", "2"]
-    run = run_cli(["chat", "--inspect"], [*answers, "[80%] 给我一个方法"])
+    run = run_cli(["chat", "--rules", "--inspect"], [*answers, "[80%] 给我一个方法"])
     assert run.code == 0
     assert _load(data_home).contraindications == (SAFETY,)
     assert SAFETY in run.results[0].inspect["contraindications"]
@@ -171,7 +171,7 @@ def test_onboarding_checklist_is_saved_and_used_by_the_session(run_cli, data_hom
 
 def test_the_third_checklist_item_records_psychosis_for_the_session(run_cli, data_home):
     answers = [*ONBOARD_CN[:-1], TEXT.consent_sentence, "", "3"]
-    run = run_cli(["chat", "--inspect"], [*answers, "[80%] 给我一个方法"])
+    run = run_cli(["chat", "--rules", "--inspect"], [*answers, "[80%] 给我一个方法"])
     assert run.code == 0
     assert _load(data_home).contraindications == (PSYCHOSIS,)
     assert run.results[0].inspect["contraindications"] == [PSYCHOSIS]
@@ -180,7 +180,7 @@ def test_the_third_checklist_item_records_psychosis_for_the_session(run_cli, dat
 
 def test_a_disclosure_in_chat_is_never_written_to_the_profile(run_cli, data_home):
     save_profile(data_home)
-    run = run_cli(["chat"], ["他又动手打我了", "我有心脏病"])
+    run = run_cli(["chat", "--rules"], ["他又动手打我了", "我有心脏病"])
     assert run.out.count("olivia health") == 2
     profile = _load(data_home)
     assert profile.contraindications == () and profile.clinical_history == ()
