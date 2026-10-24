@@ -203,6 +203,9 @@ class Templates:
     """S_empower ``bridge`` replacement below the right-wing battery (COLBO-07)."""
     haven: tuple[str, ...]
     crisis: tuple[str, ...]
+    crisis_after_confirmed: tuple[str, ...]
+    """S_crisis openings once the user has confirmed being safe (F5b): the card stays, the
+    safety question is not asked again."""
     closing: tuple[str, ...]
     """S_closing after ``/done`` (HELPFUL): says nothing about the kit or not trying."""
     closing_after_not_now: tuple[str, ...]
@@ -307,6 +310,9 @@ class RenderText:
     referral_destinations_elsewhere: Mapping[str, str]
     """The same for every other region and an unknown one: no mainland-only places."""
     referral_closing: str
+    referral_again: tuple[str, ...]
+    """Short intros for the same referral card shown again on the next turn (F5b): the
+    destinations are listed in full, the closing paragraph is left out."""
     crisis_emergency_heading: Mapping[CrisisLevel, str]
     crisis_lines_heading: str
     crisis_hours_label: str
@@ -314,6 +320,9 @@ class RenderText:
     crisis_contact_people: str
     crisis_unknown_region_l3: str
     crisis_minimal: str
+    crisis_confirm_hint: str
+    """Once per crisis, after an "我没事"-like message that is not a confirmation: how to
+    say that one is safe (F5b)."""
     emergency_purposes: Mapping[EmergencyPurpose, str]
 
 
@@ -359,6 +368,8 @@ class Utterances:
     """Utterance kind (``mirror.Utterance`` value) -> acknowledgements for the mirror slot."""
     boundaries: Mapping[str, Boundary]
     """``medication`` and ``diagnosis``."""
+    reassurance: tuple[str, ...] = ()
+    """Words of an "I'm fine" that is not a safety confirmation ("我没事", "好多了"), F5b."""
 
 
 def _no_feelings() -> Feelings:
@@ -618,9 +629,20 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
     ref = _map(data["referral"], f"{where} referral")
     _keys(
         ref,
-        {"intro", "destinations", "destinations_hk_mo_tw", "destinations_elsewhere", "closing"},
+        {
+            "intro",
+            "again",
+            "destinations",
+            "destinations_hk_mo_tw",
+            "destinations_elsewhere",
+            "closing",
+        },
         f"{where} referral",
     )
+    again = _unique(_strs(ref["again"], f"{where} referral.again"), f"{where} referral.again")
+    for line in again:
+        if slots_of(line):
+            raise LanguageDataError(f"{where} referral.again must not carry slots: {line!r}")
     places: dict[str, Mapping[str, str]] = {}
     for group in ("destinations", "destinations_hk_mo_tw", "destinations_elsewhere"):
         raw = _map(ref[group], f"{where} referral.{group}")
@@ -639,6 +661,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "contact_people",
             "unknown_region_l3",
             "minimal",
+            "confirm_hint",
             "emergency_purposes",
         },
         f"{where} crisis",
@@ -656,6 +679,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "contact_people",
             "unknown_region_l3",
             "minimal",
+            "confirm_hint",
         )
     }
     render = RenderText(
@@ -676,6 +700,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         referral_destinations_hk_mo_tw=places["destinations_hk_mo_tw"],
         referral_destinations_elsewhere=places["destinations_elsewhere"],
         referral_closing=_str(ref["closing"], f"{where} referral.closing"),
+        referral_again=again,
         crisis_emergency_heading=MappingProxyType(
             {
                 CrisisLevel.L2: _str(heading["L2"], f"{where} emergency_heading.L2"),
@@ -688,6 +713,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         crisis_contact_people=texts["contact_people"],
         crisis_unknown_region_l3=texts["unknown_region_l3"],
         crisis_minimal=texts["minimal"],
+        crisis_confirm_hint=texts["confirm_hint"],
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
         ),
@@ -734,6 +760,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
             _keys(part, {"name", "variants"}, f"{where} {stage} part", optional={"unnamed"})
             name = _str(part["name"], f"{where} {stage} part name")
             variants = _templates(part["variants"], f"{where} {stage}.{name}")
+            _one_frame(variants, f"{where} {stage}.{name}")
             required = required_slots.get((stage, name), frozenset())
             for text in variants:
                 if not required <= slots_of(text):
@@ -741,6 +768,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
             unnamed: tuple[str, ...] = ()
             if "unnamed" in part:
                 unnamed = _templates(part["unnamed"], f"{where} {stage}.{name}.unnamed")
+                _one_frame(unnamed, f"{where} {stage}.{name}.unnamed")
                 for text in unnamed:
                     slots = slots_of(text)
                     if "emotion" in slots or not required - {"emotion"} <= slots:
@@ -759,14 +787,29 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
     singles: dict[HelpStage, tuple[str, ...]] = {}
     for stage in (HelpStage.S_HAVEN, HelpStage.S_CRISIS, HelpStage.S_CLOSING):
         body = _map(stages[stage.value], f"{where} {stage}")
-        expected = {"variants", "after_not_now"} if stage is HelpStage.S_CLOSING else {"variants"}
+        expected = {
+            HelpStage.S_CLOSING: {"variants", "after_not_now"},
+            HelpStage.S_CRISIS: {"variants", "after_confirmed"},
+        }.get(stage, {"variants"})
         _keys(body, expected, f"{where} {stage}")
         singles[stage] = _templates(body["variants"], f"{where} {stage}")
     closing = _map(stages[HelpStage.S_CLOSING.value], f"{where} S_closing")
     after_not_now = _templates(closing["after_not_now"], f"{where} S_closing.after_not_now")
-    for text in singles[HelpStage.S_CRISIS]:
+    crisis_body = _map(stages[HelpStage.S_CRISIS.value], f"{where} S_crisis")
+    after_confirmed = _templates(
+        crisis_body["after_confirmed"], f"{where} S_crisis.after_confirmed"
+    )
+    for text in (*singles[HelpStage.S_CRISIS], *after_confirmed):
         if "metaphor" in slots_of(text):
             raise LanguageDataError(f"{where} S_crisis must not weave metaphors: {text!r}")
+    for text in after_confirmed:
+        # The user has said they are safe: no second safety question (F5b), and the
+        # opening still points at the numbers below it.
+        if any(mark in text for mark in ("吗", "？", "?")) or "电话" not in text:
+            raise LanguageDataError(
+                f"{where} S_crisis.after_confirmed asks nothing and points at the"
+                f" phone numbers: {text!r}"
+            )
     ready = _map(stages[HelpStage.S_READY.value], f"{where} S_ready")
     _keys(
         ready,
@@ -797,6 +840,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         light_bridge=_templates(empower["light_bridge"], f"{where} S_empower.light_bridge"),
         haven=singles[HelpStage.S_HAVEN],
         crisis=singles[HelpStage.S_CRISIS],
+        crisis_after_confirmed=after_confirmed,
         closing=singles[HelpStage.S_CLOSING],
         closing_after_not_now=after_not_now,
         greeting=_templates(ready["greeting"], f"{where} S_ready.greeting"),
@@ -823,6 +867,18 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         late_night_haven=lines["late_night_haven"],
         real_support=lines["real_support"],
     )
+
+
+# A feeling verb right before the mirror would frame it twice: "我感觉到" + "你感到…" (F5b).
+_FRAMED_MIRROR_RE: Final = re.compile(r"(?:感觉到|感到|感觉|觉得|觉着)\{mirror\}")
+
+
+def _one_frame(texts: tuple[str, ...], where: str) -> None:
+    for text in texts:
+        if _FRAMED_MIRROR_RE.search(text):
+            raise LanguageDataError(
+                f"{where}: no feeling verb right before {{mirror}} (it may say 你感到…): {text!r}"
+            )
 
 
 def _plain_lines(
@@ -1090,7 +1146,7 @@ def _parse_feelings(data: Mapping[str, Any], tax: Taxonomy) -> Feelings:
 
 def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
     where = "utterances.yaml"
-    _keys(data, {"version", "acks", "boundaries"}, where)
+    _keys(data, {"version", "acks", "boundaries", "reassurance"}, where)
     _version(data, where)
     kinds = {u.value for u in Utterance if u is not Utterance.STATEMENT}
     acks_raw = _map(data["acks"], f"{where} acks")
@@ -1125,7 +1181,10 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
             needs_any=_strs(item.get("needs_any", []), f"{here} needs_any", allow_empty=True),
             line=line,
         )
-    return Utterances(MappingProxyType(acks), MappingProxyType(bounds))
+    reassurance = _unique(
+        _strs(data["reassurance"], f"{where} reassurance"), f"{where} reassurance"
+    )
+    return Utterances(MappingProxyType(acks), MappingProxyType(bounds), reassurance)
 
 
 # -- primitives ----------------------------------------------------------------------------
