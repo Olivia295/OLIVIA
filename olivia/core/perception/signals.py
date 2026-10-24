@@ -64,7 +64,8 @@ class TurnSignals:
     """The user is leaving for now ("我去睡了", "今天就到这里吧"; F5d): a non-negated
     ``leave_taking`` phrase that is not asked as a question ("今天就到这里？" is not).
     While a card waits it is read as ``feedback`` (not_now) instead; with no card
-    waiting, an L0 turn gets a short goodbye."""
+    waiting, a turn the rules screen L0 outside a crisis gets a short goodbye, also when
+    an injected model alone lifts it to L1 (F10)."""
     core_belief_confirmed: bool = False
     """The user affirmed the schema mirror question asked on the turn before (PRD C_2
     "核心信念识别", decision D4; model mode only). Set by the session, never by the stub;

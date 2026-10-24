@@ -84,11 +84,12 @@ Leaving for now (F5d): with no card waiting for feedback, a turn whose message t
 leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
 ``S_ready.after_close`` line instead of the stage reply, with no card and no information
 card (the S_clarify lens included), and the stage moves as the state machine says (S_closing
-still follows a practice only, SDD §4.2). Only on a calm screen: below L1 for the turn's
-screen and the rule screen, outside a crisis, not the D3 question or its answer, not a
-command or a note, and not in S_crisis, S_closing or S_ready (those keep their own
-replies), so "活着好累，我去睡了" (L1) gets the L1 reply. A card waiting for feedback
-reads the same phrase as not_now instead (F5a).
+still follows a practice only, SDD §4.2). Only on a calm screen: the rule screen below L1
+and the turn's screen at most L1 (an L1 only an injected model gives, F10: "嗯，今天就到
+这里吧" at a model score of 0.22 is still a goodbye), outside a crisis, not the D3
+question or its answer, not a command or a note, and not in S_crisis, S_closing or
+S_ready (those keep their own replies), so "活着好累，我去睡了" (a rule L1) gets the L1
+reply. A card waiting for feedback reads the same phrase as not_now instead (F5a).
 
 Failures (SDD §10.1): the crisis screen runs first and its own failures are its own
 (model failures already fail toward L2). Anything that raises after it gives a degraded
@@ -810,14 +811,16 @@ class Session:
         if spectrum is not None:
             self._last_spectrum = spectrum
         note = self._shared.note_cues.find(text) is not None
-        # Leaving for now with no card waiting (F5d): a short goodbye, nothing else.
+        # Leaving for now with no card waiting (F5d): a short goodbye, nothing else. The
+        # rules screen the turn L0; an L1 only an injected model's score band gives (F10,
+        # as the tracker's model-only L1) does not hold the goodbye back.
         leaving = (
             signals.leave_taking
             and pending is None
             and signals.command is None
             and not note
             and not status.in_crisis
-            and assessment.level is CrisisLevel.L0
+            and assessment.level <= CrisisLevel.L1
             and rules.level is CrisisLevel.L0
             and not ask
             and answer is None
