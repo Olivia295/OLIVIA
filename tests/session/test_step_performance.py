@@ -7,10 +7,10 @@ model mode. The whole turn's P99 (55 ms) is guarded by ``test_session_performanc
 
 Peak RSS (SDD §0) is guarded in both modes against <= 100 MB, the envelope the owner set
 on 2026-10-24 (F7, with model mode the default; it was < 50 MB, which rules mode never met
-on a desktop Mac). Measured on macOS: about 52-58 MB after a rules-mode run (importing
+on a desktop Mac). Measured on macOS: about 52-60 MB after a rules-mode run (importing
 ``olivia.cli`` alone is about 36 MB; a chat seals its ledger with the OS keychain, so
 ``cryptography``, about 4 MB, and ``keyring``, about 11 MB, are on the path, and the shared
-lexicons, matchers and templates add about 6 MB), and about 78-83 MB in model mode, which
+lexicons, matchers and templates add about 6 MB), and about 78-85 MB in model mode, which
 loads NumPy and the packaged three-CNN student (about 1.2 M weights held as float32).
 """
 

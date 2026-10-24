@@ -231,7 +231,7 @@ R2-1 模型在临床集上召回 ≥ 98%、口癖误报 ≤ 5%、精确率 ≥ 9
 ### 9.1 负责人 2026-10-24 的决定与已核实的事实
 
 - **模型模式默认开启**（F7）：`olivia chat` 默认让危机筛查同时参考打包的学生模型（第八轮三 CNN 集成）；`--rules` 只用规则。L3 开关 `model_plan_evidence` 保持关闭，模型判 L3 时仍封顶 L2 并在卡前加急救号码。依据：独立评估集 140 条危机句上规则模式识别 28 条、模型模式 113 条；100 条普通句误报规则 3 条、模型 4 条。`Session.open` 的默认不变（`student=False`），产品默认由命令行决定。
-- **内存预算放宽**：SDD §0 峰值 RSS 由 < 50 MB 改为 ≤ 100 MB（实测规则模式约 52–58 MB、模型模式约 78–83 MB）；`scripts/bench_loop.py` 与 `tests/session/test_step_performance.py` 两种模式都按 100 MB 检查。
+- **内存预算放宽**：SDD §0 峰值 RSS 由 < 50 MB 改为 ≤ 100 MB（实测规则模式约 52–60 MB、模型模式约 78–85 MB）；`scripts/bench_loop.py` 与 `tests/session/test_step_performance.py` 两种模式都按 100 MB 检查。
 - **热线核对负责人**：Olivia Pan (@Olivia295) / Claude（AI 协助每季度运行核对脚本并复核官方来源，产品负责人持有私钥签名确认），见 `docs/resources/hotline-sources.md`「定期复核」。
 - **评估集独立性**：负责人正式确认 `build/eval/fresh_eval.csv`（300 条）由未接触训练集、词表与测试用例的独立人员按标注指南编写，可作为 G-2 / R2-1 的 EVAL-3 材料。评估集内容不进仓库（公开仓库），这里只记汇总数字（见上一条与 #82、#86 行）。
 - **已落地的决定**：S_clarify 在很重的诉说轮不附视角卡（#93）；粤语「完咗佢」单独出现时询问意图（#92）。

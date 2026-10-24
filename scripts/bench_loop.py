@@ -38,8 +38,8 @@ installed size         < 4 MB       SDD §0 Resource Envelope: weights and knowl
 The PRD itself only fixes the control loop (G-3: P99 <= 55 ms on one core) and the
 perception pass (MIYI-01: P99 <= 45 ms); the plan's RSS and size numbers come from the
 SDD's resource envelope. The RSS budget was < 50 MB until the owner raised it to <= 100 MB
-on 2026-10-24 (F7), with model mode the default: measured about 52-58 MB in rules mode
-and about 78-83 MB in model mode (NumPy and the three-CNN student) on a desktop Mac.
+on 2026-10-24 (F7), with model mode the default: measured about 52-60 MB in rules mode
+and about 78-85 MB in model mode (NumPy and the three-CNN student) on a desktop Mac.
 Memory retrieval (SDD §3.3) is not wired into the rules-mode loop, so it has no row
 here; ``tests/memory/test_retrieval_performance.py`` guards it.
 With the environment variable ``CI`` set, latency budgets are relaxed three times, as in

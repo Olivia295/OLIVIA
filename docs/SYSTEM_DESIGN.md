@@ -10,7 +10,7 @@
 | **统一分类标准 (SSOT)** | 严格绑定并继承根目录统一分类标准规范 (`taxonomy.yaml` v3.2.0) |
 | **底层核心公理** | **「离线自足为基，AI激活升华」**：离线基线以 $P_{99} \le 55\text{ms}$ 的确定性延迟闭环运行，保障绝对隐私与可靠助人；开启 AI 增强时，系统基于“结构先行，语态后润”双通道与本地校验器，实现生活记忆缝合与沉浸式角色转译。 |
 | **性能服务等级目标 (SLO / Latency)** | 符号状态机与镜像翻转: $P_{99} < 1.5\text{ms}$；中文上下文感知前向推断: $P_{99} \le 45.0\text{ms}$；离线端到端控制回路总耗时: $P_{99} \le 55.0\text{ms}$；AI 增强流式首字指标 (TTFT): $P_{90} < 1200\text{ms}$ (降级不增加额外等待延迟) |
-| **资源消耗约束 (Resource Envelope)** | 运行时常驻内存 (RSS) 峰值 $\le 100\text{MB}$（2026-10-24 负责人决定由 $< 50\text{MB}$ 放宽，随模型模式默认开启：实测规则模式约 52–58 MB、模型模式约 78–83 MB；`scripts/bench_loop.py` 与 `tests/session/test_step_performance.py` 两种模式都按此检查）；感知权重与知识协议静态体积 $< 4.0\text{MB}$；核心逻辑实现零第三方重型深度学习框架依赖 |
+| **资源消耗约束 (Resource Envelope)** | 运行时常驻内存 (RSS) 峰值 $\le 100\text{MB}$（2026-10-24 负责人决定由 $< 50\text{MB}$ 放宽，随模型模式默认开启：实测规则模式约 52–60 MB、模型模式约 78–85 MB；`scripts/bench_loop.py` 与 `tests/session/test_step_performance.py` 两种模式都按此检查）；感知权重与知识协议静态体积 $< 4.0\text{MB}$；核心逻辑实现零第三方重型深度学习框架依赖 |
 | **对应产品文档 (Companion PRD)** | `PRD-OLIVIA-V3.2-CLINICAL-SPEC` (《O.L.I.V.I.A. 产品需求与体验设计说明书》) |
 | **文档性质 (Doc Nature)** | 研发前置系统架构与工程规范说明书 (Pre-Development System Architecture Specification) |
 
