@@ -145,6 +145,62 @@ def test_f5b_a_goodbye_after_a_statement_is_left_out_of_the_mirror() -> None:
     assert mirror("最近好累，今天就到这里吧") == "你最近好累"
 
 
+# F6b: the sick mirrors from the final usage run.
+F6B_TABLE = [
+    # "想死你了" is missing someone very much, never "你想死对方了" or "你想坏了".
+    ("想死你了，好久没见", "你很想念对方，好久没见"),
+    ("想死我了，今天终于放假", "你盼了很久，今天终于放假"),
+    ("我想死你们了", "你很想念他们"),
+    ("真想死他了", "你很想念他"),
+    # Someone else's words are reported, never "你感到爸妈总说让你别太累".
+    ("爸妈总说让我别太累，可我不敢停下来", "你爸妈总说让你别太累，可你不敢停下来"),
+    ("妈妈让我早点回家", "你妈妈让你早点回家"),
+    ("老板要求我周末加班", "你提到老板要求你周末加班"),
+    ("他说我太敏感", "你提到他说你太敏感"),
+    ("同事总说我做得不好", "你提到同事总说你做得不好"),
+    ("她跟我说她要走了", "你提到她跟你说她要走了"),
+    # Not a report: 让 as a cause and 说的话 keep the feeling frame.
+    ("他让我很失望", "你感到他让你很失望"),
+    ("他说的话让我很难受", "你感到他说的话让你很难受"),
+    # An acknowledgement clause is dropped, the rest is mirrored.
+    ("好的，我去试试", "你去试试"),
+]
+
+
+@pytest.mark.parametrize(("user_text", "expected"), F6B_TABLE)
+def test_f6b_mirror_cases(user_text: str, expected: str) -> None:
+    assert mirror(user_text) == expected
+
+
+@pytest.mark.parametrize(
+    "user_text", ["我真的想死", "想死了", "我想死了", "想死你了，可是我最近真的想死"]
+)
+def test_f6b_a_wish_to_die_is_never_read_as_missing_someone(user_text: str) -> None:
+    out = mirror(user_text)
+    assert "想念" not in out.rsplit("，", 1)[-1] and "盼" not in out
+    assert out.endswith(("真的想死", "想死了"))
+
+
+@pytest.mark.parametrize(
+    ("user_text", "kind"),
+    [
+        ("好的，拜拜", Utterance.CLOSING),
+        ("好，拜拜", Utterance.CLOSING),
+        ("行，那我先下了", Utterance.CLOSING),
+        ("好的，谢谢", Utterance.THANKS),
+        ("嗯好", Utterance.BRIEF),
+        ("好嘞", Utterance.BRIEF),
+        ("收到", Utterance.BRIEF),
+    ],
+)
+def test_f6b_an_acknowledgement_is_never_mirrored(
+    engine: LanguageEngine, user_text: str, kind: Utterance
+) -> None:
+    assert utterance_kind(user_text) is kind
+    assert "你感到好" not in engine.safe_mirror(user_text)
+    assert "你提到好" not in engine.safe_mirror(user_text)
+
+
 @pytest.mark.parametrize(
     "user_text",
     ["我妈今天又打电话骂我", "她骂我", "老板又在群里点我的名", "爸妈不理解我", "朋友都不找我"],

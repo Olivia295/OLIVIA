@@ -76,6 +76,10 @@
 #   S_closing.variants        /done（HELPFUL）之后的收尾：不说“收进锦囊”，也不说“还不想试”。
 #   S_closing.after_not_now   /not-now（NOT_NOW）之后的收尾：卡片确实收进了锦囊，可以提锦囊。
 #   S_ready.after_close       收尾仪式之后的一句：用户回“好”或说声谢谢时，简短、温暖、不提问。
+#                             F6b（草稿：待 G-0）：带时间指向的句子（今晚、傍晚、休息、睡、辛苦了等，
+#                             见 language/data.py 的 EVENING_WORDS）只在当地 18:00 起到深夜时段结束
+#                             （taxonomy late_night.end）之间使用；其他时段只用不带时间指向的句子，
+#                             至少两句，其中至少一句没有槽位（加载时校验）。
 #   followups.no_pending_feedback  没有卡片在等反馈时收到 /done、/not-now、/unhelpful：只说一句。
 #   followups.unhelpful_ack   卡片收到 /unhelpful（或明确反感）后，回复开头的一句确认。
 #   followups.safety_confirmed  危机中用户明确说自己安全的那一轮，危机卡之前的一句回应。
@@ -313,6 +317,8 @@ stages:
       - "好，那就先这样。今天辛苦了，好好休息，想说话的时候我都在。"
       - "{user_name}，嗯，我知道了。愿你今晚过得轻松一点，我一直在这里。"
       - "好的。今天就先停在这里，什么时候想回来聊聊，都可以。"
+      # 草稿：待 G-0（F6b）。不带时间指向，白天也能用。
+      - "好，那就先聊到这里。照顾好自己，想说话的时候我都在。"
 
 followups:
   clarify_feedback:

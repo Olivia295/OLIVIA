@@ -101,6 +101,9 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
+# An ``after_close`` line with one of these points at the evening ("愿你今晚…", "早点休息",
+# "今天辛苦了"): the session uses it only in the evening and late at night (F6b).
+EVENING_WORDS: Final = ("今晚", "晚上", "傍晚", "晚安", "夜", "睡", "休息", "辛苦了")
 # Slots a part must carry in every variant (the template file's own contract).
 _REQUIRED_SLOTS: Final = {
     (HelpStage.S_EXPLORE, "reflect"): frozenset({"mirror", "emotion"}),
@@ -217,7 +220,11 @@ class Templates:
     returning_after_check: tuple[str, ...]
     """S_ready, first session after a no to the D3 question: a lighter check-in."""
     after_close: tuple[str, ...]
-    """One short, warm line after the closing ritual ("好", "谢谢"): no question."""
+    """One short, warm line after the closing ritual ("好", "谢谢") or a goodbye for now:
+    no question. Lines with an ``EVENING_WORDS`` word are for the evening only (F6b)."""
+    after_close_daytime: tuple[str, ...]
+    """The ``after_close`` lines with no ``EVENING_WORDS`` word: at least two, one of them
+    slot-free, so any hour has a goodbye that never repeats the one before (F6b)."""
     clarify_feedback: tuple[str, ...]
     """One question after an unclear reply to a waiting card: shelve it? (roadmap R-7b)"""
     kit_empty: tuple[str, ...]
@@ -817,6 +824,13 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         {"greeting", "returning_after_crisis", "returning_after_check", "after_close"},
         f"{where} S_ready",
     )
+    after_close = _templates(ready["after_close"], f"{where} S_ready.after_close")
+    daytime = tuple(t for t in after_close if not any(w in t for w in EVENING_WORDS))
+    if len(daytime) < 2 or all(slots_of(t) for t in daytime):
+        raise LanguageDataError(
+            f"{where} S_ready.after_close needs two lines without an evening word, one of"
+            f" them slot-free, for the daytime (F6b): {daytime!r}"
+        )
     if not any(not slots_of(t) for t in singles[HelpStage.S_HAVEN]):
         raise LanguageDataError(f"{where} S_haven needs a slot-free variant for the gate fallback")
     lines = {
@@ -851,7 +865,8 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         returning_after_check=_templates(
             ready["returning_after_check"], f"{where} S_ready.returning_after_check"
         ),
-        after_close=_templates(ready["after_close"], f"{where} S_ready.after_close"),
+        after_close=after_close,
+        after_close_daytime=daytime,
         clarify_feedback=lines["clarify_feedback"],
         kit_empty=lines["kit_empty"],
         closing_declined=lines["closing_declined"],
