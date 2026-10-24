@@ -43,6 +43,7 @@ from olivia.core.language.mirror import MAX_MIRROR, Utterance
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, SafetyGrade
 from olivia.core.resources.store import EmergencyPurpose
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 SUPPORTED_VERSION: Final = 1
 _E = TypeVar("_E", bound=StrEnum)
@@ -1199,7 +1200,7 @@ def _read(root: Path | None, rel: str) -> Mapping[str, Any]:
     except (OSError, UnicodeDecodeError) as exc:
         raise LanguageDataError(f"cannot read {rel}: {exc}") from exc
     try:
-        data = yaml.safe_load(text)
+        data = safe_load(text)
     except yaml.YAMLError as exc:
         raise LanguageDataError(f"invalid YAML in {rel}: {exc}") from exc
     return _map(data, rel)

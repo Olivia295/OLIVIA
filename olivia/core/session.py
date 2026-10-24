@@ -73,6 +73,16 @@ waiting gets ``followups.no_pending_feedback`` and a short request to wipe the m
 crisis moves it). ``/unhelpful`` or aversion on a waiting card leads the reply with
 ``followups.unhelpful_ack``.
 
+Leaving for now (F5d): with no card waiting for feedback, a turn whose message takes
+leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
+``S_ready.after_close`` line instead of the stage reply, with no card and no information
+card (the S_clarify lens included), and the stage moves as the state machine says (S_closing
+still follows a practice only, SDD §4.2). Only on a calm screen: below L1 for the turn's
+screen and the rule screen, outside a crisis, not the D3 question or its answer, not a
+command or a note, and not in S_crisis, S_closing or S_ready (those keep their own
+replies), so "活着好累，我去睡了" (L1) gets the L1 reply. A card waiting for feedback
+reads the same phrase as not_now instead (F5a).
+
 Failures (SDD §10.1): the crisis screen runs first and its own failures are its own
 (model failures already fail toward L2). Anything that raises after it gives a degraded
 reply instead of an exception: the minimal crisis card with every number of the
@@ -261,8 +271,6 @@ from functools import lru_cache
 from typing import Final
 from uuid import uuid4
 
-import yaml
-
 from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
 from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
@@ -324,6 +332,7 @@ from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 FALLBACK_SPECTRUM: Final = "02"
 TABOO_RETRIES: Final = 5
@@ -339,6 +348,8 @@ _COMMAND_FEEDBACK: Final = {
 
 
 _NO_FOLLOWUP_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_HAVEN})
+# Stages whose replies a leave-taking turn does not replace (F5d).
+_OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, HelpStage.S_READY})
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
 SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
@@ -431,7 +442,7 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         stub=RuleStub(tax, load_perception_lexicon(tax)),
         detector=RedFlagDetector(tax, lexicons),
         language=load_language_data(tax),
-        store=parse_store(yaml.safe_load(bundle.data)),
+        store=parse_store(safe_load(bundle.data)),
         hotline_source=bundle.source,
         hotline_reason=bundle.reason,
         introspector=Introspector(introspection),
@@ -762,9 +773,24 @@ class Session:
         if spectrum is not None:
             self._last_spectrum = spectrum
         note = self._shared.note_cues.find(text) is not None
-        info = self._info_choice(
-            stage, perception, flags, signals, status, assessment.level, feedback, transition
+        # Leaving for now with no card waiting (F5d): a short goodbye, nothing else.
+        leaving = (
+            signals.leave_taking
+            and pending is None
+            and signals.command is None
+            and not note
+            and not status.in_crisis
+            and assessment.level is CrisisLevel.L0
+            and rules.level is CrisisLevel.L0
+            and not ask
+            and answer is None
+            and stage not in _OWN_REPLY_STAGES
         )
+        info = None
+        if not leaving:
+            info = self._info_choice(
+                stage, perception, flags, signals, status, assessment.level, feedback, transition
+            )
         if note:
             # A note turn is answered by the recorder's confirmation, never with a card.
             info = None
@@ -821,6 +847,8 @@ class Session:
             rendered = self._followup(templates.no_pending_feedback, stage)
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
+        elif leaving:
+            rendered = self._closing(templates.after_close, stage)
         elif follow.clarify and still_waiting:
             rendered = self._followup(templates.clarify_feedback, stage)
             self._clarifying = True

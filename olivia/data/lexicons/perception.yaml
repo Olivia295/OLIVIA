@@ -1329,7 +1329,9 @@ answers:
 # now", so the card goes into the kit and the closing ritual follows (S_empower ->
 # S_closing, the /not-now route); another feedback phrase in the same message wins
 # ("做完了，我去睡了" is done). Sleep phrases carry 我 or 试着 so "孩子去睡了" is no
-# leave-taking; anywhere else (no card waiting) the session does not read them.
+# leave-taking. With no card waiting (F5d), a calm L0 turn that takes leave gets a short
+# goodbye (S_ready.after_close) and no card; a phrase asked as a question
+# ("今天就到这里？") is no goodbye.
 leave_taking:
   - 我去睡了
   - 我去睡觉了

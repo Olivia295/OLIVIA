@@ -20,6 +20,8 @@ from typing import Final
 
 import yaml
 
+from olivia.core.yaml_load import safe_load
+
 _TEXT_FILE: Final = "privacy.yaml"
 _DATA_DIR_SLOT: Final = "data_dir"
 _SLOT: Final = re.compile(r"\{([^{}]*)\}")
@@ -41,7 +43,7 @@ def load_privacy_text(directory: Path | None = None) -> PrivacyText:
         resources.files("olivia").joinpath("data/templates") if directory is None else directory
     )
     try:
-        doc = yaml.safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise PrivacyTextError(f"{_TEXT_FILE}: cannot read: {exc}") from exc
     if not isinstance(doc, dict) or doc.get("version") != 1:

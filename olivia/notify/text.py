@@ -13,6 +13,8 @@ from typing import Final
 
 import yaml
 
+from olivia.core.yaml_load import safe_load
+
 _FILE: Final = "notify.yaml"
 _SLOT: Final = re.compile(r"\{([^{}]*)\}")
 _ALLOWED_SLOTS: Final = frozenset({"state", "job", "where"})
@@ -91,7 +93,7 @@ def _section(doc: Mapping[str, object], name: str, keys: tuple[str, ...]) -> dic
 
 def _load_text(base: Traversable | Path) -> NotifyText:
     try:
-        doc = yaml.safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise NotifyTextError(f"{_FILE}: cannot read: {exc}") from exc
     sections = {"version", "notifications", "settings", "places"}

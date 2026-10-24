@@ -20,6 +20,7 @@ from typing import Final, TypeVar
 import yaml
 
 from olivia.core.models import UNKNOWN_COUNTRY, CrisisLevel
+from olivia.core.yaml_load import safe_load
 
 SUPPORTED_VERSION: Final = 1
 _REGION_RE: Final = re.compile(r"[A-Z]{2}")
@@ -133,7 +134,7 @@ def load_store(path: Path | None = None) -> ResourceStore:
     except (OSError, UnicodeDecodeError) as exc:
         raise ResourceDataError(f"cannot read hotline data: {exc}") from exc
     try:
-        data = yaml.safe_load(text)
+        data = safe_load(text)
     except yaml.YAMLError as exc:
         raise ResourceDataError(f"invalid hotline YAML: {exc}") from exc
     return parse_store(data)

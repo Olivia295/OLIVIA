@@ -92,6 +92,11 @@ Natural-language feedback (roadmap R-7b), only on a turn that is not a slash com
   ``feedback.unclear`` entry ("唉", "再说吧") and no feedback phrase matched.
 - ``answer``: the whole marks-free message is an ``answers.affirm`` or
   ``answers.decline`` entry.
+- ``leave_taking`` (F5d): a ``leave_taking`` phrase survives the same scan (outermost,
+  not negated) and its clause is not a question: no "？" right after it (trailing
+  particles aside) and no "吗" ("今天就到这里？我还没说完" is no goodbye). It is set
+  whatever other feedback the message has; the session reads it only with no card
+  waiting.
 
 The stub reads every turn on its own and knows nothing of the session: whether a card
 waits for feedback, or a question waits for an answer, is the session's call.
@@ -158,6 +163,10 @@ _CONTRAINDICATION: Final = "contraindication"
 # containment over a feedback phrase inside it).
 _FeedbackLabel = Command | str
 _LEAVE: Final = "leave_taking"
+# What may follow a leave-taking phrase before its clause ends, and what makes it a question.
+_CLAUSE_END: Final = re.compile(r"[,，、。.!！;；:：~～…\n?？]")
+_TRAILING_PARTICLES: Final = "吧啦呀哦啊了"
+_QUESTION_PARTICLES: Final = frozenset({"吗", "么", "嘛"})
 
 _Tag = tuple[str, str]  # (group, label)
 _L = TypeVar("_L", bound=str)
@@ -280,8 +289,10 @@ class RuleStub:
         unclear = False
         answer: Answer | None = None
         another = False
+        leaving = False
         if command is None:
             feedback, unclear = self._feedback(strip_marks(body))
+            leaving = self._leaving(body)
             reply = strip_marks(folded)
             unclear = unclear or (feedback is None and reply in self._unclear)
             answer = self._answers.get(reply)
@@ -346,6 +357,7 @@ class RuleStub:
             feedback_unclear=unclear,
             answer=answer,
             kit_recall=_RECALL in labels,
+            leave_taking=leaving,
             therapy_question=asked,
             therapy_request=requested,
             situation_codes=frozenset(label for label, _ in hits.get(_SITUATION, ())),
@@ -387,6 +399,20 @@ class RuleStub:
         if len(classes) == 1:
             return classes.pop(), False
         return None, bool(classes)
+
+    def _leaving(self, body: str) -> bool:
+        """A live ``leave_taking`` hit in the marks-free ``body`` (as for feedback) whose
+        sentence is not a question: "今天就到这里？我还没说完" is no goodbye."""
+        # Index in ``body`` of each character that strip_marks keeps.
+        kept = [i for i, ch in enumerate(body) if strip_marks(ch)]
+        text = "".join(body[i] for i in kept)
+        found = [(self._feedback_labels[m.key], m) for m in self._feedback_matcher.find_all(text)]
+        for label, match in _outermost(found):
+            if label != _LEAVE or self._negated(text, match.start):
+                continue
+            if not _asked(body[kept[match.end - 1] + 1 :]):
+                return True
+        return False
 
     def _negated(self, text: str, start: int) -> bool:
         if any(text.endswith(word, 0, start) for word in self._exceptions):
@@ -473,6 +499,16 @@ def _therapy(
     if hits.get(_THERAPY_CUE):
         return first, None
     return None, None
+
+
+def _asked(rest: str) -> bool:
+    """The clause that ``rest`` finishes is a question: only particles, then a question
+    mark ("吧？"), or a question particle ("吗")."""
+    end = _CLAUSE_END.search(rest)
+    head = (rest if end is None else rest[: end.start()]).strip(_TRAILING_PARTICLES)
+    if head in _QUESTION_PARTICLES:
+        return True
+    return not head and end is not None and end.group() in "?？"
 
 
 def _whole_word(body: str, match: Match) -> bool:
