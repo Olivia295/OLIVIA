@@ -8,9 +8,12 @@ value such as an unknown region, timezone or persona).
 
 from __future__ import annotations
 
-import pytest
-from cli_support import NOW, save_profile
+import io
 
+import pytest
+from cli_support import NOW, ONBOARD_CN, save_profile
+
+from olivia import cli
 from olivia.core.chang.profile import PROFILE_FILENAME, ProfileStore
 from olivia.core.models import PersonaProfile
 
@@ -105,3 +108,41 @@ def test_argparse_errors_are_exit_2(run_cli):
     with pytest.raises(SystemExit) as exc:
         run_cli(["forget", "--kit", "--all"])
     assert exc.value.code == 2
+
+
+class _CtrlC(io.StringIO):
+    """Scripted input that ends in Ctrl-C instead of end of input."""
+
+    def readline(self, size: int | None = -1) -> str:
+        line = super().readline()
+        if not line:
+            raise KeyboardInterrupt
+        return line
+
+
+@pytest.mark.parametrize(
+    ("argv", "lines", "onboarded", "code"),
+    [
+        (["chat"], [], False, 1),  # onboarding: nothing was set up
+        (["chat"], ONBOARD_CN[:3], False, 1),
+        (["chat"], [], True, 0),  # the conversation ends, like /exit
+        (["chat"], ["今天上班好累"], True, 0),
+        (["health"], [], True, 0),
+        (["safety-plan"], [], True, 0),
+        (["forget"], [], True, 0),
+        (["settings"], [], True, 0),
+    ],
+    ids=lambda v: " ".join(v) if isinstance(v, list) else str(v),
+)
+def test_ctrl_c_exits_like_end_of_input(run_cli, data_home, argv, lines, onboarded, code):
+    """README 退出码: Ctrl-C gives the code end of input gives at the same point."""
+    if onboarded:
+        save_profile(data_home)
+    script = "".join(f"{line}\n" for line in lines)
+    interrupted = run_cli(argv, stdin=_CtrlC(script))
+    assert interrupted.code == code, interrupted.out
+    assert run_cli(argv, lines).code == code
+    if argv == ["chat"]:
+        assert interrupted.lines[-1] == cli.GOODBYE
+    if not onboarded:
+        assert not (data_home / PROFILE_FILENAME).exists()

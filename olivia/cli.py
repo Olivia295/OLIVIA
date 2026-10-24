@@ -59,12 +59,16 @@
 ``olivia --version``
     The installed version, read from the package metadata.
 
-Help and argparse errors are in Chinese (``_Parser``). Exit status, the same for every
-command (README "退出码"): 0 when the command did what was asked (showing counts); 1 when
-nothing could be done (no profile yet, an under-18 refusal record, unreadable or locked
-data; ``chat`` that ends before a profile exists); 2 for a wrong command line (argparse,
-or an unknown region, timezone or persona). ``resources``, ``privacy`` and
-``forget --all`` work without a profile.
+Help and argparse errors are in Chinese (``_Parser``), with full-width colons after the
+headings; help goes to ``main``'s ``stdout`` and argparse errors to its ``stderr``, and
+neither lists the hidden ``notify-check``. Exit status, the same for every command
+(README "退出码"): 0 when the command did what was asked (showing counts); 1 when nothing
+could be done (no profile yet, an under-18 refusal record, unreadable or locked data;
+``chat`` that ends before a profile exists); 2 for a wrong command line (argparse, or an
+unknown region, timezone or persona). Ctrl-C exits like end of input at the same point:
+0 once a chat has started (it ends the conversation like ``/exit``) and in the other
+commands, 1 during onboarding. ``resources``, ``privacy`` and ``forget --all`` work
+without a profile.
 
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
 answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
@@ -97,6 +101,7 @@ country level. The CLI makes no network calls.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import random
 import re
@@ -429,6 +434,10 @@ def _chat(
     store = ProfileStore()
     try:
         profile = _onboard(console, tax, store, clock())
+    except KeyboardInterrupt:  # like end of input here: nothing was set up
+        console.say()
+        console.say(GOODBYE)
+        return 1
     except ProfileCorruptError:
         console.say(PROFILE_CORRUPT)
         return 1
@@ -948,7 +957,11 @@ HELP_USAGE: Final = "用法："
 HELP_POSITIONALS: Final = "参数"
 HELP_OPTIONS: Final = "选项"
 HELP_COMMANDS: Final = "命令"
+HELP_HEADINGS: Final = (HELP_POSITIONALS, HELP_OPTIONS, HELP_COMMANDS)
 HELP_HELP: Final = "显示这段说明，然后退出"
+HIDDEN_COMMANDS: Final = frozenset({"notify-check"})
+"""Commands for the system scheduler (B9): they run, but no help or error lists them."""
+_HEADING_LINE: Final = re.compile(rf"^( *)({'|'.join(HELP_HEADINGS)}):$", re.MULTILINE)
 HELP_ERROR: Final = "{prog}：命令有误：{message}\n（输入 {prog} -h 可以查看用法）\n"
 _ARGPARSE_ERRORS: Final = (
     (re.compile(r"the following arguments are required: (.+)"), "还缺少：{0}"),
@@ -960,7 +973,18 @@ _ARGPARSE_ERRORS: Final = (
     (re.compile(r"argument (.+?): not allowed with argument (.+)"), "{0} 不能和 {1} 一起用"),
     (re.compile(r"argument (.+?): expected one argument"), "{0} 后面要跟一个值"),
     (re.compile(r"argument (.+?): invalid int value: '?(.+?)'?$"), "{0} 要跟一个整数，「{1}」不是"),
+    (
+        re.compile(r"argument (.+?): ignored explicit argument '?(.+?)'?$"),
+        "{0} 后面不用跟值，「{1}」是多出来的",
+    ),
 )
+_INVALID_CHOICE: Final = _ARGPARSE_ERRORS[2][0]
+_CHOICES_GROUP: Final = 2
+
+
+def _visible_choices(choices: str) -> str:
+    """argparse's ``a, b, c`` choice list as ``a、b、c``, without the hidden commands."""
+    return "、".join(name for name in choices.split(", ") if name not in HIDDEN_COMMANDS)
 
 
 def _localise_error(message: str) -> str:
@@ -968,7 +992,10 @@ def _localise_error(message: str) -> str:
     for pattern, template in _ARGPARSE_ERRORS:
         found = pattern.fullmatch(message)
         if found is not None:
-            return template.format(*(group.replace("'", "") for group in found.groups()))
+            groups = [group.replace("'", "") for group in found.groups()]
+            if pattern is _INVALID_CHOICE:
+                groups[_CHOICES_GROUP] = _visible_choices(groups[_CHOICES_GROUP])
+            return template.format(*groups)
     return message
 
 
@@ -995,6 +1022,10 @@ class _Parser(argparse.ArgumentParser):
         self._positionals.title = HELP_POSITIONALS
         self._optionals.title = HELP_OPTIONS
         self.add_argument("-h", "--help", action="help", default=argparse.SUPPRESS, help=HELP_HELP)
+
+    def format_help(self) -> str:
+        """argparse's help with a full-width colon after each Chinese heading."""
+        return _HEADING_LINE.sub(r"\1\2：", super().format_help())
 
     def error(self, message: str) -> NoReturn:
         self.print_usage(sys.stderr)
@@ -1071,13 +1102,22 @@ def main(
     *,
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
     clock: Clock | None = None,
     rng: random.Random | None = None,
 ) -> int:
-    """Run one command; returns the exit status. ``clock`` must be timezone-aware."""
+    """Run one command; returns the exit status. ``clock`` must be timezone-aware.
+
+    ``--help`` and ``--version`` write to ``stdout``, an argparse error to ``stderr`` (the
+    real streams when not given); both then raise ``SystemExit`` (0 and 2, as argparse).
+    """
     if stdin is None and stdout is None:
         _use_utf8_stdio()
-    args = build_parser().parse_args(argv)
+    with (
+        contextlib.redirect_stdout(stdout or sys.stdout),
+        contextlib.redirect_stderr(stderr or sys.stderr),
+    ):
+        args = build_parser().parse_args(argv)
     console = _Console(stdin or sys.stdin, stdout or sys.stdout)
     now = clock if clock is not None else _system_clock
     try:

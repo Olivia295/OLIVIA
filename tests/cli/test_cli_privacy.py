@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
 import yaml
 from cli_support import save_profile
 
+from olivia import cli
 from olivia.core.chang.privacy import (
     PrivacyTextError,
     load_privacy_text,
@@ -46,10 +48,11 @@ def test_works_whatever_the_profile_holds(run_cli, data_home):
     assert run.code == 0 and str(data_home) in run.out
 
 
-def test_listed_in_the_help(run_cli, capsys):
+def test_listed_in_the_help():
+    out = io.StringIO()
     with pytest.raises(SystemExit):
-        run_cli(["--help"])
-    assert "privacy" in capsys.readouterr().out
+        cli.main(["--help"], stdout=out)
+    assert "privacy" in out.getvalue()
 
 
 def test_wording_is_a_marked_draft_and_passes_willow_and_the_gate():

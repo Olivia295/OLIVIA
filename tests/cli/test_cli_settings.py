@@ -173,10 +173,11 @@ def test_forget_all_with_no_data_still_removes_a_leftover_job(run_cli, data_home
 # -- notify-check ------------------------------------------------------------------------------
 
 
-def test_notify_check_is_hidden_and_silent(run_cli, data_home, machine, capsys):
+def test_notify_check_is_hidden_and_silent(run_cli, data_home, machine):
+    help_out = io.StringIO()
     with pytest.raises(SystemExit):
-        cli.main(["--help"], stdout=io.StringIO())
-    assert "notify-check" not in capsys.readouterr().out
+        cli.main(["--help"], stdout=help_out)
+    assert "notify-check" not in help_out.getvalue()
     save_profile(data_home, notifications=True, created_at=NOW - timedelta(days=30))
     run = run_cli(["notify-check"])
     assert run.code == 0 and run.out == ""
@@ -191,7 +192,8 @@ def test_notify_check_sends_nothing_while_off(run_cli, data_home, machine):
     assert machine.calls == []
 
 
-def test_settings_help_is_listed(capsys):
+def test_settings_help_is_listed():
+    out = io.StringIO()
     with pytest.raises(SystemExit):
-        cli.main(["--help"], stdout=io.StringIO())
-    assert "settings" in capsys.readouterr().out
+        cli.main(["--help"], stdout=out)
+    assert "settings" in out.getvalue()
