@@ -301,6 +301,11 @@ class RenderText:
     """Ends a Grade A explainer: it can be tried here, by asking for it (F3)."""
     referral_intro: str
     referral_destinations: Mapping[str, str]
+    """Red-flag code -> where to go, for mainland China (CN)."""
+    referral_destinations_hk_mo_tw: Mapping[str, str]
+    """The same for Hong Kong, Macao and Taiwan."""
+    referral_destinations_elsewhere: Mapping[str, str]
+    """The same for every other region and an unknown one: no mainland-only places."""
     referral_closing: str
     crisis_emergency_heading: Mapping[CrisisLevel, str]
     crisis_lines_heading: str
@@ -611,9 +616,18 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         f"{where} info",
     )
     ref = _map(data["referral"], f"{where} referral")
-    _keys(ref, {"intro", "destinations", "closing"}, f"{where} referral")
-    dest_raw = _map(ref["destinations"], f"{where} referral.destinations")
-    _keys(dest_raw, set(tax.red_flags()), f"{where} referral.destinations")
+    _keys(
+        ref,
+        {"intro", "destinations", "destinations_hk_mo_tw", "destinations_elsewhere", "closing"},
+        f"{where} referral",
+    )
+    places: dict[str, Mapping[str, str]] = {}
+    for group in ("destinations", "destinations_hk_mo_tw", "destinations_elsewhere"):
+        raw = _map(ref[group], f"{where} referral.{group}")
+        _keys(raw, set(tax.red_flags()), f"{where} referral.{group}")
+        places[group] = MappingProxyType(
+            {code: _str(raw[code], f"{where} {group}.{code}") for code in tax.red_flags()}
+        )
     crisis = _map(data["crisis"], f"{where} crisis")
     _keys(
         crisis,
@@ -658,9 +672,9 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         info_c_closing=_str(info["c_closing"], f"{where} info.c_closing"),
         info_a_closing=_str(info["a_closing"], f"{where} info.a_closing"),
         referral_intro=_str(ref["intro"], f"{where} referral.intro"),
-        referral_destinations=MappingProxyType(
-            {code: _str(dest_raw[code], f"{where} {code}") for code in tax.red_flags()}
-        ),
+        referral_destinations=places["destinations"],
+        referral_destinations_hk_mo_tw=places["destinations_hk_mo_tw"],
+        referral_destinations_elsewhere=places["destinations_elsewhere"],
         referral_closing=_str(ref["closing"], f"{where} referral.closing"),
         crisis_emergency_heading=MappingProxyType(
             {

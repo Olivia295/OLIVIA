@@ -85,12 +85,38 @@ def test_same_persona_is_left_alone(run_cli, data_home):
     assert (data_home / PROFILE_FILENAME).read_bytes() == before
 
 
+@pytest.mark.parametrize(
+    ("choice", "persona"),
+    [
+        ("树洞", PersonaSpectrum.SILENT_ANCHOR),
+        ("静默", PersonaSpectrum.SILENT_ANCHOR),
+        ("哲思", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("禅", PersonaSpectrum.ZEN_PHILOSOPHER),
+        ("战友", PersonaSpectrum.RATIONAL_PEER),
+        ("理性", PersonaSpectrum.RATIONAL_PEER),
+    ],
+)
+def test_short_aliases_switch_the_persona(run_cli, data_home, choice, persona):
+    save_profile(data_home)
+    run = run_cli(["persona", choice])
+    assert run.code == 0
+    assert ProfileStore(data_home).load().persona_spectrum is persona  # type: ignore[union-attr]
+    name = LABELS[persona].split("：", 1)[0]
+    assert run.out == cli.PERSONA_SAVED.format(name=name) + "\n"
+
+
+def test_gentle_alias_on_the_current_persona_changes_nothing(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["persona", "温和"])
+    assert run.code == 0 and "不用改动" in run.out
+
+
 @pytest.mark.parametrize("choice", ["9", "随便", "0"])
 def test_unknown_choice_changes_nothing(run_cli, data_home, choice):
     save_profile(data_home)
     before = (data_home / PROFILE_FILENAME).read_bytes()
     run = run_cli(["persona", choice])
-    assert run.code == 1
+    assert run.code == 2
     assert cli.PERSONA_UNKNOWN.format(raw=choice) in run.out
     assert f"2. {LABELS[PersonaSpectrum.ZEN_PHILOSOPHER]}" in run.out
     assert (data_home / PROFILE_FILENAME).read_bytes() == before
@@ -98,7 +124,7 @@ def test_unknown_choice_changes_nothing(run_cli, data_home, choice):
 
 def test_before_onboarding(run_cli, data_home):
     shown = run_cli(["persona"])
-    assert shown.code == 0 and cli.PERSONA_NOT_ONBOARDED in shown.out
+    assert shown.code == 1 and cli.PERSONA_NOT_ONBOARDED in shown.out
     switched = run_cli(["persona", "2"])
     assert switched.code == 1 and cli.PERSONA_NOT_ONBOARDED in switched.out
     assert not (data_home / PROFILE_FILENAME).exists()
@@ -114,7 +140,7 @@ def test_refusal_record_has_no_persona(run_cli, data_home):
     run = run_cli(["persona", "2"])
     assert run.code == 1 and cli.PERSONA_ADULTS_ONLY in run.out
     assert (data_home / PROFILE_FILENAME).read_text(encoding="utf-8") == record
-    assert run_cli(["persona"]).code == 0
+    assert run_cli(["persona"]).code == 1
 
 
 def test_region_is_untouched_by_a_switch(run_cli, data_home):

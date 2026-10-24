@@ -165,3 +165,10 @@ adcode 说明：省级代码与吉林省统计局、芜湖市统计局网站转�
 10. **ZZ 112**：欧盟委员会确认 112 在全球 GSM 网络上可拨，但并非所有国家或网络都支持，所以数据备注写明优先拨打当地紧急号码或前往最近的急诊。
 11. **R8 与港澳台 110 冲突**（PRD GEO-03 对比 GEO-05/06）：GEO-03 规定非大陆地区禁止出现 110，但 110 本身就是澳门（自动接驳 999）和台湾（警察报案）的官方本地号码，GEO-05/06 也列了 110。本数据在 MO、TW 下保留了 110。R8 的检查应改为“只按 CN 条目的 id 或来源隔离”，或者把规则改成“禁止 12356 / 120 / 12355，以及大陆语境下的 110”。否则测试会误删港澳台的有效号码。
 12. **数据位置**：PRD GEO-08 和 SDD §8.3 写的是 `olivia/data/resources/hotlines/` 树状目录加签名包；本轮按 P2-1 计划交付单文件 `olivia/data/resources/hotlines.yaml`，与 GEO-08 的目录结构不一致，需要后续决定。
+
+## 定期复核
+
+- **维护负责人**：`<待指定：姓名 / GitHub 账号>`（占位，确定后替换；负责人变更时同步更新这里）。
+- **频率**：每季度一次。GitHub Actions 工作流 `.github/workflows/hotline-freshness.yml` 在每年 1、4、7、10 月的 1 日自动运行 `scripts/check_hotline_freshness.py`，也可以在 Actions 页面手动触发（workflow_dispatch）。
+- **规则**：任何条目（紧急号码或热线）的 `verified_on` 早于运行当天 90 天，脚本就以非零状态退出，工作流显示失败，并列出过期条目的地区和 id。本地也可以运行：`python scripts/check_hotline_freshness.py`（`--today`、`--max-age-days`、`--store` 见脚本说明）。
+- **处理**：负责人按本文开头的规则，逐条回到官方来源重新核验，更新号码、时段与 `verified_on`，在本文件补记来源，然后用签名密钥重新签名 `hotlines.yaml`（`scripts/sign_hotlines.py`，密钥由负责人保管，不进仓库），按正常流程提交合并。

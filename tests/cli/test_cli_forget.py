@@ -203,10 +203,10 @@ def test_memory_with_a_locked_keychain(run_cli, data_home, keychain):
 
 
 def test_memory_for_an_age_gate_refusal_record(run_cli, data_home):
-    run_cli(["chat"], ["1", "2"])  # accept, then "under 18"
+    run_cli(["chat"], ["1", "2", "1"])  # accept, "under 18", confirmed
     assert ProfileStore(data_home).load().is_age_gate_refusal
     run = run_cli(["memory"])
-    assert run.code == 0 and run.lines == [M["adults_only"]]
+    assert run.code == 1 and run.lines == [M["adults_only"]]
 
 
 # -- olivia forget: one store -----------------------------------------------------------------
@@ -389,7 +389,7 @@ def test_after_all_the_next_chat_starts_onboarding(run_cli, data_home, tmp_path)
     assert run_cli(["forget", "--all", "--yes"]).code == 0
     first = OnboardingFlow(load_taxonomy(), ProfileStore(tmp_path / "blank"), NOW).prompt()
     run = run_cli(["chat"], [])
-    assert run.code == 0
+    assert run.code == 1
     assert first.text in run.out and cli.CHAT_HINT not in run.out
     assert ProfileStore(data_home).load() is None
 
@@ -425,17 +425,17 @@ def test_all_without_a_keychain(run_cli, data_home, keychain):
 
 
 def test_an_age_gate_refusal_record_is_kept_and_said_so(run_cli, data_home):
-    run_cli(["chat"], ["1", "2"])
+    run_cli(["chat"], ["1", "2", "1"])
     before = files_under(data_home)
     run = run_cli(["forget", "--all"], [])
     assert run.code == 0 and run.lines == [F["kept_minor"]]
     assert files_under(data_home) == before
     other = run_cli(["forget", "--kit"])
-    assert other.code == 0 and other.lines == [F["adults_only"]]
+    assert other.code == 1 and other.lines == [F["adults_only"]]
 
 
 def test_all_beside_a_refusal_record_removes_the_rest(run_cli, data_home, keychain):
-    run_cli(["chat"], ["1", "2"])
+    run_cli(["chat"], ["1", "2", "1"])
     SafetyPlanStore(data_home).mark_suggested()
     StateStore(data_home).save(CarriedState(BANDIT))
     assert keychain.items

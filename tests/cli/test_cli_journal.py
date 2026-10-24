@@ -153,7 +153,7 @@ def test_two_sessions_bring_the_offer_and_yes_shows_it(run_cli, data_home):
     out = run.out
     assert out.index(RATING) < out.index(OFFER) < out.index("## 这一周的小结") < out.index(HELPFUL)
     assert "- 聊天：2 次" in out and "- 心情分（开始 → 结束）：4 → 6" in out
-    assert TEXT.replies["helpful_thanks"] in out
+    assert TEXT.replies["helpful_yes"] in out
     assert run.texts == ["今天还行"]
     (journal,) = _journals(data_home)
     assert journal.shown and journal.helpful is True
@@ -219,6 +219,7 @@ def test_journal_command_shows_it_any_time(run_cli, data_home):
     assert "## 这一周的小结" in run.out and "- 聊天：1 次" in run.out
     (journal,) = _journals(data_home)
     assert journal.shown and journal.helpful is False
+    assert run.lines[-1] == TEXT.replies["helpful_no"]
 
 
 def test_journal_command_before_onboarding(run_cli, data_home):

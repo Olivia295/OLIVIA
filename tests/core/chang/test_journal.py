@@ -253,7 +253,7 @@ def test_command_shows_the_card_and_records_the_answer(ledger):
     script = Script("没有")
     assert run_command(script.ask, script.say, ledger, NOW, method_titles=TITLES) == 0
     assert script.said[0].startswith("## 这一周的小结")
-    assert script.said[-2:] == [TEXT.prompts["helpful"], TEXT.replies["helpful_thanks"]]
+    assert script.said[-2:] == [TEXT.prompts["helpful"], TEXT.replies["helpful_no"]]
     (journal,) = [e for e in ledger.entries() if isinstance(e, JournalEntry)]
     assert (journal.offered_at, journal.shown, journal.helpful) == (NOW, True, False)
 
@@ -264,7 +264,31 @@ def test_command_skipped_answer_keeps_the_shown_record(ledger):
     run_command(script.ask, script.say, ledger, NOW)
     (journal,) = [e for e in ledger.entries() if isinstance(e, JournalEntry)]
     assert journal.shown and journal.helpful is None
-    assert TEXT.replies["helpful_thanks"] not in script.said
+    assert script.said[-2:] == [TEXT.prompts["helpful"], TEXT.replies["helpful_skipped"]]
+
+
+@pytest.mark.parametrize(
+    ("answer", "reply"),
+    [
+        ("有", "helpful_yes"),
+        ("没有", "helpful_no"),
+        ("", "helpful_skipped"),
+        ("随便看看", "helpful_skipped"),
+    ],
+)
+def test_command_answers_the_helpful_question_with_one_short_line(ledger, answer, reply):
+    _seed(ledger)
+    script = Script(answer)
+    run_command(script.ask, script.say, ledger, NOW)
+    assert script.said[-1] == TEXT.replies[reply]
+    assert len(TEXT.replies[reply]) <= 30 and "\n" not in TEXT.replies[reply]
+
+
+def test_command_says_nothing_more_at_end_of_input(ledger):
+    _seed(ledger)
+    script = Script()
+    run_command(script.ask, script.say, ledger, NOW)
+    assert script.said[-1] == TEXT.prompts["helpful"]
 
 
 def test_command_without_a_keychain(tmp_path, keychain):

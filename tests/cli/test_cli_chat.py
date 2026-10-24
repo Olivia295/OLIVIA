@@ -89,7 +89,7 @@ def test_blank_lines_are_skipped_and_commands_reach_the_session(run_cli, data_ho
 
 def test_end_of_input_during_onboarding_saves_nothing(run_cli, data_home):
     run = run_cli(["chat"], ONBOARD_CN[:5])
-    assert run.code == 0 and run.lines[-1] == cli.GOODBYE
+    assert run.code == 1 and run.lines[-1] == cli.GOODBYE  # nothing was set up
     assert not (data_home / PROFILE_FILENAME).exists()
     assert run.sessions == []
 

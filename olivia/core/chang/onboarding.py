@@ -4,14 +4,16 @@ The flow is pure logic over a :class:`ProfileStore`: the caller shows ``prompt()
 passes the user's reply to ``answer()``, and repeats until it gets :class:`Completed`
 or :class:`Refused`. All wording lives in ``olivia/data/templates/onboarding.yaml``.
 
-Order: disclaimer (explicit acceptance) -> 18+ gate -> at-rest encryption switch (ONB-06,
-default off: only health information is encrypted, ruling 28) -> both names -> persona
-(the four of ONB-03, ``GENTLE_HOLDING`` by default; plan D-1) -> taboo topics -> region ->
-timezone -> optional clinical-history consent (last, ruling 23; its prompt shows the
-standalone ``sensitive_notice`` before the consent sentence, PIPL Art. 28-30, B8) ->
-after consent, the clinical history and the D2 checklist of the profile's
-contraindication disclosures (heart or breathing, safety at home; step A1) -> one
-atomic save (ONB-08). The age
+Order: disclaimer (explicit acceptance) -> 18+ gate (a "no" is confirmed once, so a
+mis-click can be undone before the permanent refusal is recorded) -> at-rest encryption
+switch (ONB-06, default off: only health information is encrypted, ruling 28) -> both
+names -> persona (the four of ONB-03, ``GENTLE_HOLDING`` by default; plan D-1) -> taboo
+topics -> region -> timezone (Enter for "other" takes this computer's zone) -> optional
+clinical-history consent (last, ruling 23; its prompt shows the standalone
+``sensitive_notice`` before the consent sentence, PIPL Art. 28-30, B8) -> after consent,
+the clinical history (plain Chinese labels, codes kept internal) and the D2 checklist of
+the profile's contraindication disclosures (heart or breathing, safety at home; step A1)
+-> one atomic save (ONB-08). The age
 gate comes before anything personal is asked, so nothing is ever collected from a minor
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
@@ -25,6 +27,8 @@ health information is stored, and the closing text starts with
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
 import unicodedata
 import zoneinfo
@@ -110,6 +114,9 @@ TABOO_MAX_TOPICS: Final = 20
 TABOO_MAX_LEN: Final = 20
 
 _TEXT_FILE: Final = "onboarding.yaml"
+# Where ``system_timezone`` looks after ``TZ`` (module-level so tests can point elsewhere).
+_LOCALTIME = "/etc/localtime"
+_TIMEZONE_FILE = Path("/etc/timezone")
 _LIST_SPLIT: Final = re.compile(r"[,，、;；/\s]+")
 _SQUASH: Final = re.compile(r"[\s。.]+")
 # Strict "Area/City[/Sub]" names, used only where the platform ships no tz database.
@@ -132,6 +139,7 @@ _IANA_NAME: Final = re.compile(
 _PROMPT_KEYS: Final = (
     "disclaimer",
     "age_gate",
+    "age_confirm",
     "encryption",
     "user_name",
     "agent_name",
@@ -177,6 +185,7 @@ _SLOTS: Final = frozenset(
         "consent_sentence",
         "sensitive_notice",
         "tokens",
+        "system_timezone",
     }
 )
 _SLOT: Final = re.compile(r"\{([^{}]*)\}")
@@ -193,6 +202,7 @@ class OnboardingFinishedError(RuntimeError):
 class Step(StrEnum):
     DISCLAIMER = "disclaimer"
     AGE_GATE = "age_gate"
+    AGE_CONFIRM = "age_confirm"
     ENCRYPTION = "encryption"
     USER_NAME = "user_name"
     AGENT_NAME = "agent_name"
@@ -247,10 +257,15 @@ class OnboardingText:
     what is recorded, why, where it stays, what declining changes and how to withdraw."""
     prompts: Mapping[str, str]
     choices: Mapping[str, tuple[Choice, Choice]]
-    """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``encryption`` as
-    ``(keep_off, encrypt_all)``, the first being the default."""
+    """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``age_confirm`` as
+    ``(confirm_minor, mistaken)``; ``encryption`` as ``(keep_off, encrypt_all)``, the
+    first being the default."""
     persona_labels: Mapping[PersonaSpectrum, str]
     """One line per persona, ``简称：description`` (ONB-03)."""
+    persona_aliases: Mapping[PersonaSpectrum, tuple[str, ...]]
+    """Short names also accepted for a persona (``olivia persona 树洞``)."""
+    clinical_labels: Mapping[str, str]
+    """Red-flag code -> the plain Chinese label shown in the lists; codes stay internal."""
     region_labels: Mapping[str, str]
     region_aliases: Mapping[str, tuple[str, ...]]
     timezone_labels: Mapping[str, str]
@@ -277,6 +292,23 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
 
     prompts = _str_map(doc, "prompts", _PROMPT_KEYS)
     labels = _str_map(doc, "persona_labels", tuple(p.value for p in PERSONA_CHOICES))
+    persona_aliases_raw = _section(doc, "persona_aliases")
+    persona_aliases = {
+        p: _str_list(persona_aliases_raw.get(p.value, []), f"persona_aliases.{p.value}")
+        for p in PERSONA_CHOICES
+    }
+    unknown_personas = sorted(
+        str(k) for k in persona_aliases_raw if k not in {p.value for p in PERSONA_CHOICES}
+    )
+    if unknown_personas:
+        raise OnboardingTextError(
+            f"{_TEXT_FILE}: persona_aliases has unknown keys {unknown_personas}"
+        )
+    clinical_raw = _section(doc, "clinical_labels")
+    clinical_labels = {
+        str(code): _nonempty_str(label, f"clinical_labels.{code}")
+        for code, label in clinical_raw.items()
+    }
     hints = _str_map(doc, "hints", _HINT_KEYS)
     outcomes = _str_map(doc, "outcomes", _OUTCOME_KEYS)
     disclosure_labels = _str_map(doc, "disclosure_labels", PROFILE_CONTRAINDICATIONS)
@@ -301,6 +333,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         for step, first, second in (
             ("disclaimer", "accept", "decline"),
             ("age_gate", "accept", "decline"),
+            ("age_confirm", "confirm", "mistaken"),
             ("encryption", "keep_off", "encrypt_all"),
         )
     }
@@ -323,6 +356,8 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         prompts=MappingProxyType(prompts),
         choices=MappingProxyType(choices),
         persona_labels=MappingProxyType({p: labels[p.value] for p in PERSONA_CHOICES}),
+        persona_aliases=MappingProxyType(persona_aliases),
+        clinical_labels=MappingProxyType(clinical_labels),
         region_labels=MappingProxyType(region_labels),
         region_aliases=MappingProxyType(region_aliases),
         timezone_labels=MappingProxyType(timezone_labels),
@@ -350,19 +385,82 @@ def parse_choices(reply: str, keys: tuple[str, ...]) -> tuple[tuple[str, ...], t
     return tuple(key for key in keys if key in chosen), unknown
 
 
-def persona_from_reply(reply: str, labels: Mapping[PersonaSpectrum, str]) -> PersonaSpectrum | None:
+def persona_from_reply(
+    reply: str,
+    labels: Mapping[PersonaSpectrum, str],
+    aliases: Mapping[PersonaSpectrum, tuple[str, ...]] | None = None,
+) -> PersonaSpectrum | None:
     """The persona ``reply`` names, else None (an empty reply names none).
 
     Accepted, after NFKC folding and case-folding: the number in ``PERSONA_CHOICES``
-    (from 1), the enum value, the whole label, or its short name before ``：``.
+    (from 1), the enum value, the whole label, its short name before ``：``, or one of
+    ``aliases`` (``树洞``, ``理性`` ...).
     """
     folded = _fold(reply)
     for number, persona in enumerate(PERSONA_CHOICES, start=1):
         label = labels[persona]
-        names = (str(number), persona.value, label, label.split("：", 1)[0])
+        extra = aliases.get(persona, ()) if aliases is not None else ()
+        names = (str(number), persona.value, label, label.split("：", 1)[0], *extra)
         if folded and folded in {_fold(name) for name in names}:
             return persona
     return None
+
+
+def region_from_reply(reply: str, text: OnboardingText, *, numbers: bool = True) -> str | None:
+    """The ``SUPPORTED_REGIONS`` code ``reply`` names, else None.
+
+    Accepted, after NFKC folding, case-folding and dropping spaces: the two-letter code,
+    the label, an alias from ``region_aliases`` (``china``, ``中国``, ``香港`` ...) and, with
+    ``numbers``, the 1-based position in the onboarding list.
+    """
+    folded = _squash_spaces(reply)
+    if not folded:
+        return None
+    for index, code in enumerate(SUPPORTED_REGIONS, start=1):
+        names = [code, text.region_labels[code], *text.region_aliases[code]]
+        if numbers:
+            names.append(str(index))
+        if folded in {_squash_spaces(name) for name in names}:
+            return code
+    return None
+
+
+def system_timezone() -> str:
+    """This computer's IANA timezone name, else ``UTC``.
+
+    Read from ``TZ``, then the ``/etc/localtime`` link (macOS, most Linux), then
+    ``/etc/timezone``; only a name ``canonical_timezone`` accepts is returned.
+    """
+    candidates: list[str] = []
+    env = os.environ.get("TZ", "").strip().lstrip(":")
+    if env:
+        candidates.append(env.split("zoneinfo/", 1)[-1])
+    # Windows spells the resolved link with backslashes.
+    target = os.path.realpath(_LOCALTIME).replace("\\", "/")
+    if "zoneinfo/" in target:
+        candidates.append(target.split("zoneinfo/", 1)[1])
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        candidates.append(_TIMEZONE_FILE.read_text(encoding="utf-8").strip())
+    for name in candidates:
+        zone = canonical_timezone(name) if name else None
+        if zone is not None:
+            return zone
+    return FALLBACK_TIMEZONE
+
+
+def clinical_options(tax: Taxonomy, text: OnboardingText) -> tuple[str, ...]:
+    """The plain Chinese label of every red flag, in taxonomy order (codes stay internal).
+
+    Raises :class:`OnboardingTextError` when ``clinical_labels`` misses a red flag.
+    """
+    codes = tuple(tax.red_flags())
+    missing = sorted(set(codes) - set(text.clinical_labels))
+    extra = sorted(set(text.clinical_labels) - set(codes))
+    if missing or extra:
+        raise OnboardingTextError(
+            f"{_TEXT_FILE}: clinical_labels missing {missing}, unexpected {extra}"
+        )
+    return tuple(text.clinical_labels[code] for code in codes)
 
 
 def canonical_timezone(raw: str) -> str | None:
@@ -406,6 +504,7 @@ class OnboardingFlow:
         self._now = now
         self._text = load_onboarding_text() if text is None else text
         self._red_flags: tuple[RedFlag, ...] = tuple(tax.red_flags().values())
+        self._clinical_options = clinical_options(tax, self._text)
         self._step = Step.DISCLAIMER
         self._hint = ""
         self._user_name = DEFAULT_USER_NAME
@@ -448,6 +547,7 @@ class OnboardingFlow:
         handler = {
             Step.DISCLAIMER: self._on_disclaimer,
             Step.AGE_GATE: self._on_age_gate,
+            Step.AGE_CONFIRM: self._on_age_confirm,
             Step.ENCRYPTION: self._on_encryption,
             Step.USER_NAME: self._on_user_name,
             Step.AGENT_NAME: self._on_agent_name,
@@ -467,7 +567,7 @@ class OnboardingFlow:
     def _question(self) -> tuple[str, tuple[str, ...]]:
         prompts = self._text.prompts
         match self._step:
-            case Step.DISCLAIMER | Step.AGE_GATE | Step.ENCRYPTION:
+            case Step.DISCLAIMER | Step.AGE_GATE | Step.AGE_CONFIRM | Step.ENCRYPTION:
                 accept, decline = self._text.choices[self._step.value]
                 return prompts[self._step.value], (accept.label, decline.label)
             case Step.AGENT_NAME:
@@ -480,7 +580,9 @@ class OnboardingFlow:
                 return prompts["region"], tuple(labels[code] for code in SUPPORTED_REGIONS)
             case Step.TIMEZONE:
                 if self._country == UNKNOWN_COUNTRY:
-                    return prompts["timezone_free"], ()
+                    return self._render(
+                        prompts["timezone_free"], system_timezone=system_timezone()
+                    ), ()
                 return prompts["timezone_choice"], tuple(
                     f"{self._text.timezone_labels[zone]} {zone}"
                     for zone in TIMEZONE_CHOICES[self._country]
@@ -488,9 +590,7 @@ class OnboardingFlow:
             case Step.CLINICAL_CONSENT:
                 return self._render(prompts["clinical_consent"]), ()
             case Step.CLINICAL_HISTORY:
-                return prompts["clinical_history"], tuple(
-                    f"{flag.code} {flag.name_zh}" for flag in self._red_flags
-                )
+                return prompts["clinical_history"], self._clinical_options
             case Step.CONTRAINDICATIONS:
                 labels = self._text.disclosure_labels
                 return prompts["contraindications"], tuple(
@@ -514,6 +614,13 @@ class OnboardingFlow:
             self._protected = self._store.can_protect_sensitive()
             self._step = Step.ENCRYPTION if self._protected else Step.USER_NAME
         elif adult is False:
+            self._step = Step.AGE_CONFIRM
+
+    def _on_age_confirm(self, text: str) -> None:
+        minor = self._binary_choice(text)
+        if minor is False:  # "我选错了": ask the age question again
+            self._step = Step.AGE_GATE
+        elif minor is True:
             # Ruling 22: keep a refusal record (no user data) so a later launch stays refused.
             self._store.save(
                 PersonaProfile(
@@ -553,7 +660,7 @@ class OnboardingFlow:
         chosen = (
             DEFAULT_PERSONA
             if _fold(text) == ""
-            else persona_from_reply(text, self._text.persona_labels)
+            else persona_from_reply(text, self._text.persona_labels, self._text.persona_aliases)
         )
         if chosen is None:
             self._hint = self._text.hints["persona_choice"]
@@ -577,26 +684,24 @@ class OnboardingFlow:
         self._step = Step.REGION
 
     def _on_region(self, text: str) -> None:
-        reply = _fold(text)
-        for index, code in enumerate(SUPPORTED_REGIONS, start=1):
-            names = (str(index), code, self._text.region_labels[code])
-            if reply in {_fold(n) for n in (*names, *self._text.region_aliases[code])}:
-                self._country = code
-                default = DEFAULT_TIMEZONES.get(code)
-                if default is None:
-                    self._step = Step.TIMEZONE
-                else:
-                    self._timezone = default
-                    self._after_location()
-                return
-        self._hint = self._text.hints["unrecognized"]
+        code = region_from_reply(text, self._text)
+        if code is None:
+            self._hint = self._text.hints["unrecognized"]
+            return
+        self._country = code
+        default = DEFAULT_TIMEZONES.get(code)
+        if default is None:
+            self._step = Step.TIMEZONE
+        else:
+            self._timezone = default
+            self._after_location()
 
     def _on_timezone(self, text: str) -> None:
         reply = _fold(text)
         choices = TIMEZONE_CHOICES[self._country]
         zone: str | None
         if self._country == UNKNOWN_COUNTRY and reply == "":
-            zone = FALLBACK_TIMEZONE
+            zone = system_timezone()
         elif reply.isdigit() and 1 <= int(reply) <= len(choices):
             zone = choices[int(reply) - 1]
         else:
@@ -730,6 +835,11 @@ class OnboardingFlow:
 def _fold(text: str) -> str:
     """Normalize a reply for matching: NFKC (full-width digits), trimmed, case-folded."""
     return unicodedata.normalize("NFKC", text).strip().casefold()
+
+
+def _squash_spaces(text: str) -> str:
+    """``_fold`` without any whitespace, so ``Hong Kong`` matches ``hongkong``."""
+    return re.sub(r"\s+", "", _fold(text))
 
 
 def _section(node: Mapping[str, Any], key: str) -> Mapping[str, Any]:

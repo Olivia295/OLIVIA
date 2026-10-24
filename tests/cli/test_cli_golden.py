@@ -57,20 +57,20 @@ def test_sop1_covenant_then_first_session(run_cli, data_home):
 
 def test_sop1_declined_disclaimer_saves_nothing(run_cli, data_home):
     run = run_cli(["chat"], ["2"])
-    assert run.code == 0 and run.sessions == []
+    assert run.code == 1 and run.sessions == []
     assert "没有你的同意" in run.out
     assert not (data_home / PROFILE_FILENAME).exists()
 
 
 def test_sop1_minor_is_refused_now_and_on_every_later_launch(run_cli, data_home):
-    first = run_cli(["chat"], ["1", "2", "小林"])
-    assert first.code == 0 and first.sessions == []
+    first = run_cli(["chat"], ["1", "2", "1", "小林"])
+    assert first.code == 1 and first.sessions == []
     assert "12355" in first.out and "怎么称呼你" not in first.out
     record = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
     assert record["age_gate_refused_at"] is not None and record["region"] is None
 
     again = run_cli(["chat"], ["1", "1", "我其实成年了"])
-    assert again.code == 0 and again.sessions == []
+    assert again.code == 1 and again.sessions == []
     assert "欢迎来到这里" not in again.out and "12355" in again.out
     region = run_cli(["region", "CN"])
     assert region.code == 1 and cli.ADULTS_ONLY in region.out
