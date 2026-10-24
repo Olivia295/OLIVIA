@@ -361,10 +361,12 @@ def test_pyproject_declares_the_console_script():
 
 
 def test_version_prints_the_package_version(capsys):
+    out = io.StringIO()
     with pytest.raises(SystemExit) as exc:
-        cli.main(["--version"], stdout=io.StringIO())
+        cli.main(["--version"], stdout=out)
     assert exc.value.code == 0
-    assert capsys.readouterr().out == f"olivia {cli.package_version()}\n"
+    assert out.getvalue() == f"olivia {cli.package_version()}\n"
+    assert capsys.readouterr().out == ""
 
 
 def test_version_falls_back_to_the_source_tree(monkeypatch):
