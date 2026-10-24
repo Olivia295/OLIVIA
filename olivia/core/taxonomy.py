@@ -21,6 +21,7 @@ from typing import Any, Literal
 import yaml
 
 from olivia.core.models import ActionType, CrisisLevel, SafetyGrade
+from olivia.core.yaml_load import safe_load
 
 _ID_LIST_SECTIONS: frozenset[str] = frozenset(
     {
@@ -759,7 +760,7 @@ def load_taxonomy(path: Path | None = None) -> Taxonomy:
     except (OSError, UnicodeDecodeError) as exc:
         raise TaxonomyError(f"cannot read taxonomy file: {exc}") from exc
     try:
-        data = yaml.safe_load(text)
+        data = safe_load(text)
     except yaml.YAMLError as exc:
         raise TaxonomyError(f"invalid taxonomy YAML: {exc}") from exc
     if not isinstance(data, dict):

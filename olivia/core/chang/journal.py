@@ -66,6 +66,7 @@ from olivia.core.memory.text import NO_FEEDBACK, MemoryText
 from olivia.core.models import CrisisLevel, HelpStage, SessionState
 from olivia.core.session import ReplyKind, TurnResult
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 WINDOW: Final = timedelta(days=7)
 MIN_SESSIONS: Final = 2
@@ -161,7 +162,7 @@ def _words(value: object, where: str) -> frozenset[str]:
 
 def _load_text(base: Traversable | Path) -> JournalText:
     try:
-        doc = yaml.safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise JournalTextError(f"{_FILE}: cannot read: {exc}") from exc
     expected = {"version", "prompts", "replies", "card", "answers"}

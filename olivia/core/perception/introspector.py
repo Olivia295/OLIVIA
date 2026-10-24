@@ -56,6 +56,7 @@ from olivia.core.perception.lexicon import strip_marks
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import clip_for_perception, fold_words, normalize
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 MAX_SCHEMAS: Final = 3
 """``PerceptionContext.detected_schemas`` holds at most three ids (SDD §2.3)."""
@@ -397,7 +398,7 @@ def _read(base: Traversable | Path, name: str) -> Mapping[str, Any]:
     except (OSError, UnicodeDecodeError) as exc:
         raise IntrospectionLexiconError(f"{name}: cannot read file: {exc}") from exc
     try:
-        doc = yaml.safe_load(text)
+        doc = safe_load(text)
     except yaml.YAMLError as exc:
         raise IntrospectionLexiconError(f"{name}: invalid YAML: {exc}") from exc
     if not isinstance(doc, dict):

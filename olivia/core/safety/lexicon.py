@@ -21,6 +21,7 @@ import yaml
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.normalize import fold_words, normalize
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 RiskSection = Literal["stage1", "stage2", "hyperbole", "negation", "safety_confirm", "confirm_veto"]
 RedFlagTier = Literal["SELF_REPORT", "FEATURE"]
@@ -251,7 +252,7 @@ def _read_yaml(base: Traversable | Path, name: str) -> dict[str, Any]:
     except (OSError, UnicodeDecodeError) as exc:
         raise LexiconError(f"{name}: cannot read lexicon file: {exc}") from exc
     try:
-        doc = yaml.safe_load(text)
+        doc = safe_load(text)
     except yaml.YAMLError as exc:
         raise LexiconError(f"{name}: invalid YAML: {exc}") from exc
     if not isinstance(doc, dict):

@@ -83,6 +83,7 @@ from olivia.core.memory.ledger import (
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, StateStore
 from olivia.core.models import PersonaProfile
 from olivia.core.storage import app_data_dir, remove_file
+from olivia.core.yaml_load import safe_load
 
 DATA_FILES: Final = (
     PROFILE_FILENAME,
@@ -218,7 +219,7 @@ def _section(root: Mapping[str, object], name: str, keys: tuple[str, ...]) -> di
 
 def _load_text(base: Traversable | Path) -> ForgetText:
     try:
-        doc = yaml.safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise ForgetTextError(f"{_TEXT_FILE}: cannot read: {exc}") from exc
     if not isinstance(doc, dict) or doc.get("version") != 1:

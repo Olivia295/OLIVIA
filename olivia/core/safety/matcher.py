@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Final
+
+_LEAF: Final[Mapping[str, int]] = MappingProxyType({})
+_NO_OUTPUTS: Final[tuple[tuple[int, str], ...]] = ()
 
 
 @dataclass(frozen=True)
@@ -21,6 +26,11 @@ class PhraseMatcher:
 
     ``find_all`` reports every occurrence, overlapping ones included, in one
     pass over the text regardless of how many phrases are registered.
+
+    Once built, the automaton is kept compact (F5d: the session's matchers hold about
+    13,000 nodes): every node without children shares one read-only empty mapping, equal
+    edge characters share one string, and each node's outputs are a shared tuple (one
+    empty tuple for every node without any).
     """
 
     def __init__(self, phrases: Mapping[str, str]) -> None:
@@ -53,9 +63,22 @@ class PhraseMatcher:
                 # BFS order guarantees fail[child] is complete: merge its outputs.
                 outputs[child].extend(outputs[fail[child]])
 
-        self._children = children
+        # Leaves share one read-only empty mapping, and equal characters one string.
+        chars: dict[str, str] = {}
+        links: list[Mapping[str, int]] = []
+        for edges in children:
+            if edges:
+                links.append({chars.setdefault(ch, ch): child for ch, child in edges.items()})
+            else:
+                links.append(_LEAF)
+        shared: dict[tuple[tuple[int, str], ...], tuple[tuple[int, str], ...]] = {}
+        compact: list[tuple[tuple[int, str], ...]] = []
+        for found in outputs:
+            frozen = tuple(found) if found else _NO_OUTPUTS
+            compact.append(shared.setdefault(frozen, frozen))
+        self._children = links
         self._fail = fail
-        self._outputs = outputs
+        self._outputs = compact
 
     def find_all(self, text: str) -> list[Match]:
         """Return all occurrences in ``text``, sorted by ``(start, end)``."""

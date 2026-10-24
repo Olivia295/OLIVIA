@@ -271,8 +271,6 @@ from functools import lru_cache
 from typing import Final
 from uuid import uuid4
 
-import yaml
-
 from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
 from olivia.core.chang.wellbeing import Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
@@ -334,6 +332,7 @@ from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 FALLBACK_SPECTRUM: Final = "02"
 TABOO_RETRIES: Final = 5
@@ -443,7 +442,7 @@ def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
         stub=RuleStub(tax, load_perception_lexicon(tax)),
         detector=RedFlagDetector(tax, lexicons),
         language=load_language_data(tax),
-        store=parse_store(yaml.safe_load(bundle.data)),
+        store=parse_store(safe_load(bundle.data)),
         hotline_source=bundle.source,
         hotline_reason=bundle.reason,
         introspector=Introspector(introspection),

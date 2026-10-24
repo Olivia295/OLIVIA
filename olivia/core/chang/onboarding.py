@@ -54,6 +54,7 @@ from olivia.core.models import (
     UserRegion,
 )
 from olivia.core.taxonomy import RedFlag, Taxonomy
+from olivia.core.yaml_load import safe_load
 
 DEFAULT_USER_NAME: Final = "朋友"
 DEFAULT_AGENT_NAME: Final = "Olivia"
@@ -284,7 +285,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         resources.files("olivia").joinpath("data/templates") if directory is None else directory
     )
     try:
-        doc = yaml.safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise OnboardingTextError(f"{_TEXT_FILE}: cannot read: {exc}") from exc
     if not isinstance(doc, dict) or doc.get("version") != 1:

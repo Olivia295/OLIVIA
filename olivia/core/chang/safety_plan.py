@@ -51,6 +51,7 @@ from olivia.core.crypto.errors import (
 )
 from olivia.core.crypto.vault import Vault
 from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
+from olivia.core.yaml_load import safe_load
 
 SAFETY_PLAN_STORE: Final = "safety_plan"
 SAFETY_PLAN_FILENAME: Final = "safety_plan.bin"
@@ -257,7 +258,7 @@ def _packaged_text() -> SafetyPlanText:
 
 def _load_text(base: Traversable | Path) -> SafetyPlanText:
     try:
-        doc = yaml.safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_TEXT_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise SafetyPlanTextError(f"{_TEXT_FILE}: cannot read: {exc}") from exc
     root = _mapping(doc, "the file")

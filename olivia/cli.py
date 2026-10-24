@@ -113,8 +113,6 @@ from importlib import metadata
 from typing import Any, Final, NoReturn, TextIO
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import yaml
-
 from olivia import __version__
 from olivia.core.chang import onboarding
 from olivia.core.chang.care import CareRecorder, CareStore
@@ -163,6 +161,7 @@ from olivia.core.resources.store import LineKind, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
 from olivia.core.storage import data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
+from olivia.core.yaml_load import safe_load
 from olivia.notify import system as notify_system
 from olivia.notify.check import run_check
 from olivia.notify.settings import remove_reminders, run_settings
@@ -547,7 +546,7 @@ def _card_titles(tax: Taxonomy) -> dict[str, str]:
 def _load_store(today: date) -> ResourceStore:
     """The same verified hotline data a session uses."""
     bundle = load_hotlines_bytes(None, today=today)
-    return parse_store(yaml.safe_load(bundle.data))
+    return parse_store(safe_load(bundle.data))
 
 
 def _region_label(code: str) -> str:

@@ -74,6 +74,7 @@ from olivia.core.memory.text import NO_FEEDBACK, MemoryText, load_memory_text
 from olivia.core.methods.bandit import Feedback
 from olivia.core.models import CrisisLevel, HelpStage
 from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
+from olivia.core.yaml_load import safe_load
 
 LEDGER_STORE: Final = "ledger"
 REKEY_STORE: Final = "ledger_rekey"
@@ -620,7 +621,7 @@ def _parse(document: str, entry_id: str) -> LedgerEntry:
     if not sep:
         raise ValueError("unterminated front-matter")
     try:
-        front = yaml.safe_load(head)
+        front = safe_load(head)
     except yaml.YAMLError as exc:
         raise ValueError("front-matter is not YAML") from exc
     if not isinstance(front, dict):

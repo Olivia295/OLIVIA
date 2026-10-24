@@ -41,6 +41,7 @@ from olivia.core.language.engine import count_all
 from olivia.core.perception.introspector import MirrorAnswer, MirrorAnswers, read_mirror_answer
 from olivia.core.safety.normalize import fold_words
 from olivia.core.taxonomy import Taxonomy
+from olivia.core.yaml_load import safe_load
 
 CRITIC_SCHEMAS: Final = frozenset(
     {"DEFECTIVENESS", "PUNITIVENESS", "UNRELENTING_STANDARDS", "FAILURE"}
@@ -292,7 +293,7 @@ def _read(directory: Path | None) -> Mapping[str, Any]:
     except (OSError, UnicodeDecodeError) as exc:
         raise ExternalizeTextError(f"{_FILE}: cannot read file: {exc}") from exc
     try:
-        doc = yaml.safe_load(raw)
+        doc = safe_load(raw)
     except yaml.YAMLError as exc:
         raise ExternalizeTextError(f"{_FILE}: invalid YAML: {exc}") from exc
     if not isinstance(doc, dict):

@@ -45,6 +45,7 @@ import yaml
 from olivia.core.models import ActionType, SafetyGrade
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy, TaxonomyError
+from olivia.core.yaml_load import safe_load
 
 _FILE: Final = "perception.yaml"
 _PHRASE_SECTIONS: Final = (
@@ -244,7 +245,7 @@ def _read_yaml(base: Traversable | Path) -> Mapping[str, Any]:
     except (OSError, UnicodeDecodeError) as exc:
         raise PerceptionLexiconError(f"{_FILE}: cannot read lexicon file: {exc}") from exc
     try:
-        doc = yaml.safe_load(text)
+        doc = safe_load(text)
     except yaml.YAMLError as exc:
         raise PerceptionLexiconError(f"{_FILE}: invalid YAML: {exc}") from exc
     if not isinstance(doc, dict):

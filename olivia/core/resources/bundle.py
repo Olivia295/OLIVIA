@@ -22,6 +22,7 @@ from typing import Literal
 import yaml
 
 from olivia.core.resources import keys
+from olivia.core.yaml_load import safe_load
 
 DATA_NAME = "hotlines.yaml"
 SIG_NAME = DATA_NAME + ".sig"
@@ -67,7 +68,7 @@ def _read_builtin() -> tuple[bytes, bytes]:
 def _compiled_on(data: bytes) -> date:
     """The ``compiled_on`` date of a hotline file; raises ValueError if absent or malformed."""
     try:
-        doc = yaml.safe_load(data)
+        doc = safe_load(data)
     except yaml.YAMLError as exc:
         raise ValueError("not valid YAML") from exc
     value = doc.get("compiled_on") if isinstance(doc, dict) else None

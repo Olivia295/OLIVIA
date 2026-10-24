@@ -18,6 +18,8 @@ from typing import Final
 
 import yaml
 
+from olivia.core.yaml_load import safe_load
+
 _FILE: Final = "memory.yaml"
 _SECTIONS: Final = frozenset({"version", "note_request", "separators"})
 _GROUPS: Final = ("needs_separator", "direct")
@@ -68,7 +70,7 @@ def load_note_cues(directory: Path | None = None) -> NoteCues:
         resources.files("olivia").joinpath("data/lexicons") if directory is None else directory
     )
     try:
-        doc = yaml.safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise NoteCuesError(f"{_FILE}: cannot read: {exc}") from exc
     if not isinstance(doc, dict) or doc.get("version") != 1:

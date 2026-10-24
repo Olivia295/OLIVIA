@@ -17,6 +17,7 @@ import yaml
 
 from olivia.core.methods.bandit import Feedback
 from olivia.core.models import HelpStage
+from olivia.core.yaml_load import safe_load
 
 _FILE: Final = "memory.yaml"
 REPLY_KEYS: Final = (
@@ -117,7 +118,7 @@ def load_memory_text(
         resources.files("olivia").joinpath("data/templates") if directory is None else directory
     )
     try:
-        doc = yaml.safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
+        doc = safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise MemoryTextError(f"{_FILE}: cannot read: {exc}") from exc
     if not isinstance(doc, dict) or doc.get("version") != 1:
