@@ -25,8 +25,9 @@ Each of the taxonomy's 13 ``contraindication_enums`` is derived from its
                                 this session.
 ==============================  ===========================================================
 
-Situation codes (``situation_cues``: SIT-06-04 acute bereavement, SIT-11-01 extreme
-meaninglessness) go to the solver as they are; its m0 rule handles them.
+Situation codes (``situation_cues``: SIT-06-04 bereavement, acute or prolonged (the
+stub's ``prolonged_grief`` rule, COLBO-06b), SIT-11-01 extreme meaninglessness) go to the
+solver as they are; its m0 rule handles them.
 
 Everything read from the conversation holds for the rest of the session and is never
 written to the profile. A profile-type disclosure heard only in the conversation (the

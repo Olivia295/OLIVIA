@@ -77,7 +77,10 @@ with a ``therapy_question_cues`` phrase, or a Grade B/C method with a request ph
 (those are explained, never done alone), is a ``therapy_question``.
 ``situation_codes`` and ``contraindication_cues``: the keys of every non-negated
 ``situation_cues`` / ``contraindication_cues`` hit (roadmap next-phase A1); the session
-decides what they mean (``methods/contraindications.py``).
+decides what they mean (``methods/contraindications.py``). ``SIT-06-04`` is also set by a
+message with a live hit in each of the three ``prolonged_grief`` lists (a death, half a
+year or more since, still not borne: "妈妈去世一年多了，我还是走不出来"; COLBO-06b, draft
+G-0); each list is its own group, so containment never crosses them.
 
 Natural-language feedback (roadmap R-7b), only on a turn that is not a slash command:
 
@@ -118,7 +121,7 @@ from types import MappingProxyType
 from typing import Final, TypeVar
 
 from olivia.core.models import CrisisLevel, PerceptionContext, SafetyGrade
-from olivia.core.perception.lexicon import PerceptionLexicon, strip_marks
+from olivia.core.perception.lexicon import GRIEF_KEYS, PerceptionLexicon, strip_marks
 from olivia.core.perception.signals import Answer, Command, TurnSignals
 from olivia.core.safety.crisis import CrisisAssessment
 from olivia.core.safety.matcher import Match, PhraseMatcher
@@ -165,6 +168,9 @@ _THERAPY_CUE: Final = "therapy_cue"
 _THERAPY_REQUEST: Final = "therapy_request"
 _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
+# COLBO-06b: prolonged grief is the SIT-06-04 dossier (延长哀伤障碍与未完成丧失悲恸).
+PROLONGED_GRIEF_CODE: Final = "SIT-06-04"
+_GRIEF_GROUPS: Final = tuple(f"grief_{key}" for key in GRIEF_KEYS)
 # Labels of the feedback matcher: a command, or a kit recall (matched only to win
 # containment over a feedback phrase inside it).
 _FeedbackLabel = Command | str
@@ -256,6 +262,10 @@ class RuleStub:
             add(_SITUATION, code, phrases)
         for enum_id, phrases in lexicon.contraindication_cues.items():
             add(_CONTRAINDICATION, enum_id, phrases)
+        if PROLONGED_GRIEF_CODE not in tax.situation_codes():
+            raise ValueError(f"taxonomy has no {PROLONGED_GRIEF_CODE!r} situation")
+        for key, group in zip(GRIEF_KEYS, _GRIEF_GROUPS, strict=True):
+            add(group, key, lexicon.prolonged_grief[key])
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
 
@@ -324,6 +334,9 @@ class RuleStub:
         if acute:
             arousal = max(arousal, self._acute_floor)
 
+        situations = {label for label, _ in hits.get(_SITUATION, ())}
+        if all(hits.get(group) for group in _GRIEF_GROUPS):
+            situations.add(PROLONGED_GRIEF_CODE)
         signals = hits.get(_SIGNAL, [])
         labels = {label for label, _ in signals}
         asked, requested = _therapy(body, hits, self._practices)
@@ -370,7 +383,7 @@ class RuleStub:
             leave_taking=leaving,
             therapy_question=asked,
             therapy_request=requested,
-            situation_codes=frozenset(label for label, _ in hits.get(_SITUATION, ())),
+            situation_codes=frozenset(situations),
             contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
         )
         return context, turn

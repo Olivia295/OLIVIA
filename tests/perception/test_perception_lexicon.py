@@ -176,6 +176,10 @@ def _delete(path: tuple[Any, ...]) -> Callable[[dict[str, Any]], None]:
         (_set(("situation_cues", "SIT-99-01"), ["x"]), "'SIT-99-01' is not a taxonomy id"),
         (_set(("situation_cues", "SIT-06-04"), []), "situation_cues.SIT-06-04"),
         (_append(("situation_cues", "SIT-11-01"), "刚去世"), "both SIT-06-04 and SIT-11-01"),
+        (_delete(("prolonged_grief",)), "prolonged_grief"),
+        (_delete(("prolonged_grief", "duration")), "prolonged_grief.duration"),
+        (_set(("prolonged_grief", "when"), ["x"]), "prolonged_grief: unknown keys"),
+        (_append(("prolonged_grief", "loss"), "放不下"), "both loss and unresolved"),
         (_delete(("contraindication_cues",)), "contraindication_cues"),
         (_set(("contraindication_cues", "NOT_AN_ENUM"), ["x"]), "'NOT_AN_ENUM' is not"),
         (
@@ -228,7 +232,7 @@ def test_situation_and_contraindication_cues_borrow_no_crisis_wording(tax: Taxon
     assert len(risk_phrases) > 100
     cues = [
         p
-        for group in (lex.situation_cues, lex.contraindication_cues)
+        for group in (lex.situation_cues, lex.contraindication_cues, lex.prolonged_grief)
         for ps in group.values()
         for p in ps
     ]

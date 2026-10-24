@@ -129,6 +129,45 @@ def test_no_cue_shadows_an_m0_cue() -> None:
     assert not [(a, b) for a in others for b in m0 if a in b or b in a]
 
 
+# -- prolonged grief (COLBO-06b, PRD 特性一-4; draft, G-0) -------------------------------
+
+PROLONGED_GRIEF = [
+    "妈妈去世一年多了，我还是走不出来",
+    "我爸过世两年了，我到现在都没法接受",
+    "奶奶走了半年，我还是每天想她",
+    "外公离开我们好几年了，我一直放不下",
+    "一年前我妈去世了，到现在还是接受不了",
+    "[60%] 爸爸不在了快三年，我还是缓不过来",
+]
+NOT_PROLONGED_GRIEF = [
+    "外婆去世好几年了，现在想起来更多是温暖",
+    "宠物走了一年了，我已经慢慢好了",
+    "妈妈去世一年多了",  # no unresolved grief named
+    "这一年我还是走不出来",  # no death named
+    "奶奶去世了，我还是放不下",  # no long time since
+    "妈妈去世一年多了，我并不是走不出来",  # the unresolved part is negated
+    "工作了一年多，还是放不下手机",
+]
+
+
+@pytest.mark.parametrize("text", PROLONGED_GRIEF)
+def test_prolonged_grief_sets_the_bereavement_situation(text: str) -> None:
+    assert "SIT-06-04" in _situations(text)
+
+
+@pytest.mark.parametrize("text", NOT_PROLONGED_GRIEF)
+def test_a_settled_or_partial_loss_is_no_prolonged_grief(text: str) -> None:
+    assert "SIT-06-04" not in _situations(text)
+
+
+def test_prolonged_grief_lists_are_loaded_and_distinct() -> None:
+    lists = LEX.prolonged_grief
+    assert set(lists) == {"loss", "duration", "unresolved"}
+    assert all(lists.values())
+    words = [w for ws in lists.values() for w in ws]
+    assert len(words) == len(set(words))
+
+
 def test_situation_cue_keys_must_not_be_red_flag_codes(tax: Taxonomy, tmp_path: Path) -> None:
     text = (LEXICONS / "perception.yaml").read_text(encoding="utf-8")
     bipolar = 'situation_cues:\n  "SIT-02-04":\n    - 心情忽高忽低\n'

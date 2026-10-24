@@ -2161,7 +2161,8 @@ introspection:
 #
 # situation_cues: taxonomy situation codes whose presence routes to m0 (COLBO-06).
 #   SIT-06-04  a death that has just happened (acute bereavement); it also sets the
-#              ACUTE_BEREAVEMENT_SHOCK contraindication.
+#              ACUTE_BEREAVEMENT_SHOCK contraindication. Prolonged grief, long after the
+#              death, is read by the separate prolonged_grief section below.
 #   SIT-11-01  extreme meaninglessness, kept below the crisis line: the "活着…" phrasing
 #              belongs to risk.yaml (L1) and is not repeated here.
 situation_cues:
@@ -2584,6 +2585,64 @@ situation_cues:
     - 大环境不好
     - 被ai取代
     - 被ai淘汰
+
+# prolonged_grief: the other half of SIT-06-04 (延长哀伤障碍与未完成丧失悲恸; PRD COLBO-06b,
+# 特性一-4). 定义草稿：待 G-0. The acute cues above catch a death that has just happened;
+# a loss that is long past and still not borne ("妈妈去世一年多了，我还是走不出来") has no
+# fixed phrase, so the stub sets SIT-06-04 when one message has a live (non-negated) hit
+# in each of the three lists: a death (loss), a long time since (duration: half a year
+# or more), and still not getting through it (unresolved). Two of the three are no hit:
+# "外婆去世好几年了，现在想起来更多是温暖" and "宠物走了一年了，我已经慢慢好了" name no
+# unresolved grief. Like every SIT-06-04 cue it routes to m0 for the rest of the session
+# and sets ACUTE_BEREAVEMENT_SHOCK (contraindications.py links the code, not the phase).
+# Crisis screening runs before and apart from these words: a grief message with crisis
+# wording is still a crisis turn.
+prolonged_grief:
+  loss:
+    - 去世
+    - 过世
+    - 离世
+    - 逝世
+    - 病逝
+    - 走了
+    - 不在了
+    - 离开我们
+    - 离开了我们
+    - 去了天堂
+  duration:
+    - 半年
+    - 大半年
+    - 一年
+    - 一年多
+    - 一年半
+    - 一周年
+    - 两年
+    - 两三年
+    - 三年
+    - 几年
+    - 好几年
+    - 多年
+    - 很多年
+    - 这么多年
+    - 十年
+  unresolved:
+    - 走不出来
+    - 走不出去
+    - 放不下
+    - 没法接受
+    - 无法接受
+    - 接受不了
+    - 不能接受
+    - 每天想
+    - 每天都想
+    - 每天都在想
+    - 天天想
+    - 过不去
+    - 缓不过来
+    - 没缓过来
+    - 还是很痛
+    - 一想起来就哭
+    - 不敢相信
 
 # contraindication_cues: taxonomy contraindication enum ids.
 #   TOXIC_SHAME_SPIRAL             intense self-attack (its taxonomy source is the
