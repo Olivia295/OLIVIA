@@ -271,3 +271,36 @@ health_command:
   no_keychain: "这台电脑上暂时没有可用的系统钥匙串，没办法把健康信息加密保存，所以这里先不记录。其他的一切都照常。"
   not_onboarded: "还没有完成第一次设置。先运行 olivia chat，之后就可以在这里查看和修改了。"
   adults_only: "这里的陪伴只为成年人设计，所以不会保存健康信息。"
+
+# olivia profile：首访之后查看与修改双方称呼和不想谈的话题（JTBD 4，F11）。
+# 校验同首访：称呼 1 到 {max_len} 个字、可显示的字符；话题用逗号、顿号或空格隔开，
+# 每个最多 {max_len} 个字、最多 {max_count} 个（超出时用 hints 里的同一句提示）。
+# 话题一栏：输入新的话题会整体替换现在的；输入 0、「清空」或 skip_words 里的词（没有、无……）清空；
+# 直接回车不改。{topics} 是用顿号连起来的话题，没有时是 no_topics。
+profile_command:
+  heading: "称呼和不想谈的话题：输入序号修改；直接回车，就先不改。"
+  user_name_item: "你的称呼：{user_name}"
+  agent_name_item: "我的称呼：{agent_name}"
+  taboo_item: "不想谈的话题：{topics}"
+  no_topics: "还没有"
+  elsewhere: "（陪伴方式可以用 olivia persona 更换，地区可以用 olivia region 修改。）"
+  user_name: |-
+    你希望我怎么称呼你？昵称就很好，1 到 {max_len} 个字。
+
+    现在是「{user_name}」；直接按回车，就先不改。
+  agent_name: |-
+    你想怎么称呼我呢？同样是 1 到 {max_len} 个字。
+
+    现在是「{agent_name}」；直接按回车，就先不改。
+  taboo: |-
+    有没有哪些话题，是你不希望我主动提起的？比如考试、前任、体重。
+
+    可以写几个，用逗号或顿号隔开，会替换现在记着的这些；输入 0 就全部清空；直接按回车，就先不改。
+  user_name_saved: "好的，{user_name}，之后我就这样称呼你，下次打开 olivia chat 时生效。"
+  agent_name_saved: "好的，之后我就叫「{agent_name}」了，下次打开 olivia chat 时生效。"
+  taboo_saved: "好的，这些话题我会记在心里，不会主动去碰：{topics}。下次打开 olivia chat 时生效。"
+  taboo_cleared: "好的，已经清空了，现在没有需要避开的话题。下次打开 olivia chat 时生效。"
+  unchanged: "好的，没有做任何改动。"
+  unknown_choice: "没有认出这个序号，这次什么都没有改。"
+  not_onboarded: "还没有完成第一次设置。先运行 olivia chat，之后就可以在这里修改称呼和话题了。"
+  adults_only: "这里的陪伴只为成年人设计，所以没有可以修改的称呼和话题。"

@@ -33,6 +33,11 @@
     Show the four companion personas with the saved one marked, or switch to CHOICE (a
     number, short name, alias such as ``树洞`` or enum value; PRD JTBD 4, ONB-03). The next
     ``olivia chat`` uses it.
+``olivia profile``
+    Both names and the taboo topics (``chang/profile_command.py``, JTBD 4, F11): a numbered
+    menu showing the three, then one changed at a time with the onboarding checks; new
+    topics replace the old list, ``0`` clears it, Enter changes nothing. The next ``olivia
+    chat`` uses them.
 ``olivia safety-plan``
     The personal safety plan (``chang/safety_plan.py``, B10): fill it in, or show the saved
     one and edit a section or clear it, interactively with numbered choices; every section
@@ -149,6 +154,7 @@ from olivia.core.chang.onboarding import (
 )
 from olivia.core.chang.privacy import privacy_notice
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
+from olivia.core.chang.profile_command import run_profile
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
@@ -982,6 +988,30 @@ def _persona(console: _Console, choice: str | None, clock: Clock) -> int:
     return 0
 
 
+# -- names and taboo topics -------------------------------------------------------------------
+
+
+def _profile(console: _Console, clock: Clock) -> int:
+    """``olivia profile``: both names and the taboo topics (JTBD 4, F11)."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    words = load_onboarding_text().profile
+    if profile is None:
+        console.say(words["not_onboarded"])
+        return 1
+    if profile.is_age_gate_refusal:
+        console.say(words["adults_only"])
+        return 1
+    return run_profile(
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        profile,
+        save=lambda changed: _save_profile(console, changed),
+        now=clock(),
+    )
+
+
 # -- entry point ------------------------------------------------------------------------------
 
 
@@ -1109,6 +1139,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="陪伴方式",
         help="序号（1–4）或简称，例如 2、温和、哲思、理性、树洞",
     )
+    commands.add_parser("profile", help="查看或修改双方的称呼和不想谈的话题")
     commands.add_parser("memory", help="查看 OLIVIA 在这台电脑上记得什么（只显示在屏幕上）")
     forget = commands.add_parser("forget", help="让 OLIVIA 忘掉一条记录、一类数据或全部数据")
     which = forget.add_mutually_exclusive_group()
@@ -1172,6 +1203,8 @@ def main(
             return _health(console, now)
         if args.command == "persona":
             return _persona(console, args.choice, now)
+        if args.command == "profile":
+            return _profile(console, now)
         if args.command == "safety-plan":
             return _safety_plan(console)
         if args.command == "journal":
