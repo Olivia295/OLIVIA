@@ -366,6 +366,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
      - `COMPANIONSHIP`（如 `EMOTIONAL_HOLDING_PRESENCE` / $m_0$）：输出去自责、去说教的纯温和在场守护语料，不带任何练习要求；
      - `PSYCHOEDUCATION`（如 `CIRCADIAN_RHYTHM_STABILIZATION`、`WITHDRAWAL_RISK_WARNING`）：渲染为生活作息稳态贴士或戒断风险警示卡；
      - `REFERRAL`（如 `REFERRAL_CARD_PRESENTATION`）：移交危机与属地卡片模块渲染专科就诊指引与属地援助热线。
+   - *实现（计划 D-3，F13，2026-10-25；草稿：待 G-0）*：只登记给红线的独立动作（无父方法、`STABILIZATION` 或 `PSYCHOEDUCATION`，被命中红线的 `allowed_actions` 列出）并入 $\mathcal{C}_{candidates}$：稳定化类在稳定化白名单所在的池（左翼）和 $S_{empower}$ 右翼池，科普类只在右翼池；之后照常求交差集（`solver.red_flag_only_actions`）。所以上文“双相用户在 $S_{explore}$ 高唤醒时白名单被完全阻断”仍成立，但可用集合不再为空，而是 `ENVIRONMENT_STIMULUS_REDUCTION`；空集的例子改为围产期红线高唤醒。`CIRCADIAN_RHYTHM_STABILIZATION` 渲染为作息小贴士卡（`render_card` 对 `PSYCHOEDUCATION` 用“·”条目、不写时长）；`WITHDRAWAL_RISK_WARNING` 没有可选卡片（`grade_a.yaml` 的 `excluded`），其警示随 SIT-10-04 的完整转介卡出现（`render.yaml` 的 `referral.warnings`）。无证据等级的独立动作在 Thompson 采样中取最低的 Level III 先验（§6.3）。
 
 ### 4.4 C.O.L.B.O. 双翼干预架构 (Bilateral Wing Architecture) 与 SUDS 标尺映射
 C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互补干预机理：

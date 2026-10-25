@@ -54,7 +54,9 @@ FILTER_NAMES: Final = frozenset(
     {"didactic_rewrites", "depathologize", "diagnosis_terms", "word_window", "metaphor_weaving"}
 )
 _SLOT_RE: Final = re.compile(r"\{([^{}]*)\}")
-_CARD_ACTION_TYPES: Final = frozenset({"STABILIZATION", "MICRO_EXERCISE"})
+# PSYCHOEDUCATION registry actions (the red-flag-only tips, plan D-3) get a card too: the
+# engine renders them as tips, not as numbered follow-along steps (taxonomy dispatch).
+_CARD_ACTION_TYPES: Final = frozenset({"STABILIZATION", "MICRO_EXERCISE", "PSYCHOEDUCATION"})
 _PART_STAGES: Final = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER)
 PERSONA_TEMPLATE_FILES: Final[Mapping[PersonaSpectrum, str]] = MappingProxyType(
     {
@@ -334,6 +336,9 @@ class RenderText:
     referral_again: tuple[str, ...]
     """Short intros for the same referral card shown again on the next turn (F5b): the
     destinations are listed in full, the closing paragraph is left out."""
+    referral_warnings: Mapping[str, str]
+    """Red-flag code -> a warning paragraph the full referral card carries (plan D-3:
+    ``WITHDRAWAL_RISK_WARNING`` for SIT-10-04; draft pending G-0)."""
     crisis_emergency_heading: Mapping[CrisisLevel, str]
     crisis_lines_heading: str
     crisis_hours_label: str
@@ -659,6 +664,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "closing",
         },
         f"{where} referral",
+        optional={"warnings"},
     )
     again = _unique(_strs(ref["again"], f"{where} referral.again"), f"{where} referral.again")
     for line in again:
@@ -671,6 +677,12 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         places[group] = MappingProxyType(
             {code: _str(raw[code], f"{where} {group}.{code}") for code in tax.red_flags()}
         )
+    warnings_raw = _map(ref.get("warnings", {}), f"{where} referral.warnings")
+    _keys(warnings_raw, set(), f"{where} referral.warnings", optional=set(tax.red_flags()))
+    warnings = {
+        str(code): _str(text, f"{where} referral.warnings.{code}")
+        for code, text in warnings_raw.items()
+    }
     crisis = _map(data["crisis"], f"{where} crisis")
     _keys(
         crisis,
@@ -722,6 +734,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         referral_destinations_elsewhere=places["destinations_elsewhere"],
         referral_closing=_str(ref["closing"], f"{where} referral.closing"),
         referral_again=again,
+        referral_warnings=MappingProxyType(warnings),
         crisis_emergency_heading=MappingProxyType(
             {
                 CrisisLevel.L2: _str(heading["L2"], f"{where} emergency_heading.L2"),

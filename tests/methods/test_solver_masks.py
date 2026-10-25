@@ -35,18 +35,36 @@ def _with_subs(ids: Iterable[str]) -> set[str]:
     return out
 
 
+def _red_flag_only(flags: Iterable[str], types: set[str]) -> set[str]:
+    """D-3: standalone registry actions of ``types`` that an active flag names."""
+    named: set[str] = set()
+    for code in flags:
+        named |= _canon(TAX.red_flags()[code].allowed_actions)
+    return {
+        a.id
+        for a in TAX.action_registry().values()
+        if a.id in named and a.parent_method_id is None and a.action_type.value in types
+    }
+
+
 def _stage_eligible(
-    tax: Taxonomy, stage: HelpStage, arousal: float, battery: float = 0.6
+    tax: Taxonomy,
+    stage: HelpStage,
+    arousal: float,
+    battery: float = 0.6,
+    flags: Iterable[str] = (),
 ) -> set[str]:
+    left_only = _red_flag_only(flags, {"STABILIZATION"})
     high = arousal >= tax.threshold("arousal.thresholds.somatic_priority")
     if high and stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER):
-        return _with_subs(tax.stabilization_whitelist())
+        return _with_subs(tax.stabilization_whitelist()) | left_only
     # COLBO-07: the right wing needs Battery >= empower_min too.
     low = battery < tax.threshold("battery.thresholds.empower_min")
     if low and stage is HelpStage.S_EMPOWER:
-        return _with_subs(tax.stabilization_whitelist())
+        return _with_subs(tax.stabilization_whitelist()) | left_only
     if stage is HelpStage.S_EMPOWER:
-        return _with_subs(tax.grade_a_ids())
+        both = _red_flag_only(flags, {"STABILIZATION", "PSYCHOEDUCATION"})
+        return _with_subs(tax.grade_a_ids()) | both
     return set()
 
 
@@ -77,7 +95,7 @@ def _active(arousal: float, contra: Iterable[str]) -> set[str]:
 
 
 def _expected_explore_high(code: str) -> set[str]:
-    pool = _stage_eligible(TAX, HelpStage.S_EXPLORE, 0.85)
+    pool = _stage_eligible(TAX, HelpStage.S_EXPLORE, 0.85, flags=(code,))
     pool &= _canon(TAX.red_flags()[code].allowed_actions)
     pool -= _banned([code])
     active = _active(0.85, ())
@@ -109,10 +127,12 @@ def test_red_flag_at_overload_in_explore_matches_taxonomy(code: str) -> None:
 def test_seven_red_flags_by_hand() -> None:
     assert len(RED_FLAGS) == 7
     assert _expected_explore_high("SIT-09-01") == {"12:tipp_breathing", "29:pmr_release"}
-    assert _expected_explore_high("SIT-06-01") == {"30:grounding"}
-    assert _expected_explore_high("SIT-06-05") == {"30:grounding"}
+    # D-3 (F13): each flag's own stabilization action joins the left wing.
+    assert _expected_explore_high("SIT-06-01") == {"30:grounding", "SAFE_PLACE_CONTAINER"}
+    assert _expected_explore_high("SIT-06-05") == {"30:grounding", "ENVIRONMENT_PHYSICAL_ANCHOR"}
     assert _expected_explore_high("SIT-08-04") == {"12:tipp_breathing"}  # COLBO-05e
-    for code in ("SIT-02-04", "SIT-02-06", "SIT-10-04"):
+    assert _expected_explore_high("SIT-02-04") == {"ENVIRONMENT_STIMULUS_REDUCTION"}
+    for code in ("SIT-02-06", "SIT-10-04"):
         assert _expected_explore_high(code) == set()
 
 
@@ -150,7 +170,7 @@ def test_candidates_never_escape_a_mask(
     result = allowed_actions(
         TAX, SolverInput(stage, arousal, flags, contra, situations, shelved, battery)
     )
-    eligible = _stage_eligible(TAX, stage, arousal, battery)
+    eligible = _stage_eligible(TAX, stage, arousal, battery, flags)
     banned = _banned(flags)
     active = _active(arousal, contra)
     for aid in result.candidates:

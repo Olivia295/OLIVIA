@@ -252,12 +252,42 @@ def test_cold_water_card_refuses(tax: Taxonomy, engine: LanguageEngine) -> None:
         engine.render_card(_skeleton(tax, COLD_WATER))
 
 
-@pytest.mark.parametrize(
-    "action_id", [M0_ACTION_ID, "REFERRAL_CARD_PRESENTATION", "WITHDRAWAL_RISK_WARNING"]
-)
+@pytest.mark.parametrize("action_id", [M0_ACTION_ID, "REFERRAL_CARD_PRESENTATION"])
 def test_non_card_actions_refuse(tax: Taxonomy, engine: LanguageEngine, action_id: str) -> None:
     with pytest.raises(ValueError, match="not rendered as a follow-along card"):
         engine.render_card(_skeleton(tax, action_id))
+
+
+# -- D-3 (F13, draft G-0): red-flag-only psychoeducation -----------------------------------
+
+
+def test_withdrawal_warning_is_no_card_but_rides_on_the_referral(
+    tax: Taxonomy, engine: LanguageEngine
+) -> None:
+    with pytest.raises(ValueError, match="no follow-along card"):
+        engine.render_card(_skeleton(tax, "WITHDRAWAL_RISK_WARNING"))
+    full = engine.render_referral(["SIT-10-04"])
+    assert engine.last_gate is not None and engine.last_gate.ok
+    assert "突然停下来" in full and "医生" in full
+    for country in ("HK", "US"):
+        assert "突然停下来" in engine.render_referral(["SIT-10-04"], country)
+    for code in tax.red_flags():
+        if code != "SIT-10-04":
+            assert "突然停下来" not in engine.render_referral([code])
+    # The same card shown again on the next turn keeps its short form.
+    assert "突然停下来" not in engine.render_referral(["SIT-10-04"], again=1)
+
+
+def test_psychoeducation_card_renders_as_tips(tax: Taxonomy, engine: LanguageEngine) -> None:
+    skeleton = _skeleton(tax, "CIRCADIAN_RHYTHM_STABILIZATION")
+    assert skeleton.action_type is ActionType.PSYCHOEDUCATION
+    text = engine.render_card(skeleton)
+    assert engine.last_gate is not None and engine.last_gate.ok
+    assert text.startswith("「让作息稳一稳」\n")
+    assert "1. " not in text and "分钟" not in text.splitlines()[0]
+    assert text.count("\n· ") == len(skeleton.core_action_steps)
+    exercise = engine.render_card(_skeleton(tax, "SAFE_PLACE_CONTAINER"))
+    assert "1. " in exercise and "约 3 分钟" in exercise
 
 
 def test_alias_resolves_to_its_card(tax: Taxonomy, engine: LanguageEngine) -> None:

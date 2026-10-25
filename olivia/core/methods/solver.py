@@ -17,6 +17,14 @@ false empty set.
   ``S_clarify`` below the arousal threshold, and every other stage, get nothing. A pool
   entry that is a method also admits that method's registered sub-actions; each
   sub-action is then filtered on its own.
+* Red-flag-only actions (D-3, F13; draft pending G-0): a standalone registry action
+  (no parent method) of type ``STABILIZATION`` or ``PSYCHOEDUCATION`` that an active red
+  flag's ``allowed_actions`` names (the safe place for SIT-06-01, the circadian rhythm
+  card for SIT-02-04 / SIT-02-06, ...) belongs to no stage list, so it joins the pool of
+  the same type: a ``STABILIZATION`` one wherever the stage pool is non-empty (the left
+  wing and the right wing, like the whitelist's sub-actions), a ``PSYCHOEDUCATION`` one
+  only in the right wing (``S_empower`` below the arousal line and at or above the
+  battery line). Every mask below still applies.
 * ``A_allowed`` is the closed upper bound of the active red flags: the intersection
   of their ``allowed_actions``, or everything when no red flag is active.
 * ``B_banned`` is every active red flag's ``banned_methods`` with banned tags expanded
@@ -59,6 +67,7 @@ _OVERLOAD_KEY: Final = "arousal.thresholds.cognitive_block"
 _STABILIZATION_STAGES: Final = frozenset(
     {HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER}
 )
+_RED_FLAG_ONLY_TYPES: Final = frozenset({ActionType.STABILIZATION, ActionType.PSYCHOEDUCATION})
 
 
 @dataclass(frozen=True)
@@ -116,6 +125,7 @@ def allowed_actions(tax: Taxonomy, inp: SolverInput) -> AllowedSet:
     )
     pool = _stage_pool(tax, inp.stage, inp.arousal, left_wing_only=gated)
     if flags:
+        pool |= _red_flag_only_pool(tax, flags, inp.stage, inp.arousal, left_wing_only=gated)
         pool &= _red_flag_allowed(tax, flags)
     pool -= banned_actions(tax, flags)
     active = active_contraindications(tax, inp)
@@ -223,6 +233,42 @@ def _stage_pool(
         pool.add(aid)
         pool.update(children.get(aid, ()))
     return pool
+
+
+def red_flag_only_actions(tax: Taxonomy, flags: frozenset[str]) -> dict[str, ActionType]:
+    """Standalone registry actions the active flags name, with their type (D-3, F13).
+
+    Only ``STABILIZATION`` and ``PSYCHOEDUCATION`` actions: m0 is chosen by fixed rule and
+    the referral card is rendered by its own module, so neither is ever sampled.
+    """
+    registry = tax.action_registry()
+    found: dict[str, ActionType] = {}
+    for code in flags:
+        for aid in _canonical(tax, tax.red_flags()[code].allowed_actions):
+            action = registry.get(aid)
+            if (
+                action is not None
+                and action.parent_method_id is None
+                and action.action_type in _RED_FLAG_ONLY_TYPES
+            ):
+                found[aid] = action.action_type
+    return found
+
+
+def _red_flag_only_pool(
+    tax: Taxonomy, flags: frozenset[str], stage: HelpStage, arousal: float, *, left_wing_only: bool
+) -> set[str]:
+    """The red-flag-only actions this stage admits (see the module docstring)."""
+    somatic = arousal >= tax.threshold(_SOMATIC_PRIORITY_KEY)
+    left = stage in _STABILIZATION_STAGES and (somatic or left_wing_only)
+    right = stage is HelpStage.S_EMPOWER and not left
+    if not (left or right):
+        return set()
+    return {
+        aid
+        for aid, kind in red_flag_only_actions(tax, flags).items()
+        if kind is ActionType.STABILIZATION or right
+    }
 
 
 def _red_flag_allowed(tax: Taxonomy, flags: frozenset[str]) -> set[str]:

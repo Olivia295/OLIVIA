@@ -454,6 +454,8 @@ flowchart TD
 
 *实现说明（路线图决定日志“待定”项，2026-10-22）*：只为红线用户登记的动作（如作息稳态锚定 `CIRCADIAN_RHYTHM_STABILIZATION`、安全岛 `SAFE_PLACE_CONTAINER`）按现有求解公式不会被推荐；是否放入对应阶段池，R2 前随 G-0 审核决定（计划 D-3）。
 
+*实现说明（计划 D-3，F13，2026-10-25；负责人决定临床审阅不再是必经环节，以下为草稿：待 G-0）*：上面列出、只登记给红线的五个独立动作（taxonomy `action_registry` 中没有父方法、类型为 `STABILIZATION` 或 `PSYCHOEDUCATION` 的条目）现在在对应红线命中时进入候选池，仍经红线封闭上限、禁用集、自身禁忌与唤醒检查，并照常附转介卡；不新增任何方法。按动作类型放进已有的阶段池：稳定化类（安全岛 `SAFE_PLACE_CONTAINER`、环境刺激缩减 `ENVIRONMENT_STIMULUS_REDUCTION`、本体感觉锚定 `ENVIRONMENT_PHYSICAL_ANCHOR`）与稳定化白名单同池——$S_{explore}$/$S_{clarify}$/$S_{empower}$ 高唤醒（$\ge 0.80$）、$S_{empower}$ 低电量——也进 $S_{empower}$ 右翼池；科普类（作息稳态锚定 `CIRCADIAN_RHYTHM_STABILIZATION`、戒断风险警示 `WITHDRAWAL_RISK_WARNING`）只进右翼池（$S_{empower}$、唤醒 $< 0.80$、电量 $\ge 0.40$），不在高唤醒时给认知性内容。结果：双相用户高唤醒时得到环境刺激缩减卡、要方法时在作息与环境两张卡中采样；围产期用户要方法时得到作息卡；创伤与解离用户在感官着陆之外分别多了安全岛与本体锚定；其余阶段（低唤醒的 $S_{explore}$/$S_{clarify}$、避风港、危机、结束）不变。卡片文案为草稿：三张稳定化卡沿用已有草稿，作息卡新写为“让作息稳一稳”，按小贴士渲染（条目前加“·”、不写时长、不问 0–10 分），不当作跟练练习（taxonomy 动作类型分发）。戒断风险警示不做成“做不做由你”的可选卡片（卡片框架里“随时可以停下、不做也没关系”的话与“不要自己突然停用”相冲突）：它写进 SIT-10-04 的完整转介卡，在去处之后多一段警示（`render.yaml` 的 `referral.warnings`），因此 SIT-10-04 用户要方法时仍是 $m_0$ 加这张转介卡。这些动作没有证据等级，Thompson 采样先验取 taxonomy 中最低的 Level III（`bandit.STANDALONE_EVIDENCE_LEVEL`），高唤醒只利用时不会仅凭先验排到有等级的方法之前（例如创伤用户高唤醒时仍先给感官着陆）。
+
 > [!NOTE]
 > 白名单动作规范步骤统一收录于 `taxonomy.yaml` 的 `action_registry` 登记表；禁用标签经由 `banned_tag_mappings` 展开为具体方法 ID 集合，于骨架装配器与掩码层完成确定性集合过滤。
 

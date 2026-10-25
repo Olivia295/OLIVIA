@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from olivia.core.methods.bandit import Feedback, ThompsonSampler
+from olivia.core.methods.bandit import STANDALONE_EVIDENCE_LEVEL, Feedback, ThompsonSampler
 from olivia.core.taxonomy import Taxonomy, UnknownActionError, load_taxonomy
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
@@ -221,8 +221,21 @@ def test_candidates_without_an_evidence_level_are_rejected(tax: Taxonomy) -> Non
     ungraded = next(m.id for m in tax.methods().values() if m.evidence_level is None)
     with pytest.raises(ValueError, match="evidence level"):
         sampler.choose([ungraded], "01", 0.3, rng, NOW)
-    with pytest.raises(ValueError, match="no parent method"):
-        sampler.choose(["SAFE_PLACE_CONTAINER"], "01", 0.3, rng, NOW)
+
+
+def test_standalone_actions_take_the_weakest_listed_prior(tax: Taxonomy) -> None:
+    # D-3 (F13, draft G-0): a red-flag-only action has no evidence level of its own.
+    sampler = ThompsonSampler(tax)
+    weakest = _method_with_level(tax, STANDALONE_EVIDENCE_LEVEL)
+    for aid in ("SAFE_PLACE_CONTAINER", "CIRCADIAN_RHYTHM_STABILIZATION"):
+        assert sampler.posterior(aid, "01", NOW) == sampler.posterior(weakest, "01", NOW)
+    assert sampler.posterior(weakest, "01", NOW) == (2.0, 1.0)
+    sampler.update("SAFE_PLACE_CONTAINER", "01", Feedback.HELPFUL, NOW)
+    assert sampler.posterior("SAFE_PLACE_CONTAINER", "01", NOW) == (3.0, 1.0)
+    rng = random.Random(0)
+    assert sampler.choose(["SAFE_PLACE_CONTAINER"], "01", 0.3, rng, NOW) == "SAFE_PLACE_CONTAINER"
+    restored = ThompsonSampler(tax, sampler.to_dict())
+    assert restored.posterior("SAFE_PLACE_CONTAINER", "01", NOW) == (3.0, 1.0)
 
 
 def test_update_errors(tax: Taxonomy) -> None:

@@ -140,7 +140,9 @@ REQUESTS = [
 
 
 def test_the_same_referral_on_the_next_turn_is_short_and_keeps_the_place() -> None:
-    session = _session(clinical_history=("SIT-02-04",))
+    # Two bounds that leave no card (D-3, F13: SIT-02-04 alone now gets its own cards, and a
+    # card waiting for feedback is followed by the feedback prompt, not by the referral).
+    session = _session(clinical_history=("SIT-02-04", "SIT-10-04"))
     results = _run(session, REQUESTS)
     with_referral = [r for r in results if "SIT-02-04" in r.referral_flags]
     assert len(with_referral) == len(REQUESTS)

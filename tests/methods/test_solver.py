@@ -15,6 +15,7 @@ from olivia.core.methods.solver import (
     allowed_actions,
     banned_actions,
     build_plan,
+    red_flag_only_actions,
 )
 from olivia.core.models import ActionType, HelpStage, SafetyGrade
 from olivia.core.taxonomy import Taxonomy, TaxonomyError, UnknownActionError, load_taxonomy
@@ -118,7 +119,7 @@ def test_battery_gate_is_only_for_empower(tax: Taxonomy, stage: HelpStage) -> No
 
 def test_low_battery_gate_keeps_red_flag_closure_and_referral(tax: Taxonomy) -> None:
     result = allowed_actions(tax, inp(flags=frozenset({"SIT-06-01"}), battery=0.3))
-    assert result.candidates == ("30:grounding",)
+    assert result.candidates == ("30:grounding", "SAFE_PLACE_CONTAINER")
     assert result.referral_flags == ("SIT-06-01",) and result.battery_gated
 
 
@@ -149,9 +150,88 @@ def test_other_stages_fall_back_to_m0(tax: Taxonomy, stage: HelpStage) -> None:
 
 
 @pytest.mark.parametrize("stage", [HelpStage.S_EXPLORE, HelpStage.S_EMPOWER])
-def test_bipolar_closure_empties_the_set_and_adds_referral(tax: Taxonomy, stage: HelpStage) -> None:
+def test_bipolar_closure_blocks_the_whitelist_and_adds_referral(
+    tax: Taxonomy, stage: HelpStage
+) -> None:
+    # D-3 (F13): only the bipolar flag's own stabilization action is left at high arousal.
     result = allowed_actions(tax, inp(stage, 0.9, flags=frozenset({"SIT-02-04"})))
-    assert result == AllowedSet((), True, ("SIT-02-04",))
+    assert result == AllowedSet(("ENVIRONMENT_STIMULUS_REDUCTION",), False, ("SIT-02-04",))
+
+
+@pytest.mark.parametrize("stage", [HelpStage.S_EXPLORE, HelpStage.S_EMPOWER])
+def test_perinatal_closure_empties_the_set_at_high_arousal(tax: Taxonomy, stage: HelpStage) -> None:
+    # Its only red-flag-only action is psychoeducation, which the left wing never offers.
+    result = allowed_actions(tax, inp(stage, 0.9, flags=frozenset({"SIT-02-06"})))
+    assert result == AllowedSet((), True, ("SIT-02-06",))
+
+
+# -- D-3 (F13, draft G-0): red-flag-only actions join the pool of their own type ----------
+
+_BIPOLAR_RIGHT = ("CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION")
+_PTSD = ("30:grounding", "SAFE_PLACE_CONTAINER")
+_DISSOCIATION = ("30:grounding", "ENVIRONMENT_PHYSICAL_ANCHOR")
+_BPD = ("12:tipp_breathing", "29:pmr_release")
+
+
+@pytest.mark.parametrize(
+    ("code", "left", "right"),
+    [
+        ("SIT-02-04", ("ENVIRONMENT_STIMULUS_REDUCTION",), _BIPOLAR_RIGHT),
+        ("SIT-02-06", (), ("CIRCADIAN_RHYTHM_STABILIZATION",)),
+        ("SIT-06-01", _PTSD, _PTSD),
+        ("SIT-06-05", _DISSOCIATION, _DISSOCIATION),
+        ("SIT-08-04", ("12:tipp_breathing",), ("12:tipp_breathing",)),
+        ("SIT-09-01", _BPD, _BPD),
+        ("SIT-10-04", (), ("WITHDRAWAL_RISK_WARNING",)),
+    ],
+)
+def test_red_flag_only_actions_by_wing(
+    tax: Taxonomy, code: str, left: tuple[str, ...], right: tuple[str, ...]
+) -> None:
+    flags = frozenset({code})
+    high = allowed_actions(tax, inp(HelpStage.S_EXPLORE, 0.85, flags=flags))
+    low_battery = allowed_actions(tax, inp(arousal=0.3, flags=flags, battery=0.3))
+    assert high.candidates == left and low_battery.candidates == left
+    assert allowed_actions(tax, inp(arousal=0.3, flags=flags)).candidates == right
+    # Outside the pools they join, nothing changes: low-arousal S_explore stays m0.
+    assert allowed_actions(tax, inp(HelpStage.S_EXPLORE, 0.3, flags=flags)).use_m0
+    for stage in (HelpStage.S_HAVEN, HelpStage.S_CLOSING, HelpStage.S_CRISIS):
+        assert allowed_actions(tax, inp(stage, 0.9, flags=flags)).use_m0
+
+
+_RED_FLAG_ONLY = {
+    "SAFE_PLACE_CONTAINER",
+    "CIRCADIAN_RHYTHM_STABILIZATION",
+    "ENVIRONMENT_STIMULUS_REDUCTION",
+    "ENVIRONMENT_PHYSICAL_ANCHOR",
+    "WITHDRAWAL_RISK_WARNING",
+}
+
+
+def test_red_flag_only_actions_need_their_flag(tax: Taxonomy) -> None:
+    for stage in HelpStage:
+        for arousal in (0.3, 0.85):
+            for battery in (0.3, 0.6):
+                result = allowed_actions(tax, inp(stage, arousal, battery=battery))
+                assert not _RED_FLAG_ONLY & set(result.candidates)
+
+
+def test_red_flag_only_actions_keep_every_mask(tax: Taxonomy) -> None:
+    flags = frozenset({"SIT-06-01"})
+    shelved = allowed_actions(
+        tax, inp(arousal=0.3, flags=flags, shelved=frozenset({"SAFE_PLACE_IMAGERY"}))
+    )
+    assert shelved.candidates == ("30:grounding",)  # shelving goes through the alias
+    assert allowed_actions(tax, inp(situations=frozenset({"SIT-06-04"}), flags=flags)).use_m0
+    # Two flags: the intersection of their bounds still decides.
+    both = allowed_actions(tax, inp(arousal=0.3, flags=frozenset({"SIT-02-04", "SIT-02-06"})))
+    assert both.candidates == ("CIRCADIAN_RHYTHM_STABILIZATION",)
+    assert both.referral_flags == ("SIT-02-04", "SIT-02-06")
+
+
+def test_red_flag_only_actions_skip_m0_and_referral(tax: Taxonomy) -> None:
+    found = red_flag_only_actions(tax, frozenset(tax.red_flags()))
+    assert set(found) == _RED_FLAG_ONLY
 
 
 def test_closure_uses_canonical_ids_for_aliases(tax: Taxonomy) -> None:
@@ -209,7 +289,7 @@ def test_anorexia_bound_names_only_the_breathing_among_exercises(tax: Taxonomy) 
 
 def test_red_flag_user_still_gets_candidates_in_empower(tax: Taxonomy) -> None:
     result = allowed_actions(tax, inp(flags=frozenset({"SIT-06-01"})))
-    assert result.candidates == ("30:grounding",)
+    assert result.candidates == ("30:grounding", "SAFE_PLACE_CONTAINER")
     assert result.referral_flags == ("SIT-06-01",)
 
 
