@@ -123,15 +123,15 @@ def test_memory_shows_times_in_the_current_timezone_after_a_move(run_cli, data_h
     morning = datetime(2026, 10, 23, 9, 0, tzinfo=SHANGHAI)  # 18:00 the day before in LA
     run_cli(["chat", "--rules"], ["记住：周五去看展", "今天上班好累", "/exit"], now=morning)
     before = run_cli(["memory"])
-    assert any(line.endswith(". 2026-10-23 的一次聊天") for line in before.lines)
+    assert "1. 2026-10-23 的一次聊天" in before.lines  # the summary first, then the note
     assert "   - 时间：09:00 – 09:00" in before.lines
     moved = run_cli(["region", "US", "--timezone", "America/Los_Angeles"], now=morning)
     assert moved.code == 0
     after = run_cli(["memory"])
-    assert any(line.endswith(". 2026-10-22 的一次聊天") for line in after.lines)
+    assert "1. 2026-10-22 的一次聊天" in after.lines
     assert "   - 时间：18:00 – 18:00" in after.lines
     note = load_forget_text().memory["note"].replace("{date}", "2026-10-22")
-    assert any(line.endswith(f". {note}") for line in after.lines)
+    assert f"2. {note}" in after.lines
     # Nothing stored was rewritten: the summary keeps the Shanghai offset it was made with.
     (summary,) = [e for e in _ledger(data_home).entries() if isinstance(e, SummaryEntry)]
     assert summary.summary.started_at.utcoffset() == morning.utcoffset()

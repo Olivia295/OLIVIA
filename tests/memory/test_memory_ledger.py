@@ -407,3 +407,26 @@ def test_bodies_show_times_in_the_display_zone_and_store_them_as_recorded(tmp_pa
     assert yaml.safe_load(head[4:])["started_at"] == START.isoformat()
     plain = Ledger(tmp_path, Vault(tmp_path, keychain))
     assert "- 时间：23:30 – 23:52" in plain.body(summary)
+
+
+def test_entries_at_the_same_instant_keep_one_order(tmp_path, keychain):
+    """Same time: summary, then journal, then note, whatever the random ids (F11)."""
+    for attempt in range(12):
+        base = tmp_path / str(attempt)
+        ledger = Ledger(base, Vault(base, keychain))
+        ledger.add_note("这一条", now=START)
+        ledger.record_journal(START, shown=False)
+        ledger.append_summary(_summary(), key="k")
+        kinds = [type(e) for e in ledger.entries()]
+        assert kinds == [SummaryEntry, JournalEntry, NoteEntry]
+        assert ledger.entries() == ledger.entries()
+
+
+def test_a_session_without_spectra_has_no_spectra_line(ledger):
+    """No "主要聊到：没有" (F11): the line is left out when nothing stood out."""
+    st = load_memory_text().summary
+    ledger.append_summary(_summary(spectra=(), self_rating_before=3), key="k")
+    (entry,) = ledger.entries()
+    body = ledger.body(entry)
+    assert st.spectra.split("{", 1)[0] not in body
+    assert f"- 自评：开始时 3，结束时 {st.none}" in body  # "没有" still marks a missing rating
