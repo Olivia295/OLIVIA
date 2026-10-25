@@ -56,7 +56,8 @@
 ``olivia memory``
     What this device remembers, on screen only (``memory/forget.py``, B5): the ledger
     entries oldest first and numbered (templated summaries, notes verbatim), then the
-    other data by name only; never health details or the plan.
+    other data by name only; never health details or the plan. Dates and times show in
+    the profile's current timezone (PRD Q-8, F11); what is stored is never rewritten.
 ``olivia forget [--entry N | --ledger | --kit | --safety-plan | --all] [--yes]``
     Forget one entry, every chat record, the kit and method preferences, the safety plan,
     or everything (crypto-shredding; ``--all`` also deletes the keychain item, so the
@@ -347,12 +348,20 @@ def _zone(name: str) -> ZoneInfo | None:
         return None
 
 
+def _profile_zone(profile: PersonaProfile | None) -> ZoneInfo | None:
+    """The profile's timezone; this computer's when that zone is missing or unknown here
+    (None when the computer's cannot be read either)."""
+    zone = (
+        _zone(profile.region.timezone)
+        if profile is not None and profile.region is not None
+        else None
+    )
+    return zone if zone is not None else _zone(onboarding.system_timezone())
+
+
 def _local_clock(clock: Clock, profile: PersonaProfile) -> Clock:
-    """``clock`` in the profile's timezone; this computer's when that zone is missing or
-    unknown here (UTC when the computer's cannot be read either)."""
-    zone = _zone(profile.region.timezone) if profile.region is not None else None
-    if zone is None:
-        zone = _zone(onboarding.system_timezone())
+    """``clock`` in the profile's timezone (:func:`_profile_zone`)."""
+    zone = _profile_zone(profile)
     if zone is None:  # pragma: no cover - system_timezone only returns known names
         return clock
     return lambda: clock().astimezone(zone)
@@ -821,7 +830,9 @@ def _journal(console: _Console, clock: Clock) -> int:
     store = ProfileStore()
     tax = _taxonomy()
     titles = _card_titles(tax)
-    ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
+    ledger = Ledger(
+        store.path.parent, store.vault, method_titles=titles, zone=_profile_zone(profile)
+    )
     now = _local_clock(clock, profile)()
     return run_journal(
         lambda: console.ask(ANSWER_PROMPT),
@@ -854,12 +865,14 @@ def _stats(console: _Console, clock: Clock) -> int:
 # -- memory and forget ------------------------------------------------------------------------
 
 
-def _data_stores() -> DataStores:
+def _data_stores(profile: PersonaProfile | None) -> DataStores:
+    """Every store; the ledger shows times in the profile's current timezone (Q-8)."""
     base = ProfileStore().path.parent
     return DataStores.open(
         base,
         method_titles=_card_titles(_taxonomy()),
         on_forget_all=(lambda: remove_reminders(notify_system.current_host(), base),),
+        zone=_profile_zone(profile),
     )
 
 
@@ -877,7 +890,7 @@ def _memory(console: _Console) -> int:
     if readable and profile is None:
         console.say(NOT_SET_UP)
         return 1
-    code = run_memory(console.say, _data_stores())
+    code = run_memory(console.say, _data_stores(profile))
     return 1 if profile is not None and profile.is_age_gate_refusal else code
 
 
@@ -903,7 +916,7 @@ def _forget(console: _Console, args: argparse.Namespace) -> int:
     return run_forget(
         lambda: console.ask(ANSWER_PROMPT),
         console.say,
-        _data_stores(),
+        _data_stores(profile),
         target=target,
         entry=args.entry,
         assume_yes=args.yes,

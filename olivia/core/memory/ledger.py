@@ -48,6 +48,11 @@ step B5).
 
 Entries that fail to decrypt or parse are skipped (``Ledger.skipped`` counts them);
 nothing here logs, and errors never carry entry text.
+
+**Times** are stored as they were recorded (timezone-aware ISO strings) and never
+migrated. The bodies show dates and clock times in ``zone`` when one is given: the
+profile's current timezone (PRD Q-8, F11), so after ``olivia region`` changes it every
+entry, older ones included, reads in the new local time.
 """
 
 from __future__ import annotations
@@ -59,7 +64,7 @@ import re
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any, Final
 
@@ -261,7 +266,8 @@ class Ledger:
     app data directory); ``vault`` holds the keys and should be the profile store's, so
     one process uses one vault.
 
-    ``method_titles`` maps action ids to the card titles the user saw, for the body.
+    ``method_titles`` maps action ids to the card titles the user saw, for the body;
+    ``zone`` is the timezone the bodies show times in (None: as recorded).
     """
 
     def __init__(
@@ -271,12 +277,14 @@ class Ledger:
         *,
         text: MemoryText | None = None,
         method_titles: Mapping[str, str] | None = None,
+        zone: tzinfo | None = None,
     ) -> None:
         base = app_data_dir() if base_dir is None else base_dir
         self.directory: Path = base / LEDGER_DIRNAME
         self.vault: Vault = Vault(base) if vault is None else vault
         self.text: MemoryText = load_memory_text() if text is None else text
         self._titles: Mapping[str, str] = {} if method_titles is None else method_titles
+        self.zone: tzinfo | None = zone
         self.skipped = 0
         """Entries the last :meth:`entries` call could not open or parse."""
 
@@ -384,6 +392,10 @@ class Ledger:
 
     def notes(self) -> tuple[NoteEntry, ...]:
         return tuple(e for e in self.entries() if isinstance(e, NoteEntry))
+
+    def local(self, moment: datetime) -> datetime:
+        """``moment`` in :attr:`zone` (unchanged without one), for display only."""
+        return moment if self.zone is None else moment.astimezone(self.zone)
 
     def body(self, entry: LedgerEntry) -> str:
         """The human-readable part of ``entry``: the templated summary or journal record,
@@ -554,9 +566,10 @@ class Ledger:
     def _summary_body(self, s: SessionSummary) -> str:
         t = self.text
         st = t.summary
+        start, end = self.local(s.started_at), self.local(s.ended_at)
         lines = [
-            st.heading.format(date=s.started_at.date().isoformat()),
-            st.time.format(start=s.started_at.strftime("%H:%M"), end=s.ended_at.strftime("%H:%M")),
+            st.heading.format(date=start.date().isoformat()),
+            st.time.format(start=start.strftime("%H:%M"), end=end.strftime("%H:%M")),
             st.path.format(path=st.arrow.join(t.stages[stage.value] for stage in s.stage_path)),
             st.spectra.format(
                 spectra=st.joiner.join(t.spectra.get(sid, sid) for sid in s.spectra) or st.none
@@ -593,7 +606,7 @@ class Ledger:
     def _journal_body(self, entry: JournalEntry) -> str:
         st = self.text.summary
         lines = [
-            st.journal_heading.format(date=entry.offered_at.date().isoformat()),
+            st.journal_heading.format(date=self.local(entry.offered_at).date().isoformat()),
             st.journal_shown if entry.shown else st.journal_skipped,
         ]
         if entry.helpful is not None:

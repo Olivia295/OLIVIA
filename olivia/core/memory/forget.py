@@ -3,7 +3,8 @@
 ``olivia memory`` (:func:`run_memory`) shows, on screen only, what this device holds: the
 ledger entries oldest first and numbered, each as its templated summary (a session, or a
 B6 journal record: offered, seen or declined, helpful or not) or, for a note, the
-user's words verbatim (``Ledger.body``), then the other data by name only (the
+user's words verbatim (``Ledger.body``; dates and times in the profile's current timezone,
+PRD Q-8), then the other data by name only (the
 profile, whether health information is filled in, whether a safety plan exists, how
 many cards the kit holds, whether method preferences were learned, whether a care
 marker waits). Health details and the plan itself are never printed here: they have
@@ -48,6 +49,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from datetime import tzinfo
 from enum import Enum, StrEnum
 from functools import cache
 from importlib import resources
@@ -265,7 +267,9 @@ class DataStores:
         *,
         method_titles: Mapping[str, str] | None = None,
         on_forget_all: tuple[Callable[[], object], ...] = (),
+        zone: tzinfo | None = None,
     ) -> DataStores:
+        """``zone``: the timezone the ledger shows times in (the profile's)."""
         base = app_data_dir() if base_dir is None else base_dir
         profile = ProfileStore(base)
         vault = profile.vault
@@ -273,7 +277,7 @@ class DataStores:
             base=base,
             vault=vault,
             profile=profile,
-            ledger=Ledger(base, vault, method_titles=method_titles),
+            ledger=Ledger(base, vault, method_titles=method_titles, zone=zone),
             state=StateStore(base, vault),
             care=CareStore(base, vault),
             plan=SafetyPlanStore(base, vault),
@@ -312,7 +316,7 @@ def _profile_quietly(stores: DataStores) -> tuple[bool, PersonaProfile | None]:
 def _entry_lines(ledger: Ledger, number: int, entry: LedgerEntry, text: ForgetText) -> list[str]:
     body = ledger.body(entry).splitlines() or [""]
     if isinstance(entry, NoteEntry):
-        heading = _fill(text.memory["note"], date=entry.created_at.date().isoformat())
+        heading = _fill(text.memory["note"], date=ledger.local(entry.created_at).date().isoformat())
         rest = body
     else:
         heading, rest = body[0].lstrip("#").strip(), body[1:]
