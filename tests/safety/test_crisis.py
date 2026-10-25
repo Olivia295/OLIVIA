@@ -433,6 +433,58 @@ def test_the_denial_cap_needs_a_plain_denial(tax, text):
     assert a.level >= L.L2 and a.uncapped_level is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        # F16a: risk content after a denial joined by 只是 / 就是 (no contrast word), which the
+        # cap used to lower to L1. A wish not to wake or never to have been born (L2).
+        "我不想死，我想永远睡过去",
+        "我不想死，只是想永远睡过去",
+        "我好多了，只是想永远睡过去",
+        "我不想死，只是想一觉睡过去",
+        "我没事，只是想一直睡下去",
+        "我没想死，只是想长眠",
+        "我不想死，只是不想再睁开眼睛",
+        "我不想死，只是常常希望自己没出生",
+        # Means.
+        "我不想死，只是想吞一整瓶药",
+        "我不想死，只是在网上查了很多吃药的事",
+        # Time and place.
+        "我不想死，就是今晚想去楼顶看看",
+        # Farewell, giving away, leaving to someone, joining the dead, leaving early.
+        "我没事，就是想把东西都送人",
+        "我好多了，就是东西都送人了",
+        "我不想死，只是钱都留给你们了",
+        "我没事，就是想把猫托付给你",
+        "我没事，只是想最后见你一面",
+        "我不会伤害自己，只是想和这个世界说再见",
+        "我不想死，只是想去天上陪奶奶",
+        "我不想死，只是想早点走",
+        # Rule cues of their own (L1 weariness, D3 asks).
+        "我不想死，只是想解脱",
+        "我不想死，只是想消失",
+        "我不想死，只是觉得没有我大家会更好",
+        "我不想自杀，只是想让一切结束",
+    ],
+)
+def test_the_denial_cap_never_hides_risk_content_after_the_denial(tax, text):
+    for model in (_FixedModel(L.L2, 0.6), _FixedModel(L.L3, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert a.level >= L.L2 and a.uncapped_level is None, text
+
+
+@pytest.mark.parametrize("lead", ["我不想死，", "我不想死，只是", "我没事，就是", "我已经好多了，"])
+def test_every_stage2_phrase_voids_the_denial_cap(tax, lead):
+    # F16a: a Stage 2 phrase the denial does not cover keeps the rules above L0, so the cap
+    # never applies; whatever the model says, the level stays at least the phrase's own.
+    lexicons = load_safety_lexicons(tax)
+    screen = _screen_with(tax, _FixedModel(L.L2, 0.6))
+    for cue in lexicons.cues("stage2"):
+        for phrase in cue.patterns:
+            a = screen.assess(lead + phrase)
+            assert a.level >= L.L2 and a.uncapped_level is None, (lead, phrase, a)
+
+
 def test_a_model_failure_on_a_denial_still_fails_safe_to_l2(tax):
     a = _screen_with(tax, _RaisingModel()).assess("我没有想死")
     assert a.level is L.L2 and a.cue_ids[-1] == "MODEL_FAILURE" and a.uncapped_level is None
