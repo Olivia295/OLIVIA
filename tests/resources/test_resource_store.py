@@ -39,10 +39,10 @@ def test_store_is_typed_and_frozen() -> None:
     assert line.id == "cn_12356"
     assert line.kind is LineKind.CRISIS_HOTLINE
     assert line.levels == frozenset({CrisisLevel.L2, CrisisLevel.L3})
-    assert line.verified_on == date(2026, 10, 22)
+    assert line.verified_on == date(2026, 10, 25)
     assert [e.id for e in cn.emergency] == ["cn_emergency_110", "cn_emergency_120"]
     assert cn.emergency[1].purpose is EmergencyPurpose.AMBULANCE
-    assert store.compiled_on == date(2026, 10, 22) and store.version == 1
+    assert store.compiled_on == date(2026, 10, 25) and store.version == 1
     with pytest.raises(dataclasses.FrozenInstanceError):
         line.number = "0"  # type: ignore[misc]
     with pytest.raises(TypeError):
