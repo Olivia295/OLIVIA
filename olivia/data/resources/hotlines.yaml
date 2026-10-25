@@ -7,19 +7,19 @@
 # GEO-08: this file is signed (hotlines.yaml.sig, Ed25519 over the exact bytes). Any edit,
 # even whitespace, must be followed by `python scripts/sign_hotlines.py`, or loading fails.
 version: 1
-compiled_on: "2026-10-22"
+compiled_on: "2026-10-25"
 regions:
   CN:
     emergency:
       - number: "110"
         purpose: police
         source_url: https://www.mps.gov.cn/n2255079/n2255711/n2255713/c3651488/content.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "公安部网站：110 报警服务台受理紧急报警与求助（含自杀等需紧急救助的情况）。"
       - number: "120"
         purpose: ambulance
         source_url: https://www.nhc.gov.cn/wjw/c100221/202201/26ea3c97e82d466f9aa2b4a9901ae187.shtml
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "《院前医疗急救管理办法》：全国院前医疗急救呼叫号码为 120，急救中心 24 小时受理。"
     lines:
       - id: cn_12356
@@ -32,7 +32,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.nhc.gov.cn/yzygj/c100068/202412/49a1a65386cd4be582d4702fd0926ee8.shtml
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: >-
           国卫医政函〔2024〕259号设定 12356，要求每条热线每日不少于18小时服务；
           国家卫健委 2025-12-26 发布会称各地已于 2025-05-01 前全部开通
@@ -49,7 +49,7 @@ regions:
         adcode: null
         minors_only: true
         source_url: https://www.gqt.org.cn/documents/zqf/200611/t20061128_1539.htm
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: >-
           共青团中央建设的全国统一青少年服务号码，提供心理与法律咨询；各地接听时段与分线不同。
           2025 年仍在运行的官方佐证：https://www.fujian.gov.cn/xwdt/mszx/202505/t20250521_6916533.htm
@@ -58,11 +58,11 @@ regions:
       - number: "999"
         purpose: police_fire_ambulance
         source_url: https://www.gov.hk/en/nonresidents/visitinghk/usefulinfo/emergency.htm
-        verified_on: "2026-10-22"
-        notes: "GovHK：需要警方、消防或救护车时拨 999；言语/听障人士可发短信至 992。"
+        verified_on: "2026-10-25"
+        notes: "GovHK：需要警方、消防或救护车时拨 999；已事先登记的言语/听障人士可发短信至 992（未登记的短讯会被系统拒绝）。"
     lines:
       - id: hk_18111
-        name_zh: 18111 精神健康支援热线
+        name_zh: “情绪通”精神健康支援热线
         number: "18111"
         kind: crisis_hotline
         levels: [L2, L3]
@@ -71,8 +71,8 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.info.gov.hk/gia/general/202511/04/P2025110400499.htm
-        verified_on: "2026-10-22"
-        notes: "特区政府全资资助，2023-12-27 启用；2025-11 起另提供 WhatsApp 支援（官方未在该稿中给出 WhatsApp 号码）。"
+        verified_on: "2026-10-25"
+        notes: "“情绪通”，特区政府全资资助，2023-12-27 启用；另可用 WhatsApp 发文字讯息至 (852) 18111（精神健康咨询委员会 shallwetalk.hk，不支持语音或视像通话）。"
       - id: hk_sbhk
         name_zh: 香港撒玛利亚防止自杀会 24小时情绪支援热线
         number: "2389 2222"
@@ -83,7 +83,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://sbhk.org.hk/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "The Samaritan Befrienders Hong Kong（香港撒瑪利亞防止自殺會）。"
       - id: hk_sps
         name_zh: 生命热线 24小时预防自杀热线
@@ -95,24 +95,24 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.sps.org.hk/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "生命熱線（Suicide Prevention Services）。PRD GEO-04 所称“生命热线”即此号码。"
   MO:
     emergency:
       - number: "999"
         purpose: police_fire_ambulance
         source_url: https://www.gov.mo/zh-hant/services/ps-1486/ps-1486a/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "治安警察局紧急求助热线，24小时。"
       - number: "110"
         purpose: police_fire_ambulance
         source_url: https://www.gov.mo/zh-hant/services/ps-1486/ps-1486a/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "在澳门境内拨打 110 自动接驳至 999 紧急求助热线。"
       - number: "112"
         purpose: police_fire_ambulance
         source_url: https://www.gov.mo/zh-hant/services/ps-1486/ps-1486a/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "在澳门境内拨打 112 自动接驳至 999 紧急求助热线。"
     lines:
       - id: mo_caritas_lifehope
@@ -125,19 +125,31 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://portal.dsedj.gov.mo/webdsejspace/site/stucounselling/index.jsp?con=hotline
-        verified_on: "2026-10-22"
-        notes: "教育及青年发展局列明：2852 5222（中文）、2852 5777（外语），24小时。"
+        verified_on: "2026-10-25"
+        notes: "中文线 2852 5222 为 24 小时；外语线 2852 5777 按澳门明爱公布为周日至周二 14:00-22:00、周四至周六 10:00-18:00，周三及公众假期不开放。"
+      - id: mo_xinqing
+        name_zh: 心晴热线
+        number: "2871 2356"
+        kind: crisis_hotline
+        levels: [L2]
+        hours: "24/7"
+        scope: national
+        adcode: null
+        minors_only: false
+        source_url: https://www.gov.mo/zh-hant/news/1197670/
+        verified_on: "2026-10-25"
+        notes: "卫生局与澳门青年发展服务中心合作设立，24 小时心理健康咨询，中英双语；教育及青年发展局社区求助热线页面同样列出。"
   TW:
     emergency:
       - number: "110"
         purpose: police
         source_url: https://dep.mohw.gov.tw/DOMHAOH/cp-327-8715-107.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "卫福部心理健康司“全国咨询及救援服务专线”：各县市警察局勤务指挥中心报案电话。"
       - number: "119"
         purpose: fire_ambulance
         source_url: https://dep.mohw.gov.tw/DOMHAOH/cp-327-8715-107.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "同上：各县市消防局勤务指挥中心报案电话（含救护）。"
     lines:
       - id: tw_1925
@@ -150,7 +162,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.mohw.gov.tw/cp-16-19209-1.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "卫福部：24小时免费心理咨询；号码亦列于 https://dep.mohw.gov.tw/DOMHAOH/cp-327-8715-107.html 。"
       - id: tw_1995
         name_zh: 生命线 1995 协谈专线
@@ -162,7 +174,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://dep.mohw.gov.tw/DOMHAOH/cp-327-8715-107.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "号码见卫福部专线列表；24小时依据生命线台湾总会自述“全日24小时的电话守候”（https://www.life1995.org.tw/?aid=1）。"
       - id: tw_1980
         name_zh: 张老师 1980 辅导专线
@@ -174,14 +186,14 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.1980.org.tw/service_item_show.php?service_item_id=1
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "非24小时，不放入 L3。号码亦列于卫福部专线列表。"
   US:
     emergency:
       - number: "911"
         purpose: police_fire_ambulance
         source_url: https://www.fcc.gov/general/9-1-1-and-e9-1-1-services
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "FCC：911 为美国所有电话服务的通用紧急号码。"
     lines:
       - id: us_988
@@ -194,7 +206,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://988lifeline.org/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "988 Suicide & Crisis Lifeline：可拨打或发短信至 988，另有网页聊天 chat.988lifeline.org。"
       - id: us_crisis_text_line
         name_zh: Crisis Text Line 危机短信线（发送 HOME 至 741741）
@@ -206,14 +218,14 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.crisistextline.org/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "短信关键词 HOME；美国境内可用。"
   CA:
     emergency:
       - number: "911"
         purpose: police_fire_ambulance
         source_url: https://www.canada.ca/en/public-health/services/mental-health-services/mental-health-get-help.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "加拿大政府：有迫在眉睫的危险或需紧急医疗时拨 9-1-1。"
     lines:
       - id: ca_988
@@ -226,7 +238,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.canada.ca/en/public-health/news/2023/11/government-of-canada-launches-three-digit-suicide-crisis-helpline.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "2023-11-30 上线；可拨打或发短信至 988，英法双语，全国 24/7。官方写法为 9-8-8。"
       - id: ca_kids_help_phone_text
         name_zh: Kids Help Phone 短信支持（发送 CONNECT 至 686868）
@@ -238,14 +250,14 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.canada.ca/en/public-health/services/mental-health-services/mental-health-get-help.html
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "加拿大政府列明服务 5-29 岁人群；24/7 依据 https://kidshelpphone.ca/ 。成年人首选 988 短信。"
   GB:
     emergency:
       - number: "999"
         purpose: police_fire_ambulance
         source_url: https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "NHS：生命有危险（如严重自伤、过量服药）时拨 999 或前往急诊。"
     lines:
       - id: gb_samaritans
@@ -258,7 +270,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.samaritans.org/how-we-can-help/contact-samaritan/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "任何电话免费拨打，全天24小时。"
       - id: gb_nhs_111_mh
         name_zh: NHS 111 心理健康选项
@@ -270,8 +282,8 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.england.nhs.uk/south-east/2024/08/30/nhs-111-offering-crisis-mental-health-support-in-the-south-east/
-        verified_on: "2026-10-22"
-        notes: "NHS England：拨 111 后选择心理健康选项，24/7；英格兰与威尔士已推出（选项编号依地区语音提示）。苏格兰/北爱尔兰未核验。"
+        verified_on: "2026-10-25"
+        notes: "NHS England：拨 111 后选择心理健康选项，24/7；英格兰与威尔士已推出（选项编号依地区语音提示）。苏格兰（NHS 24 的 111 Mental Health Hub）与威尔士（111 选 2）均为 24/7；北爱尔兰没有 NHS 111（当地危机热线为 Lifeline 0808 808 8000，未收录）。"
       - id: gb_shout
         name_zh: Shout 危机短信服务（发送 SHOUT 至 85258）
         number: "85258"
@@ -282,14 +294,14 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://giveusashout.org/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "英国免费、保密的 24/7 心理健康短信服务。"
   AU:
     emergency:
       - number: "000"
         purpose: police_fire_ambulance
         source_url: https://www.infrastructure.gov.au/media-communications/phone/triple-zero
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "澳大利亚主要紧急号码；手机亦可拨 112 转接同一 000 服务（固话不可）。不能用短信联系 000。"
     lines:
       - id: au_lifeline
@@ -302,7 +314,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.lifeline.org.au/131114/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "电话、短信、聊天均全天候可用。"
       - id: au_lifeline_text
         name_zh: Lifeline 生命线短信
@@ -314,7 +326,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.lifeline.org.au/131114/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: ""
       - id: au_beyond_blue
         name_zh: Beyond Blue 心理支持热线
@@ -326,14 +338,14 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://www.beyondblue.org.au/get-support/talk-to-a-counsellor
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "按本地通话计费。"
   ZZ:
     emergency:
       - number: "112"
         purpose: generic_gsm_emergency
         source_url: https://digital-strategy.ec.europa.eu/en/policies/112
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "欧盟通用紧急号码，在全球 GSM 移动网络上通常可拨；并非所有国家/网络都支持，请优先拨打当地紧急号码或前往最近的急诊。"
     lines:
       - id: zz_findahelpline
@@ -346,7 +358,7 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://findahelpline.com/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "ThroughLine 运营的按国家/主题检索的免费求助热线目录。"
       - id: zz_befrienders
         name_zh: Befrienders Worldwide 全球情绪支持中心目录
@@ -358,5 +370,5 @@ regions:
         adcode: null
         minors_only: false
         source_url: https://befrienders.org/find-support-now/
-        verified_on: "2026-10-22"
+        verified_on: "2026-10-25"
         notes: "可按国家与语言筛选的危机/情绪支持中心目录。"
