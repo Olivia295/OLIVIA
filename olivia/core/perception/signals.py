@@ -41,6 +41,12 @@ class TurnSignals:
     """Social battery from a ``[NN%]`` prefix as 0.0-1.0; None when the turn has no prefix."""
     direct_request: bool = False
     """The user asks outright for a method or something to try (COLBO-03)."""
+    another_method: bool = False
+    """The direct request asks for another or a different method (F16b): a whole
+    ``direct_request_whole`` message ("再给我一个", "换一个") or a ``direct_request``
+    phrase that says so ("再给我一个方法", "给我一个别的", "换个练习", "有没有其他方法").
+    The stub sets ``direct_request`` with it; the session reads the pair only while a
+    card waits for feedback, as not_now for that card and a request for another one."""
     listening_lock_on: bool = False
     """The user says they only want to talk, not get advice (PRD Q-4)."""
     listening_lock_off: bool = False

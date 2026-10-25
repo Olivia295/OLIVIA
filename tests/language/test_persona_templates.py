@@ -148,6 +148,7 @@ def _combos(pools: list[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
 F2B_LINES = (
     "no_pending_feedback",
     "unhelpful_ack",
+    "card_switched",
     "safety_confirmed",
     "forget_hint",
     "haven_return",

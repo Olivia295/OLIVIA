@@ -49,6 +49,17 @@ Stage handling:
   card too: the rule stub reads each turn on its own, so "能给我一个练习试试吗" one turn
   after "喘不上气" looks calm and would otherwise open the full cognitive pool
   (red-team rt084-rt086 with the probe turn). The card then waits in S_empower.
+  F16b: a request on that turn for another method ("再给我一个", "换一个", "有没有别
+  的方法"; ``TurnSignals.another_method``) or for a practice other than the waiting one
+  ("带我做一下正念", ``therapy_request``) is read as ``/not-now`` for the waiting card
+  (it goes into the kit; ``inspect["feedback"]`` is NOT_NOW) and a new card is sampled
+  as usual, led by one ``followups.card_switched`` line. Only on a calm turn (outside a
+  crisis, the screen and the rule screen below L1, no command), and only when the masks
+  leave another card to show; otherwise the ``after_card`` prompt as before. A card shown
+  from the stabilization whitelist (an S_explore card, an L1 turn or arousal at the
+  somatic line; ``_Pending.stabilization``) is replaced from the whitelist only, and so
+  is every card after it, so the calm-looking swap never opens the full pool. A generic
+  request ("能给我一个练习试试吗", the red-team probe) still keeps the waiting card.
 * ``S_explore`` at or above ``arousal.thresholds.somatic_priority`` (COLBO-02, SOP 3):
   the solver's stabilization whitelist, sampled the same way, shown as a card framed by
   the S_explore reflection (reflect paragraph, then card intro, card and ``after_card``).
@@ -519,6 +530,9 @@ class _Pending:
     action_id: str
     spectrum: str
     stage: HelpStage
+    stabilization: bool = False
+    """The card came from the stabilization whitelist (an S_explore card, an L1 turn or
+    acute arousal): a card asked for in its place comes from that whitelist too (F16b)."""
 
 
 @dataclass
@@ -848,6 +862,13 @@ class Session:
             Utterance.HAVEN_EXIT if transition.reason is Reason.HAVEN_EXIT_ASKED else None
         )
         feedback = self._feedback_for(pending, transition, signals)
+        # A request for another method, or for a named practice, while a card waits (F16b):
+        # the waiting card goes into the kit (as /not-now) and another one is offered.
+        switch = self._switches(
+            pending, feedback, transition, signals, perception, flags, status, assessment, rules
+        ) and not (ask or answer is not None)
+        if switch:
+            feedback = Feedback.NOT_NOW
         if spectrum is not None:
             self._last_spectrum = spectrum
         note = self._shared.note_cues.find(text) is not None
@@ -1007,6 +1028,11 @@ class Session:
                 rendered = self._with_taboo_filter(self._after_card_prompt, stage)
                 rendered.pending = replace(pending, stage=HelpStage.S_EMPOWER)
             else:
+                if switch and pending is not None:
+                    # Shelve the waiting card first, so the new card is another one; a
+                    # card in the whitelist's place keeps to the whitelist (rt084-rt086).
+                    self._apply_feedback(pending, Feedback.NOT_NOW, now)
+                    self._stabilization_only = self._stabilization_only or pending.stabilization
                 rendered = self._offer(
                     stage,
                     perception,
@@ -1059,6 +1085,8 @@ class Session:
 
         if feedback is Feedback.UNHELPFUL and stage is not HelpStage.S_CRISIS:
             self._add_line(rendered, templates.unhelpful_ack, stage, first=True)
+        if switch and rendered.kind is ReplyKind.CARD:
+            self._add_line(rendered, templates.card_switched, stage, first=True)
         if (
             transition.previous is HelpStage.S_HAVEN
             and stage is HelpStage.S_EMPOWER
@@ -1100,7 +1128,7 @@ class Session:
             if settled and stage is HelpStage.S_CLOSING:
                 self._append_plan_suggestion(rendered, stage)
 
-        if pending is not None and feedback is not None:
+        if pending is not None and feedback is not None and not switch:
             self._apply_feedback(pending, feedback, now)
         # A card waits only while the session stays in the stage it was shown in. An
         # S_explore stabilization card also expires after one turn that is not about it
@@ -1435,7 +1463,16 @@ class Session:
             if rendered.kind is ReplyKind.NORMAL:
                 rendered.kind = ReplyKind.CARD
                 rendered.action_id = primary.method_id
-                rendered.pending = _Pending(primary.method_id, bucket, stage)
+                rendered.pending = _Pending(
+                    primary.method_id,
+                    bucket,
+                    stage,
+                    stabilization=(
+                        stage is HelpStage.S_EXPLORE
+                        or self._stabilization_only
+                        or perception.arousal >= self._somatic
+                    ),
+                )
         elif primary.method_id == M0_ACTION_ID:
             rendered = self._with_taboo_filter(
                 lambda: self._compose(HelpStage.S_EXPLORE, perception, spectrum, mirror_text),
@@ -2116,6 +2153,55 @@ class Session:
             referral_flags=(),
             inspect=inspect,
         )
+
+    def _switches(
+        self,
+        pending: _Pending | None,
+        feedback: Feedback | None,
+        transition: Transition,
+        signals: TurnSignals,
+        perception: PerceptionContext,
+        flags: frozenset[str],
+        status: CrisisStatus,
+        assessment: CrisisAssessment,
+        rules: CrisisAssessment,
+    ) -> bool:
+        """The turn asks for another card in place of the one waiting (F16b).
+
+        Only on a calm S_empower turn that would otherwise re-send the ``after_card``
+        prompt (the card waits in the stage the turn came from, the state machine stays or
+        takes the direct request): outside a crisis, the screen and the rule screen below
+        L1, no command, and the request says another one ("再给我一个", "换一个", "有没有
+        别的方法") or names a practice other than the waiting one ("带我做一下正念").
+        A generic request ("能给我一个练习试试吗", the red-team probe) keeps the waiting
+        card. And only when the masks leave another card to show: the replacement comes
+        from the whitelist when the waiting card did (``_Pending.stabilization``).
+        """
+        if (
+            pending is None
+            or feedback is not None
+            or transition.state.current_stage is not HelpStage.S_EMPOWER
+            or transition.previous is not pending.stage
+            or transition.reason not in (Reason.STAY, Reason.DIRECT_REQUEST)
+            or signals.command is not None
+            or not signals.direct_request
+            or status.in_crisis
+            or assessment.level >= CrisisLevel.L1
+            or rules.level >= CrisisLevel.L1
+        ):
+            return False
+        requested = signals.therapy_request
+        if not signals.another_method and (requested is None or requested == pending.action_id):
+            return False
+        saved = self._stabilization_only
+        self._stabilization_only = saved or pending.stabilization
+        try:
+            shelved = frozenset([*self._state.user_shelved_actions, pending.action_id])
+            allowed = self._allowed(HelpStage.S_EMPOWER, perception, flags, shelved)
+        finally:
+            self._stabilization_only = saved
+        deck = self._engine.data.cards.cards
+        return any(a in deck and a != pending.action_id for a in allowed.candidates)
 
     @staticmethod
     def _feedback_for(

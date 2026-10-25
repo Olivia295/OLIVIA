@@ -90,6 +90,7 @@ _FOLLOWUPS: Final = (
     "health_hint",
     "no_pending_feedback",
     "unhelpful_ack",
+    "card_switched",
     "safety_confirmed",
     "forget_hint",
     "haven_return",
@@ -264,6 +265,9 @@ class Templates:
     """A feedback command while no card waits for feedback: one short line."""
     unhelpful_ack: tuple[str, ...]
     """Leads the reply after ``/unhelpful`` (or aversion) on a waiting card."""
+    card_switched: tuple[str, ...]
+    """Leads the new card when the user asks for another one while a card waits (F16b):
+    the waiting card went into the kit, as after ``/not-now``."""
     safety_confirmed: tuple[str, ...]
     """Leads the crisis reply on the turn the tracker hears an explicit safety confirmation."""
     forget_hint: tuple[str, ...]
@@ -950,6 +954,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         health_hint=lines["health_hint"],
         no_pending_feedback=lines["no_pending_feedback"],
         unhelpful_ack=lines["unhelpful_ack"],
+        card_switched=lines["card_switched"],
         safety_confirmed=lines["safety_confirmed"],
         forget_hint=lines["forget_hint"],
         haven_return=lines["haven_return"],

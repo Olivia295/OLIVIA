@@ -64,7 +64,9 @@ Signals: ``battery`` from the prefix (``NN / 100`` clamped to [0, 1], None witho
 ``direct_request``, ``listening_lock_on``, ``listening_lock_off``, ``aversion`` and
 ``intent_confirmed`` when a non-negated phrase of that section matched (a request for a
 named practice, below, is a direct request too, and so is a whole message, marks
-stripped, that is a ``direct_request_whole`` entry: "再给我一个", "换一个"). If both lock
+stripped, that is a ``direct_request_whole`` entry: "再给我一个", "换一个"; F16b:
+``another_method`` when it is such a whole message or a ``direct_request`` phrase with
+再给 / 再来 / 换 / 别的 / 其他 / 其它 in it: "给我一个别的", "换个练习"). If both lock
 phrases match, the later one in the message wins, since a turn cannot both set and
 release the lock. ``aversion`` and ``intent_confirmed`` may both be set; the state machine
 reads them in different stages (S_empower, S_closing). ``kit_recall`` when a non-negated
@@ -178,6 +180,8 @@ _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
 _HAVEN_EXIT: Final = "haven_exit"
 _NOTE_RECALL: Final = "note_recall"
+# F16b: a direct_request phrase with one of these asks for another or a different method.
+_ANOTHER_MARKERS: Final = ("再给", "再来", "换", "别的", "其他", "其它")
 # COLBO-06b: prolonged grief is the SIT-06-04 dossier (延长哀伤障碍与未完成丧失悲恸).
 PROLONGED_GRIEF_CODE: Final = "SIT-06-04"
 _GRIEF_GROUPS: Final = tuple(f"grief_{key}" for key in GRIEF_KEYS)
@@ -358,6 +362,10 @@ class RuleStub:
         labels = {label for label, _ in signals}
         asked, requested = _therapy(body, hits, self._practices)
         direct = _DIRECT in labels or requested is not None or another
+        another_method = another or any(
+            label == _DIRECT and any(m in match.key for m in _ANOTHER_MARKERS)
+            for label, match in signals
+        )
         lock_on, lock_off = _lock(signals)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
@@ -388,6 +396,7 @@ class RuleStub:
         turn = TurnSignals(
             battery=battery,
             direct_request=direct,
+            another_method=another_method,
             listening_lock_on=lock_on,
             listening_lock_off=lock_off,
             aversion=_AVERSION in labels,
