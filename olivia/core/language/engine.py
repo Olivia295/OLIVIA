@@ -620,7 +620,8 @@ class LanguageEngine:
             # full card, which the session shows whenever that flag is new.
             for code in self._tax.red_flags():
                 if code in active and code in r.referral_warnings:
-                    lines += ["", r.referral_warnings[code]]
+                    for paragraph in r.referral_warnings[code]:
+                        lines += ["", paragraph]
             lines += ["", r.referral_closing]
         text = apply_willow("\n".join(lines), ContentKind.REFERRAL, self._data.willow)
         # Any non-S_empower stage keeps the Grade A title check on for referral text.

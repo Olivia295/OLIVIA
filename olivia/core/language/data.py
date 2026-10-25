@@ -342,9 +342,10 @@ class RenderText:
     referral_again: tuple[str, ...]
     """Short intros for the same referral card shown again on the next turn (F5b): the
     destinations are listed in full, the closing paragraph is left out."""
-    referral_warnings: Mapping[str, str]
-    """Red-flag code -> a warning paragraph the full referral card carries (plan D-3:
-    ``WITHDRAWAL_RISK_WARNING`` for SIT-10-04; draft pending G-0)."""
+    referral_warnings: Mapping[str, tuple[str, ...]]
+    """Red-flag code -> the warning paragraphs the full referral card carries (plan D-3:
+    ``WITHDRAWAL_RISK_WARNING`` for SIT-10-04; draft pending G-0). Each is a paragraph of
+    its own, so none is over the 80-character paragraph limit (WILLOW-03, F16b)."""
     crisis_emergency_heading: Mapping[CrisisLevel, str]
     crisis_lines_heading: str
     crisis_hours_label: str
@@ -686,7 +687,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
     warnings_raw = _map(ref.get("warnings", {}), f"{where} referral.warnings")
     _keys(warnings_raw, set(), f"{where} referral.warnings", optional=set(tax.red_flags()))
     warnings = {
-        str(code): _str(text, f"{where} referral.warnings.{code}")
+        str(code): _strs(text, f"{where} referral.warnings.{code}")
         for code, text in warnings_raw.items()
     }
     crisis = _map(data["crisis"], f"{where} crisis")

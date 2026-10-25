@@ -278,6 +278,17 @@ def test_withdrawal_warning_is_no_card_but_rides_on_the_referral(
     assert "突然停下来" not in engine.render_referral(["SIT-10-04"], again=1)
 
 
+def test_referral_paragraphs_fit_the_paragraph_limit(tax: Taxonomy, engine: LanguageEngine) -> None:
+    # F16b: the withdrawal warning was one 87-character paragraph. Every prose paragraph
+    # of a one-flag referral card (not the intro with its list of places), in every
+    # region's wording, is within 80 characters.
+    for code in tax.red_flags():
+        for country in ("CN", "HK", "US"):
+            for paragraph in paragraphs(engine.render_referral([code], country)):
+                if "\n· " not in paragraph:
+                    assert count_all(paragraph) <= 80, (code, country, paragraph)
+
+
 def test_psychoeducation_card_renders_as_tips(tax: Taxonomy, engine: LanguageEngine) -> None:
     skeleton = _skeleton(tax, "CIRCADIAN_RHYTHM_STABILIZATION")
     assert skeleton.action_type is ActionType.PSYCHOEDUCATION
