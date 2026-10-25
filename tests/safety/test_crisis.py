@@ -485,6 +485,48 @@ def test_every_stage2_phrase_voids_the_denial_cap(tax, lead):
             assert a.level >= L.L2 and a.uncapped_level is None, (lead, phrase, a)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我妈生日是哪天来着",
+        "我妈生日是几号来着",
+        "我上次让你记的我妈生日是哪天",
+        "我该吃的药是几点来着",
+    ],
+)
+def test_injected_model_is_at_most_l1_on_a_plain_note_question(tax, screen, text):
+    # F16a: a note recall phrase and not one risk word; the model's L2/L3 counts as L1.
+    assert screen.assess(text).level is L.L0
+    for model in (_FixedModel(L.L2, 0.5), _FixedModel(L.L3, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert (a.level, a.rule_level, a.uncapped_level) == (L.L1, L.L0, None)
+        assert a.cue_ids[-1] == "FAKE" and not a.has_plan_evidence
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我妈生日是哪天来着，我不想活了",  # a Stage 2 phrase
+        "我上次让你记的遗书放在哪来着",  # a death word
+        "安眠药放在哪来着",  # a means
+        "王师傅是谁来着，以后也用不上了",  # a farewell
+        "累死了，王师傅是谁来着",  # a hyperbole phrase is still a risk phrase
+        "我没事，王师傅是谁来着",  # a denial phrase: the denial cap decides
+        "王师傅是谁来着，一次吃几片来着",  # a dose
+        "今天加班好累",  # no note question at all
+    ],
+)
+def test_the_note_question_cap_needs_a_question_and_no_risk_word(tax, text):
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
+    assert a.level >= L.L2 or a.uncapped_level is not None, text
+
+
+def test_the_note_question_cap_never_lowers_the_rules_or_a_model_failure(tax, screen):
+    assert _screen_with(tax, _RaisingModel()).assess("我妈生日是哪天来着").level is L.L2
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.95)).assess("我妈生日是哪天来着")
+    assert (a.level, a.has_plan_evidence) == (L.L1, False)
+
+
 def test_a_model_failure_on_a_denial_still_fails_safe_to_l2(tax):
     a = _screen_with(tax, _RaisingModel()).assess("我没有想死")
     assert a.level is L.L2 and a.cue_ids[-1] == "MODEL_FAILURE" and a.uncapped_level is None

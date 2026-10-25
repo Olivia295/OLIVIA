@@ -924,3 +924,20 @@ denial:
            # them to someone, joining the dead, leaving early, never having been born.
            "睡过去", "睡下去", "长眠", "不醒", "醒不", "再醒", "别醒", "不要醒", "不用醒", "不想醒",
            "睁开眼", "睁眼", "送人", "送给", "留给", "托付", "天上", "早点走", "先走", "出生"]
+# A question about a note and nothing else (fix F16a, 2026-10-25): "我妈生日是哪天来着",
+# "我上次让你记的我妈生日是哪天". The packaged model rated such questions L1 or L2, so the
+# note was never recalled (F15 recalls only on a calm turn) or a crisis opened. Read by
+# crisis.py like the hyperbole cap (F8a): where the rules rate a message L0, a note recall
+# phrase of perception.yaml (`note_recall`, `note_recall_questions`: the only list of them)
+# occurs in it, no phrase of any section above (stage1, stage2, hyperbole, negation, pairs,
+# ask pairs, compositions, denial) does, no `vetoes` phrase does and the model did not fail,
+# the model's level counts at most as L1. No uncapped level rides along: the cap needs a
+# message without a single risk word. A plain 药 is no veto (a reminder to take medicine is
+# a common note); a means, a dose, death, self-harm, farewell or the wish not to wake is.
+recall_cap:
+  vetoes: ["死", "自杀", "轻生", "寻死", "自尽", "活着", "活下去", "不想活", "活够", "伤害", "傻事",
+           "想不开", "一了百了", "结束", "了结", "解脱", "消失", "离开", "不在了", "那边", "团聚",
+           "遗书", "遗言", "遗嘱", "后事", "交代", "告别", "道别", "永别", "再见", "最后", "托付",
+           "送人", "留给", "用不上", "用不着", "照顾好", "下辈子", "来世", "安眠药", "农药", "百草枯", "敌敌畏", "老鼠药", "致死", "剂量", "几片",
+           "多少片", "一整瓶", "吞", "绳", "刀片", "割", "炭", "煤气", "楼顶", "天台", "铁轨", "跳",
+           "睡过去", "睡下去", "长眠", "不醒", "醒不", "再醒", "别醒"]

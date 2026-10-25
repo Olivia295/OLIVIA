@@ -16,12 +16,14 @@ explicitly asks to have remembered:
 * **Recall** (F15, PRD MIYI-04). On a turn the session passed a note question on
   (``inspect["note_recall"]``, a calm turn only) and that is no note request, the notes
   are looked up (``recall.py``: notes only, never summaries; one note at most) under the
-  same crisis rule as notes. An ``explicit`` question ("我上次让你记住什么了") is always
-  answered: the note, the latest one, no match, no notes yet, or memory not available
-  here. A ``question`` ("……是谁来着") is answered only with a matching note; without a
-  usable keychain it gets the not-available line after the session's reply, and
-  otherwise the reply stays as the session wrote it. An answer replaces an ordinary
-  (NORMAL or HAVEN) reply, followed by ``note_continue``, and follows any other reply.
+  same crisis rule as notes, except that an L1 counts as calm (F16a: the session passes a
+  question on only when the rules rate the turn L0, so that L1 is a model's alone). An
+  ``explicit`` question ("我上次让你记住什么了") is always answered: the note, the latest
+  one, no match, no notes yet, or memory not available here. A ``question``
+  ("……是谁来着") is answered only with a matching note; without a usable keychain it
+  gets the not-available line after the session's reply, and otherwise the reply stays
+  as the session wrote it. An answer replaces an ordinary (NORMAL or HAVEN) reply,
+  followed by ``note_continue``, and follows any other reply.
   The note is in that reply only: ``inspect["note_recall_result"]`` is the outcome id
   (``found``, ``latest``, ``no_match``, ``none``, ``unavailable``), never text.
 * **Summaries.** Per session: the stage path, the dominant spectra, each exercise card
@@ -171,7 +173,7 @@ class SessionRecorder:
         after = False  # the line follows the session's reply instead of replacing it
         if note is not None and self._may_note(result):
             reply = self._take_note(note, now)
-        elif note is None and self._may_note(result):
+        elif note is None and self._may_recall(result):
             reply, after, result = self._recall(message, result, now)
         if self.enabled and self._closed_by_state_machine(result):
             self.closed_segment = self._flush()
@@ -258,12 +260,18 @@ class SessionRecorder:
         return previous is HelpStage.S_CLOSING and result.stage is HelpStage.S_READY
 
     @staticmethod
-    def _may_note(result: TurnResult) -> bool:
+    def _may_note(result: TurnResult, below: CrisisLevel = CrisisLevel.L1) -> bool:
         if result.in_crisis or result.reply_kind in _NO_NOTE_KINDS:
             return False
-        if result.crisis_level >= CrisisLevel.L1:
+        if result.crisis_level >= below:
             return False
-        return _level(result.inspect.get("assessed_level")) < CrisisLevel.L1
+        return _level(result.inspect.get("assessed_level")) < below
+
+    @classmethod
+    def _may_recall(cls, result: TurnResult) -> bool:
+        """A recall turn may be L1 (F16a): the session passes a note question on only when
+        the rules rate the turn L0, so its L1 is one only an injected model gives."""
+        return cls._may_note(result, CrisisLevel.L2)
 
     def _take_note(self, note: str, now: datetime) -> str:
         replies = self._text.replies

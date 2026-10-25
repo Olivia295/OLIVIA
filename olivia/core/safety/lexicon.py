@@ -38,6 +38,10 @@ _PAIR_ROLES: Final = ("anchors", "requests", "exceptions")
 _COMP_SECTION: Final = "compositions"
 _DENIAL_SECTION: Final = "denial"
 _DENIAL_LISTS: Final = ("phrases", "negators", "contrasts", "vetoes")
+_RECALL_SECTION: Final = "recall_cap"
+_PERCEPTION_FILE: Final = "perception.yaml"
+# perception.yaml's note recall sections (F15), the one source of these phrases.
+_RECALL_QUESTION_SECTIONS: Final = ("note_recall", "note_recall_questions")
 _COMP_GLOBAL_LISTS: Final = (
     "negators",
     "non_negators",
@@ -214,6 +218,23 @@ class DenialRules:
 
 
 @dataclass(frozen=True)
+class RecallCapRules:
+    """The ``recall_cap`` section (F16a): a question about a note, and nothing else.
+
+    Where the rules rate a message L0, no phrase of the risk, pair, composition or denial
+    sections occurs in it, a ``questions`` phrase does and no ``vetoes`` phrase does, an
+    injected model's level counts at most as L1 (``crisis.py``). ``questions`` are
+    perception.yaml's ``note_recall`` and ``note_recall_questions`` phrases (F15), read
+    from the same directory; ``vetoes`` are means, death and farewell words that keep the
+    model's level. Folded with :func:`~olivia.core.safety.normalize.normalize`; no question
+    contains a veto. Empty when the section (or perception.yaml) is absent: no cap.
+    """
+
+    questions: tuple[str, ...] = ()
+    vetoes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -233,6 +254,7 @@ class SafetyLexicons:
     intent_answers: IntentAnswers = IntentAnswers()
     compositions: CompositionRules = CompositionRules()
     denial: DenialRules = DenialRules()
+    recall_cap: RecallCapRules = RecallCapRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -254,6 +276,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     # reads as unclear, which the session treats as L2 (fail-safe).
     answers = _parse_answers(risk_doc, required=bool(ask_pairs))
     denial = _parse_denial(risk_doc)
+    recall_cap = _parse_recall_cap(base, risk_doc)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -264,6 +287,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         intent_answers=answers,
         compositions=compositions,
         denial=denial,
+        recall_cap=recall_cap,
     )
 
 
@@ -361,6 +385,7 @@ def _parse_risk(
         _ANSWER_SECTION,
         _COMP_SECTION,
         _DENIAL_SECTION,
+        _RECALL_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -675,6 +700,36 @@ def _parse_denial(doc: Mapping[str, Any]) -> DenialRules:
                     f"{where}: phrase {phrase!r} contains {name} {inside}, so it never applies"
                 )
     return DenialRules(**lists)
+
+
+def _parse_recall_cap(base: Traversable | Path, doc: Mapping[str, Any]) -> RecallCapRules:
+    """Parse the optional ``recall_cap`` section (F16a) and read its questions from
+    perception.yaml next to risk.yaml (absent there: no questions, so no cap)."""
+    if _RECALL_SECTION not in doc:
+        return RecallCapRules()
+    where = f"{_RISK_FILE} {_RECALL_SECTION}"
+    node = doc[_RECALL_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {"vetoes"}, where)
+    vetoes = _normalized_list(node.get("vetoes"), f"{where} vetoes")
+    repeated = sorted({p for p in vetoes if vetoes.count(p) > 1})
+    if repeated:
+        raise LexiconError(f"{where} vetoes: phrases {repeated} are repeated")
+    if not base.joinpath(_PERCEPTION_FILE).is_file():
+        return RecallCapRules(vetoes=vetoes)
+    perception = _read_yaml(base, _PERCEPTION_FILE)
+    questions: list[str] = []
+    for section in _RECALL_QUESTION_SECTIONS:
+        if section in perception:
+            questions.extend(_normalized_list(perception[section], f"{_PERCEPTION_FILE} {section}"))
+    for question in questions:
+        inside = [word for word in vetoes if word in question]
+        if inside:
+            raise LexiconError(
+                f"{where}: question {question!r} contains vetoes {inside}, so it never applies"
+            )
+    return RecallCapRules(questions=tuple(dict.fromkeys(questions)), vetoes=vetoes)
 
 
 # -- red_flags.yaml ----------------------------------------------------------------
