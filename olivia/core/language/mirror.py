@@ -46,6 +46,15 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    is cut at the last boundary that does not split a Latin word. A clause the user repeats
    is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b),
    as is a list opener ("首先", "其次", "总而言之"), which the output gate refuses (F14).
+8. F16b: a list of things ("首先是周报，其次是PPT", "一是周报，二是PPT") is reported as
+   one list, "你提到周报、PPT", never "你提到是周报，是PPT". Only items that name no one
+   (no 我/你/您) and give no reason ("首先是因为…") count; list items after a first
+   clause that is not one are left out. A list clause that names someone loses only its
+   opener and copula ("首先是我太累了" -> "你太累了", never "你是太累了"). Someone's news
+   run together with the user's own feeling, with no comma between ("爸爸走了好几年了我
+   还是放不下"), is two clauses:
+   "你爸爸走了好几年了，你还是放不下", never "你感到爸爸走了…你还是放不下". The split
+   is at a subject 我 right after 了, when the words before it name someone else.
 
 A message whose statements are only the speaker's goodbye for now ("今天就到这里吧", "我去
 睡了") is CLOSING (F14: never "跟过去说拜拜", "这个方案先这样吧" or "他说今天就到
@@ -107,6 +116,8 @@ class _Tag(StrEnum):
 class _Clause:
     text: str
     tag: _Tag
+    listed: bool = False
+    """A list item with its opener and copula dropped ("首先是周报" -> "周报", F16b)."""
 
 
 _BATTERY_RE: Final = re.compile(r"^\s*[\[［【]\s*\d{1,3}\s*[%％]\s*[\]］】]\s*")
@@ -743,6 +754,13 @@ _OBJECT_MARKERS: Final = frozenset(
 )
 # The character after a subject 我 in the middle of a clause ("每次组会我都很紧张").
 _SUBJECT_FOLLOWERS: Final = frozenset("都也就还又总一已真很好太特有不没会要是在才却常经老")
+# F16b: a list item, "首先是周报" or "一是周报": the opener and the copula go, the item stays.
+_LISTED_RE: Final = re.compile(
+    r"^(?:首先|其次|再次|然后|接着|最后|第[一二三四五六七八九十]|[一二三四五])(?:就|还)?是"
+    r"(?!不是|的|否)(?P<item>.+)$"
+)
+_LIST_REASONS: Final = ("因为", "由于", "为了", "所以")
+_LIST_PREFIX: Final = _SAID_PREFIX
 
 
 def utterance_kind(user_text: str) -> Utterance:
@@ -782,9 +800,18 @@ def utterance_kind(user_text: str) -> Utterance:
 def mirror(user_text: str) -> str:
     """A ≤ 20-character, pronoun-safe second-person reflection of ``user_text``."""
     text = _BATTERY_RE.sub("", user_text)
-    clauses = _pick_clauses(text)
-    if not clauses:
+    picked = _pick_clauses(text)
+    if not picked:
         return FALLBACK_MIRROR
+    if picked[0].listed:
+        items: list[str] = []
+        for listed in picked:
+            if not listed.listed:
+                break
+            items.append(listed.text)
+        return _trim_list(items)
+    # List items after a first clause that is not one are left out (F16b).
+    clauses = [part for c in picked if not c.listed for part in _split_news(c.text)]
     conflict = _has_conflict("".join(clauses))
     out: list[str] = []
     for i, clause in enumerate(clauses):
@@ -822,11 +849,33 @@ def _sentences(text: str) -> list[list[_Clause]]:
         if not body:
             continue
         asked = "?" in end or "？" in end
-        raw = [_drop_lead_fillers(c.strip(_EDGE_PUNCT)) for c in _CLAUSE_RE.split(body)]
+        raw = [c.strip(_EDGE_PUNCT) for c in _CLAUSE_RE.split(body)]
         raw = [c for c in raw if c]
-        tagged = [_Clause(c, _tag(c, asked=asked and j == len(raw) - 1)) for j, c in enumerate(raw)]
+        tagged: list[_Clause] = []
+        for j, c in enumerate(raw):
+            item = _list_item(c)
+            if item is not None and item[1]:
+                tagged.append(_Clause(item[0], _Tag.STATEMENT, listed=True))
+                continue
+            c = _drop_lead_fillers(c if item is None else item[0])
+            tagged.append(_Clause(c, _tag(c, asked=asked and j == len(raw) - 1)))
         sentences.append(tagged)
     return sentences
+
+
+def _list_item(clause: str) -> tuple[str, bool] | None:
+    """A list clause without its opener and copula, and whether it is a list item
+    (F16b): "首先是周报" -> ("周报", True); "首先是我太累了" -> ("我太累了", False), a
+    statement about the user like any other, never "你是太累了". None for a clause that
+    is no list clause, a reason ("首先是因为工作") or not a statement."""
+    match = _LISTED_RE.match(clause)
+    if match is None:
+        return None
+    item = match.group("item").strip(_EDGE_PUNCT)
+    if not item or item.startswith(_LIST_REASONS) or _tag(item, asked=False) is not _Tag.STATEMENT:
+        return None
+    named = any(p in _strip_non_pronouns(item) for p in ("我", "你", "您", "咱"))
+    return item, not named
 
 
 def _drop_lead_fillers(clause: str) -> str:
@@ -843,16 +892,37 @@ def _drop_lead_fillers(clause: str) -> str:
     return clause
 
 
-def _pick_clauses(text: str) -> list[str]:
-    statements = [
-        [c.text for c in sentence if c.tag is _Tag.STATEMENT] for sentence in _sentences(text)
-    ]
+def _pick_clauses(text: str) -> list[_Clause]:
+    statements = [[c for c in sentence if c.tag is _Tag.STATEMENT] for sentence in _sentences(text)]
     statements = [s for s in statements if s]
     if not statements:
         return []
-    picked = next((s for s in statements if any(_speaks_first_person(c) for c in s)), statements[0])
+    picked = next(
+        (s for s in statements if any(_speaks_first_person(c.text) for c in s)), statements[0]
+    )
     # A clause the user repeats ("最近真的很乱，最近真的很乱") is mirrored once (F5b).
-    return list(dict.fromkeys(picked))
+    seen: set[str] = set()
+    unique: list[_Clause] = []
+    for clause in picked:
+        if clause.text not in seen:
+            seen.add(clause.text)
+            unique.append(clause)
+    return unique
+
+
+def _split_news(clause: str) -> list[str]:
+    """Someone's news and the user's own words run together (F16b): "爸爸走了好几年了我还是
+    放不下" -> ["爸爸走了好几年了", "我还是放不下"]. Split at the one subject 我 right
+    after 了 when the words before it name someone else; otherwise the clause as it is."""
+    positions = _me_positions(clause)
+    if len(positions) != 1:
+        return [clause]
+    i = positions[0]
+    if i < 2 or i + 1 >= len(clause) or clause[i - 1] != "了":
+        return [clause]
+    if clause[i + 1] not in _SUBJECT_FOLLOWERS or not _has_conflict(clause[:i]):
+        return [clause]
+    return [clause[:i], clause[i:]]
 
 
 def _tag(clause: str, *, asked: bool) -> _Tag:
@@ -1144,6 +1214,21 @@ def _swap(clause: str, conflict: bool) -> str:
 
 
 # -- trimming ------------------------------------------------------------------------------
+
+
+def _trim_list(items: list[str]) -> str:
+    """A reported list, "你提到周报、PPT", cut at an item boundary to MAX_MIRROR (F16b)."""
+    text = _LIST_PREFIX + items[0]
+    if len(text) > MAX_MIRROR:
+        return _cut(text)
+    for item in dict.fromkeys(items[1:]):
+        if item == items[0]:
+            continue
+        candidate = f"{text}、{item}"
+        if len(candidate) > MAX_MIRROR:
+            break
+        text = candidate
+    return text
 
 
 def _trim(clauses: list[str]) -> str:
