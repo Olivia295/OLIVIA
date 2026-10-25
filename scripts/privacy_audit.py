@@ -12,7 +12,7 @@ input, each time in a fresh temporary ``OLIVIA_HOME``: once with the ONB-06 swit
 (only sensitive data encrypted) and once with it on (everything encrypted). Each run
 goes through ``chat --rules --inspect`` (onboarding with the health consent and a checklist
 item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
-crisis turn), ``health``, ``safety-plan``, ``journal``, ``memory``, ``privacy``, a second
+crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``, a second
 ``chat --inspect`` (care greeting, model path: the default since F7), then
 ``forget --all``.
 
@@ -59,6 +59,10 @@ output-no-typed-text [mode]
     after it is written.
 inspect-no-text [mode]
     The ``--inspect`` panel lines contain no typed text, names included.
+stats-numbers-only [mode]
+    ``olivia stats`` (F12) printed its numbers (not an "unavailable" or "empty" line), and
+    its output holds no typed text, names included, and no line that is not one of the
+    ``stats.yaml`` lines with numbers (or the late-night clock times) in its slots.
 forget-all-clean [mode]
     After ``forget --all --yes`` no file is left under ``OLIVIA_HOME`` and the keychain
     holds no item.
@@ -67,6 +71,7 @@ forget-all-clean [mode]
 from __future__ import annotations
 
 import os
+import re
 
 # Before anything imports keyring: keyring itself only knows its failing backend.
 os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.fail.Keyring"
@@ -106,6 +111,7 @@ from olivia.core.chang.care import CARE_FILENAME  # noqa: E402
 from olivia.core.chang.onboarding import load_onboarding_text  # noqa: E402
 from olivia.core.chang.profile import PROFILE_FILENAME, SENSITIVE_FIELDS  # noqa: E402
 from olivia.core.chang.safety_plan import SAFETY_PLAN_FILENAME, SUGGESTED_FILENAME  # noqa: E402
+from olivia.core.chang.stats import StatsText, load_stats_text  # noqa: E402
 from olivia.core.crypto import keychain as keychain_module  # noqa: E402
 from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
 from olivia.core.crypto.vault import KEYS_DIRNAME  # noqa: E402
@@ -222,6 +228,7 @@ def script(whole: bool) -> list[tuple[list[str], list[str]]]:
         (["health"], [f"{flags + 1}，{flags + 2}"]),  # the first two checklist items
         (["safety-plan"], plan),
         (["journal"], ["有"]),
+        (["stats"], []),
         (["memory"], []),
         (["privacy"], []),
         (["chat", "--inspect"], [SECOND_MESSAGE, "/exit", "/exit"]),
@@ -535,6 +542,45 @@ def panel_leaks(capture: Capture, typed: Iterable[str]) -> list[str]:
     return [f"{' '.join(capture.argv)}: 「{f}」" for f in text_hits(panel.encode(), wanted)]
 
 
+_NUMBER: Final = r"(?:\d{2}:\d{2}|[+-]?\d+(?:\.\d+)?)"
+
+
+def stats_patterns(text: StatsText) -> list[re.Pattern[str]]:
+    """Every line ``olivia stats`` may print: a ``lines`` template with numbers in its
+    slots (``unknown`` only appended to another line), or a ``replies`` sentence."""
+
+    def pattern(template: str) -> str:
+        return _NUMBER.join(re.escape(part) for part in re.split(r"\{\w+\}", template))
+
+    unknown = pattern(text.lines["unknown"])
+    lines = [pattern(t) for key, t in text.lines.items() if key != "unknown"]
+    replies = [re.escape(r) for r in text.replies.values()]
+    return [re.compile(f"{p}(?:{unknown})?") for p in lines] + [re.compile(r) for r in replies]
+
+
+def stats_problems(capture: Capture, typed: Iterable[str], text: StatsText) -> list[str]:
+    """What is wrong with one ``olivia stats`` run (see ``stats-numbers-only``)."""
+    # Console-length fragments (the template's own two-character words, such as 深夜,
+    # would match shorter ones), plus every typed text whole: the names too. The line
+    # check below is the stronger one: a line that is a template with numbers in its
+    # slots cannot carry typed text.
+    texts = tuple(typed)
+    wanted = needles(texts, OUTPUT_FRAGMENT_BYTES)
+    for item in texts:
+        wanted.update({form: item for form in encodings(item)})
+    problems = [f"typed text: 「{f}」" for f in text_hits(capture.console.encode(), wanted)]
+    patterns = stats_patterns(text)
+    lines = capture.console.splitlines()
+    problems += [
+        f"not a stats line: {i + 1}"
+        for i, line in enumerate(lines)
+        if not any(p.fullmatch(line) for p in patterns)
+    ]
+    if not lines or lines[0] != text.lines["heading"]:
+        problems.append("no numbers were printed")
+    return problems
+
+
 # -- the scripted run --------------------------------------------------------------------------
 
 
@@ -741,6 +787,15 @@ def run_checks(run: Run) -> list[Result]:
     panels = [p for c in run.captures for p in panel_leaks(c, ALL_TYPED)]
     shown = sum(c.console.count("┌ inspect") for c in run.captures)
     results.append(_result(f"inspect-no-text [{mode}]", panels, f"{shown} panels"))
+    stats_runs = [c for c in run.captures if c.command == "stats"]
+    words = load_stats_text()
+    numbers = [p for c in stats_runs for p in stats_problems(c, ALL_TYPED, words)]
+    if len(stats_runs) != 1:
+        numbers.append(f"{len(stats_runs)} stats runs, expected 1")
+    printed = sum(len(c.console.splitlines()) for c in stats_runs)
+    results.append(
+        _result(f"stats-numbers-only [{mode}]", numbers, f"{printed} lines, numbers only")
+    )
     forget = [f"file left: {rel}" for rel in run.left_after_forget]
     forget += [f"keychain item left: {name}" for name in run.keychain_after]
     results.append(_result(f"forget-all-clean [{mode}]", forget, "no file, no keychain item"))

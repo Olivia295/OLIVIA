@@ -41,6 +41,12 @@
 ``olivia journal``
     The weekly journal (``chang/journal.py``, B6): a read-only summary of the last seven
     days built from the ledger, then one optional "was it helpful" question.
+``olivia stats``
+    Local usage numbers (``chang/stats.py``, F12; PRD §11.1), computed from the ledger's
+    session summaries and printed only: how many sessions (all, last 7 and 30 days), the
+    share of late-night sessions, the share of replies with real-world support guidance
+    and the mean self-rating change. Numbers only: no conversation text, names, spectra
+    or exercise titles. Reads the ledger and writes nothing.
 ``olivia memory``
     What this device remembers, on screen only (``memory/forget.py``, B5): the ledger
     entries oldest first and numbered (templated summaries, notes verbatim), then the
@@ -142,6 +148,8 @@ from olivia.core.chang.onboarding import (
 from olivia.core.chang.privacy import privacy_notice
 from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
+from olivia.core.chang.stats import load_stats_text
+from olivia.core.chang.stats import run_command as run_stats
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
     DataStores,
@@ -805,6 +813,24 @@ def _journal(console: _Console, clock: Clock) -> int:
     )
 
 
+def _stats(console: _Console, clock: Clock) -> int:
+    """``olivia stats``: the local usage numbers (``chang/stats.py``, F12)."""
+    readable, profile = _load_profile(console)
+    if not readable:
+        return 1
+    replies = load_stats_text().replies
+    if profile is None:
+        console.say(replies["not_onboarded"])
+        return 1
+    if profile.is_age_gate_refusal:
+        console.say(replies["adults_only"])
+        return 1
+    store = ProfileStore()
+    ledger = Ledger(store.path.parent, store.vault)
+    now = _local_clock(clock, profile)()
+    return run_stats(console.say, ledger, now, _taxonomy().late_night_window())
+
+
 # -- memory and forget ------------------------------------------------------------------------
 
 
@@ -1073,6 +1099,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("health", help="查看或修改加密记录的健康信息")
     commands.add_parser("safety-plan", help="填写、查看或修改加密保存的个人安全计划")
     commands.add_parser("journal", help="看看这一周的小结")
+    commands.add_parser("stats", help="看看使用数字：聊天次数、深夜占比等（不含聊天内容）")
     persona = commands.add_parser("persona", help="查看或更换陪伴方式")
     persona.add_argument(
         "choice",
@@ -1147,6 +1174,8 @@ def main(
             return _safety_plan(console)
         if args.command == "journal":
             return _journal(console, now)
+        if args.command == "stats":
+            return _stats(console, now)
         if args.command == "memory":
             return _memory(console)
         if args.command == "forget":

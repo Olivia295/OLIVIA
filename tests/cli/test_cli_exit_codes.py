@@ -25,6 +25,7 @@ NEEDS_SETUP = [
     ["health"],
     ["safety-plan"],
     ["journal"],
+    ["stats"],
     ["persona"],
     ["persona", "2"],
     ["memory"],
@@ -79,7 +80,15 @@ def test_chat_with_a_refusal_record_is_exit_1(run_cli, data_home):
 
 @pytest.mark.parametrize(
     "argv",
-    [["region"], ["persona"], ["memory"], ["privacy"], ["resources"], ["journal"]],
+    [
+        ["region"],
+        ["persona"],
+        ["memory"],
+        ["privacy"],
+        ["resources"],
+        ["journal"],
+        ["stats"],
+    ],
     ids=" ".join,
 )
 def test_showing_things_after_setup_is_exit_0(run_cli, data_home, argv):
