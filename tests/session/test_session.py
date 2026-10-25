@@ -317,6 +317,22 @@ def test_bipolar_user_gets_the_circadian_or_stimulus_card(rules_only):
     assert shown == {"CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION"}
 
 
+def test_circadian_card_is_framed_as_tips():
+    # F16b: the tips card gets the persona's tips framing and no exercise posture line
+    # (NOW is 23:30 local time, outside working hours, so an exercise card would get it).
+    home_line = "坐着、靠着都可以"
+    for seed in range(12):
+        result = _open(seed, clinical_history=("SIT-02-06",)).turn("给我一个方法")
+        assert result.action_id == "CIRCADIAN_RHYTHM_STABILIZATION"
+        framing = result.reply.split("「让作息稳一稳」\n", 1)[0]
+        assert "小贴士" in framing or "小建议" in framing, framing
+        for word in ("练习", "步骤", "做法", "分钟"):
+            assert word not in framing, framing
+        assert home_line not in result.reply
+    exercise = _open(clinical_history=("SIT-06-01",)).turn("给我一个方法")
+    assert exercise.reply_kind is ReplyKind.CARD and home_line in exercise.reply
+
+
 def test_circadian_card_takes_feedback_like_any_card():
     session = _open(clinical_history=("SIT-02-06",))
     card = session.turn("给我一个方法")

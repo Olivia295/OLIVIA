@@ -362,6 +362,7 @@ class LanguageEngine:
         *,
         card: str = "",
         light: bool = False,
+        tips: bool = False,
         returning_after_crisis: bool = False,
         short: bool = False,
     ) -> str:
@@ -371,10 +372,13 @@ class LanguageEngine:
         between ``card_intro`` and ``after_card``; it is required there and not counted in
         the word window. ``light`` swaps the S_empower ``bridge`` for ``light_bridge``
         ("today we start with something light"), used when the solver cut the pool to the
-        stabilization whitelist for low battery (COLBO-07). ``returning_after_crisis`` picks
-        the S_ready greeting variant used for the first session after a crisis. Raises
-        ``ValueError`` for S_crisis (use :meth:`render_crisis`), for ``light`` outside
-        S_empower, or when a needed slot is empty.
+        stabilization whitelist for low battery (COLBO-07). ``tips`` (the card is a tips
+        card, PSYCHOEDUCATION; F16b) swaps the S_empower ``bridge`` and ``card_intro`` for
+        the persona's ``tips`` framing, which never calls it a practice or steps; it wins
+        over ``light``. ``returning_after_crisis`` picks the S_ready greeting variant used
+        for the first session after a crisis. Raises ``ValueError`` for S_crisis (use
+        :meth:`render_crisis`), for ``light`` or ``tips`` outside S_empower, or when a
+        needed slot is empty.
 
         ``short`` (the user's message was very short, :func:`is_short_input`) makes
         S_explore and S_clarify two paragraphs, the first and last part, in the persona's
@@ -388,10 +392,15 @@ class LanguageEngine:
             raise ValueError("S_empower needs the rendered card body")
         if light and stage is not HelpStage.S_EMPOWER:
             raise ValueError("only S_empower has a light bridge")
+        if tips and stage is not HelpStage.S_EMPOWER:
+            raise ValueError("only S_empower frames a tips card")
         values = slots.values()
         short = short and stage in _SHORT_STAGES and self._data.templates.short_window is not None
         pools = self._pools(stage, returning_after_crisis, named=bool(slots.emotion))
-        if light:
+        if tips:
+            pools[0] = self._data.templates.tips_bridge
+            pools[1] = self._data.templates.tips_intro
+        elif light:
             pools[0] = self._data.templates.light_bridge
         usable = [[v for v in pool if all(values[s] for s in slots_of(v))] for pool in pools]
         if short and len(usable) == 3:
@@ -508,7 +517,10 @@ class LanguageEngine:
 
         The title is the card's everyday name (an exercise, F3). The closing line about
         doing it unnoticed at a desk appears only ``at_work`` (:func:`at_work`); outside
-        working hours the card ends with ``card.home_line`` instead.
+        working hours the card ends with ``card.home_line`` instead. Either is a paragraph
+        of its own after the card's closing sentence (F16b). A psychoeducation card (tips)
+        never gets the home line, which is about settling in for an exercise ("坐着、靠着
+        都可以"); at work it keeps its own stealth note.
         """
         card = self.card_for(skeleton.method_id)
         if len(card.steps) != len(skeleton.core_action_steps):
@@ -529,12 +541,12 @@ class LanguageEngine:
             blocks.extend(f"· {step}" for step in card.steps)
         else:
             blocks.extend(f"{i}. {step}" for i, step in enumerate(card.steps, start=1))
-        tail = card.closing
+        blocks.append(card.closing)
         if not at_work:
-            tail += f"\n{r.card_home_line}"
+            if not tips:
+                blocks.append(r.card_home_line)
         elif card.stealth_note is not None:
-            tail += f"\n{r.card_stealth_label}{card.stealth_note}"
-        blocks.append(tail)
+            blocks.append(f"{r.card_stealth_label}{card.stealth_note}")
         text = apply_willow("\n\n".join(blocks), ContentKind.CARD, self._data.willow)
         return self._checked(text, ContentKind.CARD, HelpStage.S_EMPOWER)
 

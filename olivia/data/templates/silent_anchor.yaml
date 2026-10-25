@@ -107,6 +107,18 @@ stages:
       - "力气不多，就先从轻一点的开始。"
       - "不费力的，先从轻一点的开始。"
       - "听见了。我们先从轻一点的开始。"
+    # F16b（草稿：待 G-0）：小贴士卡（action_type 为 PSYCHOEDUCATION，计划 D-3 的作息卡）的引导语，
+    # 整体替换 bridge 与 card_intro（电量低时也不用 light_bridge）。它是几条生活小贴士，不是跟练：
+    # 不说“练习”“步骤”“做法”“分钟”（加载时校验），card_intro 每条都带「{card_title}」。
+    tips:
+      bridge:
+        - "几条小贴士，给你。"
+        - "{user_name}，几条小贴士在这里。"
+        - "好，放几条小贴士在这里。"
+      card_intro:
+        - "「{card_title}」，挑一条就好。"
+        - "「{card_title}」，看看就好。"
+        - "「{card_title}」，几条小贴士。"
     after_card:
       - "做完输入 /done，先收着 /not-now，不合适 /unhelpful。"
       - "完成就 /done，先放锦囊就 /not-now，不合适就 /unhelpful。"

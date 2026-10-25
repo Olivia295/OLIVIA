@@ -339,6 +339,7 @@ from olivia.core.methods.solver import (
 )
 from olivia.core.models import (
     UNKNOWN_COUNTRY,
+    ActionType,
     CrisisLevel,
     HelpStage,
     PerceptionContext,
@@ -1407,6 +1408,9 @@ class Session:
         if card_text is not None:
             title = self._engine.card_for(primary.method_id).title
             body = card_text
+            # A tips card (PSYCHOEDUCATION, plan D-3) is framed as tips (F16b). It is a
+            # right-wing action only, so it never comes as an S_explore stabilization card.
+            tips = primary.action_type is ActionType.PSYCHOEDUCATION
             if stage is HelpStage.S_EMPOWER:
                 rendered = self._with_taboo_filter(
                     lambda: self._compose(
@@ -1417,6 +1421,7 @@ class Session:
                         card_title=title,
                         card=body,
                         light=allowed.battery_gated,
+                        tips=tips,
                     ),
                     stage,
                 )
@@ -1617,12 +1622,14 @@ class Session:
         card_title: str = "",
         card: str = "",
         light: bool = False,
+        tips: bool = False,
         short: bool | None = None,
     ) -> tuple[str, str] | None:
         """One composed reply and the mirror it used (taboo hits inside it are allowed).
 
         ``short`` asks for the two-paragraph reply to a very short message (F3); None
-        decides from ``mirror_text``.
+        decides from ``mirror_text``. ``tips``: the card is a tips card (F16b), framed as
+        tips, never as a practice.
         """
         # The engine names the feeling only when there is one (F3): never the rule stub's
         # fallback emotion, and the user's own word first ("好累" -> 疲惫).
@@ -1642,7 +1649,7 @@ class Session:
         self._engine.last_gate = None
         if short is None:
             short = bool(mirror_text) and is_short_input(mirror_text)
-        text = self._engine.compose(stage, slots, card=card, light=light, short=short)
+        text = self._engine.compose(stage, slots, card=card, light=light, tips=tips, short=short)
         if not self._note_gate():
             return None
         return text, slots.mirror
