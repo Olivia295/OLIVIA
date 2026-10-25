@@ -256,3 +256,33 @@ def test_meaninglessness_on_m0_gets_no_grief_line():
     result = session.turn("[80%] 感觉一切都没有意义，给我一个方法")
     assert result.action_id == M0_ACTION_ID
     assert not any(line in result.reply for line in _grief_lines(session))
+
+
+# -- F13 (draft G-0): dossier advice that meets a taxonomy mask --------------------------------
+# Conservative drafts: a hard mask the taxonomy states wins over a dossier's recommendation.
+
+
+def test_toxic_shame_dossier_keeps_self_compassion_unless_the_spiral_is_seen():
+    # SIT-04-05 recommends self-compassion (17, 18); the taxonomy masks both under
+    # TOXIC_SHAME_SPIRAL. The situation alone sets no mask; the spiral does.
+    compassion = {"17", "18"}
+    plain = _open().turn("[80%] 对自己太苛刻了，给我一个方法")
+    assert plain.inspect["situations"] == ["SIT-04-05"]
+    assert "TOXIC_SHAME_SPIRAL" not in plain.inspect["contraindications"]
+    assert compassion <= set(plain.inspect["candidates"])
+    for seed in SEEDS:
+        spiral = _open(seed).turn("[80%] 一直骂自己，我就是个废物，给我一个方法")
+        assert "SIT-04-05" in spiral.inspect["situations"]
+        assert "TOXIC_SHAME_SPIRAL" in spiral.inspect["contraindications"]
+        assert not _offered(spiral) & compassion
+
+
+@pytest.mark.parametrize(
+    "text", ["心慌得要命，喘不上气，直接给我一个方法", REQUEST, "又想划自己了"]
+)
+def test_borderline_dossier_never_brings_back_the_cold_water(text):
+    # SIT-09-01's dossier names cold-water TIPP; PRD §9.3 item 6 and the taxonomy ban it.
+    for seed in SEEDS:
+        result = _open(seed, clinical_history=("SIT-09-01",)).turn(text)
+        assert "12:tipp_cold_water" not in _offered(result)
+        assert "冷水" not in result.reply

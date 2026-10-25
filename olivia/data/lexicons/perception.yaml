@@ -2119,6 +2119,12 @@ introspection:
       - 想要有人可以说说话
   # The yearning a schema points to (Satir iceberg: the need under the belief), used when
   # a turn names a schema but no yearning phrase; every schema id, one yearning each.
+  # 草稿：待 G-0（F13 决定：保持不变）。对照档案头部的 Schema 与第二节“核心心理营养渴求”：多数单一图式
+  # 档案与本表相符（如 01_02、01_04、11_04 -> SAFETY，01_06、06_04 -> CONNECTION，04_03 -> ACCEPTANCE，
+  # 02_05、04_04、10_01 -> AUTONOMY）；有几份写的是复合或别类需要（02_04 的 UNRELENTING_STANDARDS 写平稳节律，
+  # 02_03、09_02 的 EMOTIONAL_INHIBITION 写重拾鲜活感受，11_03 的 VULNERABILITY_TO_HARM 写与有限性和解），
+  # 多图式档案的渴望是整体描述、不能拆给某一个图式。档案不足以唯一确定改法，所以不改，分歧留给 G-0。
+  # 这张表只影响隐喻与“需要”的措辞，不影响任何掩码、危机或方法选择。
   schema_yearnings:
     DEFECTIVENESS: ACCEPTANCE
     UNRELENTING_STANDARDS: ACCEPTANCE

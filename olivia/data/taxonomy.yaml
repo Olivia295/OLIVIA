@@ -701,6 +701,8 @@ contraindication_enums:
     name: "急性交感神经过载与惊恐风暴"
     detection_source: "PERCEPTION_AROUSAL (Arousal >= 0.85)"
     description: "生理过度唤醒或过度通气，前额叶认知加工功能死锁，阻断复杂认知辨析，仅放行呼吸/躯体稳定化。"
+  # 草稿：待 G-0（F13）：description 中“改用自我关怀”不解除方法 17、18 自身登记的本项禁忌。SIT-04-05 档案推荐的
+  # 自我关怀只在未识别到羞耻螺旋时可用；识别到时 17、18 照常被掩去，改为其他方法或纯倾听（硬掩码优先于档案建议）。
   - id: "TOXIC_SHAME_SPIRAL"
     name: "毒性羞耻螺旋与严苛自我攻击"
     detection_source: "PERCEPTION_SCHEMA (DEFECTIVENESS + 强烈自责)"
@@ -1711,6 +1713,7 @@ clinical_red_flags:
       name_zh: "边缘型情绪失调伴非自杀性自伤倾向 (BPD with NSSI)"
       file: "09_01_BPD_Emotion_Dysregulation.md"
       policy: "伴随高频冲动性自伤自毁风险；提供无评判安全在场与 DBT TIPP 安全改良变体（仅节奏呼吸与渐进肌肉紧绷释放，显式禁用冷水刺激），绝不探查创伤细节，引导建立三方现实监护网。"
+      # 草稿：待 G-0（F13）：09_01 档案第五节推荐的冷水敷脸 TIPP 不采纳，以本条 policy 与 PRD §9.3 第 6 条的显式禁用为准。
       allowed_actions:
         - "EMOTIONAL_HOLDING_PRESENCE"
         - "DBT_TIPP_MODIFIED_BREATHING"
