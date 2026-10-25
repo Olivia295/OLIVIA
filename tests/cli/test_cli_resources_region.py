@@ -122,6 +122,7 @@ def test_resources_snapshot_groups_by_kind_and_marks_stale(run_cli, data_home, f
         "· 测试目录：https://example.org/\n"
         "\n"
         "资料整理于 2026-01-15（第 1 版）\n"
+        "资料来源：随程序附带\n"
     )
     # "today" comes from the injected clock in the profile's timezone, never the real date.
     assert fixture_store == [date(2026, 3, 1)]
@@ -140,6 +141,7 @@ def test_resources_without_a_profile_shows_the_fallback_and_a_hint(run_cli, fixt
         "· 全球目录：https://example.org/zz\n"
         "\n"
         "资料整理于 2026-01-15（第 1 版）\n"
+        "资料来源：随程序附带\n"
         "\n"
         f"{cli.RESOURCES_SET_REGION}\n"
     )

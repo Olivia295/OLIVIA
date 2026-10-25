@@ -6,6 +6,10 @@ The data ships as ``olivia/data/resources/hotlines.yaml`` plus a detached signat
 built-in data only when its signature verifies and it was compiled after the built-in
 data; otherwise the built-in data is used and ``reason`` says why, for ``--inspect``.
 A built-in file that fails verification raises: unverified numbers are never shown.
+
+The product looks for the override pair in ``override_dir_location()``, the ``resources``
+sub-directory of the data directory (F14): ``olivia chat`` passes it to the session and
+``olivia resources`` says which data it shows.
 ``cryptography`` is imported when a signature is first verified, not with this module.
 """
 
@@ -22,10 +26,13 @@ from typing import Literal
 import yaml
 
 from olivia.core.resources import keys
+from olivia.core.storage import data_dir_location
 from olivia.core.yaml_load import safe_load
 
 DATA_NAME = "hotlines.yaml"
 SIG_NAME = DATA_NAME + ".sig"
+OVERRIDE_DIR_NAME = "resources"
+"""The data directory's sub-directory holding a signed update pair (F14)."""
 
 REASON_NO_OVERRIDE = "no override"
 REASON_SIG_MISSING = "override signature missing"
@@ -60,12 +67,22 @@ def verify_signature(data: bytes, signature_b64: bytes, public_key_b64: str) -> 
     return True
 
 
+def override_dir_location() -> Path:
+    """Where an update pair is looked for: ``<data dir>/resources/`` (F14).
+
+    The data directory is ``OLIVIA_HOME`` or the platform's user data directory
+    (``storage.data_dir_location``). Nothing is created; a missing directory simply means
+    there is no update.
+    """
+    return data_dir_location() / OVERRIDE_DIR_NAME
+
+
 def _read_builtin() -> tuple[bytes, bytes]:
     folder = resources.files("olivia").joinpath("data/resources")
     return folder.joinpath(DATA_NAME).read_bytes(), folder.joinpath(SIG_NAME).read_bytes()
 
 
-def _compiled_on(data: bytes) -> date:
+def compiled_on_of(data: bytes) -> date:
     """The ``compiled_on`` date of a hotline file; raises ValueError if absent or malformed."""
     try:
         doc = safe_load(data)
@@ -108,11 +125,11 @@ def load_hotlines_bytes(override_dir: Path | None, *, today: date) -> LoadedBund
         return fallback(REASON_SIG_INVALID)
 
     try:
-        override_date = _compiled_on(data)
+        override_date = compiled_on_of(data)
     except ValueError:
         return fallback(REASON_UNREADABLE)
     if override_date > today:
         return fallback(REASON_FUTURE)
-    if override_date <= _compiled_on(builtin):
+    if override_date <= compiled_on_of(builtin):
         return fallback(REASON_NOT_NEWER)
     return LoadedBundle(data=data, source="override", reason=None)

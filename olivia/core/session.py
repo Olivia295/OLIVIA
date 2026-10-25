@@ -301,6 +301,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
@@ -483,10 +484,11 @@ class _Shared:
 
 
 @lru_cache(maxsize=4)
-def _shared(tax: Taxonomy, today_iso: str) -> _Shared:
+def _shared(tax: Taxonomy, today_iso: str, hotline_updates: Path | None = None) -> _Shared:
     lexicons = load_safety_lexicons(tax)
     introspection = load_introspection_lexicon(tax)
-    bundle = load_hotlines_bytes(None, today=datetime.fromisoformat(today_iso).date())
+    today = datetime.fromisoformat(today_iso).date()
+    bundle = load_hotlines_bytes(hotline_updates, today=today)  # GEO-08, F14
     return _Shared(
         lexicons=lexicons,
         screen=SafetyScreen(tax, lexicons),
@@ -653,6 +655,7 @@ class Session:
         carried: CarriedState | None = None,
         safety_plan: SafetyPlan | None = None,
         suggest_safety_plan: bool = False,
+        hotline_updates: Path | None = None,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
 
@@ -672,6 +675,11 @@ class Session:
         ``suggest_safety_plan`` lets the first S_closing reply mention ``olivia safety-plan``
         once (the CLI passes it when no plan exists and none was suggested before).
 
+        ``hotline_updates`` is the folder that may hold a signed hotline update
+        (``resources.bundle.override_dir_location()``, GEO-08 / F14); it is used only when
+        its signature verifies and it is newer than the built-in data. ``None`` (the
+        default) uses the built-in data and reads no user directory.
+
         Raises :class:`AgeGateRefusedError` for a refusal record or any profile that does
         not confirm 18+, and lets every data-loading error through.
         """
@@ -680,7 +688,7 @@ class Session:
         moment = now()
         if moment.tzinfo is None or moment.utcoffset() is None:
             raise ValueError("now() must return a timezone-aware datetime")
-        shared = _shared(tax, moment.date().isoformat())
+        shared = _shared(tax, moment.date().isoformat(), hotline_updates)
         risk = choose_risk_model(model, student=student)
         screen = (
             shared.screen

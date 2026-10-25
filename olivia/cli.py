@@ -178,7 +178,18 @@ from olivia.core.models import (
     PersonaSpectrum,
     UserRegion,
 )
-from olivia.core.resources.bundle import load_hotlines_bytes
+from olivia.core.resources.bundle import (
+    REASON_FUTURE,
+    REASON_NO_OVERRIDE,
+    REASON_NOT_NEWER,
+    REASON_SIG_INVALID,
+    REASON_SIG_MISSING,
+    REASON_UNREADABLE,
+    LoadedBundle,
+    compiled_on_of,
+    load_hotlines_bytes,
+    override_dir_location,
+)
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import LineKind, ResourceStore, parse_store
@@ -252,6 +263,19 @@ RESOURCES_SET_REGION: Final = "告诉我你所在的国家或地区后，就能�
 RESOURCES_EMERGENCY: Final = "紧急电话："
 RESOURCES_HOURS: Final = "服务时间："
 RESOURCES_FOOTER: Final = "资料整理于 {compiled_on}（第 {version} 版）"
+# Where the shown data comes from (GEO-08, F14): the built-in data or a signed update in
+# the data directory's resources folder.
+RESOURCES_SOURCE_BUILTIN: Final = "资料来源：随程序附带"
+RESOURCES_SOURCE_UPDATE: Final = "资料来源：更新包（整理于 {compiled_on}，签名已验证）"
+RESOURCES_UPDATE_UNUSED: Final = "资料来源：随程序附带（更新包未启用：{reason}）"
+RESOURCES_UPDATE_UNREADABLE: Final = "无法读取"
+RESOURCES_UPDATE_REASONS: Final = {
+    REASON_SIG_MISSING: "缺少签名文件",
+    REASON_SIG_INVALID: "签名验证没有通过",
+    REASON_UNREADABLE: RESOURCES_UPDATE_UNREADABLE,
+    REASON_FUTURE: "整理日期晚于今天",
+    REASON_NOT_NEWER: "不比随程序附带的资料新",
+}
 OTHER_REGION_LABEL: Final = "其他地区"
 PERSONA_SHOW: Final = "现在的陪伴方式：{label}"
 PERSONA_CHOICES_HEADING: Final = "可以选择的陪伴方式："
@@ -296,6 +320,10 @@ USER_TEXTS: Final = (
     RESOURCES_EMERGENCY,
     RESOURCES_HOURS,
     RESOURCES_FOOTER,
+    RESOURCES_SOURCE_BUILTIN,
+    RESOURCES_SOURCE_UPDATE,
+    RESOURCES_UPDATE_UNUSED,
+    *RESOURCES_UPDATE_REASONS.values(),
     OTHER_REGION_LABEL,
     PERSONA_SHOW,
     PERSONA_CHOICES_HEADING,
@@ -509,6 +537,7 @@ def _chat(
         carried=state_store.load(),
         safety_plan=plan,
         suggest_safety_plan=plan is None and plan_store.should_suggest(),
+        hotline_updates=override_dir_location(),
     )
     state_recorder = StateRecorder(state_store, session.carried_state())
     titles = _card_titles(tax)
@@ -597,10 +626,26 @@ def _card_titles(tax: Taxonomy) -> dict[str, str]:
 # -- resources and region ---------------------------------------------------------------------
 
 
+def _load_bundle(today: date) -> LoadedBundle:
+    """The verified hotline data: a newer signed update in the data directory's
+    ``resources`` folder, else the built-in data (GEO-08, F14)."""
+    return load_hotlines_bytes(override_dir_location(), today=today)
+
+
 def _load_store(today: date) -> ResourceStore:
     """The same verified hotline data a session uses."""
-    bundle = load_hotlines_bytes(None, today=today)
-    return parse_store(safe_load(bundle.data))
+    return parse_store(safe_load(_load_bundle(today).data))
+
+
+def _hotline_source(bundle: LoadedBundle) -> str:
+    """Which data ``olivia resources`` shows: the update and its date, or the built-in data
+    (with why an update that is there was not used)."""
+    if bundle.source == "override":
+        return RESOURCES_SOURCE_UPDATE.format(compiled_on=compiled_on_of(bundle.data).isoformat())
+    if bundle.reason is None or bundle.reason == REASON_NO_OVERRIDE:
+        return RESOURCES_SOURCE_BUILTIN
+    reason = RESOURCES_UPDATE_REASONS.get(bundle.reason, RESOURCES_UPDATE_UNREADABLE)
+    return RESOURCES_UPDATE_UNUSED.format(reason=reason)
 
 
 def _region_label(code: str) -> str:
@@ -678,6 +723,7 @@ def _resources(console: _Console, clock: Clock) -> int:
         store, region, CrisisLevel.L3, mode=CardMode.BROWSING, today=today, is_minor=minor
     )
     console.say(render_browsing(card, _taxonomy()))
+    console.say(_hotline_source(_load_bundle(today)))
     if region is None:
         console.say()
         console.say(RESOURCES_SET_REGION)

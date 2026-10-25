@@ -7,7 +7,10 @@
   numbers of the current ResourceCard), so a stray or made-up number never leaks;
 * names a Grade A method outside ``S_empower`` and card rendering (COLBO-02);
 * still says 你应该 or 必须 in content the didactic filter applies to (WILLOW-01; crisis,
-  referral and Grade C wording keep their safety phrasing, per ``willow.yaml``).
+  referral and Grade C wording keep their safety phrasing, per ``willow.yaml``);
+* opens a sentence or clause there with a bare 首先, 其次 or 总而言之 (F14), the
+  report-style list the filter only rewrites in its comma forms. A user's own words never
+  trip this: the mirror drops these openers from the front of every clause it reflects.
 
 On a block it never raises: it returns a slot-free ``S_haven`` line and the reasons.
 
@@ -33,6 +36,12 @@ from olivia.core.taxonomy import Taxonomy
 
 MIN_PHONE_DIGITS: Final = 3
 DIDACTIC_BANNED: Final = ("你应该", "必须")
+ORDINAL_OPENERS: Final = ("总而言之", "首先", "其次")
+# An ordinal opening a sentence or a clause, as in a report (F14, WILLOW-01): "首先深呼吸".
+# The filter already rewrote the comma forms ("首先，"); "他首先发现" is not an opener.
+_ORDINAL_RE: Final = re.compile(
+    r"(?:^|(?<=[。！？!?；;：:，,、\n「“\s]))(" + "|".join(ORDINAL_OPENERS) + ")"
+)
 _DIGIT_RUN_RE: Final = re.compile(r"\d(?:[ \-]?\d)*")
 # Clock times such as 9:00 or 21:30 (NFKC folds the full-width colon to ":").
 _CLOCK_RE: Final = re.compile(r"(?<!\d)\d{1,2}:\d{2}(?!\d)")
@@ -131,4 +140,5 @@ class OutputGate:
             found += [f"grade_a_title:{t}" for t in self._grade_a_titles if t in text]
         if not willow.exempt("didactic_rewrites", kind):
             found += [f"didactic:{w}" for w in DIDACTIC_BANNED if w in text]
+            found += [f"ordinal:{m.group(1)}" for m in _ORDINAL_RE.finditer(text)]
         return tuple(dict.fromkeys(found))
