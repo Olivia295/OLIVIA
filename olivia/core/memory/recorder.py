@@ -14,7 +14,10 @@ explicitly asks to have remembered:
   same caution as for everyday phrases, roadmap R-7b), or the direct question about
   intent (D3); the reply then stays exactly as the session wrote it.
 * **Summaries.** Per session: the stage path, the dominant spectra, each exercise card
-  shown with its feedback, the crisis flag and level, and first/last turn times. The
+  shown with its feedback, the crisis flag and level, first/last turn times and (step
+  F12) the turn count, how many replies carried real-world support guidance
+  (``inspect["real_support"]``) and whether any turn fell in the late-night window
+  (``inspect["late_night"]``); a turn without those keys counts as neither. The
   summary is written when the session closes, either through the state machine
   (S_closing -> S_ready; the conversation may go on, and what follows is a new summary)
   or by :meth:`SessionRecorder.close` (``/exit``, end of input, Ctrl-C). Writing is
@@ -73,6 +76,9 @@ class _Segment:
     crisis_level: CrisisLevel | None = None
     rating_before: int | None = None
     rating_after: int | None = None
+    turns: int = 0
+    support_turns: int = 0
+    late_night: bool = False
 
     def add_stage(self, stage: HelpStage) -> None:
         if (not self.stage_path or self.stage_path[-1] is not stage) and len(
@@ -94,6 +100,9 @@ class _Segment:
             crisis_level=self.crisis_level,
             self_rating_before=self.rating_before,
             self_rating_after=self.rating_after,
+            turns=self.turns,
+            real_support_turns=self.support_turns,
+            late_night=self.late_night,
         )
 
 
@@ -204,6 +213,11 @@ class SessionRecorder:
             if previous is not None:
                 segment.add_stage(previous)
         segment.ended_at = now
+        segment.turns += 1
+        if inspect.get("real_support") is True:
+            segment.support_turns += 1
+        if inspect.get("late_night") is True:
+            segment.late_night = True
         if not self._closed_by_state_machine(result):
             segment.add_stage(result.stage)
         spectrum = inspect.get("spectrum")

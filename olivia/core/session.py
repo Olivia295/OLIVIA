@@ -202,7 +202,10 @@ break reminder, the once-per-session late-night line and real-world support guid
 only on an ordinary composed reply on a calm turn (no crisis, no L1-L3 screen), never on a
 card, information, referral, safety-question or follow-up reply. ``inspect["reminder"]`` is
 ``none``, ``break`` or ``late_night``; ``inspect["real_support_share"]`` is the share of
-this session's replies that carried real-support guidance (PRD §11.1).
+this session's replies that carried real-support guidance (PRD §11.1),
+``inspect["real_support"]`` whether this reply carried it, and ``inspect["late_night"]``
+whether this turn fell in the B7 late-night window (a degraded turn reports it too). The
+ledger's session summary counts the last two (step F12, ``olivia stats``).
 
 ``inspect["feedback_source"]`` says where recorded feedback came from: ``command``,
 ``phrase`` (a feedback or aversion phrase) or ``confirmed`` (a yes to the question).
@@ -1099,6 +1102,8 @@ class Session:
             "safety_check": "asked" if ask else (answer.value if answer is not None else None),
             "reminder": prompted.reminder.value,
             "real_support_share": round(self._wellbeing.real_support_share, 4),
+            "real_support": prompted.support,
+            "late_night": self._wellbeing.is_late_night(now),
             "care_greeting": self._care_greeting,
             "distortions": list(perception.detected_distortions),
             "schemas": list(perception.detected_schemas),
@@ -2032,6 +2037,7 @@ class Session:
             "previous_stage": state.current_stage.value,
             "reason": DEGRADED,
             "degraded": error,
+            "late_night": self._wellbeing.is_late_night(now),
             "hotline_source": self._shared.hotline_source,
             "hotline_reason": self._shared.hotline_reason,
             "risk_model": self._risk.label,

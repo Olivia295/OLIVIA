@@ -5,8 +5,11 @@ The ledger holds three kinds of entry, and nothing else the user says:
 * a **session summary**, built from ids only: start and end time, the stage path, the
   dominant distress-spectrum ids, the exercise cards shown with the feedback each got,
   whether the session entered a crisis (flag and level only), the 0-10 self-ratings
-  (filled in by B6) and a significance flag (ruling 29: a turn at L2 or above, or the
-  user marked it);
+  (filled in by B6), a significance flag (ruling 29: a turn at L2 or above, or the
+  user marked it) and, from step F12, three counts for ``olivia stats``: the number of
+  turns, how many replies carried real-world support guidance (B7) and whether a turn
+  fell in the late-night window (``metrics``; entries written before F12 have no
+  ``metrics`` and read as unknown, never migrated);
 * a **note**: text the user explicitly asked to have remembered (``notes.py``), kept
   verbatim;
 * a **journal** record (step B6): when the weekly journal was offered, whether it was
@@ -106,6 +109,9 @@ _SUMMARY_KEYS: Final = frozenset(
         "marked_by_user",
     }
 )
+_SUMMARY_OPTIONAL: Final = frozenset({"metrics"})
+"""Summary keys added after the first format (F12); an entry without them is still valid."""
+_METRICS_KEYS: Final = frozenset({"turns", "real_support_turns", "late_night"})
 _NOTE_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "created_at", "significant"})
 _JOURNAL_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "offered_at", "shown", "helpful"})
 
@@ -151,6 +157,12 @@ class SessionSummary:
     self_rating_before: int | None = None
     self_rating_after: int | None = None
     marked_by_user: bool = False
+    turns: int | None = None
+    """Turns in the session (F12); None: unknown (an entry written before F12)."""
+    real_support_turns: int | None = None
+    """Replies that carried real-world support guidance (B7, PRD §11.1); None: unknown."""
+    late_night: bool | None = None
+    """A turn fell in the B7 late-night window (00:00-05:00); None: unknown."""
 
     def __post_init__(self) -> None:
         _aware(self.started_at, "started_at")
@@ -164,6 +176,17 @@ class SessionSummary:
         for rating in (self.self_rating_before, self.self_rating_after):
             if rating is not None and rating not in SELF_RATING_RANGE:
                 raise ValueError("self-ratings are 0-10")
+        known = (self.turns, self.real_support_turns, self.late_night)
+        if any(v is None for v in known) and any(v is not None for v in known):
+            raise ValueError("the session counts are all known or all unknown")
+        turns, support = self.turns, self.real_support_turns
+        if turns is not None and support is not None and not 0 <= support <= turns:
+            raise ValueError("support turns are between 0 and the number of turns")
+
+    @property
+    def has_metrics(self) -> bool:
+        """The turn, support and late-night counts are known (written from F12 on)."""
+        return self.turns is not None
 
     @property
     def entered_crisis(self) -> bool:
@@ -555,6 +578,12 @@ class Ledger:
                     after=_rating(s.self_rating_after, st.none),
                 )
             )
+        if s.turns is not None:
+            lines.append(st.turns.format(turns=s.turns))
+            if s.real_support_turns:
+                lines.append(st.support.format(count=s.real_support_turns))
+            if s.late_night:
+                lines.append(st.late_night)
         if s.entered_crisis:
             lines.append(st.crisis)
         if s.significant:
@@ -588,7 +617,7 @@ def _unavailable(exc: KeychainUnavailableError) -> LedgerUnavailableError:
 
 def _summary_front(entry: SummaryEntry) -> dict[str, Any]:
     s = entry.summary
-    return {
+    front: dict[str, Any] = {
         "olivia_ledger": FORMAT_VERSION,
         "id": entry.entry_id,
         "kind": "summary",
@@ -608,6 +637,13 @@ def _summary_front(entry: SummaryEntry) -> dict[str, Any]:
         "significant": s.significant,
         "marked_by_user": s.marked_by_user,
     }
+    if s.has_metrics:
+        front["metrics"] = {
+            "turns": s.turns,
+            "real_support_turns": s.real_support_turns,
+            "late_night": s.late_night,
+        }
+    return front
 
 
 # -- parsing ---------------------------------------------------------------------------------
@@ -643,7 +679,7 @@ def _parse(document: str, entry_id: str) -> LedgerEntry:
             raise ValueError("bad journal record")
         return JournalEntry(entry_id, _time(front["offered_at"]), shown, helpful)
     if kind == "summary":
-        if set(front) != _SUMMARY_KEYS:
+        if not _SUMMARY_KEYS <= set(front) <= _SUMMARY_KEYS | _SUMMARY_OPTIONAL:
             raise ValueError("bad summary front-matter")
         summary = _summary_from(front)
         if front["significant"] is not summary.significant:
@@ -699,6 +735,7 @@ def _summary_from(front: Mapping[str, Any]) -> SessionSummary:
     marked = front["marked_by_user"]
     if not isinstance(marked, bool):
         raise ValueError("marked_by_user must be a boolean")
+    turns, support, late = _metrics_from(front.get("metrics"))
     return SessionSummary(
         started_at=_time(front["started_at"]),
         ended_at=_time(front["ended_at"]),
@@ -709,4 +746,21 @@ def _summary_from(front: Mapping[str, Any]) -> SessionSummary:
         self_rating_before=_optional_int(rating["before"]),
         self_rating_after=_optional_int(rating["after"]),
         marked_by_user=marked,
+        turns=turns,
+        real_support_turns=support,
+        late_night=late,
     )
+
+
+def _metrics_from(value: object) -> tuple[int | None, int | None, bool | None]:
+    """The F12 counts; an entry from before F12 has none (unknown)."""
+    if value is None:
+        return None, None, None
+    if not isinstance(value, dict) or set(value) != _METRICS_KEYS:
+        raise ValueError("bad metrics record")
+    turns, support, late = value["turns"], value["real_support_turns"], value["late_night"]
+    if _optional_int(turns) is None or _optional_int(support) is None:
+        raise ValueError("turn counts must be integers")
+    if not isinstance(late, bool):
+        raise ValueError("late_night must be a boolean")
+    return turns, support, late
