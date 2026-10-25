@@ -45,7 +45,8 @@
     crisis reply in ``chat`` shows its coping, distraction and people sections.
 ``olivia journal``
     The weekly journal (``chang/journal.py``, B6): a read-only summary of the last seven
-    days built from the ledger, then one optional "was it helpful" question.
+    days built from the ledger, then one optional "was it helpful" question. Spectra and
+    exercises that name a taboo topic are left out (ruling 21, F11).
 ``olivia stats``
     Local usage numbers (``chang/stats.py``, F12; PRD §11.1), computed from the ledger's
     session summaries and printed only: how many sessions (all, last 7 and 30 days), the
@@ -506,7 +507,13 @@ def _chat(
     care_recorder = CareRecorder(care, clock)
     # Self-ratings and the journal offer (B6); a care-greeting opening stays alone.
     checks = ChatChecks(
-        tax, ledger, recorder, lambda: console.ask(ANSWER_PROMPT), console.say, method_titles=titles
+        tax,
+        ledger,
+        recorder,
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        method_titles=titles,
+        taboo_topics=profile.taboo_topics,
     )
     try:
         carry = checks.opening(local()) if marker is None else None
@@ -817,7 +824,12 @@ def _journal(console: _Console, clock: Clock) -> int:
     ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
     now = _local_clock(clock, profile)()
     return run_journal(
-        lambda: console.ask(ANSWER_PROMPT), console.say, ledger, now, method_titles=titles
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        ledger,
+        now,
+        method_titles=titles,
+        taboo_topics=profile.taboo_topics,
     )
 
 

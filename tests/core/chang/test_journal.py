@@ -178,6 +178,32 @@ def test_journal_card_holds_no_note_text_and_passes_the_gate(ledger):
         assert gate.reasons(line, kind=ContentKind.NORMAL, stage=HelpStage.S_READY) == (), line
 
 
+def test_taboo_topics_leave_out_the_spectra_and_exercises_that_name_them(ledger):
+    """Ruling 21 (ONB-04b): a spectrum or an exercise naming a taboo topic is left out."""
+    _seed(ledger)
+    week = gather(ledger, NOW)
+    card = render_journal(week, TEXT, MEMORY, TITLES, taboo_topics=("耗尽", "呼吸")).splitlines()
+    assert "- 常聊到的：低落和没劲、关系里的牵挂" in card
+    assert "- 试过的小练习：五感着陆（先收进锦囊）" in card
+    assert not any("耗尽" in line or "呼吸" in line for line in card)
+    # Case-folded, like the session's filter; nothing left drops the line itself.
+    every = ("没劲", "牵挂", "耗尽", "冷水", "五感")
+    card = render_journal(week, TEXT, MEMORY, TITLES, taboo_topics=every).splitlines()
+    assert not any(line.startswith(("- 常聊到的", "- 试过的小练习")) for line in card)
+    assert TEXT.card["no_methods"] not in card  # exercises were tried: no "none tried" line
+    named = {"30:grounding": "Grounding"}
+    card = render_journal(week, TEXT, MEMORY, named, taboo_topics=("GROUNDING",))
+    assert "Grounding" not in card
+
+
+def test_a_spectrum_left_out_makes_room_for_the_next(ledger):
+    for key, spectra in (("a", ("01",)), ("b", ("01", "02")), ("c", ("01", "02", "03", "04"))):
+        ledger.append_summary(_summary(1, spectra=spectra), key=key)
+    week = gather(ledger, NOW)
+    card = render_journal(week, TEXT, MEMORY, taboo_topics=("不安",)).splitlines()
+    assert "- 常聊到的：低落和没劲、反复想同一件事、对自己很苛刻" in card
+
+
 def test_a_week_without_ratings_or_exercises(ledger):
     ledger.append_summary(_summary(2), key="a")
     card = render_journal(gather(ledger, NOW), TEXT, MEMORY).splitlines()

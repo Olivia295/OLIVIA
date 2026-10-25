@@ -24,7 +24,10 @@ how often the rating rose, the dominant spectra in everyday words, the exercises
 with their feedback, and how many notes the user asked to have remembered (the count only;
 the words stay in the ledger). When a session in the window entered the crisis flow the
 card opens and closes in a steadier voice and points to ``olivia resources``. No user
-text, no diagnosis words, no numbers but the ratings and the counts.
+text, no diagnosis words, no numbers but the ratings and the counts. The profile's taboo
+topics are a hard filter here too (ruling 21, ONB-04b, F11): a spectrum whose everyday
+name or an exercise whose line names one is left out (the line goes when nothing is left
+in it), with the same case-folded substring test as the session's taboo filter.
 
 **When.** At a chat opening (after the rating), when the window holds at least
 :data:`MIN_SESSIONS` session summaries and no journal record (shown or declined) is in the
@@ -243,13 +246,23 @@ def is_due(week: Week) -> bool:
     return len(week.sessions) >= MIN_SESSIONS and not week.journals
 
 
+def names_taboo(text: str, taboo_topics: tuple[str, ...]) -> bool:
+    """Whether ``text`` names one of the taboo topics (case-folded substring, as the
+    session's filter)."""
+    folded = text.casefold()
+    return any(topic.casefold() in folded for topic in taboo_topics if topic.strip())
+
+
 def render_journal(
     week: Week,
     text: JournalText,
     memory: MemoryText,
     method_titles: Mapping[str, str] | None = None,
+    *,
+    taboo_topics: tuple[str, ...] = (),
 ) -> str:
-    """The journal card for ``week`` (which must hold at least one session)."""
+    """The journal card for ``week`` (which must hold at least one session); spectra and
+    exercises that name a taboo topic are left out (ruling 21)."""
     if not week.sessions:
         raise ValueError("a journal needs at least one session")
     card = text.card
@@ -279,18 +292,20 @@ def render_journal(
     else:
         lines.append(card["no_ratings"])
 
-    spectra = _dominant_spectra(week.sessions)
-    if spectra:
-        named = card["joiner"].join(memory.spectra.get(sid, sid) for sid in spectra)
-        lines.append(card["spectra"].format(spectra=named))
+    named = [memory.spectra.get(sid, sid) for sid in _dominant_spectra(week.sessions)]
+    named = [name for name in named if not names_taboo(name, taboo_topics)][:MAX_SPECTRA]
+    if named:
+        lines.append(card["spectra"].format(spectra=card["joiner"].join(named)))
 
     methods = _methods(week.sessions)
     if methods:
-        shown = card["joiner"].join(
+        items = [
             f"{titles.get(mid, mid)}（{card['joiner'].join(memory.feedback[f] for f in labels)}）"
             for mid, labels in methods.items()
-        )
-        lines.append(card["methods"].format(methods=shown))
+        ]
+        kept = [item for item in items if not names_taboo(item, taboo_topics)]
+        if kept:
+            lines.append(card["methods"].format(methods=card["joiner"].join(kept)))
     else:
         lines.append(card["no_methods"])
 
@@ -301,7 +316,8 @@ def render_journal(
 
 
 def _dominant_spectra(sessions: tuple[SessionSummary, ...]) -> tuple[str, ...]:
-    """Spectra by the number of sessions that mention them; first appearance breaks ties."""
+    """Spectra by the number of sessions that mention them; first appearance breaks ties
+    (every one: the caller drops taboo ones, then keeps :data:`MAX_SPECTRA`)."""
     counts: Counter[str] = Counter()
     order: list[str] = []
     for s in sessions:
@@ -309,8 +325,7 @@ def _dominant_spectra(sessions: tuple[SessionSummary, ...]) -> tuple[str, ...]:
             if sid not in counts:
                 order.append(sid)
             counts[sid] += 1
-    ranked = sorted(order, key=lambda sid: (-counts[sid], order.index(sid)))
-    return tuple(ranked[:MAX_SPECTRA])
+    return tuple(sorted(order, key=lambda sid: (-counts[sid], order.index(sid))))
 
 
 def _methods(sessions: tuple[SessionSummary, ...]) -> dict[str, list[str]]:
@@ -381,7 +396,8 @@ class ChatChecks:
     """The self-ratings and the journal offer around one ``olivia chat`` session.
 
     ``ask`` reads one answer line and ``say`` prints one; ``recorder`` is the session's
-    ledger recorder (nothing is asked when it is disabled).
+    ledger recorder (nothing is asked when it is disabled); ``taboo_topics`` are the
+    profile's, left out of the journal card.
     """
 
     def __init__(
@@ -394,8 +410,10 @@ class ChatChecks:
         *,
         method_titles: Mapping[str, str] | None = None,
         text: JournalText | None = None,
+        taboo_topics: tuple[str, ...] = (),
     ) -> None:
         self._ledger = ledger
+        self._taboo = taboo_topics
         self._recorder = recorder
         self._ask = ask
         self._say = say
@@ -494,7 +512,9 @@ class ChatChecks:
                 return Carry(line=answer)
             self._say(self.text.replies["offer_declined"])
             return Carry()
-        card = render_journal(week, self.text, self._ledger.text, self._titles)
+        card = render_journal(
+            week, self.text, self._ledger.text, self._titles, taboo_topics=self._taboo
+        )
         self._say("")
         return _show_and_rate(self._ask, self._say, self._ledger, now, card, self.text)
 
@@ -507,6 +527,7 @@ def run_command(
     *,
     method_titles: Mapping[str, str] | None = None,
     text: JournalText | None = None,
+    taboo_topics: tuple[str, ...] = (),
 ) -> int:
     """``olivia journal``: show the rolling week's journal now; the exit status."""
     words = load_journal_text() if text is None else text
@@ -520,7 +541,7 @@ def run_command(
     if not week.sessions:
         say(words.replies["empty"])
         return 0
-    card = render_journal(week, words, ledger.text, method_titles)
+    card = render_journal(week, words, ledger.text, method_titles, taboo_topics=taboo_topics)
     carry = _show_and_rate(ask, say, ledger, now, card, words)
     if not carry.answered and not carry.ended:
         say(words.replies["helpful_skipped"])
