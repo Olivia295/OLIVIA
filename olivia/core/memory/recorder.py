@@ -13,6 +13,17 @@ explicitly asks to have remembered:
   wins: no note on a turn in the crisis flow, a turn the screen rated L1 or above (the
   same caution as for everyday phrases, roadmap R-7b), or the direct question about
   intent (D3); the reply then stays exactly as the session wrote it.
+* **Recall** (F15, PRD MIYI-04). On a turn the session passed a note question on
+  (``inspect["note_recall"]``, a calm turn only) and that is no note request, the notes
+  are looked up (``recall.py``: notes only, never summaries; one note at most) under the
+  same crisis rule as notes. An ``explicit`` question ("我上次让你记住什么了") is always
+  answered: the note, the latest one, no match, no notes yet, or memory not available
+  here. A ``question`` ("……是谁来着") is answered only with a matching note; without a
+  usable keychain it gets the not-available line after the session's reply, and
+  otherwise the reply stays as the session wrote it. An answer replaces an ordinary
+  (NORMAL or HAVEN) reply, followed by ``note_continue``, and follows any other reply.
+  The note is in that reply only: ``inspect["note_recall_result"]`` is the outcome id
+  (``found``, ``latest``, ``no_match``, ``none``, ``unavailable``), never text.
 * **Summaries.** Per session: the stage path, the dominant spectra, each exercise card
   shown with its feedback, the crisis flag and level, first/last turn times and (step
   F12) the turn count, how many replies carried real-world support guidance
@@ -52,9 +63,11 @@ from olivia.core.memory.ledger import (
     SessionSummary,
 )
 from olivia.core.memory.notes import NoteCues, load_note_cues
-from olivia.core.memory.text import MemoryText
+from olivia.core.memory.recall import Recall, RecallOutcome, recall_note
+from olivia.core.memory.text import RECALL_SLOT, MemoryText
 from olivia.core.methods.bandit import Feedback
 from olivia.core.models import CrisisLevel, HelpStage
+from olivia.core.perception.signals import NoteRecall
 from olivia.core.session import ReplyKind, TurnResult
 
 MAX_SPECTRA: Final = 3
@@ -155,13 +168,16 @@ class SessionRecorder:
             self._track(result, now)
         note = self._cues.find(message)
         reply = None
+        after = False  # the line follows the session's reply instead of replacing it
         if note is not None and self._may_note(result):
             reply = self._take_note(note, now)
+        elif note is None and self._may_note(result):
+            reply, after, result = self._recall(message, result, now)
         if self.enabled and self._closed_by_state_machine(result):
             self.closed_segment = self._flush()
         if reply is None:
             return result
-        if result.reply_kind in _NOTE_ONLY_KINDS:
+        if result.reply_kind in _NOTE_ONLY_KINDS and not after:
             return replace(result, reply=f"{reply}{self._text.replies['note_continue']}")
         return replace(result, reply=f"{result.reply}\n\n{reply}")
 
@@ -260,6 +276,42 @@ class SessionRecorder:
         except LedgerUnavailableError:
             return replies["note_unavailable"]
         return replies["note_saved"]
+
+    def _recall(
+        self, message: str, result: TurnResult, now: datetime
+    ) -> tuple[str | None, bool, TurnResult]:
+        """(line, after the reply, result with the outcome id) for a note question."""
+        try:
+            kind = NoteRecall(str(result.inspect.get("note_recall")))
+        except ValueError:
+            return None, False, result
+        found = self._look_up(message, now)
+        explicit = kind is NoteRecall.EXPLICIT
+        replies = self._text.replies
+        line: str | None = None
+        after = False
+        if found.note is not None:
+            key = "recall_found" if found.outcome is RecallOutcome.FOUND else "recall_latest"
+            if explicit or found.outcome is RecallOutcome.FOUND:
+                line = replies[key].replace(RECALL_SLOT, found.note.text)
+        elif found.outcome is RecallOutcome.UNAVAILABLE:
+            line = replies["recall_unavailable"]
+            after = not explicit
+        elif explicit:
+            line = replies[f"recall_{found.outcome.value}"]
+        if line is None:
+            return None, False, result
+        inspect = {**result.inspect, "note_recall_result": found.outcome.value}
+        return line, after, replace(result, inspect=inspect)
+
+    def _look_up(self, message: str, now: datetime) -> Recall:
+        if not self.enabled:
+            return Recall(RecallOutcome.UNAVAILABLE)
+        try:
+            notes = self._ledger.notes()
+        except LedgerUnavailableError:
+            return Recall(RecallOutcome.UNAVAILABLE)
+        return recall_note(message, notes, now, self._cues.recall_ignore)
 
     def _flush(self) -> bool:
         """Write the open segment's summary; True when one was written."""

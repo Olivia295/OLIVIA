@@ -425,6 +425,9 @@ def inspect_panel(result: TurnResult) -> list[str]:
     origin = data.get("feedback_source")
     check = data.get("safety_check")
     mirror = data.get("schema_mirror")
+    # F15: the kind of note question and what the recorder found, ids only (never the note).
+    recall = data.get("note_recall")
+    recalled = data.get("note_recall_result")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
         f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
@@ -445,7 +448,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else "")
         + (f" · 意图确认 {_fmt(check)}" if check else "")
-        + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else ""),
+        + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else "")
+        + (f" · 调出笔记 {_fmt(recall)}（{_fmt(recalled)}）" if recall else ""),
     ]
     model_reason = data.get("risk_model_reason")
     lines.append(

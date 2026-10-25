@@ -27,7 +27,15 @@ REPLY_KEYS: Final = (
     "memory_unavailable",
     "summary_not_saved",
     "note_continue",
+    "recall_found",
+    "recall_latest",
+    "recall_no_match",
+    "recall_none",
+    "recall_unavailable",
 )
+RECALL_SLOT: Final = "{note}"
+"""The one slot of ``recall_found`` and ``recall_latest`` (F15); no other reply has one."""
+_RECALL_WITH_NOTE: Final = frozenset({"recall_found", "recall_latest"})
 _SUMMARY_KEYS: Final = (
     "heading",
     "time",
@@ -133,6 +141,14 @@ def load_memory_text(
     if set(doc) != expected:
         raise MemoryTextError(f"{_FILE}: sections must be exactly {sorted(expected)}")
     replies = _exact(_mapping(doc["replies"], "replies"), set(REPLY_KEYS), "replies")
+    for key, line in replies.items():
+        wanted = 1 if key in _RECALL_WITH_NOTE else 0
+        if (
+            line.count("{") != wanted
+            or line.count("}") != wanted
+            or (wanted and RECALL_SLOT not in line)
+        ):
+            raise MemoryTextError(f"{_FILE}: replies.{key} must have {wanted} {RECALL_SLOT} slot")
     summary = _exact(_mapping(doc["summary"], "summary"), set(_SUMMARY_KEYS), "summary")
     stages = _exact(_mapping(doc["stages"], "stages"), {s.value for s in HelpStage}, "stages")
     spectra_raw = _mapping(doc["spectra"], "spectra")

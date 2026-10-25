@@ -78,6 +78,9 @@ with a ``therapy_question_cues`` phrase, or a Grade B/C method with a request ph
 ``haven_exit`` when a non-negated ``haven_exit`` phrase matched ("我好多了", "换个话题吧";
 FSM-15); the phrases are their own group, so "不想换个话题" is void through its longer
 "想换个话题" entry.
+``note_recall`` (F15): ``EXPLICIT`` for a non-negated ``note_recall`` hit ("我上次让你记住
+什么了"), else ``QUESTION`` for a ``note_recall_questions`` hit ("……是谁来着"); both lists
+are one group of their own.
 ``situation_codes`` and ``contraindication_cues``: the keys of every non-negated
 ``situation_cues`` / ``contraindication_cues`` hit (roadmap next-phase A1); the session
 decides what they mean (``methods/contraindications.py``). ``SIT-06-04`` is also set by a
@@ -125,7 +128,7 @@ from typing import Final, TypeVar
 
 from olivia.core.models import CrisisLevel, PerceptionContext, SafetyGrade
 from olivia.core.perception.lexicon import GRIEF_KEYS, PerceptionLexicon, strip_marks
-from olivia.core.perception.signals import Answer, Command, TurnSignals
+from olivia.core.perception.signals import Answer, Command, NoteRecall, TurnSignals
 from olivia.core.safety.crisis import CrisisAssessment
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import clip_for_perception, normalize
@@ -172,6 +175,7 @@ _THERAPY_REQUEST: Final = "therapy_request"
 _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
 _HAVEN_EXIT: Final = "haven_exit"
+_NOTE_RECALL: Final = "note_recall"
 # COLBO-06b: prolonged grief is the SIT-06-04 dossier (延长哀伤障碍与未完成丧失悲恸).
 PROLONGED_GRIEF_CODE: Final = "SIT-06-04"
 _GRIEF_GROUPS: Final = tuple(f"grief_{key}" for key in GRIEF_KEYS)
@@ -258,6 +262,8 @@ class RuleStub:
         add(_THERAPY_CUE, _THERAPY_CUE, lexicon.therapy_question_cues)
         add(_THERAPY_REQUEST, _THERAPY_REQUEST, lexicon.therapy_request_cues)
         add(_HAVEN_EXIT, _HAVEN_EXIT, lexicon.haven_exit)
+        add(_NOTE_RECALL, NoteRecall.EXPLICIT, lexicon.note_recall)
+        add(_NOTE_RECALL, NoteRecall.QUESTION, lexicon.note_recall_questions)
         self._practices = frozenset(
             mid
             for mid in lexicon.therapy_names
@@ -343,6 +349,8 @@ class RuleStub:
         if all(hits.get(group) for group in _GRIEF_GROUPS):
             situations.add(PROLONGED_GRIEF_CODE)
         signals = hits.get(_SIGNAL, [])
+        recall_labels = {label for label, _ in hits.get(_NOTE_RECALL, ())}
+        note_recall = next((r for r in NoteRecall if r in recall_labels), None)
         labels = {label for label, _ in signals}
         asked, requested = _therapy(body, hits, self._practices)
         direct = _DIRECT in labels or requested is not None or another
@@ -391,6 +399,7 @@ class RuleStub:
             therapy_request=requested,
             situation_codes=frozenset(situations),
             contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
+            note_recall=note_recall,
         )
         return context, turn
 

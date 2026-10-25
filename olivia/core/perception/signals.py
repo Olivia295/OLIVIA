@@ -25,6 +25,16 @@ class Answer(StrEnum):
     DECLINE = "decline"
 
 
+class NoteRecall(StrEnum):
+    """How a message asks about something the user had OLIVIA remember (MIYI-04, F15)."""
+
+    EXPLICIT = "explicit"
+    """The message names the notes ("我上次让你记住什么了"): always answered."""
+    QUESTION = "question"
+    """A question about a fact the user cannot recall ("周四要见的那个人是谁来着"):
+    answered only when a note matches it."""
+
+
 @dataclass(frozen=True)
 class TurnSignals:
     battery: float | None = None
@@ -83,6 +93,10 @@ class TurnSignals:
     contraindication_cues: frozenset[str] = frozenset()
     """Contraindication enum ids the message reveals (``contraindication_cues``: "我有
     心脏病" -> ``CARDIORESPIRATORY_INSTABILITY``; roadmap next-phase A1)."""
+    note_recall: NoteRecall | None = None
+    """The user asks about something they had OLIVIA remember (``note_recall`` /
+    ``note_recall_questions``, F15); an explicit phrase wins over a question one. The
+    session passes it on only on a calm turn; the recorder looks up the notes."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

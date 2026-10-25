@@ -10,6 +10,14 @@
 #   summary_not_saved   会话结束时小结没能写入（例如钥匙串中途被锁）。
 #   note_continue       （草稿：待 G-0，质量修复 F3）“记住：……”这一轮只回确认句，再接这一句
 #                       温和地接着聊，不把要记的话当成感受来复述。
+#   recall_*            （草稿：待 G-0，F15）用户问“我上次让你记住什么了”“周四要见的那个人是谁来着”时，
+#                       从“记住：……”存下的笔记里找（从不找会话小结，不提危机）。只有 recall_found 与
+#                       recall_latest 带槽位 {note}，原样放进用户当时让记的那句话；其余同上，单段、无槽位。
+#     recall_found        找到和问题有关的那一条。
+#     recall_latest       笼统地问“记住了什么”：最近一条，并提一句全部记下的话在 olivia memory 里。
+#     recall_no_match     明确问记住的话，但没有和问题有关的那一条（不念别的条目）。
+#     recall_none         还没有记过任何话。
+#     recall_unavailable  这台电脑上暂时打不开加密的记忆（没有钥匙串，或钥匙串被锁）。
 #
 # summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
 #   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after} {turns} {count}
@@ -27,6 +35,11 @@ replies:
   memory_unavailable: "先告诉你一件事：这台电脑上暂时没办法把记忆加密保存，所以我不会记下我们聊过什么。其他的一切都照常。"
   summary_not_saved: "这次聊天的小结没能保存下来，下次再试试。"
   note_continue: "还有什么想说的，随时告诉我，我在这里听着。"
+  recall_found: "你之前让我记住的是：「{note}」。"
+  recall_latest: "你最近一次让我记住的是：「{note}」。想看全部记下的话，可以在命令行输入 olivia memory。"
+  recall_no_match: "我翻了翻你让我记住的话，没有找到和这个有关的。想看全部记下的话，可以在命令行输入 olivia memory。"
+  recall_none: "你还没有让我记住过什么。想让我记下的话，用「记住：」开头告诉我就好。"
+  recall_unavailable: "这台电脑上暂时打不开加密保存的记忆，所以现在没办法帮你找之前让我记住的话。"
 summary:
   heading: "## {date} 的一次聊天"
   time: "- 时间：{start} – {end}"

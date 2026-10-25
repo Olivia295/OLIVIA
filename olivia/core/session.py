@@ -135,6 +135,14 @@ A request to remember something ("记住：……", the note cues of ``memory.ya
 gets an information card (F5b): the recorder answers that turn with its short
 confirmation.
 
+A question about a note (F15; PRD MIYI-04): ``TurnSignals.note_recall`` (rule phrases, the
+same in both modes) is passed on as ``inspect["note_recall"]`` (``explicit`` or
+``question``) only on a calm turn: outside a crisis, the screen and the rule screen below
+L1, not the D3 question or its answer, not a note, command, direct or kit request, therapy
+question, goodbye or meta turn. The session never sees the notes: the recorder
+(``memory/recorder.py``) looks them up and answers in the reply. An explicit one gets no
+information card; the stage moves as for any other turn, as on a note turn.
+
 Persona (PRD ONB-03, plan D-1): the profile's ``persona_spectrum`` picks the reply
 templates and word windows (``LanguageData.for_persona``); crisis resource lines and the
 D3 question are the same for every persona.
@@ -346,7 +354,7 @@ from olivia.core.perception.introspector import (
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.model_heads import ModelHeads
 from olivia.core.perception.rule_stub import FALLBACK_EMOTION, RuleStub, dominant_spectrum
-from olivia.core.perception.signals import Answer, Command, TurnSignals
+from olivia.core.perception.signals import Answer, Command, NoteRecall, TurnSignals
 from olivia.core.perception.student import RiskChoice, choose_risk_model
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
@@ -848,6 +856,29 @@ class Session:
         if note:
             # A note turn is answered by the recorder's confirmation, never with a card.
             info = None
+        # A question about a note (F15): only on a calm turn, never in a crisis or with an
+        # L1-L3 screen, and not when the turn asks for anything else. The recorder looks
+        # the notes up; an explicit one is answered by it, so it gets no information card.
+        recall = signals.note_recall
+        if (
+            note
+            or status.in_crisis
+            or assessment.level >= CrisisLevel.L1
+            or rules.level >= CrisisLevel.L1
+            or ask
+            or answer is not None
+            or no_pending
+            or forget
+            or leaving
+            or signals.command is not None
+            or signals.direct_request
+            or signals.kit_recall
+            or signals.therapy_question is not None
+            or stage is HelpStage.S_CRISIS
+        ):
+            recall = None
+        if recall is NoteRecall.EXPLICIT:
+            info = None
         # A red-flag user asks what a therapy is (F9): the closure allows no explainer,
         # so one neutral line and the referral card again, never an ordinary reply.
         referred_question = (
@@ -1112,6 +1143,7 @@ class Session:
             "externalize": naming_status.value if naming_status is not None else None,
             "externalize_name": self._externalize.name,
             "safety_plan_shown": rendered.plan_shown,
+            "note_recall": recall.value if recall is not None else None,
         }
         return TurnResult(
             reply=rendered.reply,

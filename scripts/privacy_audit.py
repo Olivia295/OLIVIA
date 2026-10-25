@@ -13,8 +13,8 @@ input, each time in a fresh temporary ``OLIVIA_HOME``: once with the ONB-06 swit
 goes through ``chat --rules --inspect`` (onboarding with the health consent and a checklist
 item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
 crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``, a second
-``chat --inspect`` (care greeting, model path: the default since F7), then
-``forget --all``.
+``chat --inspect`` (care greeting, model path: the default since F7, and a question about
+the note, "周四要见的那个人是谁来着", F15), then ``forget --all``.
 
 The real OS keychain is never reached: ``PYTHON_KEYRING_BACKEND`` names keyring's failing
 backend before ``keyring`` is imported, ``keyring.get_keyring`` is replaced by a function
@@ -55,14 +55,19 @@ output-no-typed-text [mode]
     text at all. On the console (fragments of at least 10 bytes), the explicit exceptions:
     the names the user chose (used to address them, every command); the session's own
     replies, removed before the search (they may reflect the user's words back, SDD §4.1);
-    ``memory``: the note, shown verbatim on purpose; ``safety-plan``: the plan, shown back
-    after it is written.
+    ``memory``: the note, shown verbatim on purpose; ``chat``: the note inside the one
+    recall sentence that answers the question about it (F15; the note elsewhere on the
+    console still fails); ``safety-plan``: the plan, shown back after it is written.
 inspect-no-text [mode]
     The ``--inspect`` panel lines contain no typed text, names included.
 stats-numbers-only [mode]
     ``olivia stats`` (F12) printed its numbers (not an "unavailable" or "empty" line), and
     its output holds no typed text, names included, and no line that is not one of the
     ``stats.yaml`` lines with numbers (or the late-night clock times) in its slots.
+note-recall [mode]
+    The second chat answered the question about the note with the note (F15), and its
+    panel says so by ids only (``调出笔记 question（found）``), so the two checks above
+    really cover a recalled note.
 forget-all-clean [mode]
     After ``forget --all --yes`` no file is left under ``OLIVIA_HOME`` and the keychain
     holds no item.
@@ -117,6 +122,7 @@ from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
 from olivia.core.crypto.vault import KEYS_DIRNAME  # noqa: E402
 from olivia.core.memory.ledger import LEDGER_DIRNAME  # noqa: E402
 from olivia.core.memory.state import STATE_FILENAME  # noqa: E402
+from olivia.core.memory.text import load_memory_text  # noqa: E402
 from olivia.core.session import Session, TurnResult  # noqa: E402
 from olivia.core.taxonomy import load_taxonomy  # noqa: E402
 
@@ -168,6 +174,7 @@ MESSAGES: Final = ("这几天加班到深夜，脑袋一直嗡嗡作响", "给�
 NOTE: Final = "周四下午要去见搬家公司的人"
 CRISIS: Final = "我写了一封遗书"
 SECOND_MESSAGE: Final = "今晚还是睡不着，翻来覆去地想白天的事"
+RECALL_QUESTION: Final = "周四要见的那个人是谁来着"
 PLAN: Final = (
     "半夜反复刷手机停不下来",
     "泡一杯热牛奶慢慢喝",
@@ -180,10 +187,21 @@ NAMES: Final = (USER_NAME, AGENT_NAME)
 PROFILE_TYPED: Final = (*NAMES, *TABOO)
 """The profile's non-sensitive fields the user typed (plaintext in ``profile.json`` with
 the ONB-06 switch off)."""
-ALL_TYPED: Final = (*PROFILE_TYPED, *MESSAGES, NOTE, CRISIS, SECOND_MESSAGE, *PLAN)
+ALL_TYPED: Final = (
+    *PROFILE_TYPED,
+    *MESSAGES,
+    NOTE,
+    CRISIS,
+    SECOND_MESSAGE,
+    RECALL_QUESTION,
+    *PLAN,
+)
 
 STDOUT_ECHOES: Final[Mapping[str, tuple[str, ...]]] = {"memory": (NOTE,), "safety-plan": PLAN}
 """Typed text a command shows back on purpose (besides the names, allowed everywhere)."""
+RECALLED: Final = load_memory_text().replies["recall_found"].replace("{note}", NOTE)
+"""The one sentence in which ``chat`` shows the note back (F15)."""
+RECALL_PANEL: Final = "调出笔记 question（found）"
 
 NOW: Final = datetime(2026, 10, 22, 20, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
 SEED: Final = 7
@@ -231,7 +249,7 @@ def script(whole: bool) -> list[tuple[list[str], list[str]]]:
         (["stats"], []),
         (["memory"], []),
         (["privacy"], []),
-        (["chat", "--inspect"], [SECOND_MESSAGE, "/exit", "/exit"]),
+        (["chat", "--inspect"], [SECOND_MESSAGE, RECALL_QUESTION, "/exit", "/exit"]),
     ]
 
 
@@ -525,6 +543,8 @@ def output_leaks(capture: Capture, typed: Iterable[str]) -> list[str]:
     console = capture.console
     for reply in sorted(capture.replies, key=len, reverse=True):
         console = console.replace(reply, "")
+    if capture.command == "chat":
+        console = console.replace(RECALLED, "")
     lines = [ln for ln in console.splitlines() if not ln.startswith(PANEL_PREFIXES)]
     allowed = set(NAMES) | set(STDOUT_ECHOES.get(capture.command, ()))
     console_needles = needles((t for t in texts if t not in allowed), OUTPUT_FRAGMENT_BYTES)
@@ -781,7 +801,7 @@ def run_checks(run: Run) -> list[Result]:
         _result(
             f"output-no-typed-text [{mode}]",
             leaks,
-            "exceptions: names; session replies; memory note; safety-plan plan",
+            "exceptions: names; session replies; memory note; recall line; safety-plan plan",
         )
     )
     panels = [p for c in run.captures for p in panel_leaks(c, ALL_TYPED)]
@@ -796,6 +816,11 @@ def run_checks(run: Run) -> list[Result]:
     results.append(
         _result(f"stats-numbers-only [{mode}]", numbers, f"{printed} lines, numbers only")
     )
+    chats = [c for c in run.captures if c.command == "chat"]
+    recall = [] if RECALLED in chats[-1].console else ["the note question got no recalled note"]
+    if RECALL_PANEL not in chats[-1].console:
+        recall.append(f"no panel line {RECALL_PANEL}")
+    results.append(_result(f"note-recall [{mode}]", recall, "recalled in the reply, ids in panel"))
     forget = [f"file left: {rel}" for rel in run.left_after_forget]
     forget += [f"keychain item left: {name}" for name in run.keychain_after]
     results.append(_result(f"forget-all-clean [{mode}]", forget, "no file, no keychain item"))
