@@ -503,6 +503,9 @@ class LanguageEngine:
     def render_card(self, skeleton: ActionSkeleton, *, at_work: bool = True) -> str:
         """The card body for an exercise skeleton (title, intro, safety, steps, closing).
 
+        Each step is a paragraph of its own (F14), so every paragraph of the card stays
+        within the 80-character limit (WILLOW-03).
+
         The title is the card's everyday name (an exercise, F3). The closing line about
         doing it unnoticed at a desk appears only ``at_work`` (:func:`at_work`); outside
         working hours the card ends with ``card.home_line`` instead.
@@ -515,7 +518,8 @@ class LanguageEngine:
         blocks = [f"「{card.title}」· {duration}\n{card.intro}"]
         if card.safety_note is not None:
             blocks.append(f"{r.card_safety_label}{card.safety_note}")
-        blocks.append("\n".join(f"{i}. {step}" for i, step in enumerate(card.steps, start=1)))
+        # One paragraph per step: no paragraph of a card is over 80 characters (WILLOW-03).
+        blocks.extend(f"{i}. {step}" for i, step in enumerate(card.steps, start=1))
         tail = card.closing
         if not at_work:
             tail += f"\n{r.card_home_line}"
@@ -562,11 +566,12 @@ class LanguageEngine:
         return self._checked(text, kind, HelpStage.S_CLARIFY)
 
     def _info_body(self, entry: InfoEntry) -> str:
+        """The title with what it is, how it helps, who offers it: three paragraphs, so
+        none is over the 80-character paragraph limit (WILLOW-03, F14)."""
         r = self._data.render
-        return "\n".join(
+        return "\n\n".join(
             [
-                f"「{entry.title}」",
-                f"{r.info_what_label}{entry.what_it_is}",
+                f"「{entry.title}」\n{r.info_what_label}{entry.what_it_is}",
                 f"{r.info_how_label}{entry.how_it_helps}",
                 f"{r.info_who_label}{entry.who_offers_it}",
             ]

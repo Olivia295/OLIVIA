@@ -42,7 +42,8 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    ("你提到…"). Never "你感到每次组会你都…".
 7. Trim to at most 20 characters at a clause boundary (，); a single over-long first clause
    is cut at the last boundary that does not split a Latin word. A clause the user repeats
-   is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b).
+   is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b),
+   as is a list opener ("首先", "其次", "总而言之"), which the output gate refuses (F14).
 
 A message whose statements are only a goodbye for now ("今天就到这里吧", "我去睡了") is
 CLOSING, and a one-character or one-word answer ("有") is BRIEF: neither is mirrored. A
@@ -289,6 +290,11 @@ _FILLERS: Final = frozenset(
         "天哪",
         "天呐",
         "好吧",
+        # F14: a list opener on its own ("首先，我……") is no statement either.
+        "首先",
+        "其次",
+        "总而言之",
+        "总之",
         # F6b: an acknowledgement clause ("好的，拜拜") is not a statement.
         "好",
         "好的",
@@ -308,6 +314,13 @@ _FILLERS: Final = frozenset(
 # Fillers dropped from a clause's front ("就是想有人听我说说", F5b).
 _LEAD_FILLERS: Final = (
     "怎么说呢",
+    # F14: list openers, which the output gate refuses at a clause's front.
+    "总而言之",
+    "综上所述",
+    "总的来说",
+    "首先",
+    "其次",
+    "总之",
     "说真的",
     "就是",
     "其实",

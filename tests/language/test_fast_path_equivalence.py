@@ -35,7 +35,13 @@ from olivia.core.language.filters import (
     mask_terms,
     replace_longest,
 )
-from olivia.core.language.gate import DIDACTIC_BANNED, OutputGate, digits_of, phone_like_runs
+from olivia.core.language.gate import (
+    DIDACTIC_BANNED,
+    ORDINAL_OPENERS,
+    OutputGate,
+    digits_of,
+    phone_like_runs,
+)
 from olivia.core.models import HelpStage
 from olivia.core.taxonomy import Taxonomy
 
@@ -233,6 +239,24 @@ def oracle_phone_like_runs(text: str, masked_literals: Iterable[str] = ()) -> tu
     return tuple(run for run in runs if len(run) >= gate_module.MIN_PHONE_DIGITS)
 
 
+_ORDINAL_BOUNDARIES = "。！？!?；;：:，,、\n「“"
+
+
+def oracle_ordinal_openers(text: str) -> list[str]:
+    """F14: each list opener at the text's start or right after a boundary, left to right."""
+    found: list[str] = []
+    i = 0
+    while i < len(text):
+        opens = i == 0 or text[i - 1] in _ORDINAL_BOUNDARIES or text[i - 1].isspace()
+        word = next((w for w in ORDINAL_OPENERS if opens and text.startswith(w, i)), None)
+        if word is None:
+            i += 1
+            continue
+        found.append(word)
+        i += len(word)
+    return found
+
+
 def oracle_swap(clause: str, conflict: bool) -> str:
     """The pronoun swap scanned at every character (F3 rule: 自己 only for what the
     clause's own subject 我 does to itself)."""
@@ -327,6 +351,7 @@ def test_gate_reasons_match_the_oracle(tax: Taxonomy, lang: LanguageData) -> Non
                         want += [f"grade_a_title:{t}" for t in grade_a if t in text]
                     if not willow.exempt("didactic_rewrites", kind):
                         want += [f"didactic:{w}" for w in DIDACTIC_BANNED if w in text]
+                        want += [f"ordinal:{w}" for w in oracle_ordinal_openers(text)]
                 got = gate.reasons(text, kind=kind, stage=stage)
                 assert got == tuple(dict.fromkeys(want)), (text, kind, stage)
 

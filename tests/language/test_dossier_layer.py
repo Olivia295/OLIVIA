@@ -66,7 +66,21 @@ def test_situation_images_cover_the_wired_dossiers(tax: Taxonomy, lang: Language
     assert set(by_situation) <= set(tax.situation_codes())
     assert not set(by_situation) & set(tax.red_flags())
     for code, images in by_situation.items():
-        assert len(images) == 3, code
+        # Three dossier images; the perfectionism dossiers add PRD WILLOW-02's willow (F14).
+        assert len(images) == (4 if code in WILLOW_SITUATIONS else 3), code
+
+
+WILLOW_SITUATIONS = ("SIT-04-01", "SIT-04-05")
+
+
+def test_perfectionism_pools_hold_the_willow_image(lang: LanguageData) -> None:
+    """PRD WILLOW-02: perfectionist self-criticism is met with the bending willow."""
+    m = lang.metaphors
+    for code in WILLOW_SITUATIONS:
+        assert any("柳枝" in image for image in m.by_situation[code]), code
+    assert any("柳" in image for cell in m.by_spectrum_yearning["04"].values() for image in cell)
+    gentle = m.by_persona[PersonaSpectrum.GENTLE_HOLDING].by_spectrum["04"]
+    assert any("柳" in image for image in gentle)
 
 
 def test_situation_images_pass_the_willow_filters_and_the_gate(
