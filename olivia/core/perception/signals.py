@@ -97,6 +97,11 @@ class TurnSignals:
     """The user asks about something they had OLIVIA remember (``note_recall`` /
     ``note_recall_questions``, F15); an explicit phrase wins over a question one. The
     session passes it on only on a calm turn; the recorder looks up the notes."""
+    prolonged_grief: bool = False
+    """``SIT-06-04`` in ``situation_codes`` comes only from the three-list
+    ``prolonged_grief`` rule (a loss long past and still not borne), with no acute
+    bereavement cue on the same turn (F13, draft pending G-0): the session then keeps m0
+    but does not set ``ACUTE_BEREAVEMENT_SHOCK``, whose source is the early phase."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

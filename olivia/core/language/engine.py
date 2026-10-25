@@ -65,7 +65,7 @@ from olivia.core.language.dossiers import situation_images
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
 from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance, mirror, utterance_kind
-from olivia.core.models import ActionSkeleton, CrisisLevel, HelpStage, SafetyGrade
+from olivia.core.models import ActionSkeleton, ActionType, CrisisLevel, HelpStage, SafetyGrade
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.store import LineKind
 from olivia.core.safety.normalize import normalize
@@ -514,12 +514,21 @@ class LanguageEngine:
         if len(card.steps) != len(skeleton.core_action_steps):
             raise ValueError(f"{card.id}: card steps do not match the skeleton")
         r = self._data.render
-        duration = r.card_duration.replace("{minutes}", str(card.duration_minutes))
-        blocks = [f"「{card.title}」· {duration}\n{card.intro}"]
+        # A psychoeducation card (plan D-3) is a set of tips: no duration, no numbered steps,
+        # so it never reads as a follow-along exercise (taxonomy action_type_dispatch).
+        tips = skeleton.action_type is ActionType.PSYCHOEDUCATION
+        if tips:
+            blocks = [f"「{card.title}」\n{card.intro}"]
+        else:
+            duration = r.card_duration.replace("{minutes}", str(card.duration_minutes))
+            blocks = [f"「{card.title}」· {duration}\n{card.intro}"]
         if card.safety_note is not None:
             blocks.append(f"{r.card_safety_label}{card.safety_note}")
-        # One paragraph per step: no paragraph of a card is over 80 characters (WILLOW-03).
-        blocks.extend(f"{i}. {step}" for i, step in enumerate(card.steps, start=1))
+        # One paragraph per step or tip: no paragraph of a card is over 80 characters (WILLOW-03).
+        if tips:
+            blocks.extend(f"· {step}" for step in card.steps)
+        else:
+            blocks.extend(f"{i}. {step}" for i, step in enumerate(card.steps, start=1))
         tail = card.closing
         if not at_work:
             tail += f"\n{r.card_home_line}"
@@ -606,7 +615,13 @@ class LanguageEngine:
             intro = r.referral_again[(again - 1) % len(r.referral_again)]
             lines = [intro, *(f"· {p}" for p in places)]
         else:
-            lines = [r.referral_intro, *(f"· {p}" for p in places), "", r.referral_closing]
+            lines = [r.referral_intro, *(f"· {p}" for p in places)]
+            # A red flag's warning (D-3: the withdrawal warning for SIT-10-04) rides on the
+            # full card, which the session shows whenever that flag is new.
+            for code in self._tax.red_flags():
+                if code in active and code in r.referral_warnings:
+                    lines += ["", r.referral_warnings[code]]
+            lines += ["", r.referral_closing]
         text = apply_willow("\n".join(lines), ContentKind.REFERRAL, self._data.willow)
         # Any non-S_empower stage keeps the Grade A title check on for referral text.
         return self._checked(text, ContentKind.REFERRAL, HelpStage.S_EXPLORE)

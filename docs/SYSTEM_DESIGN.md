@@ -335,8 +335,8 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
    - `RED_FLAG_BPD_NSSI`（边缘情绪伴自伤冲动，源自 `SIT-09-01 / USER_PROFILE`，禁冷水）
    - `RED_FLAG_SUBSTANCE_WITHDRAWAL`（物质急性戒断，源自 `SIT-10-04 / USER_PROFILE`）
    - `ACUTE_AROUSAL_OVERLOAD`（交感神经过载 $Arousal \ge 0.85$，阻断认知辨析）
-   - `TOXIC_SHAME_SPIRAL`（毒性羞耻螺旋，源自 `DEFECTIVENESS` 图式，禁内观添麻烦第3问）
-   - `ACUTE_BEREAVEMENT_SHOCK`（急性丧亲剧烈期，源自 `SIT-06-04`，遵从 $m_0$ 陪伴基线）
+   - `TOXIC_SHAME_SPIRAL`（毒性羞耻螺旋，源自 `DEFECTIVENESS` 图式，禁内观添麻烦第3问；*实现*（F13，草稿：待 G-0）：方法 17、18 自身登记的本项禁忌照常生效，SIT-04-05 档案推荐的自我关怀只在未识别到螺旋时可用，见 PRD §8.2 F13 实现说明）
+   - `ACUTE_BEREAVEMENT_SHOCK`（急性丧亲剧烈期，源自 `SIT-06-04`，遵从 $m_0$ 陪伴基线；*实现*（F13，草稿：待 G-0）：只由急性说法设出，只由延长哀伤三类词识别出的 SIT-06-04 不设它但仍走 $m_0$，直接要方法时改用 `followups.grief_request_prolonged`，见 PRD COLBO-06）
    - `CARDIORESPIRATORY_INSTABILITY`（严重心血管/呼吸不稳，源自用户病史，禁剧烈屏气/冷水）
    - `INTERPERSONAL_SAFETY_HAZARD`（活动性家暴/人身威胁，源自 `CRISIS_DETECTOR`）
 2. **S_explore 稳定化微干预 ID 白名单 (`explore_stabilization_whitelist`)**：
@@ -349,7 +349,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 5. **子动作登记表 (Action Registry) 与禁用标签展开**：
    系统建立全局 `action_registry`，显式登记所有跨方法拆解的子动作与红线专用动作（如 `12:tipp_breathing`, `12:tipp_cold_water`, `30:grounding`, `SAFE_PLACE_CONTAINER` 等），每项均具名规范其步骤、时长与适用情境；同时通过 `banned_tag_mappings` 将抽象禁用标签（如 `RADICAL_COGNITIVE_DEBATE`, `DEEP_SCHEMA_EXCAVATION`, `HIGH_COGNITIVE_LOAD` 等）展开为具体的方法 ID 列表，使状态机掩码与骨架装配能够确定性完成集合运算。
 6. **子动作与父方法继承规则 (Sub-action & Parent Method Inheritance Rules)**：
-   - **父级禁忌独立性原则 (Parent Contraindication Isolation)**：父方法的 `contraindications` 仅作用于父方法自身的 `core_action_steps`（即以父方法整体形式输出时），子动作严格依据自身在 `action_registry` 中声明的 `contraindications` 进行独立过滤与阻断。例如方法 12 DBT 的父级禁忌不含心脏病/呼吸不稳与厌食症，该类禁忌已下沉归属于子动作 `12:tipp_cold_water`；有心血管病史或厌食史的用户仍可正常使用 STOP 技巧与 `12:tipp_breathing`（节奏呼吸）。
+   - **父级禁忌独立性原则 (Parent Contraindication Isolation)**：父方法的 `contraindications` 仅作用于父方法自身的 `core_action_steps`（即以父方法整体形式输出时），子动作严格依据自身在 `action_registry` 中声明的 `contraindications` 进行独立过滤与阻断。例如方法 12 DBT 的父级禁忌不含心脏病/呼吸不稳与厌食症，该类禁忌已下沉归属于子动作 `12:tipp_cold_water`；有心血管病史或厌食史的用户仍可正常使用 STOP 技巧与 `12:tipp_breathing`（节奏呼吸）。*实现*（F13，2026-10-25，草稿：待 G-0）：厌食红线 `SIT-08-04` 的封闭上限原先不含节奏呼吸，与本例矛盾；taxonomy 现只把 `DBT_TIPP_MODIFIED_BREATHING` 加入它的 `allowed_actions`，方法 12 整体（含 STOP）与其他动作仍不在上限内。
    - **父级禁用向下穿透与显式白名单豁免 (Parent Ban Penetration with Explicit Whitelist Exemption)**：当红线规则或临床黑名单禁用父方法 ID（如禁用 `"12"`）时，其下属所有子动作默认一并级联禁用；唯一的例外是：若红线病种的 `allowed_actions` 白名单中显式指定了该子动作（如 BPD 红线显式允许 `DBT_TIPP_MODIFIED_BREATHING` / `12:tipp_breathing`），则该子动作破例获得豁免放行。
 7. **动作候选池求解公理与名单优先级公式 (Resolution Priority Formula)**：
    系统在任何状态（无论是 $S_{explore}$ 还是 $S_{empower}$）求解可用动作集合时，遵循如下确定性集合运算公式：
@@ -366,6 +366,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
      - `COMPANIONSHIP`（如 `EMOTIONAL_HOLDING_PRESENCE` / $m_0$）：输出去自责、去说教的纯温和在场守护语料，不带任何练习要求；
      - `PSYCHOEDUCATION`（如 `CIRCADIAN_RHYTHM_STABILIZATION`、`WITHDRAWAL_RISK_WARNING`）：渲染为生活作息稳态贴士或戒断风险警示卡；
      - `REFERRAL`（如 `REFERRAL_CARD_PRESENTATION`）：移交危机与属地卡片模块渲染专科就诊指引与属地援助热线。
+   - *实现（计划 D-3，F13，2026-10-25；草稿：待 G-0）*：只登记给红线的独立动作（无父方法、`STABILIZATION` 或 `PSYCHOEDUCATION`，被命中红线的 `allowed_actions` 列出）并入 $\mathcal{C}_{candidates}$：稳定化类在稳定化白名单所在的池（左翼）和 $S_{empower}$ 右翼池，科普类只在右翼池；之后照常求交差集（`solver.red_flag_only_actions`）。所以上文“双相用户在 $S_{explore}$ 高唤醒时白名单被完全阻断”仍成立，但可用集合不再为空，而是 `ENVIRONMENT_STIMULUS_REDUCTION`；空集的例子改为围产期红线高唤醒。`CIRCADIAN_RHYTHM_STABILIZATION` 渲染为作息小贴士卡（`render_card` 对 `PSYCHOEDUCATION` 用“·”条目、不写时长）；`WITHDRAWAL_RISK_WARNING` 没有可选卡片（`grade_a.yaml` 的 `excluded`），其警示随 SIT-10-04 的完整转介卡出现（`render.yaml` 的 `referral.warnings`）。无证据等级的独立动作在 Thompson 采样中取最低的 Level III 先验（§6.3）。
 
 ### 4.4 C.O.L.B.O. 双翼干预架构 (Bilateral Wing Architecture) 与 SUDS 标尺映射
 C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互补干预机理：

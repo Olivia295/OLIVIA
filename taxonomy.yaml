@@ -701,6 +701,8 @@ contraindication_enums:
     name: "急性交感神经过载与惊恐风暴"
     detection_source: "PERCEPTION_AROUSAL (Arousal >= 0.85)"
     description: "生理过度唤醒或过度通气，前额叶认知加工功能死锁，阻断复杂认知辨析，仅放行呼吸/躯体稳定化。"
+  # 草稿：待 G-0（F13）：description 中“改用自我关怀”不解除方法 17、18 自身登记的本项禁忌。SIT-04-05 档案推荐的
+  # 自我关怀只在未识别到羞耻螺旋时可用；识别到时 17、18 照常被掩去，改为其他方法或纯倾听（硬掩码优先于档案建议）。
   - id: "TOXIC_SHAME_SPIRAL"
     name: "毒性羞耻螺旋与严苛自我攻击"
     detection_source: "PERCEPTION_SCHEMA (DEFECTIVENESS + 强烈自责)"
@@ -1621,12 +1623,18 @@ resolution_priority:
     red_flag_closure:
       rule: "红线封闭集公理 (Red Flag Allowed Actions as Closed Boundary)"
       description: "对命中临床红线的用户而言，RedFlag.allowed_actions 构成了其实际允许交互的绝对封闭上限范围，banned_methods 仅作为第二道深度防御保险。未列入 allowed_actions 的动作（包括 S_explore 稳定化白名单中的常规方法）对红线用户一律不可见。"
+    # 草稿：待 G-0（F13，计划 D-3）：只登记给红线的独立动作（action_registry 中 parent_method_id 为 null、
+    # action_type 为 STABILIZATION 或 PSYCHOEDUCATION、被某条红线 allowed_actions 列出的动作：SAFE_PLACE_CONTAINER、
+    # ENVIRONMENT_STIMULUS_REDUCTION、ENVIRONMENT_PHYSICAL_ANCHOR、CIRCADIAN_RHYTHM_STABILIZATION、
+    # WITHDRAWAL_RISK_WARNING）在该红线命中时并入 C_candidates：STABILIZATION 类与稳定化白名单同池（左翼）
+    # 也进右翼池，PSYCHOEDUCATION 类只进右翼池（S_empower、Arousal < 0.80、Battery >= 0.40）；之后照常经过
+    # 四重掩码。m0 与转介卡不进候选池。
     alias_canonicalization:
       rule: "别名标准归约前置原则 (Alias Canonicalization Pre-processing)"
       description: "参与集合运算前，所有动作标识符（包括来自 allowed_actions、banned_methods、explore_stabilization_whitelist 及候选池的 ID 或别名）必须先经 action_registry 的别名映射表统一规约为标准 ID。例如 DBT_TIPP_MODIFIED_BREATHING 规约为 12:tipp_breathing，GROUNDING_54321 规约为 30:grounding，确保交差集运算准确匹配。"
     empty_set_fallback:
       rule: "空集保底降级与转介联动态 (Empty Set Graceful Fallback & Referral Binding)"
-      description: "若四重交差集求解结果为空集（A_available = ∅，如双相红线用户在 S_explore 高唤醒时），系统确定性降级为 EMOTIONAL_HOLDING_PRESENCE（纯陪伴基线 m0）；若当前命中临床红线，则并行追加呈现 REFERRAL_CARD_PRESENTATION（专科医疗就诊指引卡）。严禁报错、抛出异常或盲目回退至常规方法。"
+      description: "若四重交差集求解结果为空集（A_available = ∅，如围产期红线用户在 S_explore 高唤醒时），系统确定性降级为 EMOTIONAL_HOLDING_PRESENCE（纯陪伴基线 m0）；若当前命中临床红线，则并行追加呈现 REFERRAL_CARD_PRESENTATION（专科医疗就诊指引卡）。严禁报错、抛出异常或盲目回退至常规方法。"
     action_type_dispatch:
       rule: "动作类型多通道分发协议 (Action Type Multi-Channel Dispatch Protocol)"
       description: "求解得到的动作按 action_type 分流处理：当输出为 32 种 A 级父方法整方法骨架时，默认按 MICRO_EXERCISE 处理；登记于 action_registry 的子动作则严格依据其声明的 action_type（STABILIZATION / COMPANIONSHIP / PSYCHOEDUCATION / REFERRAL）分流处理。MICRO_EXERCISE 与 STABILIZATION 装配为微练习跟练骨架；COMPANIONSHIP（纯陪伴 m0）渲染温和在场守护语料；PSYCHOEDUCATION 渲染生活作息稳态科普卡；REFERRAL 移交危机与属地卡片模块渲染专科就诊指引，严禁将转介卡或科普当成微练习指令下发。"
@@ -1693,6 +1701,9 @@ clinical_red_flags:
       policy: "精神障碍中全因死亡率最高病种；严禁讨论体重与节食控制技巧，严禁冷水浸面 TIPP（防诱发心律失常），出现显著营养不良与躯体虚弱立即提示综合医院内科与精神科。"
       allowed_actions:
         - "EMOTIONAL_HOLDING_PRESENCE"
+        # 草稿：待 G-0（F13）：按 PRD COLBO-05 继承规则 1 的例句（厌食史用户仍可安全使用节奏呼吸
+        # 12:tipp_breathing）只放行这一项；方法 12 整体、STOP 与其他稳定化动作仍不在上限内。
+        - "DBT_TIPP_MODIFIED_BREATHING"
         - "REFERRAL_CARD_PRESENTATION"
       banned_methods:
         - "12:tipp_cold_water"
@@ -1702,6 +1713,7 @@ clinical_red_flags:
       name_zh: "边缘型情绪失调伴非自杀性自伤倾向 (BPD with NSSI)"
       file: "09_01_BPD_Emotion_Dysregulation.md"
       policy: "伴随高频冲动性自伤自毁风险；提供无评判安全在场与 DBT TIPP 安全改良变体（仅节奏呼吸与渐进肌肉紧绷释放，显式禁用冷水刺激），绝不探查创伤细节，引导建立三方现实监护网。"
+      # 草稿：待 G-0（F13）：09_01 档案第五节推荐的冷水敷脸 TIPP 不采纳，以本条 policy 与 PRD §9.3 第 6 条的显式禁用为准。
       allowed_actions:
         - "EMOTIONAL_HOLDING_PRESENCE"
         - "DBT_TIPP_MODIFIED_BREATHING"

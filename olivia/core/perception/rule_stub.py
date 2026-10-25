@@ -86,7 +86,9 @@ are one group of their own.
 decides what they mean (``methods/contraindications.py``). ``SIT-06-04`` is also set by a
 message with a live hit in each of the three ``prolonged_grief`` lists (a death, half a
 year or more since, still not borne: "妈妈去世一年多了，我还是走不出来"; COLBO-06b, draft
-G-0); each list is its own group, so containment never crosses them.
+G-0); each list is its own group, so containment never crosses them. ``prolonged_grief``
+when that rule alone set it, no acute cue on the turn (F13: acute and prolonged grief are
+told apart).
 
 Natural-language feedback (roadmap R-7b), only on a turn that is not a slash command:
 
@@ -346,7 +348,9 @@ class RuleStub:
             arousal = max(arousal, self._acute_floor)
 
         situations = {label for label, _ in hits.get(_SITUATION, ())}
-        if all(hits.get(group) for group in _GRIEF_GROUPS):
+        acute_grief = PROLONGED_GRIEF_CODE in situations
+        prolonged = all(hits.get(group) for group in _GRIEF_GROUPS)
+        if prolonged:
             situations.add(PROLONGED_GRIEF_CODE)
         signals = hits.get(_SIGNAL, [])
         recall_labels = {label for label, _ in hits.get(_NOTE_RECALL, ())}
@@ -400,6 +404,7 @@ class RuleStub:
             situation_codes=frozenset(situations),
             contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
             note_recall=note_recall,
+            prolonged_grief=prolonged and not acute_grief,
         )
         return context, turn
 

@@ -284,12 +284,62 @@ def test_card_less_actions_are_never_offered():
 
 
 def test_red_flag_with_empty_set_gets_companionship_and_referral():
-    result = _open(clinical_history=("SIT-02-04",)).turn("给我一个方法")
+    # Two bounds whose intersection holds no action (SIT-02-06 and SIT-10-04).
+    session = _open(clinical_history=("SIT-02-06", "SIT-10-04"))
+    result = session.turn("给我一个方法")
     assert result.stage is HelpStage.S_EMPOWER
     assert result.action_id == M0_ACTION_ID
     assert result.reply_kind is ReplyKind.REFERRAL
-    assert result.referral_flags == ("SIT-02-04",)
+    assert result.referral_flags == ("SIT-02-06", "SIT-10-04")
     assert result.inspect["candidates"] == []
+
+
+# -- D-3 (F13, draft G-0): red-flag-only actions --------------------------------------------
+
+
+@BOTH_MODES
+def test_bipolar_user_gets_the_circadian_or_stimulus_card(rules_only):
+    shown = set()
+    for seed in range(12):
+        result = _open(seed, rules_only=rules_only, clinical_history=("SIT-02-04",)).turn(
+            "给我一个方法"
+        )
+        assert result.stage is HelpStage.S_EMPOWER
+        assert result.reply_kind is ReplyKind.CARD
+        assert result.referral_flags == ("SIT-02-04",)
+        assert result.inspect["candidates"] == [
+            "CIRCADIAN_RHYTHM_STABILIZATION",
+            "ENVIRONMENT_STIMULUS_REDUCTION",
+        ]
+        shown.add(result.action_id)
+        if result.action_id == "CIRCADIAN_RHYTHM_STABILIZATION":
+            assert "「让作息稳一稳」" in result.reply and "· " in result.reply
+    assert shown == {"CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION"}
+
+
+def test_circadian_card_takes_feedback_like_any_card():
+    session = _open(clinical_history=("SIT-02-06",))
+    card = session.turn("给我一个方法")
+    assert card.action_id == "CIRCADIAN_RHYTHM_STABILIZATION"
+    closing = session.turn("/not-now")
+    assert closing.stage is HelpStage.S_CLOSING
+    assert [entry.action_id for entry in session.kit()] == ["CIRCADIAN_RHYTHM_STABILIZATION"]
+
+
+def test_substance_user_gets_the_withdrawal_warning_on_the_referral_card():
+    result = _open(clinical_history=("SIT-10-04",)).turn("给我一个方法")
+    assert result.action_id == M0_ACTION_ID  # the warning is no optional card
+    assert result.reply_kind is ReplyKind.REFERRAL
+    assert result.inspect["candidates"] == ["WITHDRAWAL_RISK_WARNING"]
+    assert "突然停下来" in result.reply
+
+
+def test_ptsd_user_can_get_the_safe_place_card_in_empower():
+    shown = {
+        _open(seed, clinical_history=("SIT-06-01",)).turn("给我一个方法").action_id
+        for seed in range(20)
+    }
+    assert shown == {"30:grounding", "SAFE_PLACE_CONTAINER"}
 
 
 @BOTH_MODES

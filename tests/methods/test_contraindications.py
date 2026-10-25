@@ -167,6 +167,32 @@ def test_situation_cues_set_the_situation(text, situation):
     assert active == expected
 
 
+# -- F13 (draft G-0): acute and prolonged grief are told apart --------------------------------
+
+
+def test_prolonged_grief_keeps_the_situation_but_not_the_acute_enum():
+    active, situations = _observe(_fresh(), "妈妈去世一年多了，我还是走不出来")
+    assert situations == {"SIT-06-04"}
+    assert active == frozenset()
+
+
+def test_an_acute_cue_sets_the_acute_enum_even_with_the_prolonged_rule():
+    # Both on one turn, or the acute cue later in the session: acute wins and holds.
+    text = "爸爸去世一年多了，我还是走不出来，昨天外婆也刚去世"
+    assert _observe(_fresh(), text)[0] == {"ACUTE_BEREAVEMENT_SHOCK"}
+    tracker = _fresh()
+    _observe(tracker, "妈妈去世一年多了，我还是走不出来")
+    _observe(tracker, "我奶奶刚去世")
+    assert _observe(tracker)[0] == {"ACUTE_BEREAVEMENT_SHOCK"}
+
+
+def test_the_prolonged_grief_signal_is_set_only_by_the_three_lists():
+    assert _perceive("妈妈去世一年多了，我还是走不出来")[1].prolonged_grief
+    assert not _perceive("我奶奶刚去世")[1].prolonged_grief
+    assert not _perceive("外婆去世好几年了，现在想起来更多是温暖")[1].prolonged_grief
+    assert not _perceive("爸爸去世一年多了，我还是走不出来，昨天外婆也刚去世")[1].prolonged_grief
+
+
 @pytest.mark.parametrize("text", ["不是一切都没有意义", "奶奶去世好几年了", "人生没有意义"])
 def test_negated_or_other_wording_sets_no_situation(text):
     # "人生没有意义" is risk.yaml's L1 wording: crisis cues stay with the safety screen.

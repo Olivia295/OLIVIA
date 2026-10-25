@@ -2,8 +2,10 @@
 
 Each (spectrum id, canonical action id) pair holds ``Beta(alpha, beta)``. An arm with
 no feedback yet sits at the prior of its method's evidence level; a registry sub-action
-uses its parent method's level. Every number (priors, decay rate, the exploit-only
-arousal threshold) comes from the taxonomy.
+uses its parent method's level; a standalone registry action (the red-flag-only actions,
+plan D-3) has no evidence level and takes the lowest listed one,
+:data:`STANDALONE_EVIDENCE_LEVEL` (draft pending G-0). Every number (priors, decay rate,
+the exploit-only arousal threshold) comes from the taxonomy.
 
 ``UNHELPFUL`` sets ``beta`` to its decayed value plus 1 and records the time; at read
 time the excess over the prior decays: ``beta_eff = beta0 + (beta - beta0) *
@@ -27,6 +29,10 @@ _PRIORS_KEY: Final = "thompson_sampling_index.evidence_level_priors"
 _DECAY_KEY: Final = "thompson_sampling_index.lambda_decay_per_day"
 _EXPLOIT_ABOVE_KEY: Final = "arousal.thresholds.exploration_allow"
 _SECONDS_PER_DAY: Final = 86_400.0
+# D-3 (F13, draft pending G-0): a standalone action has no method and no evidence level;
+# it gets the weakest prior the taxonomy lists, so it never outranks a graded method on
+# its prior alone.
+STANDALONE_EVIDENCE_LEVEL: Final = "Level III"
 
 
 class Feedback(StrEnum):
@@ -155,17 +161,23 @@ class ThompsonSampler:
             raise ValueError(f"unknown spectrum id: {spectrum!r}")
 
     def _prior(self, aid: str) -> tuple[float, float]:
-        """Beta prior from the evidence level of the method (or the sub-action's parent)."""
+        """Beta prior from the evidence level of the method (or the sub-action's parent).
+
+        A standalone registry action takes :data:`STANDALONE_EVIDENCE_LEVEL`.
+        """
         methods = self._tax.methods()
         method_id = aid
         if aid not in methods:
             parent = self._tax.action_registry()[aid].parent_method_id
             if parent is None:
-                raise ValueError(f"action {aid} has no parent method, so no evidence-level prior")
+                return self._level_prior(STANDALONE_EVIDENCE_LEVEL)
             method_id = parent
         level = methods[method_id].evidence_level
         if level is None:
             raise ValueError(f"method {method_id} has no evidence level, so no Thompson prior")
+        return self._level_prior(level)
+
+    def _level_prior(self, level: str) -> tuple[float, float]:
         return (
             self._tax.threshold(f"{_PRIORS_KEY}.{level}.alpha"),
             self._tax.threshold(f"{_PRIORS_KEY}.{level}.beta"),

@@ -322,7 +322,11 @@ from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance
 from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
 from olivia.core.methods.bandit import Feedback
-from olivia.core.methods.contraindications import ActiveContext, SessionContraindications
+from olivia.core.methods.contraindications import (
+    BEREAVEMENT_CONTRAINDICATION,
+    ActiveContext,
+    SessionContraindications,
+)
 from olivia.core.methods.solver import (
     M0_ACTION_ID,
     AllowedSet,
@@ -1355,8 +1359,9 @@ class Session:
         ``requested`` is a practice the user asked for by name ("带我做一下正念", F3): it
         is shown when the solver allows it now, otherwise a card is sampled as usual. The
         card's context line follows the user's local time (working hours or not).
-        ``asked``: the turn asks for a method outright; when prolonged grief (SIT-06-04)
-        then puts it on m0, ``followups.grief_request`` leads the reply (F10).
+        ``asked``: the turn asks for a method outright; when grief (SIT-06-04) then puts
+        it on m0, ``followups.grief_request`` (acute: ``ACUTE_BEREAVEMENT_SHOCK`` active)
+        or ``followups.grief_request_prolonged`` (F13) leads the reply (F10).
         """
         tax = self._tax
         shelved = self._state.user_shelved_actions
@@ -1432,9 +1437,10 @@ class Session:
                 rendered.action_id = M0_ACTION_ID
             if asked and _PROLONGED_GRIEF in self._context.situations:
                 # The request is heard and the m0 answer explained (F10, 草稿：待 G-0).
-                self._add_line(
-                    rendered, self._engine.data.templates.grief_request, stage, first=True
-                )
+                templates = self._engine.data.templates
+                acute = BEREAVEMENT_CONTRAINDICATION in self._context.contraindications
+                line = templates.grief_request if acute else templates.grief_request_prolonged
+                self._add_line(rendered, line, stage, first=True)
         else:  # the gate blocked the card: show nothing rather than a broken card
             rendered = _Rendered(self._engine.gate.fallback, ReplyKind.HAVEN)
         if chosen is not None and chosen in shelved and rendered.action_id != chosen:

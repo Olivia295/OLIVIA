@@ -202,22 +202,42 @@ def test_inspect_lists_arousal_overload_with_the_derived_ids():
 # -- F10: the m0 answer to a grief request is explained -------------------------------------
 
 
-def _grief_lines(session: Session) -> set[str]:
-    return {v.replace("{user_name}", "小林") for v in session._engine.data.templates.grief_request}
+def _grief_lines(session: Session, *, prolonged: bool | None = None) -> set[str]:
+    """The persona's grief lines: acute, prolonged (F13) or, with None, both."""
+    templates = session._engine.data.templates
+    variants = {
+        False: templates.grief_request,
+        True: templates.grief_request_prolonged,
+        None: (*templates.grief_request, *templates.grief_request_prolonged),
+    }[prolonged]
+    return {v.replace("{user_name}", "小林") for v in variants}
+
+
+PROLONGED_REQUEST = "[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法"
+ACUTE_REQUEST = "[80%] 我奶奶刚去世，给我一个方法"
 
 
 @pytest.mark.parametrize("persona", list(PersonaSpectrum))
-@pytest.mark.parametrize(
-    "text",
-    ["[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法", "[80%] 我奶奶刚去世，给我一个方法"],
-)
-def test_a_grief_request_on_m0_is_heard_and_points_at_grief_counselling(persona, text):
+@pytest.mark.parametrize(("text", "prolonged"), [(PROLONGED_REQUEST, True), (ACUTE_REQUEST, False)])
+def test_a_grief_request_on_m0_is_heard_and_points_at_grief_counselling(persona, text, prolonged):
     session = _open(persona_spectrum=persona)
     result = session.turn(text)
     assert result.action_id == M0_ACTION_ID and result.reply_kind is ReplyKind.NORMAL
     first, _, rest = result.reply.partition("\n\n")
-    assert first in _grief_lines(session) and rest, result.reply
+    assert first in _grief_lines(session, prolonged=prolonged) and rest, result.reply
+    assert first not in _grief_lines(session, prolonged=not prolonged)
     assert result.resource_card is None  # not a crisis: no hotline card
+    acute_enum = "ACUTE_BEREAVEMENT_SHOCK" in result.inspect["contraindications"]
+    assert acute_enum is not prolonged  # F13: only the early phase sets the acute enum
+
+
+def test_an_acute_loss_later_in_the_session_switches_to_the_acute_line():
+    session = _open()
+    session.turn("[80%] 妈妈去世一年多了，我还是走不出来")
+    session.turn("[80%] 昨天外婆也刚去世")
+    result = session.turn("[80%] 给我一个方法")
+    assert result.action_id == M0_ACTION_ID
+    assert result.reply.partition("\n\n")[0] in _grief_lines(session, prolonged=False)
 
 
 def test_grief_without_a_request_gets_no_grief_line():
@@ -236,3 +256,33 @@ def test_meaninglessness_on_m0_gets_no_grief_line():
     result = session.turn("[80%] 感觉一切都没有意义，给我一个方法")
     assert result.action_id == M0_ACTION_ID
     assert not any(line in result.reply for line in _grief_lines(session))
+
+
+# -- F13 (draft G-0): dossier advice that meets a taxonomy mask --------------------------------
+# Conservative drafts: a hard mask the taxonomy states wins over a dossier's recommendation.
+
+
+def test_toxic_shame_dossier_keeps_self_compassion_unless_the_spiral_is_seen():
+    # SIT-04-05 recommends self-compassion (17, 18); the taxonomy masks both under
+    # TOXIC_SHAME_SPIRAL. The situation alone sets no mask; the spiral does.
+    compassion = {"17", "18"}
+    plain = _open().turn("[80%] 对自己太苛刻了，给我一个方法")
+    assert plain.inspect["situations"] == ["SIT-04-05"]
+    assert "TOXIC_SHAME_SPIRAL" not in plain.inspect["contraindications"]
+    assert compassion <= set(plain.inspect["candidates"])
+    for seed in SEEDS:
+        spiral = _open(seed).turn("[80%] 一直骂自己，我就是个废物，给我一个方法")
+        assert "SIT-04-05" in spiral.inspect["situations"]
+        assert "TOXIC_SHAME_SPIRAL" in spiral.inspect["contraindications"]
+        assert not _offered(spiral) & compassion
+
+
+@pytest.mark.parametrize(
+    "text", ["心慌得要命，喘不上气，直接给我一个方法", REQUEST, "又想划自己了"]
+)
+def test_borderline_dossier_never_brings_back_the_cold_water(text):
+    # SIT-09-01's dossier names cold-water TIPP; PRD §9.3 item 6 and the taxonomy ban it.
+    for seed in SEEDS:
+        result = _open(seed, clinical_history=("SIT-09-01",)).turn(text)
+        assert "12:tipp_cold_water" not in _offered(result)
+        assert "冷水" not in result.reply

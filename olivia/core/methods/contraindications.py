@@ -17,8 +17,11 @@ Each of the taxonomy's 13 ``contraindication_enums`` is derived from its
                                 introspector's (C2) schema reading:
                                 :func:`olivia.core.perception.introspector.shame_spiral`
                                 (``DEFECTIVENESS`` with strong self-blame on the same turn).
-``ACUTE_BEREAVEMENT_SHOCK``     the situation code its source names (SIT-06-04), read from
-                                ``situation_cues``.
+``ACUTE_BEREAVEMENT_SHOCK``     the situation code its source names (SIT-06-04 丧亲初期),
+                                read from the acute ``situation_cues`` only: a turn whose
+                                SIT-06-04 comes from the ``prolonged_grief`` rule alone
+                                (``TurnSignals.prolonged_grief``) does not set it (F13,
+                                draft pending G-0). Both phases still go to m0.
 ``CARDIORESPIRATORY_INSTABILITY``,
 ``INTERPERSONAL_SAFETY_HAZARD``  the profile's ``contraindications`` (onboarding checklist or
                                 ``olivia health``), or a ``contraindication_cues`` hit in
@@ -51,6 +54,8 @@ from olivia.core.safety.tracker import CrisisStatus
 from olivia.core.taxonomy import Taxonomy, TaxonomyError
 
 CRISIS_CONTRAINDICATION: Final = "CRISIS_ACTIVE_RISK"
+BEREAVEMENT_CONTRAINDICATION: Final = "ACUTE_BEREAVEMENT_SHOCK"
+_GRIEF_CODE: Final = "SIT-06-04"
 SHAME_CONTRAINDICATION: Final = "TOXIC_SHAME_SPIRAL"
 _CODE_RE: Final = re.compile(r"SIT-\d{2}-\d{2}")
 
@@ -102,6 +107,8 @@ class SessionContraindications:
         self._profile = frozenset(profile_contraindications)
         self._heard: set[str] = set()
         self._situations: set[str] = set()
+        # Situation codes whose linked enums apply: prolonged grief alone is left out (F13).
+        self._linked: set[str] = set()
         self._hinted: set[str] = set()
 
     def observe(
@@ -113,6 +120,10 @@ class SessionContraindications:
     ) -> ActiveContext:
         """Add this turn's cues and return everything active now."""
         self._situations |= signals.situation_codes
+        linked = signals.situation_codes
+        if signals.prolonged_grief:
+            linked = linked - {_GRIEF_CODE}
+        self._linked |= linked
         self._heard |= signals.contraindication_cues
         if shame_spiral(perception):
             self._heard.add(SHAME_CONTRAINDICATION)
@@ -121,7 +132,7 @@ class SessionContraindications:
             active.add(CRISIS_CONTRAINDICATION)
         for code in red_flags:
             active |= self._links.red_flags.get(code, frozenset())
-        for code in self._situations:
+        for code in self._linked:
             active |= self._links.situations.get(code, frozenset())
         return ActiveContext(frozenset(active), frozenset(self._situations))
 

@@ -21,7 +21,9 @@ HEADER = (
 )
 EXCLUDED_ID = "12:tipp_cold_water"
 EXCLUDED_REASON = "冷水刺激仅保留在 taxonomy，产品不提供跟练脚本，待 G-0 决定"
-CARD_ACTION_TYPES = {"STABILIZATION", "MICRO_EXERCISE"}
+# D-3 (F13): the withdrawal warning rides on the SIT-10-04 referral card instead.
+WARNING_ID = "WITHDRAWAL_RISK_WARNING"
+CARD_ACTION_TYPES = {"STABILIZATION", "MICRO_EXERCISE", "PSYCHOEDUCATION"}
 FORBIDDEN = ["抑郁症", "焦虑症", "症状", "病情", "确诊", "你应该", "必须", "冰水", "冷水"]
 LIMITS = {"intro": 60, "closing": 40, "stealth_note": 40, "safety_note": 60}
 STEP_LIMIT = 80
@@ -43,7 +45,7 @@ def _sources() -> dict[str, dict[str, Any]]:
 
 
 SOURCES = _sources()
-EXPECTED_IDS = sorted(set(SOURCES) - {EXCLUDED_ID})
+EXPECTED_IDS = sorted(set(SOURCES) - {EXCLUDED_ID, WARNING_ID})
 CARD_BY_ID = {card["id"]: card for card in CARDS}
 
 
@@ -69,7 +71,10 @@ def test_exactly_one_card_per_expected_id() -> None:
 def test_cold_water_is_excluded_with_reason() -> None:
     assert EXCLUDED_ID in SOURCES
     assert EXCLUDED_ID not in CARD_BY_ID
-    assert DOC["excluded"] == [{"id": EXCLUDED_ID, "reason": EXCLUDED_REASON}]
+    assert DOC["excluded"][0] == {"id": EXCLUDED_ID, "reason": EXCLUDED_REASON}
+    assert [entry["id"] for entry in DOC["excluded"]] == [EXCLUDED_ID, WARNING_ID]
+    assert WARNING_ID in SOURCES and WARNING_ID not in CARD_BY_ID
+    assert "转介卡" in DOC["excluded"][1]["reason"] and "G-0" in DOC["excluded"][1]["reason"]
 
 
 @pytest.mark.parametrize("card_id", EXPECTED_IDS)
@@ -98,6 +103,10 @@ def test_card_wording(card_id: str) -> None:
     for text in texts:
         hits = [word for word in FORBIDDEN if word in text]
         assert not hits, f"{card_id}: {hits} in {text!r}"
+    if SOURCES[card_id].get("action_type") == "PSYCHOEDUCATION":
+        # D-3: a tips card is not an exercise, so it asks for no SUDS rating.
+        assert "0" not in card["closing"]
+        return
     assert "0" in card["closing"] and "10" in card["closing"], "closing must ask for SUDS 0-10"
 
 
