@@ -111,7 +111,8 @@ def test_seven_red_flags_by_hand() -> None:
     assert _expected_explore_high("SIT-09-01") == {"12:tipp_breathing", "29:pmr_release"}
     assert _expected_explore_high("SIT-06-01") == {"30:grounding"}
     assert _expected_explore_high("SIT-06-05") == {"30:grounding"}
-    for code in ("SIT-02-04", "SIT-02-06", "SIT-08-04", "SIT-10-04"):
+    assert _expected_explore_high("SIT-08-04") == {"12:tipp_breathing"}  # COLBO-05e
+    for code in ("SIT-02-04", "SIT-02-06", "SIT-10-04"):
         assert _expected_explore_high(code) == set()
 
 

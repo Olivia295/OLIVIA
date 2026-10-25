@@ -1693,6 +1693,9 @@ clinical_red_flags:
       policy: "精神障碍中全因死亡率最高病种；严禁讨论体重与节食控制技巧，严禁冷水浸面 TIPP（防诱发心律失常），出现显著营养不良与躯体虚弱立即提示综合医院内科与精神科。"
       allowed_actions:
         - "EMOTIONAL_HOLDING_PRESENCE"
+        # 草稿：待 G-0（F13）：按 PRD COLBO-05 继承规则 1 的例句（厌食史用户仍可安全使用节奏呼吸
+        # 12:tipp_breathing）只放行这一项；方法 12 整体、STOP 与其他稳定化动作仍不在上限内。
+        - "DBT_TIPP_MODIFIED_BREATHING"
         - "REFERRAL_CARD_PRESENTATION"
       banned_methods:
         - "12:tipp_cold_water"

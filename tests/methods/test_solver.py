@@ -163,9 +163,48 @@ def test_closure_uses_canonical_ids_for_aliases(tax: Taxonomy) -> None:
 
 
 def test_several_flags_intersect_their_allowed_actions(tax: Taxonomy) -> None:
+    # Both bounds name the paced breathing (COLBO-05e); only BPD names 29:pmr_release.
     flags = frozenset({"SIT-09-01", "SIT-08-04"})
     result = allowed_actions(tax, inp(HelpStage.S_EXPLORE, 0.85, flags=flags))
-    assert result == AllowedSet((), True, ("SIT-08-04", "SIT-09-01"))
+    assert result == AllowedSet(("12:tipp_breathing",), False, ("SIT-08-04", "SIT-09-01"))
+    flags = frozenset({"SIT-09-01", "SIT-06-01"})
+    result = allowed_actions(tax, inp(HelpStage.S_EXPLORE, 0.85, flags=flags))
+    assert result == AllowedSet((), True, ("SIT-06-01", "SIT-09-01"))
+
+
+# -- COLBO-05e: an anorexia history still allows the paced breathing (PRD COLBO-05 rule 1) --
+
+
+@pytest.mark.parametrize(
+    ("stage", "arousal", "battery"),
+    [
+        (HelpStage.S_EXPLORE, 0.85, 0.6),
+        (HelpStage.S_CLARIFY, 0.8, 0.6),
+        (HelpStage.S_EMPOWER, 0.3, 0.6),
+        (HelpStage.S_EMPOWER, 0.3, 0.2),
+        (HelpStage.S_EMPOWER, 0.95, 0.6),
+    ],
+)
+def test_anorexia_gets_the_paced_breathing_and_nothing_else(
+    tax: Taxonomy, stage: HelpStage, arousal: float, battery: float
+) -> None:
+    flags = frozenset({"SIT-08-04"})
+    result = allowed_actions(tax, inp(stage, arousal, flags=flags, battery=battery))
+    assert result.candidates == ("12:tipp_breathing",)
+    assert result.referral_flags == ("SIT-08-04",)
+    contra = frozenset({"RED_FLAG_ANOREXIA", "CARDIORESPIRATORY_INSTABILITY"})
+    result = allowed_actions(tax, inp(stage, arousal, flags=flags, contra=contra, battery=battery))
+    assert result.candidates == ("12:tipp_breathing",)
+
+
+def test_anorexia_bound_names_only_the_breathing_among_exercises(tax: Taxonomy) -> None:
+    bound = {tax.canonical_action_id(a) for a in tax.red_flags()["SIT-08-04"].allowed_actions}
+    assert bound == {"12:tipp_breathing", M0_ACTION_ID, "REFERRAL_CARD_PRESENTATION"}
+    assert "12" not in bound and "12:tipp_cold_water" not in bound
+    # Low arousal outside S_empower is still m0 with the referral.
+    flags = frozenset({"SIT-08-04"})
+    for stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY):
+        assert allowed_actions(tax, inp(stage, 0.3, flags=flags)).use_m0
 
 
 def test_red_flag_user_still_gets_candidates_in_empower(tax: Taxonomy) -> None:

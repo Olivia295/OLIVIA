@@ -349,7 +349,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 5. **子动作登记表 (Action Registry) 与禁用标签展开**：
    系统建立全局 `action_registry`，显式登记所有跨方法拆解的子动作与红线专用动作（如 `12:tipp_breathing`, `12:tipp_cold_water`, `30:grounding`, `SAFE_PLACE_CONTAINER` 等），每项均具名规范其步骤、时长与适用情境；同时通过 `banned_tag_mappings` 将抽象禁用标签（如 `RADICAL_COGNITIVE_DEBATE`, `DEEP_SCHEMA_EXCAVATION`, `HIGH_COGNITIVE_LOAD` 等）展开为具体的方法 ID 列表，使状态机掩码与骨架装配能够确定性完成集合运算。
 6. **子动作与父方法继承规则 (Sub-action & Parent Method Inheritance Rules)**：
-   - **父级禁忌独立性原则 (Parent Contraindication Isolation)**：父方法的 `contraindications` 仅作用于父方法自身的 `core_action_steps`（即以父方法整体形式输出时），子动作严格依据自身在 `action_registry` 中声明的 `contraindications` 进行独立过滤与阻断。例如方法 12 DBT 的父级禁忌不含心脏病/呼吸不稳与厌食症，该类禁忌已下沉归属于子动作 `12:tipp_cold_water`；有心血管病史或厌食史的用户仍可正常使用 STOP 技巧与 `12:tipp_breathing`（节奏呼吸）。
+   - **父级禁忌独立性原则 (Parent Contraindication Isolation)**：父方法的 `contraindications` 仅作用于父方法自身的 `core_action_steps`（即以父方法整体形式输出时），子动作严格依据自身在 `action_registry` 中声明的 `contraindications` 进行独立过滤与阻断。例如方法 12 DBT 的父级禁忌不含心脏病/呼吸不稳与厌食症，该类禁忌已下沉归属于子动作 `12:tipp_cold_water`；有心血管病史或厌食史的用户仍可正常使用 STOP 技巧与 `12:tipp_breathing`（节奏呼吸）。*实现*（F13，2026-10-25，草稿：待 G-0）：厌食红线 `SIT-08-04` 的封闭上限原先不含节奏呼吸，与本例矛盾；taxonomy 现只把 `DBT_TIPP_MODIFIED_BREATHING` 加入它的 `allowed_actions`，方法 12 整体（含 STOP）与其他动作仍不在上限内。
    - **父级禁用向下穿透与显式白名单豁免 (Parent Ban Penetration with Explicit Whitelist Exemption)**：当红线规则或临床黑名单禁用父方法 ID（如禁用 `"12"`）时，其下属所有子动作默认一并级联禁用；唯一的例外是：若红线病种的 `allowed_actions` 白名单中显式指定了该子动作（如 BPD 红线显式允许 `DBT_TIPP_MODIFIED_BREATHING` / `12:tipp_breathing`），则该子动作破例获得豁免放行。
 7. **动作候选池求解公理与名单优先级公式 (Resolution Priority Formula)**：
    系统在任何状态（无论是 $S_{explore}$ 还是 $S_{empower}$）求解可用动作集合时，遵循如下确定性集合运算公式：
