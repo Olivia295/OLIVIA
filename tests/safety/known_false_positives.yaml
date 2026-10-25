@@ -12,11 +12,11 @@
 #   L1 -> L0: 2
 #   L2 -> L0: 8
 #   L2 -> L1: 3
-#   L3 -> L0: 71
+#   L3 -> L0: 67
 #   L3 -> L1: 5
-#   L3 -> L2: 6
+#   L3 -> L2: 10
 #   by ideal: L0 13, L1 2, L2 11, L3 82
-#   by current: L0 81, L1 8, L2 17, L3 2
+#   by current: L0 77, L1 8, L2 21, L3 2
 #   below ideal (missed or under-rated): 95
 #   above ideal (false alarms): 13
 #   total: 108
@@ -31,6 +31,9 @@
 # '我想死 你了解吗' stays L2. fp01 and fp02 reached L0 and moved to cases.yaml (f5a_fp01,
 # f5a_fp02); kl_fr50 moved to tuned_probe.yaml (fr50).
 #
+# Fix F16a (2026-10-25, hoarded pills): kl_m02, kl_m31, kl_m37 and kl_m41 rose from L0 to L2
+# (L2_MEANS_HOARDED); their ideal stays L3, which needs a self-harm anchor they do not have.
+#
 # {id, text, ideal, current, why}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
 - {id: fp04, ideal: L0, current: L2, text: "我可不想死在工位上", why: "不想死在 is kept for place talk (不想死在家里)"}
@@ -44,7 +47,7 @@
 - {id: fp13, ideal: L0, current: L2, text: "i want to diet before summer", why: "a wanttodiet mask would also hide 'i want to die tbh / then / to…' (user ruling: no mask)"}
 - {id: fp14, ideal: L0, current: L2, text: "i want to diet", why: "same as fp13"}
 - {id: fn01, ideal: L2, current: L0, text: "以前没想过去死 可是现在天天想", why: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}
-- {id: kl_m02, ideal: L3, current: L0, text: "这半年每次开药都偷偷留几片 现在攒了快一百片了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m02)"}
+- {id: kl_m02, ideal: L3, current: L2, text: "这半年每次开药都偷偷留几片 现在攒了快一百片了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m02); fix F16a: L2_MEANS_HOARDED (药 + 攒了, no death word) rates it L2"}
 - {id: kl_m05, ideal: L3, current: L0, text: "绳子我已经买好了 藏在衣柜里", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m05)"}
 - {id: kl_m06, ideal: L3, current: L0, text: "刀片准备好了，就在枕头底下", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m06)"}
 - {id: kl_m07, ideal: L3, current: L0, text: "我把刀磨好了放在床边 你懂我意思", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m07)"}
@@ -59,14 +62,14 @@
 - {id: kl_m23, ideal: L3, current: L0, text: "药和酒都准备好了 摆在桌上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m23)"}
 - {id: kl_m24, ideal: L3, current: L0, text: "剃须刀的刀片我拆出来了，放在洗手台上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m24)"}
 - {id: kl_m30, ideal: L3, current: L0, text: "药已经备好了 all set", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m30)"}
-- {id: kl_m31, ideal: L3, current: L0, text: "攒药攒了三个月，今天终于够数了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m31)"}
+- {id: kl_m31, ideal: L3, current: L2, text: "攒药攒了三个月，今天终于够数了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m31); fix F16a: L2_MEANS_HOARDED rates it L2"}
 - {id: kl_m32, ideal: L3, current: L0, text: "那瓶敌敌畏我一直留着 就塞在床底下", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m32)"}
 - {id: kl_m33, ideal: L3, current: L0, text: "尼龙绳买好了 承重我也查过了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m33)"}
 - {id: kl_m34, ideal: L3, current: L0, text: "刀就在手边，我一直握着它", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m34)"}
 - {id: kl_m35, ideal: L3, current: L0, text: "新的美工刀片已经准备好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m35)"}
-- {id: kl_m37, ideal: L3, current: L0, text: "我把止痛药都囤起来了 准备一次吃完", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m37)"}
+- {id: kl_m37, ideal: L3, current: L2, text: "我把止痛药都囤起来了 准备一次吃完", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m37); fix F16a: L2_MEANS_HOARDED rates it L2"}
 - {id: kl_m38, ideal: L3, current: L0, text: "车库里已经准备好了炭和打火机", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml m38; it moved here as kl_m38_rw in fix round 5)"}
-- {id: kl_m41, ideal: L3, current: L0, text: "pills都囤好了 安眠药一共四盒", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m41)"}
+- {id: kl_m41, ideal: L3, current: L2, text: "pills都囤好了 安眠药一共四盒", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m41); fix F16a: L2_MEANS_HOARDED rates it L2"}
 - {id: kl_m42, ideal: L3, current: L0, text: "家里的药全被我收起来了 够吃一次的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m42)"}
 - {id: kl_m43, ideal: L3, current: L0, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43)"}
 - {id: kl_tp01, ideal: L3, current: L2, text: "我决定了 今晚就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp01)"}

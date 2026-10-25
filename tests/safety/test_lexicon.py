@@ -248,3 +248,33 @@ def test_denial_section_is_optional(tax, tmp_path):
 def test_rejects_malformed_denial_section(tax, tmp_path, mutate, match):
     with pytest.raises(LexiconError, match=match):
         load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=mutate))
+
+
+def test_recall_cap_section_reads_its_questions_from_perception_yaml(tax):
+    recall = load_safety_lexicons(tax).recall_cap
+    perception = yaml.safe_load((PKG_LEX / "perception.yaml").read_text(encoding="utf-8"))
+    expected = {*perception["note_recall"], *perception["note_recall_questions"]}
+    assert set(recall.questions) == expected
+    assert "遗书" in recall.vetoes and "药" not in recall.vetoes
+
+
+def test_recall_cap_is_off_without_its_section_or_perception_yaml(tax, tmp_path):
+    lex = load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=lambda d: d.pop("recall_cap")))
+    assert lex.recall_cap.questions == () and lex.recall_cap.vetoes == ()
+    d = _copy(tmp_path / "b")
+    (d / "perception.yaml").unlink()
+    assert load_safety_lexicons(tax, d).recall_cap.questions == ()
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda d: d["recall_cap"]["vetoes"].append("来着"), "contains vetoes"),
+        (lambda d: d["recall_cap"]["vetoes"].append("遗书"), "repeated"),
+        (lambda d: d["recall_cap"].pop("vetoes"), "non-empty list"),
+        (lambda d: d["recall_cap"].update(extra=["x"]), "unknown keys"),
+    ],
+)
+def test_rejects_malformed_recall_cap_section(tax, tmp_path, mutate, match):
+    with pytest.raises(LexiconError, match=match):
+        load_safety_lexicons(tax, _copy(tmp_path, mutate_risk=mutate))

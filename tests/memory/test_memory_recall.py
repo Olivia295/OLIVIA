@@ -20,7 +20,7 @@ from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, UserRegio
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
 from olivia.core.perception.signals import NoteRecall
-from olivia.core.safety.crisis import CrisisAssessment
+from olivia.core.safety.crisis import CrisisAssessment, RiskPrediction
 from olivia.core.session import ReplyKind, Session
 from olivia.core.taxonomy import load_taxonomy
 
@@ -131,11 +131,11 @@ def _profile() -> PersonaProfile:
 
 
 class Chat:
-    def __init__(self, ledger: Ledger, *, student: bool = False) -> None:
+    def __init__(self, ledger: Ledger, *, student: bool = False, model=None) -> None:
         self.now = NOW
         clock = lambda: self.now  # noqa: E731
         self.session = Session.open(
-            TAX, _profile(), rng=random.Random(7), now=clock, student=student
+            TAX, _profile(), rng=random.Random(7), now=clock, student=student, model=model
         )
         self.recorder = SessionRecorder(ledger, self.session.state.session_id, clock)
 
@@ -265,6 +265,59 @@ def test_model_mode_reads_the_same_signal(ledger):
     result = chat.say("周四要见的那个人是谁来着")
     assert result.inspect["note_recall"] == "question"
     assert result.reply.startswith(_found(MOVERS))
+
+
+class _Fixed:
+    """An injected Stage 2 model: one answer for every message but a note request."""
+
+    def __init__(self, level: CrisisLevel, score: float) -> None:
+        self._prediction = RiskPrediction(level, score, ("FAKE",))
+
+    def predict(self, text: str) -> RiskPrediction:
+        if text.startswith("记住"):
+            return RiskPrediction(CrisisLevel.L0, 0.0, ())
+        return self._prediction
+
+
+BIRTHDAY = "我妈生日是11月3号"
+BIRTHDAY_QUESTIONS = ("我妈生日是哪天来着", "我妈生日是几号来着", "我上次让你记的我妈生日是哪天")
+
+
+@pytest.mark.parametrize("question", BIRTHDAY_QUESTIONS)
+def test_model_mode_recalls_a_note_the_model_alone_rates_l1_or_l2(ledger, question):
+    # F16a: the packaged model rated these L1 (no recall) or L2 (a crisis). A note question
+    # with no risk word counts at most L1, and a model-only L1 lets the note come back.
+    chat = Chat(ledger, student=True)
+    chat.say(f"记住：{BIRTHDAY}")
+    result = chat.say(question)
+    assert not result.in_crisis and result.crisis_level <= CrisisLevel.L1
+    assert result.inspect["note_recall"] is not None
+    assert BIRTHDAY in result.reply
+
+
+@pytest.mark.parametrize("level", [CrisisLevel.L1, CrisisLevel.L2, CrisisLevel.L3])
+def test_an_injected_model_alone_never_holds_a_note_question_back(ledger, level):
+    chat = Chat(ledger, model=_Fixed(level, 0.9 if level is CrisisLevel.L3 else 0.5))
+    chat.say(f"记住：{BIRTHDAY}")
+    result = chat.say("我妈生日是哪天来着")
+    assert not result.in_crisis and result.inspect["assessed_level"] == "L1"
+    assert result.reply.startswith(_found(BIRTHDAY))
+
+
+def test_a_note_question_with_a_risk_word_keeps_the_model_level(ledger):
+    chat = Chat(ledger, model=_Fixed(CrisisLevel.L2, 0.6))
+    chat.say(f"记住：{BIRTHDAY}")
+    result = chat.say("我妈生日是哪天来着，以后也用不上了吧，最后再问一次")
+    assert result.in_crisis and result.inspect["note_recall"] is None
+    assert BIRTHDAY not in result.reply
+
+
+def test_a_note_question_the_rules_rate_l1_is_not_answered_under_a_model(ledger):
+    chat = Chat(ledger, model=_Fixed(CrisisLevel.L1, 0.3))
+    chat.say(f"记住：{MOVERS}")
+    result = chat.say("我上次让你记住什么了，活着好累")
+    assert result.inspect["note_recall"] is None
+    assert MOVERS not in result.reply
 
 
 # -- the wording ---------------------------------------------------------------------------------

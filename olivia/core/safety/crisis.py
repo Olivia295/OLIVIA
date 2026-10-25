@@ -17,6 +17,12 @@ counts at most as L1 (F8a). Negation masks get no such cap: the model's L2 on a 
 negation is what the rules miss. ``CrisisAssessment.rule_level`` carries the rules' own
 level, which the tracker reads (``tracker.py``).
 
+The note recall cap (F16a) works the same way: where the rules rate a message L0, a note
+recall phrase (``recall_cap``: perception.yaml's ``note_recall`` and
+``note_recall_questions``, "我妈生日是哪天来着") occurs in it, no phrase of any risk, pair,
+composition or denial section does, no ``recall_cap`` veto (a means, death, farewell or
+no-waking word) does and the model did not fail, the model's level counts at most as L1.
+
 The denial cap (F10) is narrower still: where the rules rate a message L0, a ``denial``
 phrase ("我不会伤害自己", "我不想死，只是很累", "我已经好多了") covers every Stage 2 phrase, no
 negator stands right before a denial, no contrast follows the first one, no veto (double
@@ -56,6 +62,7 @@ from olivia.core.safety.compose import Composer, CompositionHit
 from olivia.core.safety.lexicon import (
     DenialRules,
     PairCue,
+    RecallCapRules,
     RiskCue,
     RiskSection,
     SafetyLexicons,
@@ -145,6 +152,7 @@ class _CueIndex:
         self.pairs: tuple[PairCue, ...] = pairs
         self.composer = Composer(lexicons.compositions)
         self.denial = _DenialIndex(lexicons.denial)
+        self.recall = _RecallIndex(lexicons.recall_cap)
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
@@ -193,6 +201,10 @@ class _DenialIndex:
         self._vetoes = PhraseMatcher({p: p for p in rules.vetoes})
         self._negators = tuple(rules.negators)
 
+    def mentioned(self, normalized: str) -> bool:
+        """Some denial phrase occurs in the message (negated or not)."""
+        return self._phrases is not None and bool(self._phrases.find_all(normalized))
+
     def denies(
         self, normalized: str, matches: Sequence[Match], cues: Mapping[str, RiskCue]
     ) -> bool:
@@ -211,6 +223,24 @@ class _DenialIndex:
         cover = _MaskCover(hits)
         stage2 = [m for m in matches if m.key in cues and cues[m.key].section == "stage2"]
         return all(cover.contains(m) for m in stage2)
+
+
+class _RecallIndex:
+    """The note recall questions (F16a) with their vetoes."""
+
+    def __init__(self, rules: RecallCapRules) -> None:
+        self._questions = (
+            PhraseMatcher({p: p for p in rules.questions}) if rules.questions else None
+        )
+        self._vetoes = PhraseMatcher({p: p for p in rules.vetoes}) if rules.vetoes else None
+
+    def only_recall(self, normalized: str, matches: Sequence[Match], denial: _DenialIndex) -> bool:
+        """A note recall question with no risk, pair or denial phrase and no veto."""
+        if self._questions is None or matches or denial.mentioned(normalized):
+            return False
+        if not self._questions.find_all(normalized):
+            return False
+        return self._vetoes is None or not self._vetoes.find_all(normalized)
 
 
 def _unique_ids(ids: Iterable[str]) -> tuple[str, ...]:
@@ -373,6 +403,17 @@ class SafetyScreen:
             if figurative:
                 # The rules read every risk phrase as a figure of speech (F8a): at most L1.
                 model_level = min(model_level, CrisisLevel.L1)
+            recall = (
+                not failed
+                and not figurative
+                and model_level >= CrisisLevel.L2
+                and rule_prediction.level is CrisisLevel.L0
+                and not composed
+                and self._index.recall.only_recall(normalized, matches, self._index.denial)
+            )
+            if recall:
+                # A question about a note and not one risk word (F16a): at most L1.
+                model_level = CrisisLevel.L1
             denial = (
                 not failed
                 and not figurative
@@ -397,6 +438,7 @@ class SafetyScreen:
                 self._model_plan_evidence
                 and not failed
                 and not figurative
+                and not recall
                 and not denial
                 and model_prediction.level is CrisisLevel.L3
             )

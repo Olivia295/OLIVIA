@@ -49,6 +49,7 @@ POSITIVE_KINDS = {
     "intent_time",
     "prep_note",
     "prep_means",
+    "means_hoarded",
     "farewell_ctx",
     "farewell_ask",
     "place",

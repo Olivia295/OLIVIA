@@ -362,6 +362,19 @@ def test_negation_with_means_stays_l3_whatever_the_model_says(tax, model):
     assert (a.level, a.stage, a.rule_level) == (L.L3, "STAGE1", L.L3)
 
 
+@pytest.mark.parametrize(
+    ("text", "level"), [("药我都攒够了", L.L2), ("我不会伤害自己的，药我都攒够了", L.L3)]
+)
+def test_hoarded_pills_are_rated_by_the_rules_and_never_denial_capped(tax, screen, text, level):
+    # F16a: the rules used to rate both L0. Hoarded pills are L2 without a death word
+    # (L2_MEANS_HOARDED) and Stage 1 with one (伤害自己 is a death context); the denial is
+    # never a cap on them, whatever the model says.
+    assert screen.assess(text).level is level
+    for model in (_FixedModel(L.L0, 0.0), _FixedModel(L.L1, 0.3), _FixedModel(L.L2, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert a.level is level and a.rule_level is level and a.uncapped_level is None
+
+
 def test_rule_level_is_the_rules_own_level(tax, screen):
     assert screen.assess("活着好累，每天都一样").rule_level is L.L1
     a = _screen_with(tax, _FixedModel(L.L2, 0.7)).assess("今天吃了面")
@@ -409,6 +422,8 @@ def test_injected_model_is_at_most_l1_on_a_first_person_denial(tax, text):
         "我没事，今晚就去",
         "我不会伤害自己，东西都准备好了",
         "我已经好多了，跟大家说声再见",
+        # A means word is a veto even where no rule rates the message (F16a).
+        "我不会伤害自己的，药我都攒着呢",
         # A risk phrase the denial does not cover.
         "我没事，就是想消失",
     ],
@@ -416,6 +431,100 @@ def test_injected_model_is_at_most_l1_on_a_first_person_denial(tax, text):
 def test_the_denial_cap_needs_a_plain_denial(tax, text):
     a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
     assert a.level >= L.L2 and a.uncapped_level is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # F16a: risk content after a denial joined by 只是 / 就是 (no contrast word), which the
+        # cap used to lower to L1. A wish not to wake or never to have been born (L2).
+        "我不想死，我想永远睡过去",
+        "我不想死，只是想永远睡过去",
+        "我好多了，只是想永远睡过去",
+        "我不想死，只是想一觉睡过去",
+        "我没事，只是想一直睡下去",
+        "我没想死，只是想长眠",
+        "我不想死，只是不想再睁开眼睛",
+        "我不想死，只是常常希望自己没出生",
+        # Means.
+        "我不想死，只是想吞一整瓶药",
+        "我不想死，只是在网上查了很多吃药的事",
+        # Time and place.
+        "我不想死，就是今晚想去楼顶看看",
+        # Farewell, giving away, leaving to someone, joining the dead, leaving early.
+        "我没事，就是想把东西都送人",
+        "我好多了，就是东西都送人了",
+        "我不想死，只是钱都留给你们了",
+        "我没事，就是想把猫托付给你",
+        "我没事，只是想最后见你一面",
+        "我不会伤害自己，只是想和这个世界说再见",
+        "我不想死，只是想去天上陪奶奶",
+        "我不想死，只是想早点走",
+        # Rule cues of their own (L1 weariness, D3 asks).
+        "我不想死，只是想解脱",
+        "我不想死，只是想消失",
+        "我不想死，只是觉得没有我大家会更好",
+        "我不想自杀，只是想让一切结束",
+    ],
+)
+def test_the_denial_cap_never_hides_risk_content_after_the_denial(tax, text):
+    for model in (_FixedModel(L.L2, 0.6), _FixedModel(L.L3, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert a.level >= L.L2 and a.uncapped_level is None, text
+
+
+@pytest.mark.parametrize("lead", ["我不想死，", "我不想死，只是", "我没事，就是", "我已经好多了，"])
+def test_every_stage2_phrase_voids_the_denial_cap(tax, lead):
+    # F16a: a Stage 2 phrase the denial does not cover keeps the rules above L0, so the cap
+    # never applies; whatever the model says, the level stays at least the phrase's own.
+    lexicons = load_safety_lexicons(tax)
+    screen = _screen_with(tax, _FixedModel(L.L2, 0.6))
+    for cue in lexicons.cues("stage2"):
+        for phrase in cue.patterns:
+            a = screen.assess(lead + phrase)
+            assert a.level >= L.L2 and a.uncapped_level is None, (lead, phrase, a)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我妈生日是哪天来着",
+        "我妈生日是几号来着",
+        "我上次让你记的我妈生日是哪天",
+        "我该吃的药是几点来着",
+    ],
+)
+def test_injected_model_is_at_most_l1_on_a_plain_note_question(tax, screen, text):
+    # F16a: a note recall phrase and not one risk word; the model's L2/L3 counts as L1.
+    assert screen.assess(text).level is L.L0
+    for model in (_FixedModel(L.L2, 0.5), _FixedModel(L.L3, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert (a.level, a.rule_level, a.uncapped_level) == (L.L1, L.L0, None)
+        assert a.cue_ids[-1] == "FAKE" and not a.has_plan_evidence
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我妈生日是哪天来着，我不想活了",  # a Stage 2 phrase
+        "我上次让你记的遗书放在哪来着",  # a death word
+        "安眠药放在哪来着",  # a means
+        "王师傅是谁来着，以后也用不上了",  # a farewell
+        "累死了，王师傅是谁来着",  # a hyperbole phrase is still a risk phrase
+        "我没事，王师傅是谁来着",  # a denial phrase: the denial cap decides
+        "王师傅是谁来着，一次吃几片来着",  # a dose
+        "今天加班好累",  # no note question at all
+    ],
+)
+def test_the_note_question_cap_needs_a_question_and_no_risk_word(tax, text):
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
+    assert a.level >= L.L2 or a.uncapped_level is not None, text
+
+
+def test_the_note_question_cap_never_lowers_the_rules_or_a_model_failure(tax, screen):
+    assert _screen_with(tax, _RaisingModel()).assess("我妈生日是哪天来着").level is L.L2
+    a = _evidence_screen(tax, _FixedModel(L.L3, 0.95)).assess("我妈生日是哪天来着")
+    assert (a.level, a.has_plan_evidence) == (L.L1, False)
 
 
 def test_a_model_failure_on_a_denial_still_fails_safe_to_l2(tax):

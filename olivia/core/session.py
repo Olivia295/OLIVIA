@@ -137,8 +137,9 @@ confirmation.
 
 A question about a note (F15; PRD MIYI-04): ``TurnSignals.note_recall`` (rule phrases, the
 same in both modes) is passed on as ``inspect["note_recall"]`` (``explicit`` or
-``question``) only on a calm turn: outside a crisis, the screen and the rule screen below
-L1, not the D3 question or its answer, not a note, command, direct or kit request, therapy
+``question``) only on a calm turn: outside a crisis, the screen below L2 and the rule
+screen below L1 (F16a: an L1 only an injected model gives does not hold it back), not
+the D3 question or its answer, not a note, command, direct or kit request, therapy
 question, goodbye or meta turn. The session never sees the notes: the recorder
 (``memory/recorder.py``) looks them up and answers in the reply. An explicit one gets no
 information card; the stage moves as for any other turn, as on a note turn.
@@ -872,14 +873,16 @@ class Session:
         if note:
             # A note turn is answered by the recorder's confirmation, never with a card.
             info = None
-        # A question about a note (F15): only on a calm turn, never in a crisis or with an
-        # L1-L3 screen, and not when the turn asks for anything else. The recorder looks
-        # the notes up; an explicit one is answered by it, so it gets no information card.
+        # A question about a note (F15): only on a calm turn, never in a crisis, with an
+        # L2/L3 screen or an L1 the rules give (an L1 only an injected model gives does not
+        # hold it back, as for the goodbye; F16a), and not when the turn asks for anything
+        # else. The recorder looks the notes up; an explicit one is answered by it, so it
+        # gets no information card.
         recall = signals.note_recall
         if (
             note
             or status.in_crisis
-            or assessment.level >= CrisisLevel.L1
+            or assessment.level >= CrisisLevel.L2
             or rules.level >= CrisisLevel.L1
             or ask
             or answer is not None
