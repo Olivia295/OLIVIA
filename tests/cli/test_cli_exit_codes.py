@@ -28,6 +28,7 @@ NEEDS_SETUP = [
     ["stats"],
     ["persona"],
     ["persona", "2"],
+    ["profile"],
     ["memory"],
     ["forget"],
     ["forget", "--kit"],
@@ -83,6 +84,7 @@ def test_chat_with_a_refusal_record_is_exit_1(run_cli, data_home):
     [
         ["region"],
         ["persona"],
+        ["profile"],
         ["memory"],
         ["privacy"],
         ["resources"],
@@ -140,6 +142,8 @@ class _CtrlC(io.StringIO):
         (["safety-plan"], [], True, 0),
         (["forget"], [], True, 0),
         (["settings"], [], True, 0),
+        (["profile"], [], True, 0),
+        (["profile"], ["1"], True, 0),
     ],
     ids=lambda v: " ".join(v) if isinstance(v, list) else str(v),
 )

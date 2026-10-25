@@ -816,6 +816,7 @@ def test_text_file_has_draft_header_and_no_banned_wording():
         *(c.label for pair in TEXT.choices.values() for c in pair),
         *TEXT.disclosure_labels.values(),
         *TEXT.health.values(),
+        *TEXT.profile.values(),
     ]
     for text in texts:
         lowered = text.casefold()

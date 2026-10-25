@@ -177,6 +177,26 @@ _HEALTH_KEYS: Final = (
     "not_onboarded",
     "adults_only",
 )
+# ``olivia profile`` (chang/profile_command.py, F11), beside the onboarding names and topics.
+_PROFILE_KEYS: Final = (
+    "heading",
+    "user_name_item",
+    "agent_name_item",
+    "taboo_item",
+    "no_topics",
+    "elsewhere",
+    "user_name",
+    "agent_name",
+    "taboo",
+    "user_name_saved",
+    "agent_name_saved",
+    "taboo_saved",
+    "taboo_cleared",
+    "unchanged",
+    "unknown_choice",
+    "not_onboarded",
+    "adults_only",
+)
 _SLOTS: Final = frozenset(
     {
         "user_name",
@@ -187,6 +207,7 @@ _SLOTS: Final = frozenset(
         "sensitive_notice",
         "tokens",
         "system_timezone",
+        "topics",
     }
 )
 _SLOT: Final = re.compile(r"\{([^{}]*)\}")
@@ -277,6 +298,8 @@ class OnboardingText:
     """``PROFILE_CONTRAINDICATIONS`` id -> checklist label, in that order (D2)."""
     health: Mapping[str, str]
     """The ``olivia health`` wording (``health_command``)."""
+    profile: Mapping[str, str]
+    """The ``olivia profile`` wording (``profile_command``, F11)."""
 
 
 def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
@@ -314,6 +337,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
     outcomes = _str_map(doc, "outcomes", _OUTCOME_KEYS)
     disclosure_labels = _str_map(doc, "disclosure_labels", PROFILE_CONTRAINDICATIONS)
     health = _str_map(doc, "health_command", _HEALTH_KEYS)
+    profile = _str_map(doc, "profile_command", _PROFILE_KEYS)
     region_labels = _str_map(doc, "region_labels", SUPPORTED_REGIONS)
     zones = {zone for zones in TIMEZONE_CHOICES.values() for zone in zones}
     timezone_labels = _str_map(doc, "timezone_labels", tuple(sorted(zones)))
@@ -346,6 +370,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         ("hints", hints),
         ("outcomes", outcomes),
         ("health_command", health),
+        ("profile_command", profile),
     ):
         for key, value in texts.items():
             bad = sorted(set(_SLOT.findall(value)) - _SLOTS)
@@ -367,6 +392,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         outcomes=MappingProxyType(outcomes),
         disclosure_labels=MappingProxyType(disclosure_labels),
         health=MappingProxyType(health),
+        profile=MappingProxyType(profile),
     )
 
 
@@ -424,6 +450,47 @@ def region_from_reply(reply: str, text: OnboardingText, *, numbers: bool = True)
         if folded in {_squash_spaces(name) for name in names}:
             return code
     return None
+
+
+def fill_slots(template: str, **values: str) -> str:
+    """Fill ``{slot}`` placeholders; a slot not given raises ``KeyError``."""
+    return _SLOT.sub(lambda m: values[m.group(1)], template)
+
+
+def name_hint(text: OnboardingText, name: str) -> str | None:
+    """The hint for a (stripped, non-empty) name that cannot be used, else None.
+
+    A name must be printable and at most ``NAME_MAX_LEN`` characters (onboarding and
+    ``olivia profile``)."""
+    if not name.isprintable():
+        return text.hints["name_unprintable"]
+    if len(name) > NAME_MAX_LEN:
+        return fill_slots(text.hints["name_length"], max_len=str(NAME_MAX_LEN))
+    return None
+
+
+def parse_taboo(reply: str) -> tuple[str, ...] | None:
+    """The topics in ``reply``, deduplicated in order, or None when over the limits.
+
+    Topics are split on commas, enumeration commas, semicolons, slashes and spaces; at
+    most ``TABOO_MAX_TOPICS``, each at most ``TABOO_MAX_LEN`` characters. Skip words
+    are the caller's business."""
+    topics = tuple(dict.fromkeys(t for t in _LIST_SPLIT.split(reply.strip()) if t))
+    if len(topics) > TABOO_MAX_TOPICS or any(len(t) > TABOO_MAX_LEN for t in topics):
+        return None
+    return topics
+
+
+def taboo_hint(text: OnboardingText) -> str:
+    """The hint for a topic list over the limits."""
+    return fill_slots(
+        text.hints["taboo_limits"], max_len=str(TABOO_MAX_LEN), max_count=str(TABOO_MAX_TOPICS)
+    )
+
+
+def is_skip(text: OnboardingText, reply: str) -> bool:
+    """Whether ``reply`` is empty or one of the ``skip_words`` ("跳过", "没有" ...)."""
+    return _fold(reply) in {"", *(_fold(word) for word in text.skip_words)}
 
 
 def system_timezone() -> str:
@@ -670,18 +737,11 @@ class OnboardingFlow:
         self._step = Step.TABOO
 
     def _on_taboo(self, text: str) -> None:
-        if _fold(text) in self._skip_words():
-            topics: list[str] = []
-        else:
-            topics = list(dict.fromkeys(t for t in _LIST_SPLIT.split(text.strip()) if t))
-        if len(topics) > TABOO_MAX_TOPICS or any(len(t) > TABOO_MAX_LEN for t in topics):
-            self._hint = self._render(
-                self._text.hints["taboo_limits"],
-                max_len=str(TABOO_MAX_LEN),
-                max_count=str(TABOO_MAX_TOPICS),
-            )
+        topics = () if is_skip(self._text, text) else parse_taboo(text)
+        if topics is None:
+            self._hint = taboo_hint(self._text)
             return
-        self._taboo = tuple(topics)
+        self._taboo = topics
         self._step = Step.REGION
 
     def _on_region(self, text: str) -> None:
@@ -714,7 +774,7 @@ class OnboardingFlow:
         self._after_location()
 
     def _on_clinical_consent(self, text: str) -> None:
-        if _fold(text) in self._skip_words():
+        if is_skip(self._text, text):
             self._finish(())
         elif _SQUASH.sub("", _fold(text)) == _SQUASH.sub("", _fold(self._text.consent_sentence)):
             self._step = Step.CLINICAL_HISTORY
@@ -806,27 +866,22 @@ class OnboardingFlow:
         name = text.strip()
         if not name:
             return default
-        if not name.isprintable():
-            self._hint = self._text.hints["name_unprintable"]
-            return None
-        if len(name) > NAME_MAX_LEN:
-            self._hint = self._render(self._text.hints["name_length"], max_len=str(NAME_MAX_LEN))
+        hint = name_hint(self._text, name)
+        if hint is not None:
+            self._hint = hint
             return None
         return name
 
-    def _skip_words(self) -> set[str]:
-        return {"", *(_fold(word) for word in self._text.skip_words)}
-
     def _render(self, template: str, **extra: str) -> str:
         """Fill slots; a slot this call does not supply raises ``KeyError``."""
-        values = {
-            "user_name": self._user_name,
-            "agent_name": self._agent_name,
-            "consent_sentence": self._text.consent_sentence,
-            "sensitive_notice": self._text.sensitive_notice,
+        return fill_slots(
+            template,
+            user_name=self._user_name,
+            agent_name=self._agent_name,
+            consent_sentence=self._text.consent_sentence,
+            sensitive_notice=self._text.sensitive_notice,
             **extra,
-        }
-        return _SLOT.sub(lambda m: values[m.group(1)], template)
+        )
 
     def _ensure_running(self) -> None:
         if self._outcome is not None:

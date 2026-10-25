@@ -48,6 +48,11 @@ step B5).
 
 Entries that fail to decrypt or parse are skipped (``Ledger.skipped`` counts them);
 nothing here logs, and errors never carry entry text.
+
+**Times** are stored as they were recorded (timezone-aware ISO strings) and never
+migrated. The bodies show dates and clock times in ``zone`` when one is given: the
+profile's current timezone (PRD Q-8, F11), so after ``olivia region`` changes it every
+entry, older ones included, reads in the new local time.
 """
 
 from __future__ import annotations
@@ -59,7 +64,7 @@ import re
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import Any, Final
 
@@ -114,6 +119,9 @@ _SUMMARY_OPTIONAL: Final = frozenset({"metrics"})
 _METRICS_KEYS: Final = frozenset({"turns", "real_support_turns", "late_night"})
 _NOTE_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "created_at", "significant"})
 _JOURNAL_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "offered_at", "shown", "helpful"})
+_KIND_ORDER: Final = {"summary": 0, "journal": 1, "note": 2}
+"""Order of entries at the same instant: a session's summary (its start), then the journal
+offered at its opening, then the notes asked for in it, the order these happen in."""
 
 
 class LedgerUnavailableError(Exception):
@@ -261,7 +269,8 @@ class Ledger:
     app data directory); ``vault`` holds the keys and should be the profile store's, so
     one process uses one vault.
 
-    ``method_titles`` maps action ids to the card titles the user saw, for the body.
+    ``method_titles`` maps action ids to the card titles the user saw, for the body;
+    ``zone`` is the timezone the bodies show times in (None: as recorded).
     """
 
     def __init__(
@@ -271,12 +280,14 @@ class Ledger:
         *,
         text: MemoryText | None = None,
         method_titles: Mapping[str, str] | None = None,
+        zone: tzinfo | None = None,
     ) -> None:
         base = app_data_dir() if base_dir is None else base_dir
         self.directory: Path = base / LEDGER_DIRNAME
         self.vault: Vault = Vault(base) if vault is None else vault
         self.text: MemoryText = load_memory_text() if text is None else text
         self._titles: Mapping[str, str] = {} if method_titles is None else method_titles
+        self.zone: tzinfo | None = zone
         self.skipped = 0
         """Entries the last :meth:`entries` call could not open or parse."""
 
@@ -359,6 +370,10 @@ class Ledger:
     def entries(self, since: datetime | None = None) -> tuple[LedgerEntry, ...]:
         """Every readable entry, oldest first; ``since`` keeps those at or after it.
 
+        The order is stable: by time, then by kind at the same instant (summary, journal,
+        note: :data:`_KIND_ORDER`), then by entry id, so listing the same entries twice
+        always numbers them alike (``olivia forget --entry N`` relies on it).
+
         Raises :class:`LedgerUnavailableError` when entries exist but the keychain cannot
         be used now; entries whose key was shredded or that fail to open are skipped.
         """
@@ -379,11 +394,15 @@ class Ledger:
             if since is None or entry.time >= since:
                 found.append(entry)
         self.skipped = skipped
-        found.sort(key=lambda e: (e.time, e.entry_id))
+        found.sort(key=lambda e: (e.time, _KIND_ORDER[_kind(e)], e.entry_id))
         return tuple(found)
 
     def notes(self) -> tuple[NoteEntry, ...]:
         return tuple(e for e in self.entries() if isinstance(e, NoteEntry))
+
+    def local(self, moment: datetime) -> datetime:
+        """``moment`` in :attr:`zone` (unchanged without one), for display only."""
+        return moment if self.zone is None else moment.astimezone(self.zone)
 
     def body(self, entry: LedgerEntry) -> str:
         """The human-readable part of ``entry``: the templated summary or journal record,
@@ -554,14 +573,15 @@ class Ledger:
     def _summary_body(self, s: SessionSummary) -> str:
         t = self.text
         st = t.summary
+        start, end = self.local(s.started_at), self.local(s.ended_at)
         lines = [
-            st.heading.format(date=s.started_at.date().isoformat()),
-            st.time.format(start=s.started_at.strftime("%H:%M"), end=s.ended_at.strftime("%H:%M")),
+            st.heading.format(date=start.date().isoformat()),
+            st.time.format(start=start.strftime("%H:%M"), end=end.strftime("%H:%M")),
             st.path.format(path=st.arrow.join(t.stages[stage.value] for stage in s.stage_path)),
-            st.spectra.format(
-                spectra=st.joiner.join(t.spectra.get(sid, sid) for sid in s.spectra) or st.none
-            ),
         ]
+        if s.spectra:  # no "主要聊到：没有": a session without a dominant spectrum says nothing
+            spectra = st.joiner.join(t.spectra.get(sid, sid) for sid in s.spectra)
+            lines.append(st.spectra.format(spectra=spectra))
         if s.methods:
             shown = st.joiner.join(
                 f"{self._titles.get(m.method_id, m.method_id)}"
@@ -593,12 +613,18 @@ class Ledger:
     def _journal_body(self, entry: JournalEntry) -> str:
         st = self.text.summary
         lines = [
-            st.journal_heading.format(date=entry.offered_at.date().isoformat()),
+            st.journal_heading.format(date=self.local(entry.offered_at).date().isoformat()),
             st.journal_shown if entry.shown else st.journal_skipped,
         ]
         if entry.helpful is not None:
             lines.append(st.journal_helpful if entry.helpful else st.journal_not_helpful)
         return "\n".join(lines)
+
+
+def _kind(entry: LedgerEntry) -> str:
+    if isinstance(entry, NoteEntry):
+        return "note"
+    return "journal" if isinstance(entry, JournalEntry) else "summary"
 
 
 def _rating(value: int | None, none: str) -> str:

@@ -8,14 +8,17 @@ go to the suite's :class:`FakeMachine` (macOS by default): nothing is installed.
 from __future__ import annotations
 
 import io
+import json
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
 from cli_support import NOW, ONBOARD_CN, save_profile
 
 from olivia import cli
-from olivia.core.chang.profile import ProfileLockedError, ProfileStore
+from olivia.core.chang.profile import PROFILE_FILENAME, ProfileLockedError, ProfileStore
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
+from olivia.core.storage import snapshot_paths
 from olivia.notify.check import STATE_FILENAME
 from olivia.notify.system import RunResult, System
 from olivia.notify.text import fill, load_notify_text
@@ -148,6 +151,85 @@ def test_settings_before_onboarding_and_for_a_minor(run_cli, data_home):
     save_profile(data_home, age_confirmed_18_plus=False, region=None, age_gate_refused_at=NOW)
     run = run_cli(["settings"])
     assert run.code == 1 and run.lines == [S["adults_only"]]
+
+
+# -- the storage choice (ONB-06 after the first visit, F11) ------------------------------------
+
+
+def _storage(whole: bool) -> str:
+    state = S["encryption_state_all" if whole else "encryption_state_health"]
+    return f"  2. {fill(S['encryption_item'], state=state)}"
+
+
+def _profile_json(home):
+    return json.loads((home / PROFILE_FILENAME).read_text(encoding="utf-8"))
+
+
+def test_the_menu_shows_the_storage_choice(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["settings"], [""])
+    assert run.code == 0 and run.lines[:3] == [S["heading"], _item(False), _storage(False)]
+
+
+def test_encrypting_the_whole_profile_explains_asks_and_seals_it(run_cli, data_home, machine):
+    save_profile(data_home)
+    for name in ("first", "second"):  # leave plaintext snapshots behind
+        ProfileStore(data_home).save(replace(_saved(data_home), agent_name=name))
+    assert snapshot_paths(data_home / PROFILE_FILENAME)
+    run = run_cli(["settings"], ["2", "1"])
+    assert run.code == 0, run.out
+    assert S["about_encrypt_all"] in run.out and S["confirm_encrypt_all"] in run.lines
+    assert f"  1. {S['encrypt_all_yes']}" in run.lines and run.lines[-1] == S["encrypted_all"]
+    assert set(_profile_json(data_home)) == {"sealed_profile"}
+    for path in [data_home / PROFILE_FILENAME, *snapshot_paths(data_home / PROFILE_FILENAME)]:
+        assert "小林".encode() not in path.read_bytes(), path
+    assert _saved(data_home).enable_at_rest_encryption is True
+    assert run_cli(["settings"], [""]).lines[2] == _storage(True)
+    assert machine.calls == []
+
+
+def test_going_back_to_health_only_explains_the_plaintext_and_asks(run_cli, data_home):
+    save_profile(data_home, enable_at_rest_encryption=True)
+    run = run_cli(["settings"], ["2", "1"])
+    assert run.code == 0, run.out
+    assert S["about_encrypt_health"] in run.out and S["confirm_encrypt_health"] in run.lines
+    assert run.lines[-1] == S["encrypted_health"]
+    data = _profile_json(data_home)
+    assert data["user_name"] == "小林" and "sealed_profile" not in data
+    assert _saved(data_home).enable_at_rest_encryption is False
+
+
+@pytest.mark.parametrize("whole", [False, True])
+@pytest.mark.parametrize("answer", ["2", "", "好的"])
+def test_anything_but_yes_keeps_the_storage_choice(run_cli, data_home, whole, answer):
+    save_profile(data_home, enable_at_rest_encryption=whole)
+    before = (data_home / PROFILE_FILENAME).read_bytes()
+    run = run_cli(["settings"], ["2", answer])
+    assert run.code == 0 and run.lines[-1] == S["cancelled"]
+    assert (data_home / PROFILE_FILENAME).read_bytes() == before
+
+
+@pytest.mark.parametrize("broken", [NoKeychainError("none"), KeychainUnavailableError("locked")])
+def test_whole_encryption_needs_the_keychain(run_cli, data_home, keychain, broken):
+    save_profile(data_home)
+    keychain.broken = broken
+    run = run_cli(["settings"], ["2", "1"])
+    assert run.code == 1 and run.lines[-1] == S["encryption_needs_keychain"]
+    assert S["confirm_encrypt_all"] not in run.out
+    keychain.broken = None
+    assert _saved(data_home).enable_at_rest_encryption is False
+
+
+def test_a_storage_change_that_cannot_be_saved_changes_nothing(run_cli, data_home, monkeypatch):
+    save_profile(data_home)
+
+    def locked(self: ProfileStore, profile: object) -> None:
+        raise ProfileLockedError("the keychain is unavailable", lost=False)
+
+    monkeypatch.setattr(ProfileStore, "save", locked)
+    run = run_cli(["settings"], ["2", "1"])
+    assert run.code == 1 and run.lines[-1] == cli.PROFILE_LOCKED
+    assert _profile_json(data_home)["user_name"] == "小林"
 
 
 # -- forget --all ------------------------------------------------------------------------------

@@ -37,6 +37,19 @@ SETTINGS_KEYS: Final = (
     "unsupported_system",
     "unsupported_notifier",
     "unsupported_scheduler",
+    "encryption_item",
+    "encryption_state_all",
+    "encryption_state_health",
+    "about_encrypt_all",
+    "confirm_encrypt_all",
+    "encrypt_all_yes",
+    "about_encrypt_health",
+    "confirm_encrypt_health",
+    "encrypt_health_yes",
+    "encryption_no",
+    "encrypted_all",
+    "encrypted_health",
+    "encryption_needs_keychain",
     "needs_keychain",
     "not_onboarded",
     "adults_only",
@@ -56,7 +69,17 @@ class NotifyText:
 
     def all_texts(self) -> tuple[str, ...]:
         """Every sentence shown on its own, for the WILLOW and gate checks in the tests."""
-        fragments = {"state_on", "state_off", "confirm_yes", "confirm_no"}
+        fragments = {
+            "state_on",
+            "state_off",
+            "confirm_yes",
+            "confirm_no",
+            "encryption_state_all",
+            "encryption_state_health",
+            "encrypt_all_yes",
+            "encrypt_health_yes",
+            "encryption_no",
+        }
         return (
             *self.notifications.values(),
             *(v for k, v in self.settings.items() if k not in fragments),

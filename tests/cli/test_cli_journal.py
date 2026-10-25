@@ -11,7 +11,13 @@ from olivia import cli
 from olivia.core.chang.journal import load_journal_text
 from olivia.core.chang.profile import ProfileStore
 from olivia.core.crypto.errors import NoKeychainError
-from olivia.core.memory.ledger import LEDGER_DIRNAME, JournalEntry, Ledger, SummaryEntry
+from olivia.core.memory.ledger import (
+    LEDGER_DIRNAME,
+    JournalEntry,
+    Ledger,
+    SessionSummary,
+    SummaryEntry,
+)
 from olivia.core.models import HelpStage
 from olivia.core.session import ReplyKind
 
@@ -230,6 +236,38 @@ def test_journal_command_shows_it_any_time(run_cli, data_home):
     (journal,) = _journals(data_home)
     assert journal.shown and journal.helpful is False
     assert run.lines[-1] == TEXT.replies["helpful_no"]
+
+
+def _week_about_exhaustion(home) -> None:
+    for days, key in ((2, "a"), (1, "b")):
+        start = NOW - timedelta(days=days)
+        _ledger(home).append_summary(
+            SessionSummary(
+                started_at=start,
+                ended_at=start + timedelta(minutes=20),
+                stage_path=(HelpStage.S_READY, HelpStage.S_EXPLORE),
+                spectra=("05", "02"),
+                methods=(),
+            ),
+            key=key,
+        )
+
+
+def test_the_journal_command_leaves_out_taboo_topics(run_cli, data_home):
+    """Ruling 21 (ONB-04b, F11): the profile's taboo topics stay out of the journal."""
+    save_profile(data_home, taboo_topics=("耗尽",))
+    _week_about_exhaustion(data_home)
+    run = run_cli(["journal"], [""])
+    assert run.code == 0 and "- 常聊到的：低落和没劲" in run.lines
+    assert "耗尽" not in run.out
+
+
+def test_the_journal_offered_in_chat_leaves_out_taboo_topics(run_cli, data_home):
+    save_profile(data_home, taboo_topics=("耗尽",))
+    _week_about_exhaustion(data_home)
+    run = run_cli(["chat", "--rules"], ["", "好", "", "/exit"])
+    assert "## 这一周的小结" in run.out and "- 常聊到的：低落和没劲" in run.lines
+    assert "耗尽" not in run.out
 
 
 def test_journal_command_before_onboarding(run_cli, data_home):

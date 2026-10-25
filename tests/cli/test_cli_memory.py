@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import io
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
-from cli_support import L3_SENTENCE, NOW, files_under, save_profile
+from cli_support import L3_SENTENCE, NOW, SHANGHAI, files_under, save_profile
 
 from olivia import cli
 from olivia.core.chang.profile import ProfileStore
 from olivia.core.crypto.errors import NoKeychainError
 from olivia.core.memory import recorder as recorder_module
+from olivia.core.memory.forget import load_forget_text
 from olivia.core.memory.ledger import LEDGER_DIRNAME, Ledger, NoteEntry, SummaryEntry
 from olivia.core.memory.text import load_memory_text
 from olivia.core.models import CrisisLevel, HelpStage
@@ -114,3 +115,23 @@ def test_ordinary_messages_are_never_stored(run_cli, data_home, message):
     save_profile(data_home)
     run_cli(["chat", "--rules"], [message])
     assert _ledger(data_home).notes() == ()
+
+
+def test_memory_shows_times_in_the_current_timezone_after_a_move(run_cli, data_home):
+    """PRD Q-8 (F11): stored as recorded, shown in the profile's timezone of today."""
+    save_profile(data_home)
+    morning = datetime(2026, 10, 23, 9, 0, tzinfo=SHANGHAI)  # 18:00 the day before in LA
+    run_cli(["chat", "--rules"], ["记住：周五去看展", "今天上班好累", "/exit"], now=morning)
+    before = run_cli(["memory"])
+    assert "1. 2026-10-23 的一次聊天" in before.lines  # the summary first, then the note
+    assert "   - 时间：09:00 – 09:00" in before.lines
+    moved = run_cli(["region", "US", "--timezone", "America/Los_Angeles"], now=morning)
+    assert moved.code == 0
+    after = run_cli(["memory"])
+    assert "1. 2026-10-22 的一次聊天" in after.lines
+    assert "   - 时间：18:00 – 18:00" in after.lines
+    note = load_forget_text().memory["note"].replace("{date}", "2026-10-22")
+    assert f"2. {note}" in after.lines
+    # Nothing stored was rewritten: the summary keeps the Shanghai offset it was made with.
+    (summary,) = [e for e in _ledger(data_home).entries() if isinstance(e, SummaryEntry)]
+    assert summary.summary.started_at.utcoffset() == morning.utcoffset()
