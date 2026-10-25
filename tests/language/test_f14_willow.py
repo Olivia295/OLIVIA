@@ -10,7 +10,7 @@ from olivia.core.language import ContentKind, LanguageEngine
 from olivia.core.language.data import LanguageData
 from olivia.core.language.engine import count_all, paragraphs
 from olivia.core.language.mirror import FALLBACK_MIRROR, mirror
-from olivia.core.models import HelpStage
+from olivia.core.models import ActionType, HelpStage
 from olivia.core.taxonomy import Taxonomy
 from tests.language.test_engine import _skeleton
 
@@ -43,10 +43,14 @@ def test_every_card_paragraph_fits_with_one_step_each(
     limit = lang.templates.paragraph_max
     for card_id, card in lang.cards.cards.items():
         for at_work in (True, False):
-            shown = paragraphs(engine.render_card(_skeleton(tax, card_id), at_work=at_work))
+            skeleton = _skeleton(tax, card_id)
+            shown = paragraphs(engine.render_card(skeleton, at_work=at_work))
             for para in shown:
                 assert count_all(para) <= limit, (card_id, para)
-            steps = [f"{i}. {step}" for i, step in enumerate(card.steps, start=1)]
+            if skeleton.action_type is ActionType.PSYCHOEDUCATION:  # tips (D-3): "·", no numbers
+                steps = [f"· {step}" for step in card.steps]
+            else:
+                steps = [f"{i}. {step}" for i, step in enumerate(card.steps, start=1)]
             assert [p for p in shown if p in steps] == steps, card_id
 
 
