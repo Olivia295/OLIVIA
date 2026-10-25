@@ -215,6 +215,10 @@ this session's replies that carried real-support guidance (PRD §11.1),
 whether this turn fell in the B7 late-night window (a degraded turn reports it too). The
 ledger's session summary counts the last two (step F12, ``olivia stats``).
 
+``inspect["uncapped_level"]`` is set only on a turn the F10 denial cap lowered: the
+level before the cap, which the tracker reads in a crisis, while ``assessed_level`` stays
+the capped one (``--inspect`` shows both, F15).
+
 ``inspect["feedback_source"]`` says where recorded feedback came from: ``command``,
 ``phrase`` (a feedback or aversion phrase) or ``confirmed`` (a yes to the question).
 
@@ -1099,6 +1103,7 @@ class Session:
             "turn": transition.state.global_turn_count,
             "level": status.level.name,
             "assessed_level": assessment.level.name,
+            **_uncapped(assessment),
             "in_crisis": status.in_crisis,
             "cue_ids": list(assessment.cue_ids),
             "stage": stage.value,
@@ -2063,6 +2068,7 @@ class Session:
             "turn": state.global_turn_count,
             "level": level.name,
             "assessed_level": assessment.level.name,
+            **_uncapped(assessment),
             "in_crisis": crisis,
             "cue_ids": list(assessment.cue_ids),
             "stage": stage.value,
@@ -2147,6 +2153,13 @@ def _fill_names(template: str, values: Mapping[str, str]) -> str:
     for name, value in values.items():
         template = template.replace("{" + name + "}", value)
     return template
+
+
+def _uncapped(assessment: CrisisAssessment) -> dict[str, object]:
+    """``inspect["uncapped_level"]``, only on a turn the F10 denial cap lowered (display:
+    ``--inspect`` shows both levels; in a crisis the tracker reads the uncapped one)."""
+    level = assessment.uncapped_level
+    return {} if level is None else {"uncapped_level": level.name}
 
 
 def _asks_to_forget(text: str) -> bool:

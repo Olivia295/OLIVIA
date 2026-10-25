@@ -428,11 +428,16 @@ def inspect_panel(result: TurnResult) -> list[str]:
     # F15: the kind of note question and what the recorder found, ids only (never the note).
     recall = data.get("note_recall")
     recalled = data.get("note_recall_result")
+    # F15: a turn the F10 denial cap lowered shows the level before the cap too, since in a
+    # crisis that is the level the tracker read ("风险"); display only.
+    uncapped = data.get("uncapped_level")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
-        f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
-        f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}"
-        f" · 关怀问候 {_fmt(data.get('care_greeting'))}",
+        f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}"
+        + (f"，否认封顶前 {_fmt(uncapped)}" if uncapped else "")
+        + "）"
+        + f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}"
+        + f" · 关怀问候 {_fmt(data.get('care_greeting'))}",
         f"│ 状态 {_fmt(data.get('previous_stage'))} → {_fmt(data.get('stage'))}"
         f"（{_fmt(data.get('reason'))}） · 纯倾听锁 {_fmt(data.get('lock'))}",
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
