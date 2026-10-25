@@ -4,7 +4,9 @@ A message is a note request only when it *starts* with a cue from
 ``olivia/data/lexicons/memory.yaml`` (「记住：……」「帮我记一下……」「请记得……」); the
 text after the cue, minus leading separators and surrounding whitespace, is the note,
 kept verbatim. Cues are compared on the raw message (no folding), so the stored text is
-exactly what the user typed. Whether a request is honoured (never on a crisis turn) is
+exactly what the user typed. ``recall_ignore`` lists the words a recall question
+("周四要见的那个人是谁来着") is stripped of before the notes are searched (F15,
+``recall.py``). Whether a request is honoured (never on a crisis turn) is
 the recorder's call, not this module's.
 """
 
@@ -18,10 +20,11 @@ from typing import Final
 
 import yaml
 
+from olivia.core.safety.normalize import normalize
 from olivia.core.yaml_load import safe_load
 
 _FILE: Final = "memory.yaml"
-_SECTIONS: Final = frozenset({"version", "note_request", "separators"})
+_SECTIONS: Final = frozenset({"version", "note_request", "separators", "recall_ignore"})
 _GROUPS: Final = ("needs_separator", "direct")
 
 
@@ -36,6 +39,9 @@ class NoteCues:
     direct: tuple[str, ...]
     """Cues the note may follow directly ("帮我记一下明天……")."""
     separators: frozenset[str]
+    recall_ignore: tuple[str, ...] = ()
+    """Words a recall question is stripped of before the notes are searched (F15): the
+    question's own wording and particles, folded like the safety screen, longest first."""
 
     def find(self, message: str) -> str | None:
         """The note text if ``message`` is a request to remember something, else None."""
@@ -87,4 +93,10 @@ def load_note_cues(directory: Path | None = None) -> NoteCues:
     separators = doc["separators"]
     if not isinstance(separators, str) or not separators:
         raise NoteCuesError(f"{_FILE}: separators must be a non-empty string")
-    return NoteCues(groups["needs_separator"], groups["direct"], frozenset(separators))
+    ignore = _phrases(doc["recall_ignore"], "recall_ignore")
+    if len(ignore) != len(set(ignore)):
+        raise NoteCuesError(f"{_FILE}: a recall_ignore word is listed twice")
+    folded = sorted({normalize(word) for word in ignore}, key=lambda w: (-len(w), w))
+    return NoteCues(
+        groups["needs_separator"], groups["direct"], frozenset(separators), tuple(folded)
+    )

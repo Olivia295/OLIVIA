@@ -1778,6 +1778,69 @@ haven_exit:
   - 说点别的
   - 想说点别的
 
+# Asking about something the user had OLIVIA remember (PRD MIYI-04, F15; 草稿：待 G-0).
+# A non-negated hit sets TurnSignals.note_recall; the session passes it on only on a calm
+# turn outside a crisis (no L1-L3 screen), and the recorder looks it up among the notes
+# ("记住：……", memory.yaml) and never among the session summaries. Both modes: these are
+# rule phrases, the model never sets them.
+#
+#   note_recall            the message names the notes outright ("我上次让你记住什么了",
+#                          "你帮我记的那个是什么"): always answered (the note, the latest
+#                          one, "nothing yet" or "memory is not available here").
+#   note_recall_questions  a question about a fact the user cannot recall ("周四要见的那个人
+#                          是谁来着"): answered only when a note matches it; otherwise the
+#                          turn is ordinary conversation. Bare "来着" is a past-tense marker
+#                          ("我昨天跟他吵架来着"), so every entry carries a question word.
+#
+# No entry may start with a note cue of memory.yaml (that turn would be a note request).
+note_recall:
+  - 让你记住的
+  - 让你记住什么
+  - 让你记住了什么
+  - 让你记住过
+  - 让你记的
+  - 让你记了什么
+  - 让你记过
+  - 让你记下的
+  - 让你记下什么
+  - 让你记下了什么
+  - 让你帮我记的
+  - 叫你记住的
+  - 叫你记的
+  - 你帮我记的
+  - 你帮我记住的
+  - 你帮我记下的
+  - 你替我记的
+  - 你记下的那
+  - 你记住的那
+  - 你记了什么
+  - 你记了些什么
+  - 你都记了什么
+  - 你记住了什么
+  - 你记下了什么
+  - 你都记着什么
+  - 你还记得我让你
+note_recall_questions:
+  - 是谁来着
+  - 叫什么来着
+  - 叫啥来着
+  - 是什么来着
+  - 是啥来着
+  - 是哪天来着
+  - 哪天来着
+  - 是几号来着
+  - 几号来着
+  - 是几点来着
+  - 几点来着
+  - 在哪来着
+  - 在哪里来着
+  - 在哪儿来着
+  - 什么时候来着
+  - 是哪个来着
+  - 是哪家来着
+  - 是多少来着
+  - 怎么说来着
+
 # Introspector (decision D4, step C2; SDD §3.2, PRD 特性三 / MIYI-03). Read by
 # olivia/core/perception/introspector.py, not by the rule stub. Draft pending G-0.
 #

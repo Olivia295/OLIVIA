@@ -219,6 +219,11 @@ def test_output_exceptions_are_explicit():
     assert audit.output_leaks(_capture("journal", f"· {note}"), [note]) == [
         f"journal console: 「{note}」"
     ]
+    # F15: chat shows the note only inside the recall sentence; anywhere else it is a leak.
+    assert audit.output_leaks(_capture("chat", f"阿屿：{audit.RECALLED}"), [note]) == []
+    assert audit.output_leaks(_capture("chat", f"阿屿：{note}"), [note]) == [
+        f"chat console: 「{note}」"
+    ]
     # Names address the user everywhere on the console.
     assert audit.output_leaks(_capture("chat", f"{audit.AGENT_NAME}：好"), audit.NAMES) == []
 

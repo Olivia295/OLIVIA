@@ -62,7 +62,8 @@ def _write(tmp_path, doc: object) -> None:
 
 def _doc(needs=("记住",), direct=("请记得",), separators="：", **extra: object) -> dict:
     request: dict[str, object] = {"needs_separator": list(needs), "direct": list(direct)}
-    return {"version": 1, "note_request": request, "separators": separators, **extra}
+    doc = {"version": 1, "note_request": request, "separators": separators}
+    return {**doc, "recall_ignore": ["来着"], **extra}
 
 
 def _without_direct() -> dict:
@@ -82,6 +83,8 @@ def _without_direct() -> dict:
         _without_direct(),
         _doc(needs=(" ",)),
         _doc(extra=1),
+        _doc(recall_ignore=[]),
+        _doc(recall_ignore=["来着", "来着"]),
     ],
 )
 def test_malformed_lexicon_is_rejected(tmp_path, doc):
@@ -93,3 +96,8 @@ def test_malformed_lexicon_is_rejected(tmp_path, doc):
 def test_missing_lexicon_is_rejected(tmp_path):
     with pytest.raises(NoteCuesError):
         load_note_cues(tmp_path)
+
+
+def test_recall_ignore_words_are_folded_longest_first(tmp_path):
+    _write(tmp_path, _doc(recall_ignore=["记", "記住", "来着"]))
+    assert load_note_cues(tmp_path).recall_ignore == ("来着", "记住", "记")

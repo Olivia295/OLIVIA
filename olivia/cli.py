@@ -425,11 +425,19 @@ def inspect_panel(result: TurnResult) -> list[str]:
     origin = data.get("feedback_source")
     check = data.get("safety_check")
     mirror = data.get("schema_mirror")
+    # F15: the kind of note question and what the recorder found, ids only (never the note).
+    recall = data.get("note_recall")
+    recalled = data.get("note_recall_result")
+    # F15: a turn the F10 denial cap lowered shows the level before the cap too, since in a
+    # crisis that is the level the tracker read ("风险"); display only.
+    uncapped = data.get("uncapped_level")
     lines = [
         f"┌ inspect · 第 {_fmt(data.get('turn'))} 轮",
-        f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}）"
-        f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}"
-        f" · 关怀问候 {_fmt(data.get('care_greeting'))}",
+        f"│ 风险 {_fmt(data.get('level'))}（本轮筛查 {_fmt(data.get('assessed_level'))}"
+        + (f"，否认封顶前 {_fmt(uncapped)}" if uncapped else "")
+        + "）"
+        + f" · 危机中 {_fmt(data.get('in_crisis'))} · 线索 {_fmt(data.get('cue_ids'))}"
+        + f" · 关怀问候 {_fmt(data.get('care_greeting'))}",
         f"│ 状态 {_fmt(data.get('previous_stage'))} → {_fmt(data.get('stage'))}"
         f"（{_fmt(data.get('reason'))}） · 纯倾听锁 {_fmt(data.get('lock'))}",
         f"│ 唤醒 {_fmt(data.get('arousal'))} · 电量 {_fmt(data.get('battery'))}"
@@ -445,7 +453,8 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else "")
         + (f" · 意图确认 {_fmt(check)}" if check else "")
-        + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else ""),
+        + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else "")
+        + (f" · 调出笔记 {_fmt(recall)}（{_fmt(recalled)}）" if recall else ""),
     ]
     model_reason = data.get("risk_model_reason")
     lines.append(

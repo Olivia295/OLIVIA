@@ -64,6 +64,8 @@ _PHRASE_SECTIONS: Final = (
     "therapy_question_cues",
     "therapy_request_cues",
     "haven_exit",
+    "note_recall",
+    "note_recall_questions",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -166,6 +168,11 @@ class PerceptionLexicon:
     haven_exit: tuple[str, ...]
     """The user feels better or wants another topic ("我好多了", "换个话题吧"; FSM-15): in
     S_haven the state machine goes back to S_explore."""
+    note_recall: tuple[str, ...]
+    """The user asks what they had OLIVIA remember ("我上次让你记住什么了"; MIYI-04, F15)."""
+    note_recall_questions: tuple[str, ...]
+    """A question about a fact the user cannot recall ("……是谁来着"; F15): a note is
+    looked up, and the turn is ordinary conversation when none matches."""
     situation_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy situation code -> folded phrases (A1: SIT-06-04, SIT-11-01)."""
     prolonged_grief: Mapping[str, tuple[str, ...]]
@@ -195,6 +202,10 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
     spectra = _spectrum_cues(tax, doc.get("spectrum_cues"))
     phrases = {name: _phrases(doc.get(name), name) for name in _PHRASE_SECTIONS}
     _check_distinct({name: phrases[name] for name in _SIGNAL_GROUP}, "signal sections")
+    _check_distinct(
+        {name: phrases[name] for name in ("note_recall", "note_recall_questions")},
+        "note recall sections",
+    )
     prefixes, exceptions = _negation(doc.get("negation"))
     feedback = _marked_section(doc.get("feedback"), "feedback", _FEEDBACK_KEYS)
     answers = _marked_section(doc.get("answers"), "answers", _ANSWER_KEYS)
@@ -260,6 +271,8 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         therapy_question_cues=phrases["therapy_question_cues"],
         therapy_request_cues=phrases["therapy_request_cues"],
         haven_exit=phrases["haven_exit"],
+        note_recall=phrases["note_recall"],
+        note_recall_questions=phrases["note_recall_questions"],
         situation_cues=MappingProxyType(_situation_cues(tax, doc.get("situation_cues"))),
         prolonged_grief=MappingProxyType(_prolonged_grief(doc.get("prolonged_grief"))),
         contraindication_cues=MappingProxyType(
