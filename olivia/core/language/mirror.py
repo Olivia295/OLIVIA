@@ -27,6 +27,8 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
 5. Exclamations "X死我了" become "你X坏了" ("气死我了" -> "你气坏了"). The phrase
    "想死你了" says how much the speaker misses someone (F6b): "你很想念对方", "你很想念
    他"; "想死我了" is the speaker's longing: "你盼了很久". A bare "想死" is never this phrase.
+   Delight is no hurt state (F14): "笑死我了" -> "你觉得特别好笑", "萌死我了" -> "你觉得萌
+   极了", never "你笑坏了".
 6. The result starts with 你, with at most one frame (F5b: "你感到" frames only a
    feeling or a view): as it is when the first clause already does; with 你 in front of a
    leading time word ("今天上班好累" -> "你今天上班好累") when that clause names nobody
@@ -45,8 +47,9 @@ for the ``{mirror}`` slot (templates wrap it, e.g. "听起来，{mirror}。").
    is mirrored once, and a filler at a clause's front ("就是", "其实") is dropped (F5b),
    as is a list opener ("首先", "其次", "总而言之"), which the output gate refuses (F14).
 
-A message whose statements are only a goodbye for now ("今天就到这里吧", "我去睡了") is
-CLOSING, and a one-character or one-word answer ("有") is BRIEF: neither is mirrored. A
+A message whose statements are only the speaker's goodbye for now ("今天就到这里吧", "我去
+睡了") is CLOSING (F14: never "跟过去说拜拜", "这个方案先这样吧" or "他说今天就到
+这里"), and a one-character or one-word answer ("有") is BRIEF: neither is mirrored. A
 clause that is only an acknowledgement ("好的", "行", "嗯好") is a filler, so "好的，拜拜"
 is CLOSING, never "你感到好的" (F6b).
 
@@ -223,6 +226,27 @@ _EXCLAIM_RE: Final = re.compile(r"^(.{1,3}?)死我了$")
 # "累死了" says the same about the speaker, for these words only (F5b).
 _EXCLAIM_BARE_RE: Final = re.compile(r"^(累|烦|气|困|急|忙|吓|难受)死了$")
 _EXCLAIM_WORDS: Final = {"烦": "你烦透了", "难受": "你难受极了"}
+# F14: "X死我了" about something funny, sweet or lovely is delight, never a hurt state
+# ("笑死我了" -> "你觉得特别好笑", not "你笑坏了"), the way F6b reads "想死你了".
+_DELIGHT_WORDS: Final = {
+    "笑": "你觉得特别好笑",
+    "乐": "你乐得不行",
+    "萌": "你觉得萌极了",
+    "美": "你觉得美极了",
+    "可爱": "你觉得可爱极了",
+    "帅": "你觉得帅极了",
+    "甜": "你觉得甜极了",
+    "香": "你觉得香极了",
+    "爽": "你觉得痛快极了",
+    "开心": "你开心极了",
+    "高兴": "你高兴极了",
+}
+# "笑死了", "笑死" and "开心死了" say the same delight without 我.
+_DELIGHT_BARE_RE: Final = re.compile(
+    r"^(?:真的?|快|要|简直)?("
+    + "|".join(sorted(_DELIGHT_WORDS, key=len, reverse=True))
+    + r")死(?:了|啦)?$"
+)
 # "想死你了": missing someone very much, never a wish to die (F6b). The person is named
 # after 死 and the clause ends with 了, so "我真的想死" or "想死了" never matches.
 _MISSING_RE: Final = re.compile(
@@ -436,6 +460,40 @@ _CLOSING_PARTICLES: Final = "吧啦呀哦啊"
 _CLOSING_SLACK: Final = 4
 # Not a goodbye when the words in front negate it ("我不想睡觉了").
 _CLOSING_NEGATIONS: Final = "不没别"
+# F14: these are a goodbye only when the speaker says them, with at most these words in
+# front ("好的拜拜", "那我们今天就先这样"): "跟过去说拜拜" and "这个方案先这样吧" are
+# statements about something else.
+_WHOLE_CLOSINGS: Final = frozenset({"拜拜", "再见", "先这样"})
+_CLOSING_LEAD_INS: Final = tuple(
+    sorted(
+        {
+            "好的",
+            "好吧",
+            "好啊",
+            "好",
+            "嗯嗯",
+            "嗯",
+            "行吧",
+            "行",
+            "ok",
+            "okay",
+            "那就",
+            "那",
+            "我们",
+            "咱们",
+            "我",
+            "今天",
+            "今晚",
+            "就",
+            "也",
+        },
+        key=len,
+        reverse=True,
+    )
+)
+# F14: someone else's goodbye, or one reported, is no goodbye of the speaker's
+# ("他说今天就到这里", "我妈说她去睡了").
+_CLOSING_REPORTED: Final = ("说", "讲", "告诉")
 _NOTE_CUES: Final = (
     "请帮我记住",
     "请帮我记一下",
@@ -841,17 +899,39 @@ def _question(clause: str) -> bool:
 
 
 def _closing(plain: str) -> bool:
-    """The clause (punctuation removed) is only a goodbye for now (F5b)."""
+    """The clause (punctuation removed) is only the speaker's goodbye for now (F5b).
+
+    F14: "拜拜", "再见" and "先这样" need nothing but lead-ins in front ("跟过去说拜拜",
+    "这个方案先这样吧" are not goodbyes), and no goodbye is someone else's or reported
+    ("他说今天就到这里").
+    """
     bare = plain.rstrip(_CLOSING_PARTICLES)
     for phrase in _CLOSINGS:
         front = bare[: len(bare) - len(phrase)]
         if (
-            bare.endswith(phrase)
-            and len(front) <= _CLOSING_SLACK
-            and not any(ch in _CLOSING_NEGATIONS for ch in front)
+            not bare.endswith(phrase)
+            or any(ch in _CLOSING_NEGATIONS for ch in front)
+            or _someone_else(front)
         ):
+            continue
+        if _only_lead_ins(front) if phrase in _WHOLE_CLOSINGS else len(front) <= _CLOSING_SLACK:
             return True
     return False
+
+
+def _someone_else(front: str) -> bool:
+    """The words before a goodbye report it or name another person (F14)."""
+    return any(w in front for w in _CLOSING_REPORTED) or any(w in front for w in _THIRD_PARTY)
+
+
+def _only_lead_ins(front: str) -> bool:
+    """``front`` is nothing but acknowledgements and lead-ins ("好的", "那我们今天就")."""
+    while front:
+        word = next((w for w in _CLOSING_LEAD_INS if front.startswith(w)), None)
+        if word is None:
+            return False
+        front = front[len(word) :]
+    return True
 
 
 def _feeling(text: str) -> bool:
@@ -997,6 +1077,14 @@ def _missing(clause: str) -> str | None:
 
 
 def _exclamation(clause: str) -> str | None:
+    """An exclamation "X死我了" as "你X坏了" ("气死我了" -> "你气坏了"), else None.
+
+    Delight ("笑死我了", "萌死我了") is reflected as delight (F14), with laughter in front
+    ("哈哈哈笑死我了") left out."""
+    laughed = clause.lstrip("哈")
+    delight = _DELIGHT_BARE_RE.match(laughed) or _EXCLAIM_RE.match(laughed)
+    if delight is not None and delight.group(1) in _DELIGHT_WORDS:
+        return _DELIGHT_WORDS[delight.group(1)]
     match = _EXCLAIM_RE.match(clause) or _EXCLAIM_BARE_RE.match(clause)
     if match is None:
         return None
