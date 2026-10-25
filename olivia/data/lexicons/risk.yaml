@@ -462,7 +462,10 @@ compositions:
     death: ["自杀", "轻生", "寻死", "去死", "想死", "不想死", "要死", "不想活", "活不下去",
             "活够了", "结束自己", "结束生命", "结束这一切", "了结", "一了百了", "离开这个世界",
             "遗书", "遗言", "后事", "自尽", "傻事", "想不开", "死了算了", "不如死", "不活了",
-            "解脱"]
+            "解脱",
+            # Self-harm named, negated or not (F16a), like 不想死 above: "我不会伤害自己的，药
+            # 我都攒够了" is plan evidence because of 伤害自己.
+            "伤害自己", "伤害我自己"]
     prepared_marks: ["准备好", "买好", "备好", "藏好", "攒好", "攒够", "攒起来", "囤好", "囤起来",
                      "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来", "收好",
                      "存够", "存好"]
@@ -559,6 +562,27 @@ compositions:
       unless: ["烟花", "晒", "花园", "拍照", "风景", "乘凉", "吃饭", "烧烤", "日出", "日落", "星星",
                "修", "打扫", "健身", "跑步", "散步", "钓鱼", "晾", "消防", "演习", "施工", "维修",
                "上课", "等车", "喝茶", "聊天", "写生", "浇花", "看书"]
+      unless_window: 10
+    # Pills hoarded with no death word in the message (F16a): "药我都攒够了". A stockpile is
+    # the means made ready (PRD §9.1 工具已备好), but bare 药 is no self-harm anchor (the
+    # Stage 1 rule above: only 安眠药 + hoarding is), so L2 like the stage2
+    # L2_PLAN_NO_ANCHOR phrase 药我已经准备好了够多了, not Stage 1. With a death word
+    # anywhere (不想死, 伤害自己, 遗书 ...) S1_MEANS_PREPARED rates it L3 first. Only the
+    # hoarding verbs: 准备好 / 买好 alone are everyday for medicine (感冒药买好了). Saving
+    # up for medicine (药钱, 医药费), a chronic or seasonal stock (降压药, 退烧药, 感冒, 疫情)
+    # and someone else's medicine (给我妈, the person check) void it.
+    - id: L2_MEANS_HOARDED
+      level: L2
+      heads: ["药", "药片", "药丸"]
+      tails: ["攒够", "攒了", "攒好", "攒起来", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
+              "凑齐", "偷偷留"]
+      max_gap: 4
+      order: either
+      exceptions: ["药钱", "药费", "医药费", "药的钱", "药店", "药房", "药箱", "中药", "西药"]
+      unless: ["感冒", "发烧", "退烧", "布洛芬", "医院", "医生", "疫情", "阳了", "慢性", "降压",
+               "血压", "血糖", "胰岛素", "过敏", "宠物", "猫", "狗", "出差", "旅行", "出国",
+               "留学", "积分", "优惠", "打折", "医保", "处方", "复查", "老人", "孩子", "宝宝",
+               "爸", "妈", "父母", "爷爷", "奶奶", "外公", "外婆", "家里备", "常备", "备用"]
       unless_window: 10
     # --- Stage 2 L2: stated intent, wish not to wake (C-SSRS item 1) ---
     - id: L2_INTENT_ACT

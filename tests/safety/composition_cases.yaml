@@ -14,6 +14,7 @@
 #   intent_time      plan verb x act + a time or preparation word nearby -> L3 (Stage 1)
 #   prep_note        note / last words / own affairs + prepared or finished -> L3
 #   prep_means       a generic means + prepared, with a death context anywhere -> L3
+#   means_hoarded    pills hoarded (攒够, 囤好 ...) with no death word -> L2 (F16a)
 #   farewell_ctx     farewell or arrangements + a death or ending context -> L3
 #   farewell_ask     the same farewell or arrangements alone -> L1 + D3 question
 #   place            already standing or sitting at a height or a rail edge -> L2 (no
@@ -113,6 +114,18 @@ positives:
 - {id: cp090, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "买好了绳子，我真的不想活了"}
 - {id: cp091, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我说了不想死，可刀已经磨好了"}
 - {id: cp092, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我没打算轻生，就是把药都攒起来了"}
+# F16a: 伤害自己 is a death context too, negated or not.
+- {id: cp093, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我不会伤害自己的，药我都攒够了"}
+- {id: cp094, kind: prep_means, level: L3, stage: STAGE1, ask: false, text: "我不想伤害自己，可药已经囤好了"}
+# --- means_hoarded: pills hoarded, no death word -> L2 (F16a; no self-harm anchor) ---
+- {id: cp230, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "药我都攒够了"}
+- {id: cp231, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "药我都囤好了"}
+- {id: cp232, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "我偷偷把药攒起来了"}
+- {id: cp233, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "药片我已经凑够了"}
+- {id: cp234, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "攒了很多药"}
+- {id: cp235, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "药我攒了好几个月了"}
+- {id: cp236, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "药都存够了，你别问了"}
+- {id: cp237, kind: means_hoarded, level: L2, stage: STAGE2, ask: false, text: "我把药都囤起来了"}
 # --- farewell_ctx: L3 ---
 - {id: cp100, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "跟大家都道别了，我真的不想活了"}
 - {id: cp101, kind: farewell_ctx, level: L3, stage: STAGE1, ask: false, text: "这是最后一条消息了，我要去死了"}
@@ -314,6 +327,16 @@ negatives:
 - {id: cn126, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "切菜的时候刀切到手了"}
 - {id: cn127, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "我当然不想死，切西瓜的刀准备好了"}
 - {id: cn128, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "开会的东西我都准备好了，明天见"}
+# F16a: L2_MEANS_HOARDED's everyday stock, savings, someone else's medicine, a negation.
+- {id: cn230, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "感冒药我都攒够了"}
+- {id: cn231, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "药钱我都攒够了"}
+- {id: cn232, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "我攒够了买药的钱"}
+- {id: cn233, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "疫情的时候药我都囤够了"}
+- {id: cn234, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "降压药我都存够了"}
+- {id: cn235, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "家里常备的药都囤好了"}
+- {id: cn236, kind: prep_benign, level: L0, stage: STAGE2, ask: false, text: "猫的药都攒齐了"}
+- {id: cn237, kind: negation, level: L0, stage: STAGE2, ask: false, text: "药我还没攒够"}
+- {id: cn238, kind: third_person, level: L0, stage: STAGE2, ask: false, text: "医生说药要攒够一个疗程"}
 # --- farewell_benign ---
 - {id: cn130, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "毕业了跟同学们告别"}
 - {id: cn131, kind: farewell_benign, level: L0, stage: STAGE2, ask: false, text: "今天参加了外公的遗体告别仪式"}

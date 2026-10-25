@@ -34,6 +34,8 @@ SAME_IN_TRADITIONAL = frozenset(
     "光囊秋呀哦啊嘛"
     # fix F6a: the veiled-request, farewell and Cantonese 完咗佢 cues and their exceptions.
     "份佢剪加卸原吖咗咯喇嘢圈圾垃店搞改校煮玩痘睇篇耗餐餸麻黑"
+    # fix F16a: L2_MEANS_HOARDED and its everyday stock (布洛芬, 降压, 胰岛素, 药箱 ...).
+    "丸惠慢折敏洛狗疫箱糖素胰芬降"
 )
 
 

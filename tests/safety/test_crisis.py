@@ -362,6 +362,19 @@ def test_negation_with_means_stays_l3_whatever_the_model_says(tax, model):
     assert (a.level, a.stage, a.rule_level) == (L.L3, "STAGE1", L.L3)
 
 
+@pytest.mark.parametrize(
+    ("text", "level"), [("药我都攒够了", L.L2), ("我不会伤害自己的，药我都攒够了", L.L3)]
+)
+def test_hoarded_pills_are_rated_by_the_rules_and_never_denial_capped(tax, screen, text, level):
+    # F16a: the rules used to rate both L0. Hoarded pills are L2 without a death word
+    # (L2_MEANS_HOARDED) and Stage 1 with one (伤害自己 is a death context); the denial is
+    # never a cap on them, whatever the model says.
+    assert screen.assess(text).level is level
+    for model in (_FixedModel(L.L0, 0.0), _FixedModel(L.L1, 0.3), _FixedModel(L.L2, 0.9)):
+        a = _screen_with(tax, model).assess(text)
+        assert a.level is level and a.rule_level is level and a.uncapped_level is None
+
+
 def test_rule_level_is_the_rules_own_level(tax, screen):
     assert screen.assess("活着好累，每天都一样").rule_level is L.L1
     a = _screen_with(tax, _FixedModel(L.L2, 0.7)).assess("今天吃了面")
@@ -409,6 +422,8 @@ def test_injected_model_is_at_most_l1_on_a_first_person_denial(tax, text):
         "我没事，今晚就去",
         "我不会伤害自己，东西都准备好了",
         "我已经好多了，跟大家说声再见",
+        # A means word is a veto even where no rule rates the message (F16a).
+        "我不会伤害自己的，药我都攒着呢",
         # A risk phrase the denial does not cover.
         "我没事，就是想消失",
     ],
