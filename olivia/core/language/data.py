@@ -90,6 +90,7 @@ _FOLLOWUPS: Final = (
     "health_hint",
     "no_pending_feedback",
     "unhelpful_ack",
+    "card_switched",
     "safety_confirmed",
     "forget_hint",
     "haven_return",
@@ -107,6 +108,8 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
+# A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.
+_NOT_TIPS_WORDS: Final = ("练习", "步骤", "做法", "分钟", "跟练")
 # An ``after_close`` line with one of these points at the evening ("愿你今晚…", "早点休息",
 # "今天辛苦了"): the session uses it only in the evening and late at night (F6b).
 EVENING_WORDS: Final = ("今晚", "晚上", "傍晚", "晚安", "夜", "睡", "休息", "辛苦了")
@@ -211,6 +214,11 @@ class Templates:
     after_card: tuple[str, ...]
     light_bridge: tuple[str, ...]
     """S_empower ``bridge`` replacement below the right-wing battery (COLBO-07)."""
+    tips_bridge: tuple[str, ...]
+    """S_empower ``bridge`` for a tips card (PSYCHOEDUCATION, plan D-3; F16b): it offers a
+    few everyday tips, never a practice; it replaces ``light_bridge`` too."""
+    tips_intro: tuple[str, ...]
+    """S_empower ``card_intro`` for a tips card, each with ``{card_title}`` (F16b)."""
     haven: tuple[str, ...]
     crisis: tuple[str, ...]
     crisis_after_confirmed: tuple[str, ...]
@@ -257,6 +265,9 @@ class Templates:
     """A feedback command while no card waits for feedback: one short line."""
     unhelpful_ack: tuple[str, ...]
     """Leads the reply after ``/unhelpful`` (or aversion) on a waiting card."""
+    card_switched: tuple[str, ...]
+    """Leads the new card when the user asks for another one while a card waits (F16b):
+    the waiting card went into the kit, as after ``/not-now``."""
     safety_confirmed: tuple[str, ...]
     """Leads the crisis reply on the turn the tracker hears an explicit safety confirmation."""
     forget_hint: tuple[str, ...]
@@ -342,9 +353,10 @@ class RenderText:
     referral_again: tuple[str, ...]
     """Short intros for the same referral card shown again on the next turn (F5b): the
     destinations are listed in full, the closing paragraph is left out."""
-    referral_warnings: Mapping[str, str]
-    """Red-flag code -> a warning paragraph the full referral card carries (plan D-3:
-    ``WITHDRAWAL_RISK_WARNING`` for SIT-10-04; draft pending G-0)."""
+    referral_warnings: Mapping[str, tuple[str, ...]]
+    """Red-flag code -> the warning paragraphs the full referral card carries (plan D-3:
+    ``WITHDRAWAL_RISK_WARNING`` for SIT-10-04; draft pending G-0). Each is a paragraph of
+    its own, so none is over the 80-character paragraph limit (WILLOW-03, F16b)."""
     crisis_emergency_heading: Mapping[CrisisLevel, str]
     crisis_lines_heading: str
     crisis_hours_label: str
@@ -686,7 +698,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
     warnings_raw = _map(ref.get("warnings", {}), f"{where} referral.warnings")
     _keys(warnings_raw, set(), f"{where} referral.warnings", optional=set(tax.red_flags()))
     warnings = {
-        str(code): _str(text, f"{where} referral.warnings.{code}")
+        str(code): _strs(text, f"{where} referral.warnings.{code}")
         for code, text in warnings_raw.items()
     }
     crisis = _map(data["crisis"], f"{where} crisis")
@@ -790,7 +802,9 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
     for stage in _PART_STAGES:
         body = _map(stages[stage.value], f"{where} {stage}")
         expected = (
-            {"parts", "after_card", "light_bridge"} if stage is HelpStage.S_EMPOWER else {"parts"}
+            {"parts", "after_card", "light_bridge", "tips"}
+            if stage is HelpStage.S_EMPOWER
+            else {"parts"}
         )
         _keys(body, expected, f"{where} {stage}")
         raw_parts = _list(body["parts"], f"{where} {stage}.parts")
@@ -888,6 +902,19 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
                 f"{where} followups.grief_request asks nothing, has no number and names"
                 f" grief counselling (咨询): {text!r}"
             )
+    tips = _map(empower["tips"], f"{where} S_empower.tips")
+    _keys(tips, {"bridge", "card_intro"}, f"{where} S_empower.tips")
+    tips_bridge = _templates(tips["bridge"], f"{where} S_empower.tips.bridge")
+    tips_intro = _templates(tips["card_intro"], f"{where} S_empower.tips.card_intro")
+    for text in (*tips_bridge, *tips_intro):
+        # A tips card is a few everyday tips, not a follow-along exercise (F16b).
+        if any(word in text for word in _NOT_TIPS_WORDS):
+            raise LanguageDataError(
+                f"{where} S_empower.tips must not call the tips a practice or steps: {text!r}"
+            )
+    for text in tips_intro:
+        if "card_title" not in slots_of(text):
+            raise LanguageDataError(f"{where} S_empower.tips.card_intro: missing slots in {text!r}")
     return Templates(
         persona=persona,
         normal_window=normal_window,
@@ -904,6 +931,8 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         parts=MappingProxyType(parts),
         after_card=_templates(empower["after_card"], f"{where} S_empower.after_card"),
         light_bridge=_templates(empower["light_bridge"], f"{where} S_empower.light_bridge"),
+        tips_bridge=tips_bridge,
+        tips_intro=tips_intro,
         haven=singles[HelpStage.S_HAVEN],
         crisis=singles[HelpStage.S_CRISIS],
         crisis_after_confirmed=after_confirmed,
@@ -925,6 +954,7 @@ def _parse_templates(data: Mapping[str, Any], owner: PersonaSpectrum, where: str
         health_hint=lines["health_hint"],
         no_pending_feedback=lines["no_pending_feedback"],
         unhelpful_ack=lines["unhelpful_ack"],
+        card_switched=lines["card_switched"],
         safety_confirmed=lines["safety_confirmed"],
         forget_hint=lines["forget_hint"],
         haven_return=lines["haven_return"],

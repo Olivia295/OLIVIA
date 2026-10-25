@@ -292,6 +292,8 @@ $$\text{RelevanceScore}(e_i, \mathbf{c}_{curr}) = w_{rec} \cdot \exp\left(-\alph
 2. **语境安全模板插槽**：当检测到句子指向外部第三人称（如“伴侣”、“领导”、“你”）时，优先采用人本主义复述模板：
    $$\text{"我觉得你根本不在乎我"} \to \text{"听起来在那段关系里，你深深感到对方没有真正在意你的感受……"}$$
 
+*实现说明（F16b，2026-10-25）*：`mirror.py` 新增两条。(1) 列举：分句匹配“首先 / 其次 / 再次 / 然后 / 接着 / 最后 / 第一… / 一…”加“是”时去掉开头语与“是”；剩下的项不含 我 / 你 / 您、不以“因为 / 由于 / 为了 / 所以”开头且是陈述时记为清单项，首个分句是清单项时整条转述为“你提到 A、B”，在项边界截到 20 字；其后的非清单分句不再接；首句不是清单项时其后的清单项不进镜像。含代词的列举分句只去掉开头语与“是”，按普通陈述处理。(2) 拆句：分句里唯一的主语“我”紧跟“了”、其后是主语后续字、前面提到他人时，在“我”处拆成两个分句（`_split_news`），各自按原规则处理。
+
 ### 4.2 七状态门控有限状态自动机代数模型 (含回退、越级与闭环出口)
 $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 - 状态集 $Q = \{S_{ready}, S_{explore}, S_{clarify}, S_{empower}, S_{haven}, S_{closing}, S_{crisis}\}$；
@@ -321,6 +323,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
 - **直接索要方法**：任何非危机状态均可触发（$S_{crisis}$ 中不响应），$S_{haven}$ 也一样（负责人决定，2026-10-24，PRD COLBO-03）；候选动作仍经红线掩码与唤醒检查（电量低于 0.40 时只给稳定化白名单）；`SILENT_ANCHOR` 人格也可由此进入 $S_{empower}$；掩码后可用集合为空时给 $m_0$（`EMOTIONAL_HOLDING_PRESENCE`），只有命中临床红线时才附转介卡（`solver.allowed_actions` 的 `referral_flags`，与 §4.3.7 一致）。从避风港进入的 $S_{empower}$ 不会因为保存着的低电量在下一轮被拉回避风港：$S_{empower}$ 中只有新的电量读数（`[x%]`）才重新进入 $S_{haven}$；以正常方式离开 $S_{empower}$ 后，保存的电量照常生效。
 - **L1 停留在 $S_{explore}$**（§8.2）：本轮有效等级为 L1 时，$S_{explore} \to S_{clarify}$、$S_{clarify} \to S_{empower}$（自动推进与核心信念识别）都不触发；直接索要方法仍然有效，但只给稳定化白名单内的卡片（裁定 5）。
 - **日常说法的反馈（路线图 R-7b）**：反馈不只来自斜杠命令。卡片等待反馈时，感知层把明确的日常说法读成对应命令（`TurnSignals.feedback`），会话按命令原路处理，效果与命令完全相同；含糊的回应（`feedback_unclear`）先问一次是否收进锦囊，下一轮的“好/可以”（`answer`）记为 `NOT_NOW`。对自己的贬低从不算 `UNHELPFUL`；斜杠命令优先；筛查为 L2/L3 的一轮从不读反馈。“锦囊里那个再给我看看”（`kit_recall`）按直接索要处理，重新递上锦囊里最近存入、且当前仍被求解器放行并有卡片的方法；锦囊跨会话保存（步骤 B3，见 §6.3），所以新会话里“上次存的那个”也能调回；锦囊为空时温和说明。$S_{closing}$ 中整句的“好/可以”等同实施意向确认，“不用了”得到一句温和回应并留在 $S_{closing}$。
+- **等待中换一张（F16b）**：卡片等待反馈、本轮本应重发 `after_card` 提示时（状态机 STAY 或 DIRECT_REQUEST，卡片所在阶段即上一阶段），`TurnSignals.another_method`（`direct_request_whole` 整句，或带“再给 / 再来 / 换 / 别的 / 其他 / 其它”的`direct_request` 短语）或与等待卡不同的 `therapy_request` 记为 `NOT_NOW`：先把等待卡收进锦囊（`_apply_feedback`），再走 `_offer` 采样新卡，回复以 `followups.card_switched` 开头。条件：不在危机中、本轮与规则筛查均低于 L1、无斜杠命令，且 `_switches` 预先用同一掩码确认还有别的可渲染卡片，否则照旧重发提示。`_Pending.stabilization` 记录卡片是否出自稳定化白名单（$S_{explore}$ 卡、`stabilization_only` 或唤醒达到躯体线）；为真时替换卡也按 `stabilization_only` 求解，新卡继承该标记，红队 rt084–rt086（含附加的换卡轮次）不变。
 
 ### 4.3 32 种 A 级微干预编排、禁忌症硬掩码与只陪伴基线 ($m_0$)
 进入 $S_{empower}$ 后，系统求解最优微干预：
@@ -418,6 +421,8 @@ C.O.L.B.O. 循证微干预体系在临床神经生物学层面划分为两大互
 *实现说明（计划 D-1，2026-10-23）*：每种人格一个模板文件（`olivia/data/templates/gentle_holding.yaml`、`zen_philosopher.yaml`、`rational_peer.yaml`、`silent_anchor.yaml`，映射见 `language/data.py` 的 `PERSONA_TEMPLATE_FILES`），各自在 `window` 中声明字数窗口；`load_language_data` 启动时载入并校验全部四份，`LanguageData.for_persona(persona)` 选出会话用的一份（`Session` 按 `PersonaProfile.persona_spectrum` 选择）。`LanguageEngine.window_penalty` 读当前人格的窗口：$S_{haven}$ 用 `window.haven`，$S_{empower}$ 用 `window.empower`（缺省同常规窗口，且不计卡片正文），其余常规阶段用 `window.normal`。`GENTLE_HOLDING`、`ZEN_PHILOSOPHER`、`RATIONAL_PEER` 为常规 $[140, 260]$、单段 $\le 80$、避风港 $[15, 40]$，三段式结构相同；`SILENT_ANCHOR` 的 $S_{explore}$、$S_{clarify}$ 只有一段且不要求槽位，常规窗口 $[10, 30]$，避风港取交集 $[15, 30]$，$S_{empower}$ 因须写出三个反馈命令按 $[10, 70]$、单段 $\le 50$ 计（待 G-0 确认），其 $S_{clarify}$ 不追加 B 级视角卡。危机首句以外的求助电话行由 `render.yaml` 与 `ResourceCard` 生成，与人格无关；`followups.safety_check`（决定 D3）四份逐字一致，加载时校验。每份模板都有 `wellbeing`（B7）、`S_ready.returning_after_check`（A3）与 `followups.health_hint`（A1）；`SILENT_ANCHOR` 的这些句子都是陈述句，休息与深夜提示单段 $\le 30$ 字；它的回复只有一段、没有可替换的 invite，所以不做现实支持引导（`real_support` 不会出现），模型模式的图式镜像提问（决定 D4）也不对它出现。
 
 *实现说明（F14，2026-10-25）*：卡片不豁免单段上限。`LanguageEngine.render_card` 让每一步单独成段，`_info_body`（`render_info` 与 `render_info_reply` 共用）把科普卡分成“「标题」+ 它是什么”“大致如何起作用”“通常由谁进行”三段，所以每张跟练卡、每张科普卡（含前后的引语与结语）的每一段都 $\le 80$ 字（现最长 71 / 72 字，`tests/language/test_f14_willow.py`）。卡片正文仍不计入 $S_{empower}$ 回复的字数窗口；规则模式录像只多了卡片内的空行。
+
+*实现说明（F16b，2026-10-25；草稿：待 G-0）*：`render_card` 把卡片结尾句与在家 / 在工位上的那一句分成两段；`PSYCHOEDUCATION` 卡不加 `card.home_line`，工作时间照常加自己的 `stealth_note`。`LanguageEngine.compose(..., tips=True)`用人格模板 `S_empower.tips.bridge` / `tips.card_intro` 替换 `bridge` 与 `card_intro`（优先于 `light`），会话在主动作为`PSYCHOEDUCATION` 时传入。`render.yaml` 的 `referral.warnings` 每个红线是段落列表，转介卡逐段附上。
 
 ---
 

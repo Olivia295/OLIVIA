@@ -148,6 +148,7 @@ def _combos(pools: list[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
 F2B_LINES = (
     "no_pending_feedback",
     "unhelpful_ack",
+    "card_switched",
     "safety_confirmed",
     "forget_hint",
     "haven_return",
@@ -175,6 +176,8 @@ def _every_text(tpl: Templates) -> Iterator[tuple[str, str]]:
     named = {
         "after_card": tpl.after_card,
         "light_bridge": tpl.light_bridge,
+        "tips_bridge": tpl.tips_bridge,
+        "tips_intro": tpl.tips_intro,
         "haven": tpl.haven,
         "crisis": tpl.crisis,
         "closing": tpl.closing,
@@ -678,3 +681,29 @@ def test_session_meta_lines(lang: LanguageData, persona: PersonaSpectrum) -> Non
     for variant in tpl.safety_confirmed:
         assert "安全" in variant, variant
         assert not any(ch.isdigit() for ch in variant), variant
+
+
+# -- F16b: the tips card's framing, every persona ----------------------------------------------
+
+
+@pytest.mark.parametrize("persona", PersonaSpectrum)
+@pytest.mark.parametrize("values", [TYPICAL, LONGEST])
+def test_tips_framing_fits_and_never_calls_tips_a_practice(
+    lang: LanguageData, persona: PersonaSpectrum, values: dict[str, str]
+) -> None:
+    tpl = lang.personas[persona]
+    assert len(tpl.tips_bridge) >= 2 and len(tpl.tips_intro) >= 2
+    for text in (*tpl.tips_bridge, *tpl.tips_intro):
+        for word in ("练习", "步骤", "做法", "分钟"):
+            assert word not in text, text
+        assert "小贴士" in text or "小建议" in text or "{card_title}" in text, text
+    for text in tpl.tips_intro:
+        assert "{card_title}" in text, text
+    low, high = tpl.empower_window
+    for combo in itertools.product(tpl.tips_bridge, tpl.tips_intro, tpl.after_card):
+        reply = "\n\n".join(_fill(p, values) for p in combo)
+        assert _all(reply) <= high, reply
+        for para in _paragraphs(reply):
+            assert _all(para) <= tpl.paragraph_max, para
+        if values is TYPICAL:
+            assert low <= _cjk(reply), reply

@@ -278,6 +278,17 @@ def test_withdrawal_warning_is_no_card_but_rides_on_the_referral(
     assert "突然停下来" not in engine.render_referral(["SIT-10-04"], again=1)
 
 
+def test_referral_paragraphs_fit_the_paragraph_limit(tax: Taxonomy, engine: LanguageEngine) -> None:
+    # F16b: the withdrawal warning was one 87-character paragraph. Every prose paragraph
+    # of a one-flag referral card (not the intro with its list of places), in every
+    # region's wording, is within 80 characters.
+    for code in tax.red_flags():
+        for country in ("CN", "HK", "US"):
+            for paragraph in paragraphs(engine.render_referral([code], country)):
+                if "\n· " not in paragraph:
+                    assert count_all(paragraph) <= 80, (code, country, paragraph)
+
+
 def test_psychoeducation_card_renders_as_tips(tax: Taxonomy, engine: LanguageEngine) -> None:
     skeleton = _skeleton(tax, "CIRCADIAN_RHYTHM_STABILIZATION")
     assert skeleton.action_type is ActionType.PSYCHOEDUCATION
@@ -288,6 +299,50 @@ def test_psychoeducation_card_renders_as_tips(tax: Taxonomy, engine: LanguageEng
     assert text.count("\n· ") == len(skeleton.core_action_steps)
     exercise = engine.render_card(_skeleton(tax, "SAFE_PLACE_CONTAINER"))
     assert "1. " in exercise and "约 3 分钟" in exercise
+
+
+def test_card_closing_and_its_context_line_are_separate_paragraphs(
+    tax: Taxonomy, engine: LanguageEngine
+) -> None:
+    # F16b: the closing sentence and the home or desk line no longer share a paragraph.
+    data = engine.data
+    card = engine.card_for("30:grounding")
+    home = engine.render_card(_skeleton(tax, "30:grounding"), at_work=False)
+    assert paragraphs(home)[-2:] == [card.closing, data.render.card_home_line]
+    work = engine.render_card(_skeleton(tax, "30:grounding"), at_work=True)
+    if card.stealth_note is not None:
+        stealth = f"{data.render.card_stealth_label}{card.stealth_note}"
+        assert paragraphs(work)[-2:] == [card.closing, stealth]
+    else:
+        assert paragraphs(work)[-1] == card.closing
+
+
+def test_tips_card_has_no_exercise_posture_line(tax: Taxonomy, engine: LanguageEngine) -> None:
+    # F16b: "坐着、靠着都可以" is about settling in for an exercise, not for a set of tips.
+    skeleton = _skeleton(tax, "CIRCADIAN_RHYTHM_STABILIZATION")
+    card = engine.card_for("CIRCADIAN_RHYTHM_STABILIZATION")
+    home = engine.render_card(skeleton, at_work=False)
+    assert engine.data.render.card_home_line not in home
+    assert paragraphs(home)[-1] == card.closing
+    work = engine.render_card(skeleton, at_work=True)
+    assert card.stealth_note is not None
+    assert paragraphs(work)[-1] == f"{engine.data.render.card_stealth_label}{card.stealth_note}"
+
+
+def test_tips_card_framing_is_tips_not_a_practice(engine: LanguageEngine) -> None:
+    slots = Slots(user_name="小林", agent_name="阿柳", card_title="让作息稳一稳", emotion="疲惫")
+    for light in (False, True):
+        for _ in range(20):
+            reply = engine.compose(
+                HelpStage.S_EMPOWER, slots, card="「让作息稳一稳」\n正文", light=light, tips=True
+            )
+            bridge, intro = paragraphs(reply)[:2]
+            assert "小贴士" in bridge, bridge
+            assert "「让作息稳一稳」" in intro and ("小贴士" in intro or "小建议" in intro), intro
+            for word in ("练习", "步骤", "做法", "分钟"):
+                assert word not in bridge + intro, reply
+    with pytest.raises(ValueError, match="tips card"):
+        engine.compose(HelpStage.S_EXPLORE, slots, tips=True)
 
 
 def test_alias_resolves_to_its_card(tax: Taxonomy, engine: LanguageEngine) -> None:

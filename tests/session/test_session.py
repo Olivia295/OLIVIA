@@ -317,6 +317,22 @@ def test_bipolar_user_gets_the_circadian_or_stimulus_card(rules_only):
     assert shown == {"CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION"}
 
 
+def test_circadian_card_is_framed_as_tips():
+    # F16b: the tips card gets the persona's tips framing and no exercise posture line
+    # (NOW is 23:30 local time, outside working hours, so an exercise card would get it).
+    home_line = "坐着、靠着都可以"
+    for seed in range(12):
+        result = _open(seed, clinical_history=("SIT-02-06",)).turn("给我一个方法")
+        assert result.action_id == "CIRCADIAN_RHYTHM_STABILIZATION"
+        framing = result.reply.split("「让作息稳一稳」\n", 1)[0]
+        assert "小贴士" in framing or "小建议" in framing, framing
+        for word in ("练习", "步骤", "做法", "分钟"):
+            assert word not in framing, framing
+        assert home_line not in result.reply
+    exercise = _open(clinical_history=("SIT-06-01",)).turn("给我一个方法")
+    assert exercise.reply_kind is ReplyKind.CARD and home_line in exercise.reply
+
+
 def test_circadian_card_takes_feedback_like_any_card():
     session = _open(clinical_history=("SIT-02-06",))
     card = session.turn("给我一个方法")
@@ -398,7 +414,9 @@ def test_card_waiting_for_feedback_gets_the_prompt_not_a_new_card(rules_only):
     assert shown is not None
     spectrum = str(session.snapshot()["pending_spectrum"])
     alpha, beta = session._sampler.posterior(shown, spectrum, NOW)
-    for text in ("嗯，我看看", "再给我一个方法"):
+    # A plain request keeps the card waiting; one for another method swaps it (F16b,
+    # test_another_one_while_a_card_waits_shelves_it_and_shows_another).
+    for text in ("嗯，我看看", "给我一个方法"):
         waiting = session.turn(text)
         assert waiting.stage is HelpStage.S_EMPOWER
         assert waiting.action_id is None and waiting.inspect["candidates"] == []
@@ -485,6 +503,79 @@ def test_method_request_after_a_stabilization_card_keeps_that_card():
         done = session.turn("/done")
         assert done.stage is HelpStage.S_CLOSING
         assert done.inspect["feedback"] == "HELPFUL"
+
+
+def test_another_one_after_a_stabilization_card_stays_in_the_whitelist():
+    # F16b: "换一个" swaps the waiting card, but a card asked for in place of a
+    # stabilization card comes from the whitelist too, on every later swap as well; the
+    # calm-looking request never opens the full pool (red-team rt084-rt086).
+    for seed in range(20):
+        session = _open(seed)
+        shown = session.turn("喘不上气，脑子嗡嗡的，快给我分析一下我的思维误区").action_id
+        assert shown in STABILIZATION
+        seen = {shown}
+        for text in ("换一个", "再来一个", "再给我一个别的方法"):
+            swap = session.turn(text)
+            if swap.action_id is None:  # the whitelist ran out: the last card keeps waiting
+                assert "/done" in swap.reply and swap.inspect["feedback"] is None
+                break
+            assert swap.stage is HelpStage.S_EMPOWER and swap.reply_kind is ReplyKind.CARD
+            assert swap.action_id in STABILIZATION and swap.action_id not in seen
+            assert swap.inspect["feedback"] == "NOT_NOW"
+            assert set(session.state.user_shelved_actions) == seen
+            seen.add(swap.action_id)
+
+
+def _named(line: str) -> str:
+    return line.replace("{user_name}", "小林")
+
+
+def test_another_one_while_a_card_waits_shelves_it_and_shows_another():
+    templates = load_language_data(TAX).templates
+    for seed in range(10):
+        session = _open(seed)
+        first = session.turn("今天上班好累，给我一个方法")
+        assert first.reply_kind is ReplyKind.CARD
+        swap = session.turn("再给我一个别的方法")
+        assert swap.stage is HelpStage.S_EMPOWER and swap.reply_kind is ReplyKind.CARD
+        assert swap.action_id not in {first.action_id, None}
+        assert swap.inspect["feedback"] == "NOT_NOW"
+        assert session.state.user_shelved_actions == [first.action_id]
+        assert any(swap.reply.startswith(_named(line)) for line in templates.card_switched)
+        # The new card waits for feedback like any card.
+        done = session.turn("/done")
+        assert done.stage is HelpStage.S_CLOSING and done.inspect["feedback"] == "HELPFUL"
+        assert session.state.user_shelved_actions == [first.action_id]
+
+
+def test_a_named_practice_while_a_card_waits_is_shown_in_its_place():
+    session = _open()
+    first = session.turn("今天上班好累，给我一个方法")
+    assert first.reply_kind is ReplyKind.CARD and first.action_id != "15"
+    named = session.turn("能带我做一下正念吗")
+    assert named.reply_kind is ReplyKind.CARD and named.action_id == "15"
+    assert session.state.user_shelved_actions == [first.action_id]
+    # The same practice asked for again keeps waiting.
+    again = session.turn("能带我做一下正念吗")
+    assert again.action_id is None and "/done" in again.reply
+
+
+def test_a_plain_request_or_no_other_card_keeps_the_card_waiting():
+    session = _open()
+    first = session.turn("今天上班好累，给我一个方法")
+    plain = session.turn("给我一个方法")
+    assert plain.action_id is None and "/done" in plain.reply
+    assert session.state.user_shelved_actions == []
+    # A bipolar user has two red-flag cards: after one swap there is none left to show.
+    bipolar = _open(clinical_history=("SIT-02-04",))
+    shown = bipolar.turn("给我一个方法").action_id
+    other = bipolar.turn("换一个").action_id
+    assert {shown, other} == {"CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION"}
+    last = bipolar.turn("换一个")
+    assert last.action_id is None and "/done" in last.reply
+    assert last.inspect["feedback"] is None
+    assert bipolar.state.user_shelved_actions == [shown]
+    assert first.action_id is not None
 
 
 def test_listening_lock_blocks_the_stabilization_card():
