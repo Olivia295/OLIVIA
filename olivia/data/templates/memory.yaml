@@ -12,7 +12,9 @@
 #                       温和地接着聊，不把要记的话当成感受来复述。
 #
 # summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
-#   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after}
+#   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after} {turns} {count}
+#   turns / support / late_night（F12，`olivia stats` 的来源）：这次聊了几轮、其中几轮聊到身边可以
+#     联系的人（为 0 时不显示）、是否在深夜（00:00–05:00）聊的；旧条目没有这些字段，不显示。
 #   journal_*：周记记录（B6）的正文：哪天提出过周记、看没看、觉得有没有帮助。
 # stages / spectra / feedback：阶段、困扰谱系与反馈的日常说法，不用病名。
 version: 1
@@ -32,6 +34,9 @@ summary:
   no_methods: "- 这次没有试小练习。"
   crisis: "- 这次聊天里有过很难熬的时刻，我们一起看了可以求助的电话。"
   self_rating: "- 自评：开始时 {before}，结束时 {after}"
+  turns: "- 一共聊了 {turns} 轮。"
+  support: "- 其中有 {count} 轮聊到了身边可以联系的人。"
+  late_night: "- 这次是在深夜聊的。"
   significant: "- 这次聊天很重要，会一直留着。"
   none: "没有"
   joiner: "、"

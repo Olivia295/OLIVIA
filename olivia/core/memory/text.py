@@ -37,6 +37,9 @@ _SUMMARY_KEYS: Final = (
     "no_methods",
     "crisis",
     "self_rating",
+    "turns",
+    "support",
+    "late_night",
     "significant",
     "none",
     "joiner",
@@ -64,6 +67,9 @@ class SummaryText:
     no_methods: str
     crisis: str
     self_rating: str
+    turns: str
+    support: str
+    late_night: str
     significant: str
     none: str
     joiner: str

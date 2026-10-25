@@ -248,6 +248,41 @@ def test_panel_lines_hold_no_typed_text_not_even_names():
     assert audit.panel_leaks(leaky, audit.ALL_TYPED) == [f"chat: 「{audit.USER_NAME}」"]
 
 
+def _stats_output(*extra: str) -> str:
+    words = audit.load_stats_text().lines
+    lines = [
+        words["heading"],
+        words["sessions"].format(total=3, week=1, month=2),
+        words["late_night"].format(start="00:00", end="05:00", count=1, known=2, percent=50)
+        + words["unknown"].format(count=1),
+        words["support"].format(count=3, turns=20, percent=15),
+        words["rating"].format(change="-0.5", count=2),
+        *extra,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def test_stats_output_of_numbers_only_passes():
+    text = audit.load_stats_text()
+    assert audit.stats_problems(_capture("stats", _stats_output()), audit.ALL_TYPED, text) == []
+
+
+def test_stats_output_with_typed_text_or_another_line_fails():
+    text = audit.load_stats_text()
+    named = _capture("stats", _stats_output(f"- {audit.USER_NAME}"))
+    problems = audit.stats_problems(named, audit.ALL_TYPED, text)
+    assert f"typed text: 「{audit.USER_NAME}」" in problems and "not a stats line: 6" in problems
+    worded = text.lines["sessions"].replace("{total}", "很多").format(week=1, month=2)
+    other = _capture("stats", f"{text.lines['heading']}\n{worded}\n")
+    assert audit.stats_problems(other, audit.ALL_TYPED, text) == ["not a stats line: 2"]
+
+
+def test_stats_that_printed_no_numbers_fail():
+    text = audit.load_stats_text()
+    capture = _capture("stats", text.replies["unavailable"] + "\n")
+    assert audit.stats_problems(capture, audit.ALL_TYPED, text) == ["no numbers were printed"]
+
+
 # -- the whole audit --------------------------------------------------------------------------
 
 
@@ -264,6 +299,7 @@ def test_the_audit_passes_on_this_tree(capsys, keychain):
     assert audit.main() == 0
     out = capsys.readouterr().out
     assert "all checks passed" in out and "FAIL" not in out
-    for name in ("network-imports", "network-runtime", "forget-all-clean [switch-on]"):
+    names = ("network-imports", "network-runtime", "forget-all-clean [switch-on]")
+    for name in (*names, "stats-numbers-only [switch-off]"):
         assert name in out
     assert keychain.items == {}  # the suite's keychain was never used either
