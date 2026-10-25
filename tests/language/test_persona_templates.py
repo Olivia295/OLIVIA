@@ -154,6 +154,7 @@ F2B_LINES = (
     "haven_exit_hint",
     "therapy_referred",
     "grief_request",
+    "grief_request_prolonged",
 )
 
 
@@ -670,7 +671,7 @@ def test_session_meta_lines(lang: LanguageData, persona: PersonaSpectrum) -> Non
         # F9: no explainer and no practice for a red-flag user, only who to ask.
         assert "医生" in variant, variant
         assert not any(w in variant for w in ("练习", "试试", "方法", "建议")), variant
-    for variant in tpl.grief_request:
+    for variant in (*tpl.grief_request, *tpl.grief_request_prolonged):
         # F10: hears the request, explains m0 and names grief counselling; no hotline.
         assert ("方法" in variant or "办法" in variant) and "哀伤咨询" in variant, variant
         assert not any(ch.isdigit() for ch in variant) and "热线" not in variant, variant

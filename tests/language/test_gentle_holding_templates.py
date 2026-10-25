@@ -389,6 +389,7 @@ def test_followup_groups_and_variant_counts() -> None:
         "haven_exit_hint",
         "therapy_referred",
         "grief_request",
+        "grief_request_prolonged",
     }
     for name, variants in FOLLOWUPS.items():
         assert 2 <= len(variants) <= 5, name
@@ -439,6 +440,7 @@ def test_followups_pass_willow_unchanged_and_the_output_gate() -> None:
         "haven_exit_hint": templates.haven_exit_hint,
         "therapy_referred": templates.therapy_referred,
         "grief_request": templates.grief_request,
+        "grief_request_prolonged": templates.grief_request_prolonged,
     }
     assert {name: list(v) for name, v in loaded.items()} == FOLLOWUPS
     stages = (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_EMPOWER, HelpStage.S_CLOSING)

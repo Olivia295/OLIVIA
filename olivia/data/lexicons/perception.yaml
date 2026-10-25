@@ -2680,8 +2680,10 @@ situation_cues:
 # in each of the three lists: a death (loss), a long time since (duration: half a year
 # or more), and still not getting through it (unresolved). Two of the three are no hit:
 # "外婆去世好几年了，现在想起来更多是温暖" and "宠物走了一年了，我已经慢慢好了" name no
-# unresolved grief. Like every SIT-06-04 cue it routes to m0 for the rest of the session
-# and sets ACUTE_BEREAVEMENT_SHOCK (contraindications.py links the code, not the phase).
+# unresolved grief. Like every SIT-06-04 cue it routes to m0 for the rest of the session.
+# F13 (draft, G-0): it no longer sets ACUTE_BEREAVEMENT_SHOCK, whose source is the early
+# phase (丧亲初期); only the acute cues above do (TurnSignals.prolonged_grief tells them
+# apart), and a direct request gets followups.grief_request_prolonged instead.
 # Crisis screening runs before and apart from these words: a grief message with crisis
 # wording is still a crisis turn.
 prolonged_grief:

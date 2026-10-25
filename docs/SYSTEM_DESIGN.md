@@ -336,7 +336,7 @@ $$M = (Q, \Sigma_{in}, \delta, q_0, F)$$
    - `RED_FLAG_SUBSTANCE_WITHDRAWAL`（物质急性戒断，源自 `SIT-10-04 / USER_PROFILE`）
    - `ACUTE_AROUSAL_OVERLOAD`（交感神经过载 $Arousal \ge 0.85$，阻断认知辨析）
    - `TOXIC_SHAME_SPIRAL`（毒性羞耻螺旋，源自 `DEFECTIVENESS` 图式，禁内观添麻烦第3问）
-   - `ACUTE_BEREAVEMENT_SHOCK`（急性丧亲剧烈期，源自 `SIT-06-04`，遵从 $m_0$ 陪伴基线）
+   - `ACUTE_BEREAVEMENT_SHOCK`（急性丧亲剧烈期，源自 `SIT-06-04`，遵从 $m_0$ 陪伴基线；*实现*（F13，草稿：待 G-0）：只由急性说法设出，只由延长哀伤三类词识别出的 SIT-06-04 不设它但仍走 $m_0$，直接要方法时改用 `followups.grief_request_prolonged`，见 PRD COLBO-06）
    - `CARDIORESPIRATORY_INSTABILITY`（严重心血管/呼吸不稳，源自用户病史，禁剧烈屏气/冷水）
    - `INTERPERSONAL_SAFETY_HAZARD`（活动性家暴/人身威胁，源自 `CRISIS_DETECTOR`）
 2. **S_explore 稳定化微干预 ID 白名单 (`explore_stabilization_whitelist`)**：

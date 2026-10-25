@@ -202,22 +202,42 @@ def test_inspect_lists_arousal_overload_with_the_derived_ids():
 # -- F10: the m0 answer to a grief request is explained -------------------------------------
 
 
-def _grief_lines(session: Session) -> set[str]:
-    return {v.replace("{user_name}", "小林") for v in session._engine.data.templates.grief_request}
+def _grief_lines(session: Session, *, prolonged: bool | None = None) -> set[str]:
+    """The persona's grief lines: acute, prolonged (F13) or, with None, both."""
+    templates = session._engine.data.templates
+    variants = {
+        False: templates.grief_request,
+        True: templates.grief_request_prolonged,
+        None: (*templates.grief_request, *templates.grief_request_prolonged),
+    }[prolonged]
+    return {v.replace("{user_name}", "小林") for v in variants}
+
+
+PROLONGED_REQUEST = "[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法"
+ACUTE_REQUEST = "[80%] 我奶奶刚去世，给我一个方法"
 
 
 @pytest.mark.parametrize("persona", list(PersonaSpectrum))
-@pytest.mark.parametrize(
-    "text",
-    ["[80%] 妈妈去世一年多了，我还是走不出来，给我一个方法", "[80%] 我奶奶刚去世，给我一个方法"],
-)
-def test_a_grief_request_on_m0_is_heard_and_points_at_grief_counselling(persona, text):
+@pytest.mark.parametrize(("text", "prolonged"), [(PROLONGED_REQUEST, True), (ACUTE_REQUEST, False)])
+def test_a_grief_request_on_m0_is_heard_and_points_at_grief_counselling(persona, text, prolonged):
     session = _open(persona_spectrum=persona)
     result = session.turn(text)
     assert result.action_id == M0_ACTION_ID and result.reply_kind is ReplyKind.NORMAL
     first, _, rest = result.reply.partition("\n\n")
-    assert first in _grief_lines(session) and rest, result.reply
+    assert first in _grief_lines(session, prolonged=prolonged) and rest, result.reply
+    assert first not in _grief_lines(session, prolonged=not prolonged)
     assert result.resource_card is None  # not a crisis: no hotline card
+    acute_enum = "ACUTE_BEREAVEMENT_SHOCK" in result.inspect["contraindications"]
+    assert acute_enum is not prolonged  # F13: only the early phase sets the acute enum
+
+
+def test_an_acute_loss_later_in_the_session_switches_to_the_acute_line():
+    session = _open()
+    session.turn("[80%] 妈妈去世一年多了，我还是走不出来")
+    session.turn("[80%] 昨天外婆也刚去世")
+    result = session.turn("[80%] 给我一个方法")
+    assert result.action_id == M0_ACTION_ID
+    assert result.reply.partition("\n\n")[0] in _grief_lines(session, prolonged=False)
 
 
 def test_grief_without_a_request_gets_no_grief_line():
