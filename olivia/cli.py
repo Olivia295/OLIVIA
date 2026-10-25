@@ -60,14 +60,16 @@
     A short privacy notice (``chang/privacy.py``, B8): what is stored where, always
     offline, what is encrypted, how to see and delete it. Reads and writes nothing.
 ``olivia settings``
-    A numbered menu of switches (``notify/settings.py``, B9); for now the system
+    A numbered menu of switches (``notify/settings.py``, B9, F11). 1: the system
     reminders, off by default (decision D5). Turning them on says what will be installed
     and asks once more, then installs one scheduled job (``notify/jobs.py``: a LaunchAgent,
     a Task Scheduler task, or a systemd user timer / crontab line); turning them off, or
     ``forget --all``, removes it. The job runs the hidden ``olivia notify-check``
     (``notify/check.py``), which sends at most one content-free notification and nothing
     while the keychain is locked; all it writes is ``notify.json`` (the dates of the last
-    two reminders, no user data).
+    two reminders, no user data). 2: the onboarding storage choice (ONB-06): only health
+    information encrypted, or the whole profile; each way is explained and confirmed, and
+    the whole profile cannot be sealed without a keychain.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -1121,7 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "privacy", help="看看 OLIVIA 怎么保护你的隐私：存了什么、存在哪里、怎么删除"
     )
-    commands.add_parser("settings", help="查看或修改设置（例如系统提醒，默认关闭）")
+    commands.add_parser("settings", help="查看或修改设置：系统提醒（默认关闭）、保存方式")
     commands.add_parser("notify-check")  # no help: hidden; the scheduled job runs it (B9)
     return parser
 

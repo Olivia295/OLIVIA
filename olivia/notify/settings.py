@@ -1,11 +1,20 @@
-"""``olivia settings``: a numbered menu of switches (next-phase B9, decision D5).
+"""``olivia settings``: a numbered menu of switches (next-phase B9, decision D5; F11).
 
-For now it holds one item, the system reminders (``PersonaProfile.notifications``, off by
-default). Turning them on first says what will be installed and where (one scheduled
-job, :mod:`olivia.notify.jobs`) and that turning them off removes it, then asks once
-more; the profile is saved only after the job is installed, and a failed save removes
-the job again. Turning them off removes the job and the "last notified" file, then saves.
-Opening the menu runs nothing on the system: only a confirmed change does.
+1. The system reminders (``PersonaProfile.notifications``, off by default). Turning them
+   on first says what will be installed and where (one scheduled job,
+   :mod:`olivia.notify.jobs`) and that turning them off removes it, then asks once more;
+   the profile is saved only after the job is installed, and a failed save removes the
+   job again. Turning them off removes the job and the "last notified" file, then saves.
+2. The storage choice of onboarding (``enable_at_rest_encryption``, ONB-06; changing it
+   after the first visit is F11): only health information encrypted (the default) or
+   the whole profile. Either way the change is explained and confirmed once; the save
+   goes through ``ProfileStore``, which rewrites the file in its new form atomically and,
+   when it is now sealed whole, deletes every snapshot that still holds plaintext.
+   Encrypting the whole profile needs the keychain: when it does not answer, nothing is
+   asked and nothing changes. The chat records, the kit and the safety plan are always
+   encrypted, whatever this says.
+
+Opening the menu runs nothing on the system and writes nothing: only a confirmed change does.
 """
 
 from __future__ import annotations
@@ -29,6 +38,7 @@ Save = Callable[[PersonaProfile], bool]
 """Save the profile; False when it could not be saved (the caller has said why)."""
 
 NOTIFICATIONS_ITEM: Final = "1"
+ENCRYPTION_ITEM: Final = "2"
 CONFIRM_YES: Final = "1"
 
 
@@ -55,9 +65,15 @@ def run_settings(
     state = s["state_on"] if profile.notifications else s["state_off"]
     say(s["heading"])
     say(f"  {NOTIFICATIONS_ITEM}. {fill(s['notifications_item'], state=state)}")
+    storage = s[
+        "encryption_state_all" if profile.enable_at_rest_encryption else "encryption_state_health"
+    ]
+    say(f"  {ENCRYPTION_ITEM}. {fill(s['encryption_item'], state=storage)}")
     choice = _fold(ask())
     if not choice:
         return 0
+    if choice == ENCRYPTION_ITEM:
+        return _switch_encryption(ask, say, profile, save, keychain_ok, now, words)
     if choice != NOTIFICATIONS_ITEM:
         say(s["unknown_choice"])
         return 1
@@ -104,6 +120,36 @@ def _turn_on(
         uninstall(machine)
         return 1
     say(s["turned_on"])
+    return 0
+
+
+def _switch_encryption(
+    ask: Ask,
+    say: Say,
+    profile: PersonaProfile,
+    save: Save,
+    keychain_ok: Callable[[], bool],
+    now: datetime,
+    words: NotifyText,
+) -> int:
+    """Item 2: whole-profile encryption on (from the default) or back off (ONB-06, F11)."""
+    s = words.settings
+    whole = not profile.enable_at_rest_encryption
+    if whole and not keychain_ok():
+        say(s["encryption_needs_keychain"])
+        return 1
+    target = "all" if whole else "health"
+    say(s[f"about_encrypt_{target}"])
+    say("")
+    say(s[f"confirm_encrypt_{target}"])
+    say(f"  {CONFIRM_YES}. {s[f'encrypt_{target}_yes']}")
+    say(f"  2. {s['encryption_no']}")
+    if _fold(ask()) != CONFIRM_YES:
+        say(s["cancelled"])
+        return 0
+    if not save(replace(profile, enable_at_rest_encryption=whole, updated_at=now)):
+        return 1
+    say(s[f"encrypted_{target}"])
     return 0
 
 
