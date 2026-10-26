@@ -5,6 +5,10 @@ or any unsupported code (``UK`` included; the code is ``GB``) falls back to ``ZZ
 Only the selected region's entries are ever shown, so a non-CN user never sees a
 mainland entry (R8 / GEO-03). Mainland 12356 routes by caller location, so no
 province or city lookup is needed.
+
+A CRISIS card at L3 always leads with the region's emergency numbers; at L2 only when the
+region has no L2 line that can be called (ZZ has only directory links), so no crisis card
+is ever without a number to call.
 """
 
 from __future__ import annotations
@@ -76,7 +80,9 @@ def _crisis_entries(
     data: RegionResources, lines: tuple[HotlineEntry, ...], level: CrisisLevel
 ) -> tuple[tuple[EmergencyNumber, ...], tuple[HotlineEntry, ...]]:
     at_level = tuple(ln for ln in lines if level in ln.levels)
-    # L3 always carries emergency numbers; L2 only when the region has no L2 line.
-    if level is CrisisLevel.L3 or not at_level:
+    # L3 always carries emergency numbers; L2 only when the region has no L2 line to call
+    # (none at all, or only directory links: ZZ). The crisis wording says "请先拨打下面的电话",
+    # and a directory is not a number (QA 2026-10-26 #8).
+    if level is CrisisLevel.L3 or all(ln.kind is LineKind.DIRECTORY_URL for ln in at_level):
         return data.emergency, at_level
     return (), at_level

@@ -653,7 +653,8 @@ def test_checklist_rejects_unknown_numbers_and_keeps_the_clinical_answer(tmp_pat
     _walk(flow, ["1", TEXT.consent_sentence, "2"])
     again = flow.answer("4")
     assert isinstance(again, Prompt) and again.step is Step.CONTRAINDICATIONS
-    assert "「4」" in again.text and _files(tmp_path) == []
+    assert TEXT.hints["clinical_unknown"] in again.text and _files(tmp_path) == []
+    assert "「4」" not in again.text  # never read back (QA 2026-10-26 #4)
     result = flow.answer("1、2、3")
     assert isinstance(result, Completed)
     assert result.profile.clinical_history == (tuple(TAX.red_flags())[1],)
@@ -674,8 +675,10 @@ def test_invalid_red_flag_code_rejected(tmp_path, bad):
     _walk(flow, ["1", TEXT.consent_sentence])
     again = flow.answer(bad)
     assert isinstance(again, Prompt) and again.step is Step.CLINICAL_HISTORY
+    assert again.text.startswith(TEXT.hints["clinical_unknown"])
     unknown = [t for t in bad.replace(",", " ").split() if t != "1"]
-    assert all(token.casefold() in again.text.casefold() for token in unknown)
+    assert not any(f"「{token}」" in again.text for token in unknown)  # QA 2026-10-26 #4
+    assert "SIT" not in again.text
     assert _files(tmp_path) == []
     assert flow.answer("1").step is Step.CONTRAINDICATIONS
     result = flow.answer("")
@@ -954,3 +957,24 @@ def test_other_region_timezone_hint_matches_what_is_on_screen(tmp_path, monkeypa
     _to_region(us)
     us.answer("5")
     assert us.answer("Mars/Olympus").text.startswith(TEXT.hints["timezone_invalid"])
+
+
+def test_an_unknown_health_reply_is_never_read_back(tmp_path):
+    """QA 2026-10-26 #4: "真想睡过去不醒了" typed into the health list was echoed in the
+    hint; whatever is not on the list is only said to be missing."""
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    _walk(flow, ["1", TEXT.consent_sentence])
+    again = flow.answer("真想睡过去不醒了")
+    assert isinstance(again, Prompt) and again.step is Step.CLINICAL_HISTORY
+    assert "睡过去" not in again.text
+    assert "没有在列表里找到你写的那一项" in again.text
+
+
+def test_the_region_is_known_once_it_is_chosen(tmp_path):
+    flow = _flow(tmp_path)
+    assert flow.region is None
+    _walk(flow, ["1", "1", "", "", "", "", ""])
+    assert flow.step is Step.REGION and flow.region is None
+    flow.answer("2")
+    assert flow.region is not None and flow.region.country_code == "HK"

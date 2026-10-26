@@ -4,7 +4,8 @@
 when ``hotlines.yaml`` or its signature is missing, unreadable or does not verify, and no
 number from such a file is ever shown. ``olivia resources`` and ``olivia chat`` then show
 :func:`fallback_text` instead: the common emergency numbers, the global helpline directory
-and a note that the program files may be damaged.
+and a note that the program files may be damaged. An error nothing else handled ends every
+command with the same numbers (without that note) before it says what went wrong.
 
 The text is written here, not loaded, so it survives any damage to the data files.
 ``tests/resources/test_fallback.py`` locks it and checks every number against the verified
@@ -44,12 +45,17 @@ _DAMAGED: Final = (
 )
 
 
-def fallback_text() -> str:
-    """The fixed crisis help: emergency numbers first, then the directory, then why."""
+def fallback_text(*, damaged: bool = True) -> str:
+    """The fixed crisis help: emergency numbers first, then the directory, then why.
+
+    ``damaged=False`` leaves out the sentence about the hotline data: the CLI's last
+    resort for an error nothing else handled shows the numbers that way (QA 2026-10-26
+    #8), since the data itself may be fine."""
     rows = [_LEAD]
     for _code, label, numbers in EMERGENCY:
         shown = "、".join(f"{n}（{what}）" if what else n for n, what in numbers)
         rows.append(f"· {label}：{shown}")
     rows.append(_DIRECTORY.format(url=DIRECTORY_URL))
-    rows.append(_DAMAGED)
+    if damaged:
+        rows.append(_DAMAGED)
     return "\n".join(rows)

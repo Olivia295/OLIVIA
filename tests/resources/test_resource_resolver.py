@@ -71,8 +71,9 @@ EXPECTED = {
         CrisisLevel.L3: (["000"], ["13 11 14"]),
     },
     "ZZ": {
+        # QA 2026-10-26 #8: the card says "请先拨打下面的电话", and a directory is not one.
         CrisisLevel.L2: (
-            [],
+            ["112"],
             ["https://findahelpline.com/", "https://befrienders.org/find-support-now/"],
         ),
         CrisisLevel.L3: (
@@ -243,3 +244,17 @@ def test_l2_falls_back_to_emergency_when_region_has_no_l2_line() -> None:
     card = resolve(store, None, CrisisLevel.L2, mode=CardMode.CRISIS, today=TODAY)
     assert [e.number for e in card.emergency] == ["112"]
     assert card.lines == ()
+
+
+def test_l2_shows_emergency_numbers_when_its_lines_are_only_directories() -> None:
+    """QA 2026-10-26 #8: with only directory links at L2 (ZZ), the card that says "请先拨打
+    下面的电话" also lists the emergency number, as ``olivia resources`` does."""
+    card = _card("ZZ", CrisisLevel.L2)
+    assert all(ln.kind is LineKind.DIRECTORY_URL for ln in card.lines)
+    assert [e.number for e in card.emergency] == ["112"]
+
+
+@pytest.mark.parametrize("code", [c for c in SUPPORTED if c != "ZZ"])
+def test_l2_with_a_phone_line_still_shows_no_emergency_numbers(code: str) -> None:
+    """GEO-02: an L2 card with a line to call stays as it was (CN: 12356 only)."""
+    assert _card(code, CrisisLevel.L2).emergency == ()

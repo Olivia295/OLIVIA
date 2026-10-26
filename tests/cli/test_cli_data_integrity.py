@@ -31,6 +31,7 @@ from olivia.core.datalock import DataDirLock
 from olivia.core.memory.forget import FORGET_ALL_MARKER, load_forget_text
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.state import STATE_FILENAME
+from olivia.core.resources.fallback import fallback_text
 from olivia.core.storage import snapshot_paths
 
 TEXT = load_forget_text()
@@ -52,7 +53,6 @@ def _held(home: Path) -> DataDirLock:
 @pytest.mark.parametrize(
     ("argv", "lines"),
     [
-        (["chat", "--rules"], ["你好", "/exit"]),
         (["health"], []),
         (["safety-plan"], []),
         (["settings"], []),
@@ -79,6 +79,48 @@ def test_a_writing_command_waits_for_the_other_olivia(run_cli, data_home, argv, 
     assert "olivia resources" in cli.DATA_DIR_BUSY
     assert not run.results
     assert {p: p.read_bytes() for p in files_under(data_home)} == before
+
+
+@pytest.mark.parametrize("argv", [["chat", "--rules"], ["chat"]])
+def test_a_chat_refused_beside_another_olivia_shows_the_numbers_first(run_cli, data_home, argv):
+    """QA 2026-10-26 #8: the refusal used to be the only line, with no number on screen."""
+    save_profile(data_home)
+    before = {p: p.read_bytes() for p in files_under(data_home)}
+    lock = _held(data_home)
+    try:
+        run = run_cli(argv, ["你好", "/exit"])
+    finally:
+        lock.release()
+    assert run.code == 1 and not run.results
+    assert run.lines[0] == "求助资源 · 中国大陆（CN）"
+    assert run.out.index("12356") < run.out.index(cli.CHAT_BUSY)
+    assert run.lines[-1] == cli.CHAT_BUSY
+    assert {p: p.read_bytes() for p in files_under(data_home)} == before
+
+
+def test_a_refused_chat_beside_another_olivia_needs_no_keychain(run_cli, data_home, keychain):
+    save_profile(data_home, **HEALTH)  # sealed health fields: the region is still plaintext
+    keychain.reads.clear()
+    lock = _held(data_home)
+    try:
+        run = run_cli(["chat", "--rules"], ["你好"])
+    finally:
+        lock.release()
+    assert "12356" in run.out and keychain.reads == []
+
+
+def test_a_refused_chat_beside_another_olivia_falls_back_to_the_global_numbers(run_cli, data_home):
+    save_profile(data_home)
+    (data_home / PROFILE_FILENAME).write_bytes(b"{")
+    for snapshot in snapshot_paths(data_home / PROFILE_FILENAME):
+        snapshot.unlink()
+    lock = _held(data_home)
+    try:
+        run = run_cli(["chat", "--rules"], ["你好"])
+    finally:
+        lock.release()
+    assert run.lines[0] == "求助资源 · 其他地区（ZZ）" and "112" in run.out
+    assert run.lines[-1] == cli.CHAT_BUSY
 
 
 @pytest.mark.parametrize(
@@ -129,6 +171,8 @@ def test_a_truncated_profile_is_recovered_and_said_once(run_cli, data_home):
     assert first.code == 0
     (notice,) = [line for line in first.lines if line.startswith("设置文件坏了")]
     assert "olivia health" in notice and "olivia profile" in notice
+    assert "恢复后的地区是中国大陆（CN）" in notice and "olivia region" in notice
+    assert first.lines[0] == notice  # before what the command itself says
     second = run_cli(["persona"])
     assert not any(line.startswith("设置文件坏了") for line in second.lines)
 
@@ -264,10 +308,14 @@ def test_an_interrupted_forget_all_is_named_and_finished_by_running_it_again(
     save_profile(data_home, **HEALTH)
     (data_home / FORGET_ALL_MARKER).write_bytes(b"")
     (data_home / KEYS_DIRNAME / "profile.key").unlink()  # killed half-way
-    for argv in (["chat", "--rules"], ["persona"], ["health"], ["memory"]):
+    for argv in (["persona"], ["health"], ["memory"]):
         run = run_cli(argv, ["你好", "/exit"])
         assert run.code == 1, argv
         assert run.lines == [F["unfinished"]], argv
+    chat = run_cli(["chat", "--rules"], ["你好", "/exit"])  # QA #8: the numbers first
+    assert chat.code == 1 and not chat.results
+    assert chat.out.index("12356") < chat.out.index(F["unfinished"])
+    assert chat.lines[-1] == F["unfinished"]
     resources = run_cli(["resources"])  # runs (its numbers are another fix's business)
     assert resources.lines[-1] == F["unfinished"]
     assert run_cli(["forget", "--all", "--yes"]).code == 0
@@ -336,8 +384,36 @@ def test_an_unexpected_error_ends_without_a_traceback(run_cli, data_home, monkey
     monkeypatch.setattr(cli, "_persona", boom)
     run = run_cli(["persona"])
     assert run.code == 1
-    assert run.lines == [cli.UNEXPECTED_ERROR]
+    # QA 2026-10-26 #8: the numbers written in the program first, then what happened.
+    assert run.out == f"{fallback_text(damaged=False)}\n\n{cli.UNEXPECTED_ERROR}\n"
     assert "olivia doctor" in cli.UNEXPECTED_ERROR
+    assert "olivia resources" not in cli.UNEXPECTED_ERROR  # it may fail the same way
+
+
+@pytest.mark.parametrize("argv", [["resources"], ["chat", "--rules"], ["doctor"], ["memory"]])
+def test_an_unexpected_error_in_any_command_shows_the_numbers(
+    run_cli, data_home, monkeypatch, argv
+):
+    save_profile(data_home)
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(cli, "_dispatch", boom)
+    run = run_cli(argv, ["你好"])
+    assert run.code == 1
+    for number in ("110", "120", "999", "911", "000", "112"):
+        assert number in run.out, number
+    assert run.lines[-1] == cli.UNEXPECTED_ERROR
+
+
+def test_the_scheduled_check_stays_silent_on_an_unexpected_error(run_cli, data_home, monkeypatch):
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(cli, "_notify_check", boom)
+    run = run_cli(["notify-check"])
+    assert run.code == 1 and run.out == ""
 
 
 def test_ctrl_c_still_says_goodbye(run_cli, data_home, monkeypatch):
@@ -381,3 +457,72 @@ def test_no_lock_file_survives_forget_all(run_cli, data_home):
     assert run_cli(["forget", "--all", "--yes"]).code == 0
     assert files_under(data_home) == []
     assert not any(name.endswith(".lock") for name in os.listdir(data_home))
+
+
+# -- QA 2026-10-26 #12: a recovery that changes the region says so --------------------------
+
+
+def _region_changed_then_damaged(run_cli, data_home: Path) -> None:
+    """CN, then HK, then CN again; the main file (CN) is damaged, so the newest snapshot
+    that opens holds HK (the version before the last save)."""
+    assert run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"]).code == 0
+    assert run_cli(["region", "HK"]).code == 0
+    assert run_cli(["region", "CN"]).code == 0
+    main = data_home / PROFILE_FILENAME
+    main.write_bytes(main.read_bytes()[:20])
+
+
+@pytest.mark.parametrize(
+    ("argv", "lines"),
+    [
+        (["memory"], []),
+        (["resources"], []),
+        (["region"], []),
+        (["persona"], []),
+        (["health"], [""]),
+        (["profile"], [""]),
+        (["stats"], []),
+        (["journal"], [""]),
+        (["chat", "--rules"], ["", "/exit", ""]),
+    ],
+)
+def test_the_recovered_region_is_named_before_anything_else(run_cli, data_home, argv, lines):
+    _region_changed_then_damaged(run_cli, data_home)
+    run = run_cli(argv, lines)
+    notices = [line for line in run.lines if line.startswith("设置文件坏了")]
+    assert len(notices) == 1, run.out
+    assert "恢复后的地区是中国香港（HK）" in notices[0]
+    assert "请用 olivia region 核对" in notices[0]
+    assert run.lines.index(notices[0]) == 0, run.out
+    again = run_cli(argv, lines)
+    assert not any(line.startswith("设置文件坏了") for line in again.lines)
+
+
+def test_the_newest_snapshot_that_opens_is_the_one_recovered(run_cli, data_home):
+    """Three saves after onboarding: the newest snapshot is damaged as well, so the one
+    before it (the newest that opens) is used, never an older one."""
+    assert run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"]).code == 0
+    for code in ("HK", "TW", "US", "GB"):
+        assert (
+            run_cli(
+                ["region", code, *(["--timezone", "America/Chicago"] if code == "US" else [])]
+            ).code
+            == 0
+        )
+    main = data_home / PROFILE_FILENAME
+    main.write_bytes(b"{")
+    newest, *_older = snapshot_paths(main)  # holds US
+    newest.write_bytes(b"{")
+    profile = ProfileStore(data_home).load()
+    assert profile is not None and profile.region is not None
+    assert profile.region.country_code == "TW"
+
+
+def test_a_recovered_version_without_a_region_says_so(run_cli, data_home):
+    save_profile(data_home, region=None)
+    save_profile(data_home, user_name="阿青", region=None)
+    main = data_home / PROFILE_FILENAME
+    main.write_bytes(b"{")
+    run = run_cli(["persona"])
+    (notice,) = [line for line in run.lines if line.startswith("设置文件坏了")]
+    assert cli.PROFILE_RECOVERED_NO_REGION in notice

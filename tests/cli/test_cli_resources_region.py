@@ -386,3 +386,84 @@ def test_region_changes_reach_the_next_chat(run_cli, data_home):
     record = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
     assert record["region"]["country_code"] == "HK"
     assert record["region"]["timezone"] == "Asia/Hong_Kong"
+
+
+# -- QA 2026-10-26 #8: one look at a region's numbers, never saved -----------------------------
+
+
+def _under_18(run_cli) -> None:
+    assert run_cli(["chat", "--rules"], ["1", "2", "1"]).code == 1  # the refusal record
+
+
+def test_under_18_resources_point_at_the_one_off_look(run_cli, data_home):
+    _under_18(run_cli)
+    run = run_cli(["resources"])
+    assert run.code == 0
+    assert run.lines[-1] == cli.RESOURCES_ONE_OFF_HINT
+    assert cli.RESOURCES_SET_REGION not in run.out  # olivia region refuses here
+
+
+def test_under_18_region_refusal_points_at_the_one_off_look(run_cli, data_home):
+    _under_18(run_cli)
+    run = run_cli(["region", "HK"])
+    assert run.code == 1
+    assert run.lines == [cli.ADULTS_ONLY, cli.RESOURCES_ONE_OFF_HINT]
+
+
+def test_under_18_one_off_look_shows_the_region_and_its_youth_line(run_cli, data_home):
+    _under_18(run_cli)
+    before = (data_home / PROFILE_FILENAME).read_bytes()
+    hk = run_cli(["resources", "HK"])
+    assert hk.code == 0
+    assert hk.lines[0] == "求助资源 · 中国香港（HK）"
+    assert "999" in hk.out and "18111" in hk.out
+    assert hk.lines[-1] == cli.RESOURCES_ONE_OFF
+    cn = run_cli(["resources", "中国"])
+    assert "12356" in cn.out and "12355" in cn.out  # the minors' line, as for this record
+    assert (data_home / PROFILE_FILENAME).read_bytes() == before  # nothing saved
+
+
+def test_an_adults_one_off_look_saves_nothing(run_cli, data_home):
+    save_profile(data_home)
+    before = (data_home / PROFILE_FILENAME).read_bytes()
+    run = run_cli(["resources", "us"])
+    assert run.code == 0 and run.lines[0] == "求助资源 · 美国（US）"
+    assert "911" in run.out and "988" in run.out and "12356" not in run.out
+    assert "12355" not in run_cli(["resources", "CN"]).out  # adults never see it
+    assert (data_home / PROFILE_FILENAME).read_bytes() == before
+    assert ProfileStore(data_home).load().region == UserRegion("CN", "Asia/Shanghai")
+
+
+def test_a_one_off_look_works_without_any_profile(run_cli, data_home):
+    run = run_cli(["resources", "GB"])
+    assert run.code == 0 and "999" in run.out and "116 123" in run.out
+    assert not data_home.exists() or not (data_home / PROFILE_FILENAME).exists()
+
+
+def test_a_one_off_look_at_an_unknown_region_is_a_wrong_value(run_cli, data_home):
+    run = run_cli(["resources", "火星"])
+    assert run.code == 2
+    assert "「火星」" in run.out and "  HK  中国香港" in run.out
+
+
+def test_resources_help_names_the_one_off_region(run_cli, capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["resources", "-h"])
+    assert "不会保存" in capsys.readouterr().out
+
+
+def test_a_saved_other_region_hints_at_both_ways(run_cli, data_home):
+    save_profile(data_home, region=UserRegion("ZZ", "UTC"))
+    run = run_cli(["resources"])
+    assert run.lines[-1] == cli.RESOURCES_SET_REGION
+    assert "olivia resources <代码>" in cli.RESOURCES_SET_REGION
+
+
+def test_the_zz_crisis_card_lists_112_like_resources(run_cli, data_home):
+    """The card says "请先拨打下面的电话": under ZZ there used to be only two links."""
+    save_profile(data_home, region=UserRegion("ZZ", "UTC"))
+    run = run_cli(["chat", "--rules"], ["", "我不想活了", "/exit", ""])
+    (crisis,) = [r for r in run.results if r.resource_card is not None]
+    assert [e.number for e in crisis.resource_card.emergency] == ["112"]
+    assert "112（通用紧急求助）" in crisis.reply
+    assert crisis.reply.index("112") < crisis.reply.index("findahelpline.com")

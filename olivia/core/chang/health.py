@@ -100,6 +100,11 @@ class HealthEditor:
         """None while the exchange is still going."""
         return self._outcome
 
+    @property
+    def profile(self) -> PersonaProfile | None:
+        """The profile as loaded (and as saved, once changed); None when there is none."""
+        return self._profile
+
     def prompt(self) -> HealthPrompt:
         if self._outcome is not None:
             raise RuntimeError("the exchange has already finished")
@@ -144,9 +149,8 @@ class HealthEditor:
         else:
             picked, unknown = parse_choices(reply, self._keys)
             if unknown:
-                self._hint = self._text.hints["clinical_unknown"].replace(
-                    "{tokens}", "、".join(unknown)
-                )
+                # Never the reply itself: it may be a crisis sentence (QA 2026-10-26 #4).
+                self._hint = self._text.hints["clinical_unknown"]
                 return
             chosen = picked
         if chosen == self._recorded():
