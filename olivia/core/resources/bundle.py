@@ -5,7 +5,12 @@ The data ships as ``olivia/data/resources/hotlines.yaml`` plus a detached signat
 ``keys.HOTLINE_PUBLIC_KEY_B64``. An override pair in a user data directory replaces the
 built-in data only when its signature verifies and it was compiled after the built-in
 data; otherwise the built-in data is used and ``reason`` says why, for ``--inspect``.
-A built-in file that fails verification raises: unverified numbers are never shown.
+A signed override must also be complete, well-formed hotline data (S2): it has to pass
+the store's full schema check and keep every built-in region and each region's built-in
+emergency numbers (it may add regions, numbers and lines, or change a line's number);
+otherwise the whole override is set aside for the built-in data. A built-in file that is
+missing, unreadable or fails verification raises :class:`BundleIntegrityError`:
+unverified numbers are never shown (callers show ``fallback.fallback_text`` instead).
 
 The product looks for the override pair in ``override_dir_location()``, the ``resources``
 sub-directory of the data directory (F14): ``olivia chat`` passes it to the session and
@@ -26,6 +31,7 @@ from typing import Literal
 import yaml
 
 from olivia.core.resources import keys
+from olivia.core.resources.store import ResourceDataError, ResourceStore, parse_store
 from olivia.core.storage import data_dir_location
 from olivia.core.yaml_load import safe_load
 
@@ -40,10 +46,12 @@ REASON_SIG_INVALID = "override signature invalid"
 REASON_UNREADABLE = "override unreadable"
 REASON_FUTURE = "override compiled in the future"
 REASON_NOT_NEWER = "override older than built-in"
+REASON_INVALID = "override data invalid"
+REASON_INCOMPLETE = "override drops built-in regions or emergency numbers"
 
 
 class BundleIntegrityError(RuntimeError):
-    """The packaged hotline data does not match its signature."""
+    """The packaged hotline data is missing, unreadable or does not match its signature."""
 
 
 @dataclass(frozen=True)
@@ -82,6 +90,30 @@ def _read_builtin() -> tuple[bytes, bytes]:
     return folder.joinpath(DATA_NAME).read_bytes(), folder.joinpath(SIG_NAME).read_bytes()
 
 
+def _compact(number: str) -> str:
+    return "".join(number.split())
+
+
+def _covers(override: ResourceStore, builtin: ResourceStore) -> bool:
+    """Whether ``override`` keeps every built-in region and its emergency numbers."""
+    for code, region in builtin.regions.items():
+        if not override.has_region(code):
+            return False
+        kept = {_compact(e.number) for e in override.region(code).emergency}
+        if any(_compact(e.number) not in kept for e in region.emergency):
+            return False
+    return True
+
+
+def _store_of(data: bytes) -> ResourceStore:
+    """Parse and fully validate hotline YAML; raises :class:`ResourceDataError`."""
+    try:
+        doc = safe_load(data)
+    except yaml.YAMLError as exc:
+        raise ResourceDataError("not valid YAML") from exc
+    return parse_store(doc)
+
+
 def compiled_on_of(data: bytes) -> date:
     """The ``compiled_on`` date of a hotline file; raises ValueError if absent or malformed."""
     try:
@@ -102,7 +134,12 @@ def load_hotlines_bytes(override_dir: Path | None, *, today: date) -> LoadedBund
     ``today`` rejects an override dated after the current day, which a genuine release
     cannot be.
     """
-    builtin, builtin_sig = _read_builtin()
+    try:
+        builtin, builtin_sig = _read_builtin()
+    except OSError as exc:
+        raise BundleIntegrityError(
+            "built-in hotlines.yaml or hotlines.yaml.sig cannot be read; the package is damaged"
+        ) from exc
     if not verify_signature(builtin, builtin_sig, keys.HOTLINE_PUBLIC_KEY_B64):
         raise BundleIntegrityError(
             "built-in hotlines.yaml does not match hotlines.yaml.sig; the package is damaged"
@@ -130,6 +167,21 @@ def load_hotlines_bytes(override_dir: Path | None, *, today: date) -> LoadedBund
         return fallback(REASON_UNREADABLE)
     if override_date > today:
         return fallback(REASON_FUTURE)
-    if override_date <= compiled_on_of(builtin):
+    try:
+        builtin_date = compiled_on_of(builtin)
+    except ValueError as exc:
+        raise BundleIntegrityError("built-in hotlines.yaml has no valid compiled_on") from exc
+    if override_date <= builtin_date:
         return fallback(REASON_NOT_NEWER)
+
+    try:
+        override_store = _store_of(data)
+    except ResourceDataError:
+        return fallback(REASON_INVALID)
+    try:
+        builtin_store = _store_of(builtin)
+    except ResourceDataError as exc:
+        raise BundleIntegrityError("built-in hotlines.yaml is not valid hotline data") from exc
+    if not _covers(override_store, builtin_store):
+        return fallback(REASON_INCOMPLETE)
     return LoadedBundle(data=data, source="override", reason=None)

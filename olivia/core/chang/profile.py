@@ -245,6 +245,35 @@ class ProfileStore:
             pass  # keychain locked or keys damaged: change nothing, retry on the next load
         return profile
 
+    def load_unsealed(self) -> PersonaProfile | None:
+        """The profile's plaintext part, read without the keychain (S1).
+
+        For showing the right hotlines when :meth:`load` fails: with only the health
+        fields sealed (ONB-06 off) the region and the rest are plaintext by design, so they
+        are returned without the sealed fields. ``None`` when there is no plaintext copy:
+        never saved, the whole profile sealed (ONB-06 on; nothing is read around that), or
+        every version unreadable. Never decrypts, never writes, never raises.
+        """
+        found: list[PersonaProfile | None] = []
+
+        def is_valid(text: str) -> bool:
+            try:
+                data = _json_object(text)
+                if _WHOLE_KEY in data:
+                    found.append(None)  # sealed whole: stop here, read nothing else
+                    return True
+                data.pop(_FIELDS_KEY, None)
+                found.append(PersonaProfile.from_dict(data))
+            except (ValueError, TypeError, OverflowError, RecursionError):
+                return False
+            return True
+
+        try:
+            read_text_with_recovery(self.path, is_valid)
+        except (OSError, StorageCorruptError):  # missing, unreadable, or no valid version
+            return None
+        return found[-1]
+
     def save(self, profile: PersonaProfile) -> None:
         try:
             self._save(profile)

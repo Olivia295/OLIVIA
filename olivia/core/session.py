@@ -744,6 +744,12 @@ class Session:
         return self._plan_suggested
 
     @property
+    def risk_model_fallback(self) -> str | None:
+        """Why the packaged student was asked for but the rules screen alone (E5): missing,
+        unreadable or failing verification. ``None`` when nothing fell back."""
+        return self._risk.reason
+
+    @property
     def state(self) -> SessionState:
         return replace(self._state, user_shelved_actions=list(self._state.user_shelved_actions))
 
