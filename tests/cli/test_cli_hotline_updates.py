@@ -146,3 +146,54 @@ def test_chat_ignores_a_tampered_update(run_cli, data_home, key) -> None:
     assert run.results[0].inspect["hotline_reason"] == bundle.REASON_SIG_INVALID
     assert UPDATED_TEXT_LINE not in run.out
     assert "85000" in run.results[0].reply
+
+
+# -- S2: a signed pack with the wrong structure, or one that drops coverage ---------------
+
+
+def _broken(change) -> bytes:
+    doc = yaml.safe_load(_yaml("2026-02-20", text_line=UPDATED_TEXT_LINE))
+    change(doc)
+    return yaml.safe_dump(doc, allow_unicode=True, sort_keys=False).encode("utf-8")
+
+
+def _no_gb_emergency(doc) -> None:
+    del doc["regions"]["GB"]["emergency"]
+
+
+def _unknown_kind(doc) -> None:
+    doc["regions"]["GB"]["lines"][0]["kind"] = "nonsense"
+
+
+def _no_gb(doc) -> None:
+    del doc["regions"]["GB"]
+
+
+def _no_999(doc) -> None:
+    doc["regions"]["GB"]["emergency"][0]["number"] = "998"
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        (_no_gb_emergency, "内容格式不对"),
+        (_unknown_kind, "内容格式不对"),
+        (_no_gb, "缺少随程序附带资料里的地区或紧急电话"),
+        (_no_999, "缺少随程序附带资料里的地区或紧急电话"),
+    ],
+)
+def test_a_signed_but_broken_update_falls_back_with_the_reason(
+    run_cli, data_home, key, change, reason
+) -> None:
+    save_profile(data_home, region=UserRegion("GB", "Europe/London"))
+    data = _broken(change)
+    _update(data_home, data, _sign(key, data))
+    run = run_cli(["resources"], now=FIXED_NOW)
+    assert run.code == 0
+    assert "· 999（报警、消防与急救）" in run.out
+    assert UPDATED_TEXT_LINE not in run.out
+    assert run.out.endswith(f"资料来源：随程序附带（更新包未启用：{reason}）\n")
+    chat = run_cli(["chat", "--rules", "--inspect"], ["我不想活了", "/exit"])
+    assert chat.code == 0
+    assert chat.results[0].inspect["hotline_source"] == "builtin"
+    assert "85000" in chat.results[0].reply

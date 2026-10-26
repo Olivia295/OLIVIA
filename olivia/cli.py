@@ -19,7 +19,12 @@
     as are natural-language replies to a card ("今天先不做了"): the session's perception
     reads them.
 ``olivia resources``
-    The crisis-resource card for the saved region in BROWSING mode.
+    The crisis-resource card for the saved region in BROWSING mode. It never needs the
+    keychain (S1): a profile that cannot be opened still gives its plaintext region;
+    when nothing is readable (the whole profile sealed, ONB-06, or every copy damaged)
+    it shows the ZZ card, then why and what next. ``chat`` that cannot open the profile
+    shows the same card before it says why. Packaged hotline data that fails verification
+    is never shown: ``resources/fallback.py``'s fixed text takes its place (S3).
 ``olivia region [CODE [--timezone TZ] | --clear]``
     Show, set or clear the saved country/region (country level only, SDD §8.3). CODE is a
     supported code or a common name (``china``, ``中国``, ``香港``, ``usa`` ...); anything
@@ -183,19 +188,23 @@ from olivia.core.models import (
 )
 from olivia.core.resources.bundle import (
     REASON_FUTURE,
+    REASON_INCOMPLETE,
+    REASON_INVALID,
     REASON_NO_OVERRIDE,
     REASON_NOT_NEWER,
     REASON_SIG_INVALID,
     REASON_SIG_MISSING,
     REASON_UNREADABLE,
+    BundleIntegrityError,
     LoadedBundle,
     compiled_on_of,
     load_hotlines_bytes,
     override_dir_location,
 )
 from olivia.core.resources.card import CardMode, ResourceCard
+from olivia.core.resources.fallback import fallback_text
 from olivia.core.resources.resolver import resolve
-from olivia.core.resources.store import LineKind, ResourceStore, parse_store
+from olivia.core.resources.store import LineKind, ResourceDataError, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
 from olivia.core.storage import data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
@@ -229,6 +238,32 @@ PROFILE_LOCKED: Final = (
     "加密保存的信息现在打不开：系统钥匙串没有响应，或者钥匙已经不在这台电脑上了。"
     "你的文件我没有改动。"
 )
+# Why the profile cannot be opened and what to do next (S1; 草稿：待 G-0): only locked or
+# unreachable for now, or the keys are gone for good, or the data is damaged.
+PROFILE_LOCKED_NOW: Final = (
+    "加密保存的信息现在打不开：系统钥匙串锁住了、没有响应，或者这次登录用不了它。"
+    "你的文件我没有改动；解锁钥匙串（比如重新登录这台电脑）以后再试一次就好。"
+)
+PROFILE_KEYS_LOST: Final = (
+    "加密保存的信息再也打不开了：解锁它的钥匙已经不在这台电脑的钥匙串里"
+    "（可能被删掉了，或者这些文件是从别的电脑拷过来的）。你的文件我没有改动。"
+)
+PROFILE_START_OVER: Final = (
+    "想从头开始的话，可以运行 olivia forget --all 清除这台电脑上的全部记录，"
+    "再运行 olivia chat 重新设置；这样之前的记录会全部丢失。"
+)
+# S1 (草稿：待 G-0): the hotlines come first when the profile cannot be opened.
+CHAT_CANNOT_START: Final = "这次没办法开始聊天。需要的话，下面的电话随时可以联系："
+RESOURCES_REGION_UNREADABLE: Final = (
+    "现在读不出你保存的地区，所以上面是全球通用的资源。"
+    "设置恢复以后，再运行 olivia resources 就能看到当地的电话。"
+)
+# S3 (草稿：待 G-0): the packaged hotline data failed verification; fallback_text() is shown.
+CHAT_DATA_DAMAGED: Final = (
+    "因为没法确认求助电话是否准确，这次先不开始聊天；重新安装以后，再运行 olivia chat 就好。"
+)
+# E5 (草稿：待 G-0): the packaged perception model was wanted but could not be used.
+MODEL_UNAVAILABLE: Final = "这台电脑上的模型文件这次用不了，危机筛查先只用规则，其他都照常。"
 HEALTH_NOT_SAVED: Final = (
     "这台电脑上没有可用的系统钥匙串，健康信息没办法加密保存，所以之前记下的健康信息已经删除了。"
     "其他的一切都照常。"
@@ -278,6 +313,9 @@ RESOURCES_UPDATE_REASONS: Final = {
     REASON_UNREADABLE: RESOURCES_UPDATE_UNREADABLE,
     REASON_FUTURE: "整理日期晚于今天",
     REASON_NOT_NEWER: "不比随程序附带的资料新",
+    # S2 (草稿：待 G-0): a signed update that is not complete, well-formed hotline data.
+    REASON_INVALID: "内容格式不对",
+    REASON_INCOMPLETE: "缺少随程序附带资料里的地区或紧急电话",
 }
 OTHER_REGION_LABEL: Final = "其他地区"
 PERSONA_SHOW: Final = "现在的陪伴方式：{label}"
@@ -305,6 +343,13 @@ USER_TEXTS: Final = (
     CHAT_HELP,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
+    PROFILE_LOCKED_NOW,
+    PROFILE_KEYS_LOST,
+    PROFILE_START_OVER,
+    CHAT_CANNOT_START,
+    RESOURCES_REGION_UNREADABLE,
+    CHAT_DATA_DAMAGED,
+    MODEL_UNAVAILABLE,
     HEALTH_NOT_SAVED,
     NOT_ONBOARDED,
     NOT_SET_UP,
@@ -383,16 +428,33 @@ def _enable_line_editing() -> None:  # pragma: no cover - terminal only
 
 
 def clean_input(text: str) -> str:
-    """``text`` without the bytes of a half-deleted or invalid character.
+    """``text`` read as UTF-8, or as GB18030 when it is a GBK / GB18030 line, else without
+    the bytes of a half-deleted or invalid character.
 
     Undecodable input bytes arrive as lone surrogates (``surrogateescape``); they would
-    reach the crisis screen as noise and cannot be encoded for the encrypted stores.
+    reach the crisis screen as noise and cannot be encoded for the encrypted stores. A
+    terminal in a GBK or GB18030 locale (a zh_CN.GBK shell, a Windows console in code
+    page 936) sends Chinese that is not UTF-8 at all, and dropping its bytes would drop the
+    whole sentence, a crisis sentence included. So a line that is not UTF-8 is decoded as
+    GB18030 (strictly) when most of its non-ASCII bytes are not valid UTF-8; a line that is
+    mostly valid UTF-8 with one broken character keeps the UTF-8 reading, because GB18030
+    would turn the valid UTF-8 around it into other characters.
     """
     try:
         raw = text.encode("utf-8", "surrogateescape")
     except UnicodeEncodeError:  # a lone surrogate that no decoder produced
         raw = text.encode("utf-8", "replace")
-    return raw.decode("utf-8", "ignore")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    kept = raw.decode("utf-8", "ignore")
+    valid_multibyte = sum(len(ch.encode("utf-8")) for ch in kept if ord(ch) > 0x7F)
+    broken = len(raw) - len(kept.encode("utf-8"))
+    if broken > valid_multibyte:
+        with contextlib.suppress(UnicodeDecodeError):
+            return raw.decode("gb18030")
+    return kept
 
 
 def _system_clock() -> datetime:
@@ -543,11 +605,12 @@ def _chat(
         console.say()
         console.say(GOODBYE)
         return 1
-    except ProfileCorruptError:
-        console.say(PROFILE_CORRUPT)
-        return 1
-    except ProfileLockedError:
-        console.say(PROFILE_LOCKED)
+    except (ProfileCorruptError, ProfileLockedError) as exc:
+        # S1: the numbers first (the saved region's if its plaintext part can be read),
+        # then why the chat cannot start and what to do next.
+        console.say(CHAT_CANNOT_START)
+        console.say()
+        _hotlines_for_unreadable_profile(console, store, exc, clock)
         return 1
     if store.dropped_sensitive_data:
         console.say(HEALTH_NOT_SAVED)
@@ -558,17 +621,25 @@ def _chat(
     state_store = StateStore(store.path.parent, store.vault)
     plan_store = SafetyPlanStore(vault=store.vault)
     plan = plan_store.load_quietly()
-    session = Session.open(
-        tax,
-        profile,
-        rng=rng if rng is not None else random.Random(),
-        now=local,
-        student=student,
-        carried=state_store.load(),
-        safety_plan=plan,
-        suggest_safety_plan=plan is None and plan_store.should_suggest(),
-        hotline_updates=override_dir_location(),
-    )
+    try:
+        session = Session.open(
+            tax,
+            profile,
+            rng=rng if rng is not None else random.Random(),
+            now=local,
+            student=student,
+            carried=state_store.load(),
+            safety_plan=plan,
+            suggest_safety_plan=plan is None and plan_store.should_suggest(),
+            hotline_updates=override_dir_location(),
+        )
+    except HOTLINE_DATA_DAMAGED:  # S3: no chat without verified numbers; the fixed help
+        console.say(fallback_text())
+        console.say()
+        console.say(CHAT_DATA_DAMAGED)
+        return 1
+    if session.risk_model_fallback is not None:  # E5: said once; the reason is for --inspect
+        console.say(MODEL_UNAVAILABLE)
     state_recorder = StateRecorder(state_store, session.carried_state())
     titles = _card_titles(tax)
     ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
@@ -612,19 +683,7 @@ def _chat(
             try:
                 turned = session.turn(line)
             except Exception:  # SDD §10.1: even a failed screen leaves every number on screen
-                today = local().date()
-                card = resolve(
-                    _load_store(today),
-                    profile.region,
-                    CrisisLevel.L3,
-                    mode=CardMode.BROWSING,
-                    today=today,
-                )
-                numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
-                minimal = load_language_data(tax).render.crisis_minimal
-                console.say(
-                    "\n".join([f"{profile.agent_name}：{minimal}", *(f"· {n}" for n in numbers)])
-                )
+                console.say(_failed_turn_reply(tax, profile, local().date()))
                 console.say()
                 continue
             result = recorder.observe(line, turned)
@@ -649,12 +708,29 @@ def _chat(
     return 0
 
 
+def _failed_turn_reply(tax: Taxonomy, profile: PersonaProfile, today: date) -> str:
+    """Every number for the region after a failed turn; the fixed help (S3) when the
+    hotline data cannot be verified now."""
+    minimal = load_language_data(tax).render.crisis_minimal
+    try:
+        store = _load_store(today)
+    except HOTLINE_DATA_DAMAGED:
+        return f"{profile.agent_name}：{minimal}\n{fallback_text()}"
+    card = resolve(store, profile.region, CrisisLevel.L3, mode=CardMode.BROWSING, today=today)
+    numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+    return "\n".join([f"{profile.agent_name}：{minimal}", *(f"· {n}" for n in numbers)])
+
+
 def _card_titles(tax: Taxonomy) -> dict[str, str]:
     """Action id -> the exercise card title the user saw, for the ledger's summaries."""
     return {aid: card.title for aid, card in load_language_data(tax).cards.cards.items()}
 
 
 # -- resources and region ---------------------------------------------------------------------
+
+
+HOTLINE_DATA_DAMAGED: Final = (BundleIntegrityError, ResourceDataError)
+"""The packaged hotline data is missing, unreadable, unverified or invalid (S3)."""
 
 
 def _load_bundle(today: date) -> LoadedBundle:
@@ -716,16 +792,23 @@ def render_browsing(card: ResourceCard, tax: Taxonomy) -> str:
     return "\n\n".join(blocks)
 
 
+def _unreadable_profile(exc: ProfileCorruptError | ProfileLockedError) -> tuple[str, ...]:
+    """Why the profile cannot be opened, and what to do next (S1): a keychain that is only
+    locked or unreachable (try again later), or keys gone for good or damaged data
+    (starting over with ``olivia forget --all`` loses the records)."""
+    if isinstance(exc, ProfileLockedError):
+        return (PROFILE_KEYS_LOST, PROFILE_START_OVER) if exc.lost else (PROFILE_LOCKED_NOW,)
+    return (PROFILE_CORRUPT, PROFILE_START_OVER)
+
+
 def _load_profile(console: _Console) -> tuple[bool, PersonaProfile | None]:
     """(readable, profile); an unreadable profile is reported and never overwritten."""
     store = ProfileStore()
     try:
         profile = store.load()
-    except ProfileCorruptError:
-        console.say(PROFILE_CORRUPT)
-        return False, None
-    except ProfileLockedError:
-        console.say(PROFILE_LOCKED)
+    except (ProfileCorruptError, ProfileLockedError) as exc:
+        for line in _unreadable_profile(exc):
+            console.say(line)
         return False, None
     if store.dropped_sensitive_data:
         console.say(HEALTH_NOT_SAVED)
@@ -742,20 +825,65 @@ def _save_profile(console: _Console, profile: PersonaProfile) -> bool:
     return True
 
 
-def _resources(console: _Console, clock: Clock) -> int:
-    readable, profile = _load_profile(console)
-    if not readable:
-        return 1
+def _show_hotlines(console: _Console, profile: PersonaProfile | None, clock: Clock) -> bool:
+    """The BROWSING card for ``profile``'s region (ZZ without one) and its data source;
+    the fixed help instead, and False, when the hotline data cannot be verified (S3)."""
     region = profile.region if profile is not None else None
     minor = profile is not None and profile.is_age_gate_refusal
     today = (_local_clock(clock, profile) if profile is not None else clock)().date()
-    store = _load_store(today)
+    try:
+        store = _load_store(today)
+        source = _hotline_source(_load_bundle(today))
+    except HOTLINE_DATA_DAMAGED:
+        console.say(fallback_text())
+        return False
     card = resolve(
         store, region, CrisisLevel.L3, mode=CardMode.BROWSING, today=today, is_minor=minor
     )
     console.say(render_browsing(card, _taxonomy()))
-    console.say(_hotline_source(_load_bundle(today)))
-    if region is None:
+    console.say(source)
+    return True
+
+
+def _hotlines_for_unreadable_profile(
+    console: _Console,
+    store: ProfileStore,
+    exc: ProfileCorruptError | ProfileLockedError,
+    clock: Clock,
+) -> None:
+    """S1: the hotlines for the plaintext part of a profile that cannot be opened (the
+    region is plaintext unless the whole profile is sealed, ONB-06), the global ones when
+    nothing is readable; then why and what next."""
+    readable = store.load_unsealed()
+    _show_hotlines(console, readable, clock)
+    console.say()
+    if readable is None:
+        console.say(RESOURCES_REGION_UNREADABLE)
+    for line in _unreadable_profile(exc):
+        console.say(line)
+
+
+def _resources(console: _Console, clock: Clock) -> int:
+    """The saved region's card; it never needs the keychain (S1).
+
+    When the profile cannot be opened, its plaintext part still gives the region (exit 0);
+    when nothing is readable (the whole profile sealed and locked, or every copy damaged)
+    the global resources are shown with why and what next (exit 1, README).
+    """
+    store = ProfileStore()
+    try:
+        profile = store.load()
+    except (ProfileCorruptError, ProfileLockedError) as exc:
+        profile = store.load_unsealed()
+        if profile is None:
+            _hotlines_for_unreadable_profile(console, store, exc, clock)
+            return 1
+    else:
+        if store.dropped_sensitive_data:
+            console.say(HEALTH_NOT_SAVED)
+    if not _show_hotlines(console, profile, clock):
+        return 1
+    if profile is None or profile.region is None:
         console.say()
         console.say(RESOURCES_SET_REGION)
     return 0

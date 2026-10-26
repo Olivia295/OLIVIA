@@ -279,14 +279,18 @@ def test_locked_keychain_is_reported_and_nothing_changes(run_cli, data_home, key
     keychain.broken = KeychainUnavailableError("locked")
     for argv in (
         ["chat", "--rules"],
-        ["resources"],
         ["region"],
         ["region", "HK"],
         ["region", "--clear"],
     ):
         run = run_cli(argv, ["你好"])
-        assert run.code == 1 and cli.PROFILE_LOCKED in run.out
+        assert run.code == 1 and cli.PROFILE_LOCKED_NOW in run.out
+        assert cli.PROFILE_START_OVER not in run.out  # locked for now: nothing is lost
         assert run.sessions == []
+    # The region is plaintext (only the health information is sealed), so the numbers
+    # need no keychain (S1, tests/cli/test_cli_hotlines_under_failure.py).
+    resources = run_cli(["resources"])
+    assert resources.code == 0 and "12356" in resources.out
     assert {p: p.read_bytes() for p in files_under(data_home)} == before
     keychain.broken = None
     assert run_cli(["chat", "--rules"], ["今天上班好累"]).code == 0
