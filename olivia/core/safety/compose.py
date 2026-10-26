@@ -7,9 +7,9 @@ ending one's life for example, across a short gap without clause punctuation. Th
 that keep it from firing on everyday text are generic: exceptions around a part, blocker
 words in the gap, a negator in the gap or just before the first part, a third person as
 the subject, a required context nearby, voiding words in the same clause (or nearby, with
-``unless_across``) and, for an
-entry with ``trailing``, anything but a sentence particle after it in its clause. Each is
-described on :class:`~olivia.core.safety.lexicon.Composition`.
+``unless_across``), for an entry with ``trailing``, anything but a sentence particle after
+it in its clause and, for an entry with ``leading``, anything but a filler before it in its
+clause. Each is described on :class:`~olivia.core.safety.lexicon.Composition`.
 
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
 Aho-Corasick scan over every phrase of the section, then a bounded search per entry. An
@@ -372,16 +372,30 @@ class Composer:
             span = (first.start, second.end)
             if any(not facts.denied(m, gap, span) for m in own.unless.inside(a, b)):
                 return False
+        text = facts.text
+        if entry.leading is not None and not _only(text, clause, first.start, entry.leading):
+            return False
         if entry.trailing is not None:
-            return _only(facts.text[second.end : facts.clause_end[second.end]], entry.trailing)
+            return _only(text, second.end, facts.clause_end[second.end], entry.trailing)
         return True
 
 
-def _only(rest: str, phrases: tuple[str, ...]) -> bool:
-    """Is ``rest`` made of ``phrases`` alone (any number, any order, possibly none)?"""
-    while rest:
-        phrase = next((p for p in phrases if rest.startswith(p)), None)
-        if phrase is None:
+def _only(text: str, start: int, end: int, phrases: tuple[str, ...]) -> bool:
+    """Is ``text[start:end]`` made of ``phrases`` alone (any number, any order, possibly
+    none)?
+
+    Any split counts, not only the greedy one: with i and i'm listed, i'mgonna is read as
+    i'm + gonna. Nothing is copied and the scan stops at the first position no split
+    reaches, so a long clause costs only as much as its leading run of phrases."""
+    reachable = {start}
+    furthest = start
+    for i in range(start, end):
+        if i > furthest:
             return False
-        rest = rest[len(phrase) :]
-    return True
+        if i in reachable:
+            for phrase in phrases:
+                j = i + len(phrase)
+                if j <= end and text.startswith(phrase, i):
+                    reachable.add(j)
+                    furthest = max(furthest, j)
+    return end in reachable

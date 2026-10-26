@@ -349,7 +349,20 @@ def test_trailing_is_read_from_the_lexicon():
     # 2026-10-26: the same resolve with a day ("我已经想好了，就这周五") ends its clause too.
     day = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_RESOLVED_DAY")
     assert day.trailing == entry.trailing
-    ends = (entry, yue, day)
+    # Round 2 (2026-10-26): whole-clause farewells, codes and slang end their clause too.
+    round2 = {
+        "L2_GONE_AFTER",
+        "L2_WISH_DIE_CODED",
+        "L2_EN_KMS",
+        "ASK_INTENT_LAST_NIGHT",
+        "ASK_INTENT_CODED",
+        "ASK_INTENT_ONCE_FOR_ALL",
+        "ASK_INTENT_NOT_LIVE_HOMOPHONE",
+        "ASK_INTENT_GREAT_GRANDMA_ALONE",
+    }
+    later = [e for e in LEX.compositions.entries if e.id in round2]
+    assert len(later) == len(round2) and all(e.trailing for e in later)
+    ends = (entry, yue, day, *later)
     assert all(e.trailing is None for e in LEX.compositions.entries if e not in ends)
 
 
