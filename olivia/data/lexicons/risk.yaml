@@ -72,7 +72,10 @@ stage2:
                "不想再活", "不想活下去", "不想活惹", "不想活啦", "不想再这样活", "不想这样活下去",
                "不想再活在这个世界", "不想再活在这个世上", "不想再活在这世上", "不想再活在这个没有你的世界", "活够了",
                "活腻了", "不如死掉", "我还是死了好", "死了就解脱", "死了就不用", "死了比较好", "死了也挺好",
-               "我死了大家", "如果我死了", "死是唯一的出路"]
+               "我死了大家", "如果我死了", "死是唯一的出路",
+               # Cantonese (2026-10-26), as the Mandarin forms above: 唔想(再)活(落去) =
+               # 不想(再)活(下去), 活唔落去 = 活不下去, 死咗算 = 死了算了.
+               "唔想活", "唔想再活", "活唔落去", "冇得活落去", "死咗算", "死咗就解脱", "死咗就唔使"]
   - id: L2_END_LIFE
     level: L2
     patterns: ["想结束自己的生命", "想离开这个世界",
@@ -209,7 +212,10 @@ stage2:
                "没有盼头", "每天都好绝望", "每天都很绝望", "活着好绝望", "对生活绝望", "对人生绝望",
                "心如死灰", "不想面对明天", "想放弃一切", "没有人需要我", "没人在乎我", "我是多余的",
                "我是个废物", "自己是个负担", "自己就是个负担", "我是个负担", "浪费空气", "想解脱",
-               "逃离这个世界", "没有我也一样", "自己已经死了"]
+               "逃离这个世界", "没有我也一样", "自己已经死了",
+               # Not wanting to hold on any more, in Mandarin and Cantonese (2026-10-26): the
+               # same weariness as 撑不下去.
+               "不想再撑", "唔想再撑", "撑唔落去", "顶唔落去", "捱唔落去", "熬唔落去"]
   - id: L1_DISAPPEAR
     level: L1
     score: 0.45
@@ -384,12 +390,16 @@ intent_answers:
 #     `listeners` word (谢谢你，);
 #   - `context` is given and none of its phrases lies within `context_window` characters of
 #     the match (anywhere in the message when no window is given);
-#   - an `unless` phrase lies within `unless_window` characters of the match, same clause;
+#   - an `unless` phrase lies within `unless_window` characters of the match, same clause
+#     (any clause with `unless_across: true`: an everyday reason in the next clause);
 #   - `trailing` is given and anything other than its phrases (sentence particles) follows
 #     the match before the clause ends ("…，就在今晚" fires, "…，就在今晚吃火锅" does not).
 # Levels: L1 / L2 are rule-model cues, voided by the negation and hyperbole masks like the
 # stage2 phrases; L3 is Stage 1 plan evidence (id S1_*), never masked; ASK is an L1 D3 cue
-# (id ASK_INTENT*) that sets CrisisAssessment.asks_intent, never masked. Phrases here go to
+# (id ASK_INTENT*) that sets CrisisAssessment.asks_intent, never masked. An ASK entry with
+# `raise_with_risk: true` (the farewell family: goodbyes, last words, affairs arranged, a
+# resolve; 2026-10-26) is L2 instead when the message also holds a risk cue of the user's
+# own (crisis.py) or the session already showed risk (tracker.py). Phrases here go to
 # their own matcher, so they may repeat phrases of the sections above. Named `lists` are
 # shared by entries; an entry may also list phrases inline.
 # Self-injury (owner decision 2026-10-24): a current or recent act is ASK (L1 + the direct
@@ -404,6 +414,11 @@ compositions:
   lookback: 3
   subject_window: 12
   negators: ["不", "没", "别", "未", "莫", "甭", "勿", "防止", "预防", "阻止"]
+  # An everyday reason denied is no reason (2026-10-26): an `unless` phrase with a negator
+  # (above, or these) ending at most `unless_negation_gap` characters before it in its
+  # clause does not void a match (我买好炭了，不是烧烤用的; 不是为了烧烤; 并非为了治病).
+  unless_negators: ["并非"]
+  unless_negation_gap: 3
   non_negators: ["忍不住", "受不了", "不得不", "不如", "要不", "不然", "不行", "不停", "不住",
                  "不知", "了不起", "不少", "说不定", "不管", "不了", "不禁", "不由", "舍不得",
                  "怪不得", "差不多", "不断", "不过", "没准", "没日没夜"]
@@ -502,6 +517,55 @@ compositions:
                    "这段关系", "婚姻", "解决", "处理", "搞定", "烦恼", "黑眼圈", "痘"]
     past: ["以前", "曾经", "过去", "小时候", "那时候", "那时", "当年", "年前", "初中", "高中",
            "大学时", "读书时", "不再", "戒掉", "好多了", "现在好了", "很久没", "已经好了"]
+    # Acts of ending one's life that name a means or the act itself, for a bare time word
+    # right before them ("今晚烧炭", "周五跳楼"). Not 去死 / 寻死 / 轻生: next to a time
+    # they are still a wish ("现在去死都没人知道"), which L2_INTENT_ACT and the phrases rate.
+    timed_acts: ["自杀", "自尽", "结束自己", "了结自己", "了断自己", "结束生命", "结束我的生命",
+                 "杀了自己", "杀死自己", "跳楼", "跳河", "跳江", "跳海", "上吊", "割腕", "卧轨",
+                 "喝农药", "烧炭"]
+    # Future times only: 现在 / 马上 / 立刻 come with 就 (S1_PLAN_ACT_TIME) when they plan.
+    future_time: ["今晚", "今夜", "今天", "明天", "明早", "明晚", "后天", "这周", "本周", "周末",
+                  "下周", "下个月", "月底", "周一", "周二", "周三", "周四", "周五", "周六", "周日",
+                  "周天", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期天",
+                  "星期日", "过完年", "凌晨", "半夜", "午夜", "天亮前", "等会", "待会", "一会儿"]
+    timed_act_exceptions: ["自杀式", "自杀性", "自杀率", "自杀热线", "自杀干预", "预防自杀",
+                           "防止自杀", "阻止自杀", "自杀预防", "自杀新闻", "自杀的新闻", "自杀的消息",
+                           "自杀事件", "自杀案", "自杀了", "自杀身亡", "自杀去世", "自杀的念头",
+                           "自杀念头", "自杀的想法", "自杀倾向", "自杀的冲动",
+                           "结束自己的项目", "结束自己的工作", "结束自己的学业", "结束自己的婚姻",
+                           "结束自己的感情", "跳河里游", "跳海里游", "跳楼价", "跳楼机",
+                           "跳楼大甩卖", "烧炭取暖"]
+    # A height or an edge to jump from.
+    heights: ["天台", "楼顶", "顶楼", "窗台", "阳台", "护栏", "栏杆", "桥上", "桥边", "大桥",
+              "悬崖", "崖边", "楼边", "屋顶", "高楼", "楼上", "窗边", "窗户", "桥栏"]
+    jumps: ["跳下去", "跳下来", "往下跳", "跳下"]
+    # Diving, jumping for sport, animals, drills and stories: an everyday jump from a height.
+    jump_everyday: ["跳水", "跳台", "泳池", "游泳", "水里", "蹦极", "跳伞", "降落伞", "滑翔", "蹦床",
+                    "演习", "消防", "猫", "狗", "宠物", "鸟", "表演", "拍戏", "拍摄", "电影", "游戏",
+                    "梦", "小说", "故事"]
+    # Taking a whole stock of pills at once.
+    take_all: ["全吃", "全部吃", "都吃了", "都吃掉", "都吞", "全吞", "全部吞", "一次吃完", "一次性吃",
+               "一口气吃", "一起吃下", "一次全", "吃光", "吞下去", "全喝"]
+    hoard_marks: ["攒够", "攒了", "攒好", "攒起来", "攒着", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
+                  "凑齐", "偷偷留"]
+    pill_exceptions: ["药钱", "药费", "医药费", "药的钱", "药店", "药房", "药箱", "中药", "西药"]
+    pill_everyday: ["感冒", "发烧", "退烧", "布洛芬", "医院", "医生", "疫情", "阳了", "慢性", "降压",
+                    "血压", "血糖", "胰岛素", "过敏", "宠物", "猫", "狗", "出差", "旅行", "出国",
+                    "留学", "积分", "优惠", "打折", "医保", "处方", "复查", "老人", "孩子", "宝宝",
+                    "爸", "妈", "父母", "爷爷", "奶奶", "外公", "外婆", "家里备", "常备", "备用"]
+    # The speaker's own resolve (F5a), shared by the D3 entries below.
+    resolve: ["我已经决定好了", "我决定好了", "我已经决定了", "我决定了", "我已经想好了",
+              "我想好了", "我已经下定决心了", "我下定决心了", "我心意已决"]
+    # Plans, occasions and chores that are made ready in everyday life.
+    ready_everyday: ["婚礼", "结婚", "求婚", "旅行", "旅游", "出游", "搬家", "考试", "面试", "答辩",
+                     "出国", "留学", "签证", "行李", "比赛", "演出", "生日", "聚会", "年货", "年夜饭",
+                     "开学", "入职", "报到", "装修", "宝宝", "孩子", "待产", "活动", "会议", "年会",
+                     "派对", "露营", "野营", "出差", "开业", "毕业", "上班", "上学", "过年", "春节"]
+    # Words of a funeral of someone else: 后事 after a death in the family. Read across
+    # clauses, so funeral words only: not 走了 (我走了以后), not family words (存款留给我妈);
+    # a relative as the subject is voided by the person check.
+    grief: ["去世", "过世", "离世", "葬礼", "追悼", "火化", "下葬", "丧事", "头七", "墓地", "灵堂",
+            "殡仪馆"]
   entries:
     # --- Stage 1 (L3): plan, preparation, farewell with a death context ---
     - id: S1_PLAN_ACT_TIME
@@ -551,6 +615,76 @@ compositions:
       heads: farewell
       context: death
       exceptions: farewell_exceptions
+    # Means made ready with no death word in the message (2026-10-26): charcoal or a rope
+    # bought, ready or hung ("我已经买好炭了", "我准备好绳子了"). PRD §9.1 L3 is a means made
+    # ready (正在准备工具); in a companion chat these two are seldom everyday, but barbecue,
+    # heating, camping, packing, sport and crafts are, and void it in the same clause, as do
+    # the everyday objects that hold the word (跳绳, 活性炭, 炭笔). Knives, pills and pesticide
+    # stay with S1_MEANS_PREPARED (a death word needed) and L2_MEANS_HOARDED: cooking, a
+    # course of medicine and farming are everyday. The tails are the strong ready marks
+    # only, not 收好 / 存好 (put away).
+    - id: S1_MEANS_READY
+      level: L3
+      heads: ["炭", "木炭", "绳子", "麻绳", "粗绳", "绳索"]
+      tails: ["准备好", "买好", "备好", "藏好", "挂好", "系好", "打好结", "准备齐", "备齐"]
+      max_gap: 4
+      order: either
+      exceptions: ["跳绳子", "晾衣绳子", "安全绳子", "绳子跳", "活性炭", "竹炭", "炭笔", "炭烤", "炭火锅",
+                   "木炭画", "炭画", "炭黑"]
+      unless: ["西瓜", "做饭", "水果", "野营", "露营", "烧烤", "烤肉", "烤串", "火锅", "取暖", "炉",
+               "火盆", "bbq", "烤", "画", "素描", "除味", "除甲醛", "净化", "冰箱", "养花", "花盆",
+               "鱼缸", "过冬", "晾", "捆", "绑", "打包", "箱", "行李", "搬家", "登山", "攀岩",
+               "拔河", "风筝", "船", "钓", "宠物", "手工", "编", "装修", "工地", "货", "出差", "旅行",
+               "快递"]
+      unless_window: 16
+      unless_across: true
+    # A bare future time right before an act of ending one's life (2026-10-26): "今晚烧炭",
+    # "周五跳楼". The plan verb of S1_PLAN_ACT_TIME is left out, the time itself is the plan
+    # (PRD §9.1 L3: 时间). A wish or a report in the gap (今天又想自杀, 今天看到…跳楼) and the
+    # ideation and news forms of the act (自杀的念头, 自杀了, 自杀率) void it; barbecue,
+    # heating and swimming void it in the same clause.
+    - id: S1_TIME_ACT
+      level: L3
+      heads: future_time
+      tails: timed_acts
+      max_gap: 2
+      exceptions: timed_act_exceptions
+      blockers: ["想", "梦", "说", "看", "听", "聊", "写", "读", "查", "新闻", "报道", "有人",
+                 "知道", "了解", "研究", "讨论", "怎么", "怎样", "如何", "关于", "演"]
+      unless: ["烧烤", "烤肉", "烤", "火锅", "取暖", "游泳", "跳水", "泳池", "新闻", "报道", "电影",
+               "小说", "故事", "游戏", "剧"]
+      unless_window: 16
+      unless_across: true
+    # At a height and about to jump (2026-10-26): "我现在就站在天台上，准备跳下去". A plan
+    # verb + jumping down, with a height anywhere near (PRD §9.1 L3: 地点与即刻行动). A wish
+    # (想跳下去) is L2_METHOD_IDEATION; diving, sport jumps, animals, drills and stories void
+    # it in the same clause.
+    - id: S1_PLAN_JUMP_HEIGHT
+      level: L3
+      heads: ["准备", "打算", "要", "就要", "决定", "马上", "这就", "现在就", "就"]
+      tails: jumps
+      max_gap: 3
+      context: heights
+      context_window: 20
+      blockers: act_blockers
+      unless: jump_everyday
+      unless_window: 16
+      unless_across: true
+    # Pills hoarded and to be taken all at once (2026-10-26): "我把药都攒起来了，打算今晚全
+    # 吃了". L2_MEANS_HOARDED rates the stockpile alone; a whole stock taken at once is the
+    # plan (PRD §9.1 L3). A course of medicine (这盒药要全吃完) has no hoarding verb.
+    - id: S1_PILLS_HOARDED_ALL
+      level: L3
+      heads: ["药", "药片", "药丸"]
+      tails: hoard_marks
+      max_gap: 4
+      order: either
+      context: take_all
+      context_window: 20
+      exceptions: pill_exceptions
+      unless: pill_everyday
+      unless_window: 16
+      unless_across: true
     # Already at a height or a rail edge. No self-harm anchor, so L2 like the stage2
     # L2_PLAN_NO_ANCHOR phrases (cases.yaml pn04: 我已经站在天台上了 is L2), not Stage 1.
     - id: L2_AT_THE_EDGE
@@ -559,12 +693,13 @@ compositions:
       tails: ["楼顶", "天台", "窗台", "护栏", "栏杆", "铁轨", "悬崖", "崖边", "楼边", "阳台边",
               "阳台外", "窗外", "屋顶", "桥栏"]
       max_gap: 2
-      context: ["已经", "此刻", "这会儿", "正在"]
+      context: ["已经", "此刻", "这会儿", "正在", "现在"]
       context_window: 4
       exceptions: ["楼顶的花园", "楼顶花园", "天台花园"]
       unless: ["烟花", "晒", "花园", "拍照", "风景", "乘凉", "吃饭", "烧烤", "日出", "日落", "星星",
                "修", "打扫", "健身", "跑步", "散步", "钓鱼", "晾", "消防", "演习", "施工", "维修",
-               "上课", "等车", "喝茶", "聊天", "写生", "浇花", "看书"]
+               "上课", "等车", "喝茶", "聊天", "写生", "浇花", "看书", "抽烟", "吹风", "打电话",
+               "月亮", "看雪", "看雨"]
       unless_window: 10
     # Pills hoarded with no death word in the message (F16a): "药我都攒够了". A stockpile is
     # the means made ready (PRD §9.1 工具已备好), but bare 药 is no self-harm anchor (the
@@ -577,7 +712,7 @@ compositions:
     - id: L2_MEANS_HOARDED
       level: L2
       heads: ["药", "药片", "药丸"]
-      tails: ["攒够", "攒了", "攒好", "攒起来", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
+      tails: ["攒够", "攒了", "攒好", "攒起来", "攒着", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
               "凑齐", "偷偷留"]
       max_gap: 4
       order: either
@@ -595,6 +730,40 @@ compositions:
       max_gap: 4
       exceptions: act_exceptions
       blockers: act_blockers
+    # Asking for a way to hurt oneself (2026-10-26, red-team self_harm_method): a wish or
+    # plan to self-injure of one's own + a way word nearby ("我想伤害自己，有什么办法"). A
+    # method request is at least L2 (R-MS); self-injury alone stays the D3 question
+    # (ASK_INTENT_SELF_INJURY_*). A negator before it (不想伤害自己), someone else (他想伤
+    # 害自己), coping (想伤害自己的时候怎么停下来) and the past void it.
+    - id: L2_SELF_HARM_WAY
+      level: L2
+      heads: ["想", "要", "想要", "打算", "准备", "忍不住想"]
+      tails: ["伤害自己", "伤害我自己", "弄伤自己", "伤自己", "割自己", "划自己", "割伤自己", "划伤自己",
+              "烫伤自己", "烫自己", "自残", "自伤"]
+      max_gap: 3
+      context: way_request
+      context_window: 20
+      blockers: act_blockers
+      unless: ["的时候", "时候", "停下", "控制", "忍住", "克制", "缓解", "转移", "替代", "冷静", "不再",
+               "戒", "应对", "以前", "曾经", "过去"]
+      unless_window: 12
+    # Asking for an act of ending a life told in realistic detail, whatever the pretext
+    # (2026-10-26, R-MS: 写小说或游戏剧情): an act + a request for detail or realism ("…结束
+    # 自己的那一段要写得写实一点"). Only request forms (写实一点, 详细一点, 具体过程), not a
+    # review of a scene (拍得很写实). persons is off: the act belongs to a character.
+    - id: L2_METHOD_DETAIL
+      level: L2
+      heads: timed_acts
+      context: ["写实一点", "写实些", "写实点", "写得真实", "真实一点", "真实些", "逼真一点", "写得逼真",
+                "详细一点", "详细些", "详细点", "具体一点", "具体些", "具体点", "写详细", "写具体",
+                "写细一点", "写细点", "细节写", "写出细节", "更多细节", "具体细节", "详细过程",
+                "具体过程", "具体步骤", "详细步骤", "每一步"]
+      context_window: 16
+      exceptions: timed_act_exceptions
+      persons: false
+      unless: ["预防", "防止", "干预", "热线", "求助", "不要写", "别写", "不能写", "不写", "避免",
+               "淡化", "隐去", "略过"]
+      unless_window: 16
     - id: L2_WISH_NO_WAKE
       level: L2
       heads: wish
@@ -625,17 +794,22 @@ compositions:
                "上班", "上课"]
       unless_window: 10
     # --- Stage 2 L1: weariness with a word inserted ---
+    # Cantonese forms (2026-10-26) rate as the Mandarin ones: 活落去 / 活住 (活下去 / 活着),
+    # 冇(咩 / 乜)意思 (没(什么)意思), 冇意义, 好攰 (好累).
     - id: L1_LIVING_MEANINGLESS
       level: L1
-      heads: ["活着", "人生", "活下去", "这辈子"]
+      heads: ["活着", "人生", "活下去", "这辈子", "活落去", "活住", "呢世"]
       tails: ["没意思", "没有意思", "没什么意思", "没啥意思", "没意义", "没有意义", "没什么意义",
               "毫无意义", "意义都没有", "没劲", "好累", "太累", "真累", "很累", "有什么意思",
-              "有什么意义", "有什么用", "有啥意思", "图什么", "没盼头", "没价值", "没有价值"]
+              "有什么意义", "有什么用", "有啥意思", "图什么", "没盼头", "没价值", "没有价值",
+              "冇意思", "冇咩意思", "冇乜意思", "冇乜嘢意思", "冇意义", "冇咩意义", "冇乜意义",
+              "好攰", "好辛苦", "有咩意思", "有乜意思", "有咩用", "冇盼头"]
       max_gap: 4
       blockers: ["的人", "的时候", "的事"]
     # --- D3 (L1 + the direct question): farewell, burden, absence, reunion, self-injury ---
     - id: ASK_INTENT_FAREWELL
       level: ASK
+      raise_with_risk: true
       heads: ["跟大家", "和大家", "向大家", "跟所有人", "和所有人", "向所有人", "跟你们", "和你们",
               "跟这个世界", "和这个世界", "向这个世界", "跟世界"]
       tails: ["道别", "告别", "说再见", "说了再见"]
@@ -649,6 +823,7 @@ compositions:
     # 不会再来了). Someone else leaving (他走了，以后不会再来了) is voided by the person check.
     - id: ASK_INTENT_FAREWELL_FOR_GOOD
       level: ASK
+      raise_with_risk: true
       heads: ["以后不会再来", "以后都不会再来", "以后再也不会来", "再也不会来了", "以后再也不来",
               "以后都不来了", "不会再来了", "再也不来了", "以后不会再找你", "再也不会找你了",
               "以后不会再跟你说话", "以后不会再和你说话", "再也不会跟你说话", "再也不会和你说话"]
@@ -665,6 +840,7 @@ compositions:
     # return said in a clause of its own ("…陪着我，明天见") does not void it.
     - id: ASK_INTENT_FAREWELL_THANKS
       level: ASK
+      raise_with_risk: true
       heads: ["这些天一直陪着我", "这些天一直陪我", "这段时间一直陪着我", "这段时间一直陪我",
               "这些日子一直陪着我", "这些日子陪着我", "这么久一直陪着我", "这么久以来一直陪着我",
               "一直以来陪着我", "这些天陪着我", "这段时间陪着我", "陪了我这么久", "陪我走了这么久"]
@@ -676,11 +852,13 @@ compositions:
       persons: false
     - id: ASK_INTENT_LAST_WORDS
       level: ASK
+      raise_with_risk: true
       heads: ["托付给你", "最后一条消息", "最后一次跟你说话", "最后一次和你说话", "最后一次跟你聊"]
       unless: ["项目", "工作", "任务", "文件", "晚安", "今天", "今晚", "今年", "群里", "钥匙"]
       unless_window: 10
     - id: ASK_INTENT_THINGS_LEFT
       level: ASK
+      raise_with_risk: true
       heads: ["以后用不上", "以后也用不上", "再也用不上", "以后都用不上", "以后用不着", "再也用不着"]
       context: ["密码", "银行卡", "存款", "积蓄", "遗产", "财产", "房产", "东西都送人", "东西全送人", "东西都送掉",
                 "都留给", "都给了"]
@@ -692,6 +870,7 @@ compositions:
     # Cards, gifts, occasions, trips and the past void it in the same clause.
     - id: ASK_INTENT_WORDS_LEFT
       level: ASK
+      raise_with_risk: true
       heads: ["想说的话", "想说的", "要说的话", "该说的话", "最后的话", "最后想说的", "心里话",
               "想交代的", "要交代的", "该交代的"]
       tails: ["留给家人", "留给家里人", "留给家里", "留给爸妈", "留给父母", "留给爸爸", "留给妈妈",
@@ -713,12 +892,79 @@ compositions:
     # or now and ends there (`trailing`), so "就在今晚吃火锅" or "就今晚去看电影" never ask.
     - id: ASK_INTENT_RESOLVED_TONIGHT
       level: ASK
+      raise_with_risk: true
       heads: ["就在今晚", "就今晚", "就是今晚", "就在今夜", "就今夜", "就是今夜", "就在今天晚上",
               "就今天晚上", "就是今天晚上", "就在现在", "就现在", "就是现在"]
       context: ["我已经决定好了", "我决定好了", "我已经决定了", "我决定了", "我已经想好了",
                 "我想好了", "我已经下定决心了", "我下定决心了", "我心意已决"]
       context_window: 4
       trailing: ["了", "吧", "啊", "呀", "哦", "嘛", "啦"]
+    # The same resolve with a day instead of tonight (2026-10-26): "我已经想好了，就这周五".
+    # Narrow the same way: the speaker's own resolve right before, and the day clause ends
+    # there ("就这周五去看电影" never asks).
+    - id: ASK_INTENT_RESOLVED_DAY
+      level: ASK
+      raise_with_risk: true
+      heads: ["就这周五", "就周五", "就在周五", "就是周五", "就这周六", "就周六", "就在周六", "就这周日",
+              "就周日", "就在周日", "就这周末", "就这个周末", "就周末", "就在周末", "就明天",
+              "就在明天", "就是明天", "就明晚", "就后天", "就在后天", "就下周", "就月底", "就过完年",
+              "就那天", "就这几天", "就这周", "就在这周", "就这个星期", "就星期五", "就这个星期五",
+              "就周一", "就周二", "就周三", "就周四", "就这周一", "就这周二", "就这周三", "就这周四"]
+      context: resolve
+      context_window: 4
+      unless: ["爬山", "电影", "吃饭", "火锅", "出发", "报名", "约", "见面", "逛街", "唱歌", "回家",
+               "回老家", "出去玩", "去玩", "体检", "看病", "复查", "剪头发", "开会"]
+      unless_window: 12
+      unless_across: true
+      trailing: ["了", "吧", "啊", "呀", "哦", "嘛", "啦"]
+    # Everything made ready, after a resolve of one's own (2026-10-26): "我已经想好了，…，该准
+    # 备的都准备好了". No act and no death word, so L1 + the direct question (D3), never L3;
+    # with a risk cue of the user's own in the message it is L2 (crisis.py). Exams, trips,
+    # weddings, moves and other occasions void it in the same clause.
+    - id: ASK_INTENT_ALL_PREPARED
+      level: ASK
+      raise_with_risk: true
+      heads: ["该准备的都准备好", "该准备的我都准备好", "该准备的也都准备好", "该安排的都安排好",
+              "该安排的我都安排好", "该交代的都交代", "该处理的都处理好", "该收拾的都收拾好",
+              "该还的都还了", "东西都准备好了", "一切都准备好了", "一切都安排好了"]
+      context: resolve
+      context_window: 24
+      unless: ready_everyday
+      unless_window: 16
+      unless_across: true
+    # Affairs arranged (2026-10-26): "后事都安排好了". S1_AFFAIRS_SETTLED rates 后事 x
+    # 交代好 L3; 安排好 / 准备好 / 打点好 are said after a death in the family too (老人走
+    # 了，后事都安排好了), so this is L1 + the direct question: someone else's funeral is
+    # voided by the person check or a grief word in the clause, and my own (我的后事) is
+    # S1_NOTE_PREPARED.
+    - id: ASK_INTENT_AFFAIRS_ARRANGED
+      level: ASK
+      raise_with_risk: true
+      heads: ["后事"]
+      tails: ["安排好", "安排妥", "都安排", "准备好", "都准备", "打点好", "想好", "规划好"]
+      max_gap: 4
+      order: either
+      unless: grief
+      unless_window: 16
+      unless_across: true
+    # "Tonight IS the last time I talk to you" (2026-10-26): 是最后一次 + talking to the
+    # listener, with no death word. ASK_INTENT_LAST_WORDS lets 今晚 / 今天 void its bare
+    # 最后一次跟你说话 (the last chat of the day); the copula (今晚就是最后一次…) makes it final.
+    # A topic, a task, a break or a return voids it in the same clause.
+    - id: ASK_INTENT_LAST_TIME
+      level: ASK
+      raise_with_risk: true
+      heads: ["是最后一次", "就是最后一次", "这是最后一次", "是我最后一次"]
+      tails: ["跟你说话", "和你说话", "跟你聊", "和你聊", "找你", "跟你说", "和你说", "陪你",
+              "给你发消息", "给你留言"]
+      max_gap: 2
+      persons: false
+      unless: ["这个话题", "这件事", "这事", "关于", "工作", "项目", "任务", "问题", "下次", "改天",
+               "明天见", "回来", "再聊", "考完", "忙完", "出差", "放假", "开学", "上班", "今天的",
+               "今年", "这周", "本周", "这个月", "账号", "手机", "睡了", "去睡", "试用", "会员",
+               "版本", "测试", "demo", "抱怨", "吐槽", "这样聊", "求你", "道歉"]
+      unless_window: 16
+      unless_across: true
     - id: ASK_INTENT_BURDEN
       level: ASK
       heads: ["我", "自己"]
@@ -848,7 +1094,8 @@ negation:
                "要去死磕", "想去死磕", "要去死海", "想去死海", "不如去死海",
                "常想到死去", "总想到死去", "总是想到死去", "老想到死去", "老是想到死去", "一直想到死去",
                "又想到死去", "反复想到死去", "天天想到死去", "整天想到死去", "每天都想到死去",
-               "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "skillmyself"]
+               "紫砂壶", "紫砂锅", "紫砂杯", "紫砂茶", "紫砂泥", "紫砂陶", "skillmyself",
+               "唔想活喺", "唔想再活喺", "唔想活成", "唔想再活成"]
   # Suicide-prevention questions (预防自杀的方法有哪些): the only masks allowed to contain
   # an L2_METHOD_SEEKING phrase. A real request elsewhere in the message still counts.
   - id: NEG_PREVENTION
@@ -941,3 +1188,43 @@ recall_cap:
            "送人", "留给", "用不上", "用不着", "照顾好", "下辈子", "来世", "安眠药", "农药", "百草枯", "敌敌畏", "老鼠药", "致死", "剂量", "几片",
            "多少片", "一整瓶", "吞", "绳", "刀片", "割", "炭", "煤气", "楼顶", "天台", "铁轨", "跳",
            "睡过去", "睡下去", "长眠", "不醒", "醒不", "再醒", "别醒"]
+# Someone else's words, reported by the user (2026-10-26; safety/reported.py): "她跟我说她
+# 不想活了", "我妈说她活够了", "他说了句“活够了”". A Stage 2 phrase is reported when a
+# `speakers` word (a third person, not right after a compositions recipient word: 跟她说
+# names her as the listener) is followed within `speaker_gap` characters, with no clause
+# punctuation and no self word but an object one (跟我说) in between, by a `verbs` word,
+# and only `fillers` (a third-person pronoun, an adverb, a colon, a comma or an opening
+# quote) stand between the verb and the phrase. A phrase holding a self word (我, 自己 …)
+# is never reported. Occurrences inside `speaker_exceptions` / `verb_exceptions` (吉他,
+# 其他, 小说, 说完, 听说) do not count. Read by crisis.py at the rule level only: when every
+# Stage 2 phrase of the message is reported, no pair or composition cue fires and no
+# `vetoes` phrase (the user joins in: 我也是, 一起, 跟她一样) occurs, the phrases are void
+# and the user stays out of the crisis flow (red-team third_party_concern). The user's own
+# risk words anywhere in the message keep every phrase. Method requests (pairs) are never
+# void, whoever they are for (R-MS). A model's level is not capped.
+# Not speakers on purpose: 人家, 宝宝, 老娘, 本宝宝 (also said of oneself), 你 / 您 (the
+# listener). A bare third-person subject without a speech verb (她走了以后不想活了: the
+# user's own grief) is never reported.
+reported_speech:
+  speakers: ["他", "她", "它", "ta", "他们", "她们", "有人", "别人", "朋友", "同学", "同事", "室友",
+             "闺蜜", "兄弟", "姐姐", "妹妹", "哥哥", "弟弟", "表哥", "表姐", "表弟", "表妹", "妈", "爸",
+             "爷爷", "奶奶", "外公", "外婆", "姥姥", "姥爷", "老公", "老婆", "男朋友", "女朋友", "对象",
+             "孩子", "儿子", "女儿", "网友", "群友", "博主", "邻居", "老师", "学生", "病人", "患者",
+             "客户", "领导", "老板", "队友", "舍友", "叔叔", "阿姨", "舅舅", "姑姑", "伯伯", "佢",
+             "佢哋"]
+  speaker_exceptions: ["其他", "其它", "吉他", "他妈的", "他娘的", "她妈的", "利他", "他乡"]
+  speaker_gap: 8
+  verbs: ["说", "讲", "告诉我", "问我", "写道", "提到", "提过", "念叨", "说过", "说了句", "说了一句",
+          "发消息", "发信息", "留言", "发朋友圈", "发微博", "发帖", "哭着说", "跟我讲", "同我讲",
+          "话我知", "话"]
+  verb_exceptions: ["说完", "说的话", "说得", "小说", "说明", "说服", "听说", "说不定", "虽说", "说实话",
+                    "说真的", "据说", "再说", "说起来", "说到底", "不说", "没说", "别说", "说什么",
+                    "怎么说", "讲完", "讲的话", "讲座", "讲课", "演讲", "说话", "讲话", "电话", "话题",
+                    "话说", "笑话", "废话", "说法", "说清", "说出"]
+  fillers: ["他", "她", "它", "ta", "他们", "她们", "自己", "真的", "已经", "都", "也", "就", "又",
+            "好", "很", "太", "最近", "实在", "有点", "有些", "总是", "总", "一直", "经常", "常常",
+            "老是", "其实", "简直", "快", "真", "现在", "今天", "昨天", "早就", "佢", "佢哋", "真系",
+            ",", ":", "“", "\"", "'", "「", "『"]
+  # Any 我也 at all: the user may be joining in without a cue word (我也撑不住了).
+  vetoes: ["我也", "我同样", "我自己也", "何尝不是", "跟她一样", "和她一样", "跟他一样", "和他一样",
+           "像她一样", "像他一样", "一起", "我们都", "我们俩", "我俩", "咱们", "metoo"]

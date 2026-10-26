@@ -39,6 +39,15 @@ _COMP_SECTION: Final = "compositions"
 _DENIAL_SECTION: Final = "denial"
 _DENIAL_LISTS: Final = ("phrases", "negators", "contrasts", "vetoes")
 _RECALL_SECTION: Final = "recall_cap"
+_REPORTED_SECTION: Final = "reported_speech"
+_REPORTED_LISTS: Final = (
+    "speakers",
+    "speaker_exceptions",
+    "verbs",
+    "verb_exceptions",
+    "fillers",
+    "vetoes",
+)
 _PERCEPTION_FILE: Final = "perception.yaml"
 # perception.yaml's note recall sections (F15), the one source of these phrases.
 _RECALL_QUESTION_SECTIONS: Final = ("note_recall", "note_recall_questions")
@@ -51,7 +60,16 @@ _COMP_GLOBAL_LISTS: Final = (
     "listeners",
 )
 _COMP_KEYS: Final = frozenset(
-    {"stops", "lookback", "subject_window", "lists", "entries", *_COMP_GLOBAL_LISTS}
+    {
+        "stops",
+        "lookback",
+        "subject_window",
+        "unless_negation_gap",
+        "unless_negators",
+        "lists",
+        "entries",
+        *_COMP_GLOBAL_LISTS,
+    }
 )
 _COMP_PHRASE_KEYS: Final = (
     "heads",
@@ -70,7 +88,9 @@ _COMP_ENTRY_KEYS: Final = frozenset(
         "order",
         "context_window",
         "unless_window",
+        "unless_across",
         "persons",
+        "raise_with_risk",
         *_COMP_PHRASE_KEYS,
     }
 )
@@ -131,10 +151,13 @@ class Composition:
     person word before the second part names someone else (``persons``), no ``context``
     phrase lies within ``context_window`` characters of it (anywhere when the window is
     None), or an ``unless`` phrase lies within ``unless_window`` characters of it in the
-    same clause. With ``trailing``, the match must also end its clause: only ``trailing``
-    phrases (sentence particles such as 了, 吧) may stand between it and the next clause
-    punctuation or the end of the message. ``ask`` marks a D3 cue (L1); a level of L3 is
-    Stage 1 plan evidence.
+    same clause (in any clause with ``unless_across``). With ``trailing``, the match must
+    also end its clause: only ``trailing`` phrases (sentence particles such as 了, 吧) may
+    stand between it and the next clause punctuation or the end of the message. ``ask``
+    marks a D3 cue (L1); a level of L3 is Stage 1 plan evidence. ``raise_with_risk`` (ask
+    cues only: a farewell, the last words, affairs arranged, a resolve) makes the cue L2
+    instead of a question when the same message holds a risk cue of the user's own, or
+    the session already showed risk (``crisis.py``, ``tracker.py``).
     """
 
     id: str
@@ -149,12 +172,16 @@ class Composition:
     context_window: int | None = None
     unless: tuple[str, ...] = ()
     unless_window: int = 0
+    unless_across: bool = False
+    """The ``unless`` window crosses clause punctuation: an everyday reason said in
+    the next clause (炭买好了，周六去烤肉) voids the match too."""
     exceptions: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
     persons: bool = True
     trailing: tuple[str, ...] | None = None
     """None: anything may follow the match. Otherwise the match ends its clause: only
     these phrases may follow it before the clause punctuation or the end of the text."""
+    raise_with_risk: bool = False
 
 
 @dataclass(frozen=True)
@@ -171,6 +198,11 @@ class CompositionRules:
     negators: tuple[str, ...] = ()
     non_negators: tuple[str, ...] = ()
     """Words that contain a negator without negating anything (忍不住, 要不, 差不多)."""
+    unless_negators: tuple[str, ...] = ()
+    """Negators beyond ``negators`` (并非) that void an ``unless`` phrase right after them."""
+    unless_negation_gap: int = 0
+    """How many characters may stand between a negator and an ``unless`` phrase it voids
+    (不是为了烧烤: an everyday reason denied is no everyday reason)."""
     selves: tuple[str, ...] = ()
     others: tuple[str, ...] = ()
     recipients: tuple[str, ...] = ()
@@ -235,6 +267,32 @@ class RecallCapRules:
 
 
 @dataclass(frozen=True)
+class ReportedSpeechRules:
+    """The ``reported_speech`` section: someone else's words, reported by the user.
+
+    A Stage 2 phrase is reported when a ``speakers`` word (a third person, not right after
+    a recipient word of ``compositions``: 跟她说 names her as the listener) is followed,
+    within ``speaker_gap`` characters, no clause punctuation and no self word but an object
+    one (跟我说), by a ``verbs`` word, and only ``fillers`` (a third-person pronoun, an
+    adverb, a colon or an opening quote) stand between that verb and the phrase. Occurrences
+    wholly inside a ``speaker_exceptions`` / ``verb_exceptions`` phrase (吉他, 小说, 说完)
+    do not count, and a phrase that contains a self word is never reported. ``crisis.py``
+    voids reported phrases at the rule level only when every Stage 2 phrase of the message
+    is reported, no pair or composition cue fires and no ``vetoes`` phrase (我也是, 一起)
+    occurs. Folded with :func:`~olivia.core.safety.normalize.normalize`. Empty when the
+    section is absent: nothing is reported.
+    """
+
+    speakers: tuple[str, ...] = ()
+    speaker_exceptions: tuple[str, ...] = ()
+    verbs: tuple[str, ...] = ()
+    verb_exceptions: tuple[str, ...] = ()
+    fillers: tuple[str, ...] = ()
+    vetoes: tuple[str, ...] = ()
+    speaker_gap: int = 0
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -255,6 +313,7 @@ class SafetyLexicons:
     compositions: CompositionRules = CompositionRules()
     denial: DenialRules = DenialRules()
     recall_cap: RecallCapRules = RecallCapRules()
+    reported_speech: ReportedSpeechRules = ReportedSpeechRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -277,6 +336,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     answers = _parse_answers(risk_doc, required=bool(ask_pairs))
     denial = _parse_denial(risk_doc)
     recall_cap = _parse_recall_cap(base, risk_doc)
+    reported = _parse_reported_speech(risk_doc)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -288,6 +348,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         compositions=compositions,
         denial=denial,
         recall_cap=recall_cap,
+        reported_speech=reported,
     )
 
 
@@ -386,6 +447,7 @@ def _parse_risk(
         _COMP_SECTION,
         _DENIAL_SECTION,
         _RECALL_SECTION,
+        _REPORTED_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -520,6 +582,15 @@ def _parse_compositions(
     shared = {
         name: _normalized_list(node.get(name), f"{where} {name}") for name in _COMP_GLOBAL_LISTS
     }
+    unless_negators: tuple[str, ...] = ()
+    if "unless_negators" in node:
+        unless_negators = _normalized_list(node["unless_negators"], f"{where} unless_negators")
+        clash = sorted(set(unless_negators) & set(shared["negators"]))
+        if clash:
+            raise LexiconError(f"{where}: unless_negators {clash} are already negators")
+    unless_gap = _bounded_int(
+        node.get("unless_negation_gap", 0), 0, 8, f"{where} unless_negation_gap"
+    )
     raw_lists = node.get("lists", {})
     if not isinstance(raw_lists, dict):
         raise LexiconError(f"{where}: 'lists' must be a mapping")
@@ -537,6 +608,8 @@ def _parse_compositions(
         subject_window=subject_window,
         negators=shared["negators"],
         non_negators=shared["non_negators"],
+        unless_negators=unless_negators,
+        unless_negation_gap=unless_gap,
         selves=shared["selves"],
         others=shared["others"],
         recipients=shared["recipients"],
@@ -613,6 +686,11 @@ def _parse_composition(
         )
     elif "unless_window" in item:
         raise LexiconError(f"{where}: 'unless_window' needs 'unless'")
+    unless_across = item.get("unless_across", False)
+    if not isinstance(unless_across, bool):
+        raise LexiconError(f"{where}: 'unless_across' must be true or false")
+    if unless_across and not phrases["unless"]:
+        raise LexiconError(f"{where}: 'unless_across' needs 'unless'")
     parts = (*phrases["heads"], *phrases["tails"])
     for phrase in phrases["exceptions"]:
         if not any(part in phrase for part in parts):
@@ -620,6 +698,11 @@ def _parse_composition(
     persons = item.get("persons", True)
     if not isinstance(persons, bool):
         raise LexiconError(f"{where}: 'persons' must be true or false")
+    raise_with_risk = item.get("raise_with_risk", False)
+    if not isinstance(raise_with_risk, bool):
+        raise LexiconError(f"{where}: 'raise_with_risk' must be true or false")
+    if raise_with_risk and not ask:
+        raise LexiconError(f"{where}: 'raise_with_risk' is only for ASK entries")
     return Composition(
         id=cue_id,
         level=level,
@@ -633,10 +716,12 @@ def _parse_composition(
         context_window=context_window,
         unless=phrases["unless"],
         unless_window=unless_window,
+        unless_across=unless_across,
         exceptions=phrases["exceptions"],
         blockers=phrases["blockers"],
         persons=persons,
         trailing=phrases["trailing"] if "trailing" in item else None,
+        raise_with_risk=raise_with_risk,
     )
 
 
@@ -730,6 +815,31 @@ def _parse_recall_cap(base: Traversable | Path, doc: Mapping[str, Any]) -> Recal
                 f"{where}: question {question!r} contains vetoes {inside}, so it never applies"
             )
     return RecallCapRules(questions=tuple(dict.fromkeys(questions)), vetoes=vetoes)
+
+
+def _parse_reported_speech(doc: Mapping[str, Any]) -> ReportedSpeechRules:
+    """Parse the optional ``reported_speech`` section. Its phrases go to a matcher of
+    their own, so they may repeat a phrase of any other section."""
+    if _REPORTED_SECTION not in doc:
+        return ReportedSpeechRules()
+    where = f"{_RISK_FILE} {_REPORTED_SECTION}"
+    node = doc[_REPORTED_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {*_REPORTED_LISTS, "speaker_gap"}, where)
+    lists: dict[str, tuple[str, ...]] = {}
+    for name in _REPORTED_LISTS:
+        phrases = _normalized_list(node.get(name), f"{where} {name}")
+        repeated = sorted({p for p in phrases if phrases.count(p) > 1})
+        if repeated:
+            raise LexiconError(f"{where} {name}: phrases {repeated} are repeated")
+        lists[name] = phrases
+    for role, exceptions in (("speakers", "speaker_exceptions"), ("verbs", "verb_exceptions")):
+        for phrase in lists[exceptions]:
+            if not any(word in phrase for word in lists[role]):
+                raise LexiconError(f"{where}: {exceptions} {phrase!r} contains none of the {role}")
+    gap = _bounded_int(node.get("speaker_gap"), 0, _MAX_WINDOW, f"{where} speaker_gap")
+    return ReportedSpeechRules(**lists, speaker_gap=gap)
 
 
 # -- red_flags.yaml ----------------------------------------------------------------

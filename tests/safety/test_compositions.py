@@ -307,7 +307,11 @@ def test_trailing_is_read_from_the_lexicon():
     # F6a: the Cantonese 完咗佢 cue must end its clause too.
     yue = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_END_IT_YUE")
     assert yue.trailing is not None and "啦" in yue.trailing
-    assert all(e.trailing is None for e in LEX.compositions.entries if e not in (entry, yue))
+    # 2026-10-26: the same resolve with a day ("我已经想好了，就这周五") ends its clause too.
+    day = next(e for e in LEX.compositions.entries if e.id == "ASK_INTENT_RESOLVED_DAY")
+    assert day.trailing == entry.trailing
+    ends = (entry, yue, day)
+    assert all(e.trailing is None for e in LEX.compositions.entries if e not in ends)
 
 
 def test_f5a_usage_sentences_ask_and_a_death_word_goes_to_stage1():

@@ -6,7 +6,8 @@ section ``compositions``) instead joins two phrase lists, an intent verb and an 
 ending one's life for example, across a short gap without clause punctuation. The checks
 that keep it from firing on everyday text are generic: exceptions around a part, blocker
 words in the gap, a negator in the gap or just before the first part, a third person as
-the subject, a required context nearby, voiding words in the same clause and, for an
+the subject, a required context nearby, voiding words in the same clause (or nearby, with
+``unless_across``) and, for an
 entry with ``trailing``, anything but a sentence particle after it in its clause. Each is
 described on :class:`~olivia.core.safety.lexicon.Composition`.
 
@@ -57,6 +58,14 @@ class _Spans:
         j = bisect_left(self._starts, b, lo=i)
         return any(m.end <= b for m in self._spans[i:j])
 
+    def inside(self, a: int, b: int) -> list[Match]:
+        """The spans wholly inside [a, b)."""
+        if a >= b:
+            return []
+        i = bisect_left(self._starts, a)
+        j = bisect_left(self._starts, b, lo=i)
+        return [m for m in self._spans[i:j] if m.end <= b]
+
     def overlaps(self, a: int, b: int) -> bool:
         """Does some span share a character with [a, b)?"""
         j = bisect_left(self._starts, b)
@@ -82,6 +91,7 @@ class _Lists:
 
     negators: frozenset[str]
     non_negators: frozenset[str]
+    unless_negators: frozenset[str]
     selves: frozenset[str]
     others: frozenset[str]
     recipients: frozenset[str]
@@ -92,6 +102,7 @@ class _Lists:
         return cls(
             negators=frozenset(rules.negators),
             non_negators=frozenset(rules.non_negators),
+            unless_negators=frozenset(rules.unless_negators),
             selves=frozenset(rules.selves),
             others=frozenset(rules.others),
             recipients=frozenset(rules.recipients),
@@ -149,9 +160,24 @@ class _Text:
             if text[i] in rules.stops:
                 end = i
             self.clause_end[i] = end
-        self.negators = _Spans(self._real_negators(text, lists))
+        real = self._real_negators(text, lists)
+        self.negators = _Spans(real)
+        self._unless_negator_ends = sorted(
+            [m.end for m in real] + [m.end for m in self.spans(lists.unless_negators)]
+        )
         self.persons = self._subjects(lists)
         self._person_starts = [p.start for p in self.persons]
+
+    def denied(self, phrase: Match, gap: int, match: tuple[int, int]) -> bool:
+        """A negator outside the ``match`` span ends at most ``gap`` characters before
+        ``phrase``, in its clause (不是为了烧烤, 不是拿来烤肉): the ``unless`` phrase is
+        denied, not given. A negator of the match itself (不用再醒那么早) does not count."""
+        lo = bisect_left(self._unless_negator_ends, phrase.start - gap)
+        hi = bisect_right(self._unless_negator_ends, phrase.start)
+        return any(
+            not match[0] < end <= match[1] and self.no_stop(end, phrase.start)
+            for end in self._unless_negator_ends[lo:hi]
+        )
 
     def no_stop(self, a: int, b: int) -> bool:
         return self._stops_before[b] == self._stops_before[a]
@@ -226,6 +252,7 @@ class Composer:
         phrases: set[str] = {
             *rules.negators,
             *rules.non_negators,
+            *rules.unless_negators,
             *rules.selves,
             *rules.others,
             *rules.recipients,
@@ -335,9 +362,15 @@ class Composer:
         ):
             return False
         if entry.unless:
-            a = max(clause, first.start - entry.unless_window)
-            b = min(facts.clause_end[second.end], second.end + entry.unless_window)
-            if own.unless.any_inside(a, b):
+            a = first.start - entry.unless_window
+            b = second.end + entry.unless_window
+            if entry.unless_across:
+                a, b = max(0, a), min(len(facts.text), b)
+            else:
+                a, b = max(clause, a), min(facts.clause_end[second.end], b)
+            gap = self._rules.unless_negation_gap
+            span = (first.start, second.end)
+            if any(not facts.denied(m, gap, span) for m in own.unless.inside(a, b)):
                 return False
         if entry.trailing is not None:
             return _only(facts.text[second.end : facts.clause_end[second.end]], entry.trailing)

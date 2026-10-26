@@ -80,7 +80,7 @@ _DISTORTION: Final = "distortions"
 _SCHEMA: Final = "schemas"
 _YEARNING: Final = "yearnings"
 # (head, negation) pairs that form an A-not-A question rather than a denial (as the stub).
-_A_NOT_A: Final = (("是", "不是"), ("有", "没有"), ("会", "不会"))
+_A_NOT_A: Final = (("是", "不是"), ("有", "没有"), ("会", "不会"), ("想", "不想"))
 # Clause ends after fold_words (as safety/intent_check.py reads the D3 answer).
 _CLAUSE_END: Final = re.compile(r"[,.!?;:。、~…\n\"“”]")
 _FILLERS: Final = "啊呃额哦噢喔诶欸哎"

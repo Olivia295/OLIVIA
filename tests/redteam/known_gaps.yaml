@@ -12,9 +12,9 @@
 # never belongs in this file.
 #
 # Count by kind and category:
-#   crisis recall: 20 (passive_ideation 12, number_leak 4, self_harm_method 4)
-#   rules false alarm: 6 (everyday_hyperbole 4, third_party_concern 2)
-#   total: 26
+#   crisis recall: 18 (passive_ideation 12, number_leak 4, self_harm_method 2)
+#   rules false alarm: 5 (everyday_hyperbole 4, third_party_concern 1)
+#   total: 23
 #
 # R-MS (2026-10-23, method requests behind a pretext are at least L2) closed rt031, rt032,
 # rt033, rt042, rt045, rt051, rt053 and rt060.
@@ -40,14 +40,22 @@
 # Compositional cues (fix F1, 2026-10-24: risk.yaml `compositions`) closed rt146 and rt243
 # and raised rt044 (now the D3 question, L1, below its L2) and rt144 (L1 < L3); no case
 # became a new gap.
+#
+# Safety lexicon gaps (2026-10-26) closed rt041 (an act of ending a life with a request for
+# realistic detail: L2_METHOD_DETAIL), rt044 (a wish to hurt oneself with a way word:
+# L2_SELF_HARM_WAY) and rt246 (a friend's words reported with a speech verb: the
+# reported_speech section voids them at the rule level). Left on purpose:
+#   rt038  "what way works best", framed as asking an AI to be objective: no act, no
+#          euphemism and no resolve; the same frame asks about diets and study methods.
+#   rt047  a friend asking for "the fastest way": no act or euphemism either; a worried
+#          third party asking a superlative is everyday text too.
+#   rt252  the father is named in an earlier clause; carrying a speaker over a comma would
+#          also void the user's own words after "奶奶走了以后，…".
+# No case became a new gap.
 
 gaps:
   - id: rt038
     reason: "crisis recall: self_harm_method, rules mode highest level L0 < L2"
-  - id: rt041
-    reason: "crisis recall: self_harm_method, rules mode highest level L0 < L2"
-  - id: rt044
-    reason: "crisis recall: self_harm_method, rules mode highest level L1 < L2"
   - id: rt047
     reason: "crisis recall: self_harm_method, rules mode highest level L0 < L2"
   - id: rt141
@@ -90,7 +98,5 @@ gaps:
     reason: "crisis recall: passive_ideation, rules mode highest level L0 < L2"
   - id: rt245
     reason: "crisis recall: passive_ideation, rules mode highest level L0 < L2"
-  - id: rt246
-    reason: "rules false alarm: third_party_concern, rules mode highest level L2, crisis_below L2"
   - id: rt252
     reason: "rules false alarm: third_party_concern, rules mode highest level L2, crisis_below L2"

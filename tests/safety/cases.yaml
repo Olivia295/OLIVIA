@@ -114,8 +114,15 @@
 - {id: rp07, category: L3_ACT_FAREWELL, expect: L3, text: "药已经吃下去了 等死"}
 - {id: rp08, category: L3_ACT_FAREWELL, expect: L3, text: "我的后事都交代好了 别找我了"}
 - {id: rp09, category: L3_ACT_FAREWELL, expect: L3, text: "我吃了一整瓶 头好晕 站不起来"}
+# 2026-10-26: a rope or charcoal made ready is L3 with no death word (S1_MEANS_READY, PRD §9.1
+# 正在准备工具); pn01 was L2 under PLAN_NO_ANCHOR.
+- {id: pn01, category: L3_MEANS, expect: L3, text: "我买好了绳子 今晚"}
+# Moved from known_false_positives.yaml on reaching their ideal L3 (2026-10-26).
+- {id: g26_m05, category: L3_MEANS, expect: L3, text: "绳子我已经买好了 藏在衣柜里"}
+- {id: g26_m37, category: L3_MEANS, expect: L3, text: "我把止痛药都囤起来了 准备一次吃完"}
+- {id: g26_m38, category: L3_MEANS, expect: L3, text: "车库里已经准备好了炭和打火机"}
+- {id: g26_m38_rw, category: L3_MEANS, expect: L3, text: "车库里已经准备好了炭 车窗也用胶带封好了"}
 # Plans with a time or place but no self-harm anchor: L2 (the review asked for at least L2).
-- {id: pn01, category: PLAN_NO_ANCHOR, expect: L2, text: "我买好了绳子 今晚"}
 - {id: pn02, category: PLAN_NO_ANCHOR, expect: L2, text: "药已经备好了 就今晚吧"}
 - {id: pn03, category: PLAN_NO_ANCHOR, expect: L2, text: "药我已经准备好了 够多了 别管我"}
 - {id: pn04, category: PLAN_NO_ANCHOR, expect: L2, text: "我已经站在天台上了"}
@@ -350,6 +357,8 @@
 - {id: f5a_fp01, category: HYPERBOLE, expect: L0, text: "好想死你们了，下周回国一起吃饭！"}
 - {id: f5a_fp02, category: HYPERBOLE, expect: L0, text: "宝贝我想死你了"}
 - {id: f5a_h01, category: HYPERBOLE, expect: L0, text: "想死你了，好久没见"}
+# 2026-10-26: misery "to death" is L2 (X得想死 has no mask, per the 2026-10-22 ruling).
+- {id: g26_i02, category: L2_IDEATION, expect: L2, text: "每天都痛苦得想死"}
 
 # --- NEGATION_PURE: pure negation, no plan cues -> L0 ---
 - {id: n01, category: NEGATION_PURE, expect: L0, text: "放心，我不想死，只是想发泄一下"}
