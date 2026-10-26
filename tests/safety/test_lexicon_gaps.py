@@ -25,7 +25,7 @@ import pytest
 from olivia.core.models import CrisisLevel as L
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
-from olivia.core.safety.crisis import CrisisAssessment, SafetyScreen
+from olivia.core.safety.crisis import CrisisAssessment, RuleRiskModel, SafetyScreen
 from olivia.core.safety.lexicon import LexiconError, load_safety_lexicons
 from olivia.core.safety.tracker import CrisisTracker
 from olivia.core.taxonomy import load_taxonomy
@@ -161,6 +161,17 @@ def test_a_farewell_with_the_users_own_risk_cue_is_l2(text: str) -> None:
     assert SCREEN.assess(text).level is L.L2, text
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "后事都安排好了，活着真的没意思",  # an L1 composition alone, no Stage 2 phrase
+        "好想人间蒸发后事都安排好了",  # a phrase that ends where the farewell starts
+    ],
+)
+def test_any_own_cue_outside_the_farewell_raises_it(text: str) -> None:
+    assert SCREEN.assess(text).level is L.L2, text
+
+
 def test_two_farewell_cues_are_still_one_question() -> None:
     a = SCREEN.assess("我已经想好了，就这周五，该准备的都准备好了")
     assert a.level is L.L1 and a.asks_intent
@@ -277,6 +288,43 @@ def test_someone_elses_reported_words_leave_the_user_out_of_the_crisis(text: str
 )
 def test_the_users_own_words_or_an_unclear_speaker_keep_l2(text: str) -> None:
     assert SCREEN.assess(text).level is L.L2, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "她说不想活了",  # the phrase right after the verb
+        "我同学说她们最近都不想活了",  # 她们 is stripped as a whole, not as 她 + 们
+        "她昨天晚上回家以后说不想活了",  # the speaker exactly speaker_gap (8) before the verb
+        "她回家了，妈妈说她不想活了",  # the first speaker is cut off by a comma, the next counts
+        "她昨天晚上回到家里，妈妈说她不想活了",  # the first speaker is too far, the next counts
+        "她跟我说她不想活了，说实话我很担心",  # an exception later on does not cover this 说
+    ],
+)
+def test_reported_words_are_found_past_the_easy_cases(text: str) -> None:
+    assert SCREEN.assess(text).level is L.L0, text
+
+
+@pytest.mark.parametrize(
+    ("text", "level"),
+    [
+        ("他妈的说了句不想活了", L.L2),  # 他 inside 他妈的 is no speaker
+        ("同事听说她最近不想活了", L.L2),  # 说 inside 听说 is no speech verb
+        ("她昨天晚上回到家以后说不想活了", L.L2),  # the speaker 9 characters before the verb
+        ("妈我说不想活了", L.L2),  # a self word right after the speaker: the user speaks
+        ("她说我是个负担", L.L1),  # a phrase starting with a self word is about the user
+        ("她说想结束自己", L.L2),  # a phrase ending with a self word
+    ],
+)
+def test_reported_speech_fails_toward_keeping_the_phrase(text: str, level: L) -> None:
+    assert SCREEN.assess(text).level is level, text
+
+
+def test_the_rule_model_alone_also_leaves_reported_words_out() -> None:
+    # RuleRiskModel.predict reads the same normalized text as the screen.
+    model = RuleRiskModel(TAX, LEX)
+    assert model.predict("她跟我说她不想活了").level is L.L0
+    assert model.predict("她跟我说她不想活了，我也是").level is L.L2
 
 
 def test_a_method_request_for_someone_else_is_never_reported_speech() -> None:

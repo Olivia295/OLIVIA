@@ -493,3 +493,33 @@ def test_loaded_entries_have_levels_scores_and_ids():
 def test_rejects_malformed_composition_data(tmp_path, mutate, match):
     with pytest.raises(LexiconError, match=match):
         load_safety_lexicons(TAX, _copy(tmp_path, mutate))
+
+
+# (section or entry id, key, lowest allowed, highest allowed)
+WINDOW_BOUNDS = [
+    ("compositions", "lookback", 0, 8),
+    ("compositions", "subject_window", 0, 16),
+    ("compositions", "unless_negation_gap", 0, 8),
+    ("L2_INTENT_ACT", "max_gap", 0, 12),
+    ("S1_PLAN_ACT_TIME", "context_window", 0, 24),
+    ("S1_NOTE_PREPARED", "unless_window", 1, 24),
+    ("reported_speech", "speaker_gap", 0, 24),
+]
+
+
+def _set(owner: str, key: str, value: int) -> Callable[[dict[str, Any]], None]:
+    def mutate(d: dict[str, Any]) -> None:
+        node = d[owner] if owner in ("compositions", "reported_speech") else _entry(d, owner)
+        node[key] = value
+
+    return mutate
+
+
+@pytest.mark.parametrize(("owner", "key", "low", "high"), WINDOW_BOUNDS)
+def test_window_and_gap_bounds_are_inclusive(tmp_path, owner, key, low, high):
+    # Both ends of each range load; one step outside either end is rejected.
+    for value in (low, high):
+        load_safety_lexicons(TAX, _copy(tmp_path / f"ok{value}", _set(owner, key, value)))
+    for value in (low - 1, high + 1):
+        with pytest.raises(LexiconError, match=key):
+            load_safety_lexicons(TAX, _copy(tmp_path / f"bad{value}", _set(owner, key, value)))

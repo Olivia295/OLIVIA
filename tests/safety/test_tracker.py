@@ -557,6 +557,26 @@ def test_only_the_exit_turn_reports_just_exited(tax, lex):
     assert [s.just_exited for s in statuses] == [False, True]
 
 
+def test_entry_and_exit_flags_are_booleans_and_exit_clears_the_entry_level(tax, lex):
+    tracker = CrisisTracker(tax, lex)
+    calm = tracker.observe(_a(L.L0, 0.0), "今天吃了面")
+    assert calm.just_entered is False and calm.just_exited is False
+    assert tracker.observe(_a(L.L2, 0.7), "x").just_entered is True
+    tracker.observe(_a(L.L0, 0.0), "我现在是安全的")
+    tracker.observe(_a(L.L0, 0.0), "嗯")
+    status = tracker.observe(_a(L.L0, 0.0), "嗯")
+    assert status.just_exited is True and status.entry_level is None
+
+
+def test_a_rule_l2_confirmation_the_model_raises_to_l3_keeps_the_l3(tax, lex):
+    # Only a rule level below L2 is kept for an awaited confirmation; a rule L2 that the
+    # model rates L3 relapses at L3, so the exit needs the L3 number of safe turns.
+    tracker = _in_crisis(tax, lex)
+    raised = CrisisAssessment(L.L3, 0.9, "STAGE2", True, ("FAKE",), rule_level=L.L2)
+    status = tracker.observe(raised, "我现在是安全的")
+    assert (status.level, status.entry_level) == (L.L3, L.L3)
+
+
 def test_safe_turns_remaining_is_zero_outside_a_crisis(tax, lex):
     tracker = CrisisTracker(tax, lex)
     assert tracker.observe(_a(L.L0, 0.0), "今天吃了面").safe_turns_remaining == 0
