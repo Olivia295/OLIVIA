@@ -245,3 +245,37 @@ def test_key_file_intact_reads_the_file_only(tmp_path, vault, keychain):
     assert not vault_module.key_file_intact(tmp_path, "kit")
     with pytest.raises(ValueError):
         vault_module.key_file_intact(tmp_path, "../kit")
+
+
+# -- another process changed the keys (robustness D3, second line of defence) ---------------
+
+
+def test_a_data_key_replaced_by_another_process_is_reread_before_sealing(tmp_path, keychain):
+    mine, other = Vault(tmp_path, keychain), Vault(tmp_path, keychain)
+    mine.open("ledger", mine.seal("ledger", b"one"))  # caches the master and the data key
+    other.shred("ledger")  # the master rotates and the ledger key is gone
+    other.seal("ledger", b"two")  # a fresh ledger key under the new master
+    blob = mine.seal("ledger", b"three")
+    assert Vault(tmp_path, keychain).open("ledger", blob) == b"three"
+
+
+def test_a_new_store_key_is_wrapped_under_the_master_now_in_the_keychain(tmp_path, keychain):
+    mine, other = Vault(tmp_path, keychain), Vault(tmp_path, keychain)
+    mine.seal("ledger", b"one")
+    other.rotate_master_key()  # mine still holds the old master in memory
+    blob = mine.seal("care", b"marker")  # creates care.key
+    fresh = Vault(tmp_path, keychain)
+    assert fresh.open("care", blob) == b"marker"
+    assert fresh.open("ledger", mine.seal("ledger", b"two")) == b"two"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
+def test_a_key_file_the_system_will_not_read_is_unavailable_not_lost(tmp_path, vault, keychain):
+    vault.seal("ledger", b"one")
+    path = tmp_path / "keys" / "ledger.key"
+    path.chmod(0)
+    try:
+        with pytest.raises(KeychainUnavailableError):
+            Vault(tmp_path, keychain).seal("ledger", b"two")
+    finally:
+        path.chmod(0o600)
