@@ -228,6 +228,10 @@ this session's replies that carried real-support guidance (PRD §11.1),
 ``inspect["real_support"]`` whether this reply carried it, and ``inspect["late_night"]``
 whether this turn fell in the B7 late-night window (a degraded turn reports it too). The
 ledger's session summary counts the last two (step F12, ``olivia stats``).
+``inspect["battery_prefix"]`` is this turn's ``[NN%]`` reading (0.0-1.0) or None without a
+prefix, while ``inspect["battery"]`` is the battery the session goes on with; the summary
+keeps the lowest reading and whether the session was in S_haven (the journal's battery
+line, CHANG-04).
 
 ``inspect["uncapped_level"]`` is set only on a turn the F10 denial cap lowered: the
 level before the cap, which the tracker reads in a crisis, while ``assessed_level`` stays
@@ -1165,6 +1169,7 @@ class Session:
             "stance": perception.communication_stance,
             "readiness": perception.readiness_to_change,
             "battery": transition.state.social_battery,
+            "battery_prefix": signals.battery,
             "lock": transition.state.pure_listening_locked,
             "spectrum": spectrum,
             "red_flags": sorted(flags),

@@ -20,9 +20,11 @@
 #     recall_unavailable  这台电脑上暂时打不开加密的记忆（没有钥匙串，或钥匙串被锁）。
 #
 # summary：账本条目正文（人可读的模板化小结），只由条目头部的字段生成，不含对话原文。
-#   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after} {turns} {count}
+#   槽位：{date} {start} {end} {path} {spectra} {methods} {before} {after} {turns} {count} {percent}
 #   turns / support / late_night（F12，`olivia stats` 的来源）：这次聊了几轮、其中几轮聊到身边可以
 #     联系的人（为 0 时不显示）、是否在深夜（00:00–05:00）聊的；旧条目没有这些字段，不显示。
+#   battery（草稿：待 G-0，CHANG-04 周记的电量走势）：这次用 [NN%] 说过电量时，最低的那次（按 5% 取整）；
+#     槽位 {percent}；没说过电量或旧条目不显示。是否进过避风港看“经过”一行的“安静陪着”。
 #   spectra 只在这次聊天有主要话题时出现，没有时整行省略（不写“主要聊到：没有”，F11）；
 #   none 只用于自评里没打的那一次。
 #   journal_*：周记记录（B6）的正文：哪天提出过周记、看没看、觉得有没有帮助。
@@ -52,6 +54,7 @@ summary:
   turns: "- 一共聊了 {turns} 轮。"
   support: "- 其中有 {count} 轮聊到了身边可以联系的人。"
   late_night: "- 这次是在深夜聊的。"
+  battery: "- 这次说过的电量里，最低是 {percent}%。"
   significant: "- 这次聊天很重要，会一直留着。"
   none: "没有"
   joiner: "、"

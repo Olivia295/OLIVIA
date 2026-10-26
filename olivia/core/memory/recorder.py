@@ -31,6 +31,9 @@ explicitly asks to have remembered:
   F12) the turn count, how many replies carried real-world support guidance
   (``inspect["real_support"]``) and whether any turn fell in the late-night window
   (``inspect["late_night"]``); a turn without those keys counts as neither. The
+  battery figures for the journal (CHANG-04): whether a turn gave a ``[NN%]`` prefix
+  (``inspect["battery_prefix"]``), the lowest such reading rounded to 0.05, and whether
+  a turn was in S_haven. The
   summary is written when the session closes, either through the state machine
   (S_closing -> S_ready; the conversation may go on, and what follows is a new summary)
   or by :meth:`SessionRecorder.close` (``/exit``, end of input, Ctrl-C). Writing is
@@ -63,6 +66,7 @@ from olivia.core.memory.ledger import (
     LedgerUnavailableError,
     MethodRecord,
     SessionSummary,
+    round_battery,
 )
 from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.recall import Recall, RecallOutcome, recall_note
@@ -94,6 +98,9 @@ class _Segment:
     turns: int = 0
     support_turns: int = 0
     late_night: bool = False
+    battery_min: float | None = None
+    """The lowest ``[NN%]`` reading of the segment; None while no prefix was given."""
+    haven: bool = False
 
     def add_stage(self, stage: HelpStage) -> None:
         if (not self.stage_path or self.stage_path[-1] is not stage) and len(
@@ -118,6 +125,9 @@ class _Segment:
             turns=self.turns,
             real_support_turns=self.support_turns,
             late_night=self.late_night,
+            battery_prefix=self.battery_min is not None,
+            battery_min=None if self.battery_min is None else round_battery(self.battery_min),
+            haven=self.haven,
         )
 
 
@@ -236,6 +246,12 @@ class SessionRecorder:
             segment.support_turns += 1
         if inspect.get("late_night") is True:
             segment.late_night = True
+        reading = inspect.get("battery_prefix")
+        if isinstance(reading, int | float) and not isinstance(reading, bool):
+            low = segment.battery_min
+            segment.battery_min = float(reading) if low is None else min(low, float(reading))
+        if result.stage is HelpStage.S_HAVEN:
+            segment.haven = True
         if not self._closed_by_state_machine(result):
             segment.add_stage(result.stage)
         spectrum = inspect.get("spectrum")

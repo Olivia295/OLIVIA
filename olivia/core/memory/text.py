@@ -48,6 +48,7 @@ _SUMMARY_KEYS: Final = (
     "turns",
     "support",
     "late_night",
+    "battery",
     "significant",
     "none",
     "joiner",
@@ -78,6 +79,7 @@ class SummaryText:
     turns: str
     support: str
     late_night: str
+    battery: str
     significant: str
     none: str
     joiner: str

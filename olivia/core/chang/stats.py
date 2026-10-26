@@ -1,7 +1,8 @@
 """Local usage numbers: ``olivia stats`` (step F12; PRD §11.1, NG-4, RSK-07).
 
-Numbers only, computed on demand from the ledger's session summaries and never stored
-anywhere else; no conversation text, no names, no spectra or exercise titles:
+Numbers only, computed on demand from the ledger's session summaries and journal records
+and never stored anywhere else; no conversation text, no names, no spectra or exercise
+titles:
 
 * **sessions**: summary entries in all, in the last 7 and in the last 30 days (by start
   time; the same "session" as the weekly journal's count);
@@ -11,7 +12,13 @@ anywhere else; no conversation text, no names, no spectra or exercise titles:
 * **real-world support**: replies that carried real-world support guidance (B7), over all
   recorded turns (PRD §11.1 asks for >= 15%);
 * **self-rating change**: the mean of after - before over the sessions with both 0-10
-  self-ratings (B6; higher is better).
+  self-ratings (B6; higher is better);
+* **rating rose**: of the sessions with both self-ratings, how many ended higher than they
+  began (after > before; PRD §11.1's improvement share, printed as a number only);
+* **journal helpful**: the answers to the journal's "was it helpful" question (B6): how
+  many were given and how many said yes. The answer is the ``helpful`` field of the
+  ledger's ``journal`` records (always encrypted); a skipped question or a declined
+  journal is no answer. Nothing new is stored for it.
 
 Summaries written before F12 carry no turn, support or late-night counts: they count as
 sessions and for the self-ratings, are left out of the two shares, and the line says how
@@ -33,7 +40,13 @@ from typing import Final
 
 import yaml
 
-from olivia.core.memory.ledger import Ledger, LedgerUnavailableError, SessionSummary, SummaryEntry
+from olivia.core.memory.ledger import (
+    JournalEntry,
+    Ledger,
+    LedgerUnavailableError,
+    SessionSummary,
+    SummaryEntry,
+)
 from olivia.core.yaml_load import safe_load
 
 WEEK: Final = timedelta(days=7)
@@ -49,6 +62,10 @@ LINE_KEYS: Final = (
     "support_none",
     "rating",
     "rating_none",
+    "rose",
+    "rose_none",
+    "journal_helpful",
+    "journal_helpful_none",
     "unknown",
 )
 REPLY_KEYS: Final = ("empty", "unavailable", "not_onboarded", "adults_only")
@@ -122,6 +139,12 @@ class Stats:
     """Sessions with both self-ratings."""
     rating_change: float | None
     """Mean of after - before over :attr:`rated`; None when there are none."""
+    rose: int = 0
+    """Sessions among :attr:`rated` that ended with a higher rating than they began."""
+    journal_answered: int = 0
+    """Journal records with a yes or no to "was it helpful"."""
+    journal_helpful: int = 0
+    """Of :attr:`journal_answered`, the yes answers."""
 
     @property
     def uncounted(self) -> int:
@@ -129,8 +152,13 @@ class Stats:
         return self.sessions - self.counted
 
 
-def compute(summaries: Iterable[SessionSummary], now: datetime) -> Stats:
-    """The numbers for ``summaries`` as of ``now`` (timezone-aware)."""
+def compute(
+    summaries: Iterable[SessionSummary],
+    now: datetime,
+    journals: Iterable[JournalEntry] = (),
+) -> Stats:
+    """The numbers for ``summaries`` and the ``journals`` records as of ``now``
+    (timezone-aware)."""
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     items = tuple(summaries)
@@ -140,6 +168,7 @@ def compute(summaries: Iterable[SessionSummary], now: datetime) -> Stats:
         for s in items
         if s.self_rating_before is not None and s.self_rating_after is not None
     ]
+    answers = [j.helpful for j in journals if j.helpful is not None]
     return Stats(
         sessions=len(items),
         last_week=sum(1 for s in items if s.started_at >= now - WEEK),
@@ -150,6 +179,9 @@ def compute(summaries: Iterable[SessionSummary], now: datetime) -> Stats:
         turns=sum(s.turns or 0 for s in with_counts),
         rated=len(changes),
         rating_change=sum(changes) / len(changes) if changes else None,
+        rose=sum(1 for change in changes if change > 0),
+        journal_answered=len(answers),
+        journal_helpful=sum(1 for helpful in answers if helpful),
     )
 
 
@@ -199,6 +231,24 @@ def render(stats: Stats, text: StatsText, window: tuple[time, time]) -> str:
         lines.append(words["rating"].format(change=_signed(stats.rating_change), count=stats.rated))
     else:
         lines.append(words["rating_none"])
+    if stats.rated:
+        lines.append(
+            words["rose"].format(
+                count=stats.rose, rated=stats.rated, percent=_percent(stats.rose, stats.rated)
+            )
+        )
+    else:
+        lines.append(words["rose_none"])
+    if stats.journal_answered:
+        lines.append(
+            words["journal_helpful"].format(
+                answered=stats.journal_answered,
+                count=stats.journal_helpful,
+                percent=_percent(stats.journal_helpful, stats.journal_answered),
+            )
+        )
+    else:
+        lines.append(words["journal_helpful_none"])
     return "\n".join(lines)
 
 
@@ -223,5 +273,6 @@ def run_command(
     if not summaries:
         say(words.replies["empty"])
         return 0
-    say(render(compute(summaries, now), words, window))
+    journals = [e for e in entries if isinstance(e, JournalEntry)]
+    say(render(compute(summaries, now, journals), words, window))
     return 0

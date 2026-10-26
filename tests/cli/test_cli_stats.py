@@ -57,6 +57,8 @@ def test_stats_after_two_chats(run_cli, data_home):
         # The late-night line invites someone the user trusts, so it counts (B7).
         words["support"].format(count=1, turns=2, percent=50),
         words["rating"].format(change="+2.0", count=1),
+        words["rose"].format(count=1, rated=1, percent=100),
+        words["journal_helpful_none"],
     ]
     assert [(p, p.read_bytes()) for p in files_under(data_home)] == before  # writes nothing
 
@@ -67,7 +69,7 @@ def test_stats_hold_no_chat_content_and_no_name(run_cli, data_home):
     run = run_cli(["stats"])
     assert run.code == 0
     allowed = _skeletons()
-    assert len(run.lines) == 5
+    assert len(run.lines) == 7
     for line in run.lines:
         assert _bare(line) in allowed, line
     for typed in (*MESSAGES, "搬家公司", "小林"):
@@ -116,3 +118,14 @@ def test_stats_without_a_keychain(run_cli, data_home, keychain):
     keychain.broken = NoKeychainError("none")
     run = run_cli(["stats"])
     assert run.code == 1 and TEXT.replies["unavailable"] in run.out
+
+
+def test_stats_count_the_journal_answers(run_cli, data_home):
+    save_profile(data_home)
+    run_cli(["chat", "--rules"], ["4", MESSAGES[0], "/exit", "6"])
+    run_cli(["journal"], ["有"], now=NOW + timedelta(hours=1))
+    run_cli(["journal"], [""], now=NOW + timedelta(hours=2))  # skipped: not an answer
+    run = run_cli(["stats"], now=NOW + timedelta(hours=3))
+    assert TEXT.lines["journal_helpful"].format(answered=1, count=1, percent=100) in run.lines
+    for line in run.lines:
+        assert _bare(line) in _skeletons(), line

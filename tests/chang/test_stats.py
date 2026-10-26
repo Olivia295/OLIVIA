@@ -18,7 +18,7 @@ from olivia.core.chang.stats import (
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import OutputGate
-from olivia.core.memory.ledger import MethodRecord, SessionSummary
+from olivia.core.memory.ledger import JournalEntry, MethodRecord, SessionSummary
 from olivia.core.models import HelpStage
 from olivia.core.taxonomy import load_taxonomy
 
@@ -80,6 +80,8 @@ def test_render_prints_numbers_only():
         + unknown,
         TEXT.lines["support"].format(count=3, turns=20, percent=15) + unknown,
         TEXT.lines["rating"].format(change="+1.0", count=2),
+        TEXT.lines["rose"].format(count=1, rated=2, percent=50),
+        TEXT.lines["journal_helpful_none"],
     ]
     # No spectra, exercise titles or stage names: the template text and numbers only.
     out = "\n".join(lines)
@@ -92,6 +94,8 @@ def test_render_with_only_old_entries_and_no_ratings():
     assert lines[2] == TEXT.lines["late_night_none"].format(start="00:00", end="05:00") + unknown
     assert lines[3] == TEXT.lines["support_none"] + unknown
     assert lines[4] == TEXT.lines["rating_none"]
+    assert lines[5] == TEXT.lines["rose_none"]
+    assert lines[6] == TEXT.lines["journal_helpful_none"]
 
 
 @pytest.mark.parametrize(("before", "after", "shown"), [(5, 5, "0.0"), (6, 3, "-3.0")])
@@ -129,6 +133,8 @@ def test_the_copy_passes_willow_and_the_output_gate():
         "percent": 50,
         "turns": 20,
         "change": "+1.0",
+        "rated": 3,
+        "answered": 4,
     }
     for line in (*TEXT.lines.values(), *TEXT.replies.values()):
         shown = line.format(**filled)
@@ -149,3 +155,52 @@ def test_a_bad_text_file_is_refused(tmp_path):
     (tmp_path / "stats.yaml").write_text(yaml.safe_dump(doc), "utf-8")
     with pytest.raises(StatsTextError):
         load_stats_text(tmp_path)
+
+
+# -- the share that rose and the journal answers (PRD §11.1) ----------------------------------
+
+
+def _journal(days_ago: float, *, shown: bool = True, helpful: bool | None = None) -> JournalEntry:
+    return JournalEntry("a" * 24, NOW - timedelta(days=days_ago), shown, helpful)
+
+
+def test_the_share_of_sessions_whose_rating_rose():
+    summaries = [
+        _s(5, self_rating_before=3, self_rating_after=6),  # rose
+        _s(4, self_rating_before=5, self_rating_after=5),  # same: not "after > before"
+        _s(3, self_rating_before=6, self_rating_after=2),
+        _s(2, self_rating_before=1, self_rating_after=2),  # rose
+        _s(1, self_rating_before=4),  # one rating only: left out
+        _s(0.5),
+    ]
+    stats = compute(summaries, NOW)
+    assert (stats.rose, stats.rated) == (2, 4)
+    line = TEXT.lines["rose"].format(count=2, rated=4, percent=50)
+    assert line in render(stats, TEXT, WINDOW).splitlines()
+
+
+def test_no_session_with_both_ratings_has_no_share():
+    stats = compute([_s(1, self_rating_after=7), _s(2)], NOW)
+    assert (stats.rose, stats.rated) == (0, 0)
+    assert TEXT.lines["rose_none"] in render(stats, TEXT, WINDOW).splitlines()
+
+
+def test_the_journal_answers_are_counted():
+    journals = [
+        _journal(20, helpful=True),
+        _journal(9, helpful=False),
+        _journal(8, helpful=True),
+        _journal(3, shown=True, helpful=None),  # skipped the question
+        _journal(1, shown=False),  # declined the journal
+    ]
+    stats = compute([_s(1)], NOW, journals)
+    assert (stats.journal_answered, stats.journal_helpful) == (3, 2)
+    line = TEXT.lines["journal_helpful"].format(answered=3, count=2, percent=67)
+    assert line in render(stats, TEXT, WINDOW).splitlines()
+
+
+def test_journals_without_an_answer_have_no_share():
+    stats = compute([_s(1)], NOW, [_journal(1, shown=False), _journal(2, helpful=None)])
+    assert (stats.journal_answered, stats.journal_helpful) == (0, 0)
+    assert TEXT.lines["journal_helpful_none"] in render(stats, TEXT, WINDOW).splitlines()
+    assert compute([_s(1)], NOW).journal_answered == 0
