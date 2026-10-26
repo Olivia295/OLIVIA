@@ -71,3 +71,15 @@ def test_key_must_be_256_bits():
         aead.seal_bytes(KEY[:16], b"x", store="kit")
     assert len(aead.new_key()) == aead.KEY_BYTES == 32
     assert aead.new_key() != aead.new_key()
+
+
+def test_looks_sealed_checks_the_header_and_length_only():
+    blob = aead.seal_bytes(KEY, b"twelve bytes", store="kit")
+    assert aead.looks_sealed(blob)
+    assert aead.looks_sealed(blob, size=12)
+    assert not aead.looks_sealed(blob, size=13)
+    assert not aead.looks_sealed(b"OLVD")
+    assert not aead.looks_sealed(b"XXXX" + blob[4:])
+    assert not aead.looks_sealed(blob[:4] + bytes([aead.FORMAT_VERSION + 1]) + blob[5:])
+    flipped = blob[:-1] + bytes([blob[-1] ^ 1])
+    assert aead.looks_sealed(flipped)  # tampering needs the key to notice

@@ -63,6 +63,7 @@ pipx uninstall olivia    # 卸载程序
 | `olivia privacy` | 隐私说明：OLIVIA 在这台电脑上存了什么、存在哪个目录、哪些始终加密、哪些从不保存，以及怎么查看（`olivia memory`）和删除（`olivia health`、`olivia forget`）。运行时全程不联网 |
 | `olivia resources` | 查看所在地区的求助电话（还没设置时显示全球通用的资源）。最后一行写明资料来源：随程序附带，或者签名已验证的更新包及其整理日期。不需要钥匙串：只加密健康信息时照常显示当地电话；整份设置加密又打不开、或者设置文件损坏时，先显示全球通用的资源，再说明原因（退出码 1）。随程序附带的资料没通过校验时，只显示写在程序里的常用紧急电话和 findahelpline.com，并建议重新安装 |
 | `olivia settings` | 设置开关。① 系统提醒（默认关闭）：打开前会说明要在系统里装一个什么样的定时任务，并再问一次；关闭或 `olivia forget --all` 会把它删掉。② 保存方式：只加密健康信息（默认），或者把整份设置（称呼、地区、话题等）都加密；改之前会说明会怎样并再问一次，电脑没有可用的系统钥匙串时不能改成全部加密 |
+| `olivia doctor` | 检查这台电脑上的运行环境，每项一行，用 ✓（正常）、!（提醒）、✗（有问题）标出：版本、数据目录和它的权限、系统钥匙串在不在、是否完成了第一次设置、各份加密保存的数据能不能打开、本机模型和随程序附带的热线资料是否通过校验（热线资料整理超过 90 天会提醒）、热线更新包是否在用、系统提醒是否已安装。全程只读、不联网，不改动任何文件，不读取钥匙串里的条目，也不解密任何数据，所以只检查文件和钥匙是否齐全、完好。输出不含称呼、话题、健康信息、安全计划或聊天内容，可以直接贴给我们。有 ✗ 时退出码为 `1` |
 | `olivia chat --inspect` | 每一轮多显示一个内部状态面板，只有编号、等级和数值，不含你说的话，也不含回复原文。测试和反馈问题时有用 |
 | `olivia chat --rules` | 危机筛查只用规则，不参考本机模型。以前的 `olivia chat --model` 仍然可以用，效果和直接 `olivia chat` 一样；两个不能同时给 |
 | `olivia --help` | 查看全部命令 |
@@ -74,10 +75,10 @@ pipx uninstall olivia    # 卸载程序
 | 退出码 | 含义 |
 | --- | --- |
 | `0` | 完成了要做的事（包括只是显示信息，或在输入结束时安静地退出；聊天中按 Ctrl-C 与输入结束相同） |
-| `1` | 什么也没做：还没有完成第一次设置（`olivia chat` 在设置完成前结束也算），这台电脑上是未满 18 岁的记录，或者保存的数据现在读不出来、钥匙串打不开（这时 `olivia chat` 和 `olivia resources` 仍会先显示求助电话） |
+| `1` | 什么也没做：还没有完成第一次设置（`olivia chat` 在设置完成前结束也算），这台电脑上是未满 18 岁的记录，或者保存的数据现在读不出来、钥匙串打不开（这时 `olivia chat` 和 `olivia resources` 仍会先显示求助电话）；`olivia doctor` 发现了 ✗ 项 |
 | `2` | 命令写错了：参数不对，或者给的值认不出来（例如未知的地区、时区或陪伴方式；`olivia forget --entry`、`--method` 或 `olivia memory --edit` 给的序号不存在，或者 `--edit` 指向的不是你让它记住的话） |
 
-不需要先设置就能用的命令：`olivia resources`、`olivia privacy`、`olivia --help`、`olivia --version`，以及用来清理残留数据的 `olivia forget --all`。
+不需要先设置就能用的命令：`olivia resources`、`olivia privacy`、`olivia doctor`、`olivia --help`、`olivia --version`，以及用来清理残留数据的 `olivia forget --all`。
 
 ## 数据存在哪里
 
@@ -102,6 +103,7 @@ OLIVIA 保存的东西都在下面这个目录里：设置文件 `profile.json`�
 请在 <https://github.com/Olivia295/OLIVIA/issues> 提交，写上：
 
 - `olivia --version` 的输出和你的操作系统
+- `olivia doctor` 的输出（不含你的个人信息）
 - 你做了什么，看到了什么，原本希望看到什么
 - 如果和某一轮回复有关，可以附上 `olivia chat --inspect` 的面板
 

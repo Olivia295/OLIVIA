@@ -109,3 +109,59 @@ def test_default_backend_is_the_os_keychain_and_resolves_lazily():
     # Resolving the OS keyring happens on first use; here that hits the test guard.
     with pytest.raises(AssertionError):
         backend.get("master-key")
+
+
+# -- probing without touching an item (olivia doctor) ------------------------------------------
+
+
+class CountingKeyring(MemoryKeyring):
+    """Fails the test on any item access."""
+
+    def get_password(self, service: str, username: str) -> str | None:
+        raise AssertionError("ready() must not read an item")
+
+    set_password = delete_password = get_password  # type: ignore[assignment]
+
+
+def test_ready_resolves_the_backend_without_touching_an_item():
+    keychain.KeyringBackend(CountingKeyring()).ready()
+
+
+@pytest.mark.parametrize(
+    "backend",
+    [keyring.backends.fail.Keyring(), keyring.backends.null.Keyring(), LowPriorityKeyring()],
+    ids=["fail", "null", "low-priority"],
+)
+def test_ready_reports_no_usable_backend_as_no_keychain(backend):
+    with pytest.raises(NoKeychainError):
+        keychain.KeyringBackend(backend).ready()
+
+
+def test_probe_names_each_outcome(request):
+    fake = request.getfixturevalue("keychain")  # the suite's in-memory keychain
+    assert keychain.probe(fake) is keychain.Probe.READY
+    fake.broken = NoKeychainError("none")
+    assert keychain.probe(fake) is keychain.Probe.NONE
+    fake.broken = KeychainUnavailableError("locked")
+    assert keychain.probe(fake) is keychain.Probe.UNAVAILABLE
+    assert fake.reads == [] and fake.writes == []
+
+
+def test_probe_without_a_ready_method_is_unchecked():
+    class Bare:
+        def get(self, name: str) -> str | None:
+            raise AssertionError("never read")
+
+        def set(self, name: str, value: str) -> None:
+            raise AssertionError("never written")
+
+        def delete(self, name: str) -> None:
+            raise AssertionError("never deleted")
+
+    assert keychain.probe(Bare()) is keychain.Probe.UNCHECKED
+
+
+def test_probe_uses_the_default_backend(request):
+    fake = request.getfixturevalue("keychain")
+    assert keychain.probe() is keychain.Probe.READY
+    assert fake.probes == 1 and fake.reads == []

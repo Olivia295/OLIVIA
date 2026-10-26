@@ -86,6 +86,24 @@ def _wrap_label(key_id: bytes) -> str:
     return f"dek_{key_id.hex()}"
 
 
+def key_file_intact(base_dir: Path, store: str) -> bool:
+    """Whether ``store``'s wrapped data key under ``base_dir`` is there and well formed.
+
+    Only the file is read (header and length): nothing is unwrapped and the keychain is
+    never asked, so whether its master key still exists is not known here.
+    """
+    path = base_dir / KEYS_DIRNAME / f"{aead.check_identifier(store)}{_KEY_SUFFIX}"
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return False
+    return (
+        raw[: len(_KEY_MAGIC)] == _KEY_MAGIC
+        and raw[len(_KEY_MAGIC) : len(_KEY_MAGIC) + 1] == bytes([aead.FORMAT_VERSION])
+        and aead.looks_sealed(raw[_KEY_HEADER:], size=aead.KEY_BYTES)
+    )
+
+
 class Vault:
     """Seal and open data for named stores under ``base_dir``.
 

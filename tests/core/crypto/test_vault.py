@@ -228,3 +228,20 @@ def test_store_names_are_validated(vault, store):
         vault.seal(store, b"x")
     with pytest.raises(ValueError):
         vault.shred(store)
+
+
+def test_key_file_intact_reads_the_file_only(tmp_path, vault, keychain):
+    assert not vault_module.key_file_intact(tmp_path, "kit")
+    vault.seal("kit", b"x")
+    reads, writes = len(keychain.reads), list(keychain.writes)
+    keychain.broken = KeychainUnavailableError("locked")  # never asked
+    assert vault_module.key_file_intact(tmp_path, "kit")
+    assert len(keychain.reads) == reads and keychain.writes == writes
+    path = tmp_path / vault_module.KEYS_DIRNAME / "kit.key"
+    raw = path.read_bytes()
+    path.write_bytes(raw[:-1])
+    assert not vault_module.key_file_intact(tmp_path, "kit")
+    path.write_bytes(b"XXXX" + raw[4:])
+    assert not vault_module.key_file_intact(tmp_path, "kit")
+    with pytest.raises(ValueError):
+        vault_module.key_file_intact(tmp_path, "../kit")

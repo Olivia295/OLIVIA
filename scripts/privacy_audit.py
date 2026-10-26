@@ -12,7 +12,8 @@ input, each time in a fresh temporary ``OLIVIA_HOME``: once with the ONB-06 swit
 (only sensitive data encrypted) and once with it on (everything encrypted). Each run
 goes through ``chat --rules --inspect`` (onboarding with the health consent and a checklist
 item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
-crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``, a second
+crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``,
+``doctor``, a second
 ``chat --inspect`` (care greeting, model path: the default since F7, and a question about
 the note, "周四要见的那个人是谁来着", F15), ``memory --edit`` (the note rewritten, PRD
 feature 5), ``forget --method`` (one method's preference reset, RSK-06), ``health`` twice
@@ -69,6 +70,12 @@ stats-numbers-only [mode]
     ``stats.yaml`` lines with numbers (or the late-night clock times) in its slots. The
     journal answered "有" just before, so the journal-answers line must be there with its
     numbers (the §11.1 lines added after F12 are covered by the same line check).
+doctor-no-personal [mode]
+    ``olivia doctor`` exited 0, its output holds no typed text, names included, and every
+    line is one of its ``DOCTOR_*`` lines (slots filled), the footer last.
+doctor-read-only [mode]
+    ``olivia doctor`` changed no file or directory under ``OLIVIA_HOME`` (list and
+    contents) and read, wrote or deleted no keychain item.
 note-recall [mode]
     The second chat answered the question about the note with the note (F15), and its
     panel says so by ids only (``调出笔记 question（found）``), so the two checks above
@@ -274,6 +281,7 @@ def script(whole: bool) -> list[tuple[list[str], list[str]]]:
         (["stats"], []),
         (["memory"], []),
         (["privacy"], []),
+        (["doctor"], []),
         (["chat", "--inspect"], [SECOND_MESSAGE, RECALL_QUESTION, "/exit", "/exit"]),
     ]
 
@@ -372,18 +380,27 @@ class NetworkBlock:
 
 
 class MemoryKeychain:
-    """An in-memory key backend (the shape of ``KeyBackend``); never the OS keychain."""
+    """An in-memory key backend (the shape of ``KeyBackend``); never the OS keychain.
+
+    ``accesses`` counts item reads, writes and deletes; ``ready`` touches no item."""
 
     def __init__(self) -> None:
         self.items: dict[str, str] = {}
+        self.accesses = 0
+
+    def ready(self) -> None:
+        return None
 
     def get(self, name: str) -> str | None:
+        self.accesses += 1
         return self.items.get(name)
 
     def set(self, name: str, value: str) -> None:
+        self.accesses += 1
         self.items[name] = value
 
     def delete(self, name: str) -> None:
+        self.accesses += 1
         self.items.pop(name, None)
 
 
@@ -714,6 +731,72 @@ def stats_problems(capture: Capture, typed: Iterable[str], text: StatsText) -> l
     return problems
 
 
+def doctor_patterns() -> list[re.Pattern[str]]:
+    """Every line ``olivia doctor`` may print: a ``DOCTOR_*`` text behind its mark (or as
+    an indented note), slots filled with anything on one line, the stale suffixes
+    appended to their lines."""
+
+    def pattern(template: str) -> str:
+        return r"[^\n]+?".join(re.escape(part) for part in re.split(r"\{\w+\}", template))
+
+    suffixes = f"(?:{pattern(cli.DOCTOR_HOTLINES_STALE)}|{pattern(cli.DOCTOR_UPDATE_STALE)})?"
+    marks = "|".join(re.escape(m) for m in (cli.DOCTOR_OK, cli.DOCTOR_WARN, cli.DOCTOR_FAIL))
+    lines = [re.escape(cli.DOCTOR_HEADING), re.escape(cli.DOCTOR_FOOTER)]
+    lines.append(f"  {re.escape(cli.DOCTOR_STORES_NOTE)}")
+    states = [
+        template.replace("{name}", name)
+        for name in cli.DOCTOR_STORE_NAMES.values()
+        for _, template in cli.DOCTOR_STORE_STATES.values()
+    ]
+    skip = {
+        cli.DOCTOR_HEADING,
+        cli.DOCTOR_FOOTER,
+        cli.DOCTOR_STORES_NOTE,
+        cli.DOCTOR_HOTLINES_STALE,
+        cli.DOCTOR_UPDATE_STALE,
+        *cli.DOCTOR_STORE_NAMES.values(),
+    }
+    bodies = [t for t in cli.DOCTOR_TEXTS if t not in skip and "{name}" not in t] + states
+    lines += [f"(?:{marks}) {pattern(body)}{suffixes}" for body in bodies]
+    return [re.compile(line) for line in lines]
+
+
+def doctor_problems(capture: Capture, typed: Iterable[str]) -> list[str]:
+    """What is wrong with one ``olivia doctor`` run (see ``doctor-no-personal``)."""
+    texts = tuple(typed)
+    wanted = needles(texts, OUTPUT_FRAGMENT_BYTES)
+    for item in texts:
+        wanted.update({form: item for form in encodings(item)})
+    problems = [f"typed text: 「{f}」" for f in text_hits(capture.console.encode(), wanted)]
+    if capture.code != 0:
+        problems.append(f"exited {capture.code}")
+    patterns = doctor_patterns()
+    lines = capture.console.splitlines()
+    problems += [
+        f"not a doctor line: {i + 1}"
+        for i, line in enumerate(lines)
+        if not any(p.fullmatch(line) for p in patterns)
+    ]
+    if not lines or lines[-1] != cli.DOCTOR_FOOTER:
+        problems.append("the footer is not the last line")
+    return problems
+
+
+def tree(home: Path) -> dict[str, bytes | None]:
+    """Every path under ``home`` with its contents (directories: None)."""
+    return {
+        p.relative_to(home).as_posix(): (p.read_bytes() if p.is_file() else None)
+        for p in sorted(home.rglob("*"))
+    }
+
+
+def tree_changes(before: Mapping[str, bytes | None], after: Mapping[str, bytes | None]) -> list[str]:
+    changed = [f"added: {rel}" for rel in after if rel not in before]
+    changed += [f"removed: {rel}" for rel in before if rel not in after]
+    changed += [f"changed: {rel}" for rel in before if rel in after and before[rel] != after[rel]]
+    return changed
+
+
 # -- the scripted run --------------------------------------------------------------------------
 
 
@@ -764,6 +847,8 @@ class Run:
     keychain_after: dict[str, str] = field(default_factory=dict)
     erase_problems: list[str] = field(default_factory=list)
     network: list[str] = field(default_factory=list)
+    doctor_changes: list[str] = field(default_factory=list)
+    """What ``olivia doctor`` changed in the data directory or the keychain."""
     user_dir_calls: int = 0
     outside_home: list[str] = field(default_factory=list)
     health_items: list[str] = field(default_factory=list)
@@ -932,7 +1017,12 @@ def run_scripted(whole: bool) -> Run:
             NetworkBlock() as block,
         ):
             for argv, lines in script(whole):
+                before, accesses = tree(home), backend.accesses
                 run.captures.append(_invoke(argv, lines))
+                if argv[0] == "doctor":
+                    run.doctor_changes = tree_changes(before, tree(home))
+                    if backend.accesses != accesses:
+                        run.doctor_changes.append("a keychain item was accessed")
                 run.record(home, backend.items)
             _edit_and_reset(home, run, backend)
             _clear_health(run, home, backend)
@@ -1008,6 +1098,21 @@ def run_checks(run: Run) -> list[Result]:
     printed = sum(len(c.console.splitlines()) for c in stats_runs)
     results.append(
         _result(f"stats-numbers-only [{mode}]", numbers, f"{printed} lines, numbers only")
+    )
+    doctors = [c for c in run.captures if c.command == "doctor"]
+    found = [p for c in doctors for p in doctor_problems(c, ALL_TYPED)]
+    if len(doctors) != 1:
+        found.append(f"{len(doctors)} doctor runs, expected 1")
+    printed = sum(len(c.console.splitlines()) for c in doctors)
+    results.append(
+        _result(f"doctor-no-personal [{mode}]", found, f"{printed} lines, all doctor lines")
+    )
+    results.append(
+        _result(
+            f"doctor-read-only [{mode}]",
+            run.doctor_changes,
+            "no file or keychain item touched",
+        )
     )
     chats = [c for c in run.captures if c.command == "chat"]
     recall = [] if RECALLED in chats[-1].console else ["the note question got no recalled note"]

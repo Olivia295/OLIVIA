@@ -7,6 +7,9 @@ itself does not recommend (priority below 1: the failing and null backends, plai
 file backends from ``keyrings.alt``) counts as no keychain at all, and every write is
 read back, so a backend that silently drops writes can never lose a master key.
 
+:func:`probe` (``olivia doctor``) only resolves the backend through an optional ``ready()``
+method and touches no item; a backend without one is reported as not checked.
+
 Tests never reach the real keychain: they replace :func:`default_backend`.
 
 ``keyring`` is imported on the first keychain read, write or delete, not with this module:
@@ -18,6 +21,7 @@ Resolving the backend still happens in the same place and the same order as befo
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Protocol
 
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
@@ -41,6 +45,19 @@ class KeyBackend(Protocol):
         """Remove ``name``; removing an absent item is not an error."""
 
 
+class Probe(StrEnum):
+    """What :func:`probe` found, without reading, writing or deleting any item."""
+
+    READY = "ready"
+    """A keychain this package would use is there (it may still be locked)."""
+    NONE = "none"
+    """This device has no usable keychain."""
+    UNAVAILABLE = "unavailable"
+    """The keychain could not be reached now."""
+    UNCHECKED = "unchecked"
+    """This backend offers no way to look without touching an item, so nothing was done."""
+
+
 class KeyringBackend:
     """:class:`KeyBackend` over ``keyring``; ``backend`` overrides the OS default."""
 
@@ -59,6 +76,20 @@ class KeyringBackend:
         if backend.priority < _RECOMMENDED_PRIORITY:
             raise NoKeychainError("no recommended keychain backend on this device")
         return backend
+
+    def ready(self) -> None:
+        """Resolve the backend and check it is one to use, touching no item.
+
+        :class:`NoKeychainError` when there is none; :class:`KeychainUnavailableError`
+        when resolving it fails otherwise. A locked keychain is not noticed here: that
+        takes an item access, which may ask the user.
+        """
+        try:
+            self._keyring()
+        except KeychainUnavailableError:
+            raise
+        except Exception as exc:  # a backend that fails while being set up
+            raise KeychainUnavailableError("the keychain backend could not be loaded") from exc
 
     @staticmethod
     def _name(name: str) -> str:
@@ -110,3 +141,20 @@ class KeyringBackend:
 def default_backend() -> KeyBackend:
     """The OS keychain. Resolving the actual ``keyring`` backend waits until first use."""
     return KeyringBackend()
+
+
+def probe(backend: KeyBackend | None = None) -> Probe:
+    """Whether a keychain is there (``None``: the default backend), reading, writing and
+    deleting no item (``olivia doctor``). A backend without a ``ready()`` method cannot
+    be asked that way and is :attr:`Probe.UNCHECKED`."""
+    target = default_backend() if backend is None else backend
+    ready = getattr(target, "ready", None)
+    if not callable(ready):
+        return Probe.UNCHECKED
+    try:
+        ready()
+    except NoKeychainError:
+        return Probe.NONE
+    except KeychainUnavailableError:
+        return Probe.UNAVAILABLE
+    return Probe.READY
