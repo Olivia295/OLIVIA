@@ -212,7 +212,6 @@ _SLOTS: Final = frozenset(
         "max_count",
         "consent_sentence",
         "sensitive_notice",
-        "tokens",
         "system_timezone",
         "topics",
     }
@@ -595,6 +594,7 @@ class OnboardingFlow:
         self._taboo: tuple[str, ...] = ()
         self._country = UNKNOWN_COUNTRY
         self._timezone = FALLBACK_TIMEZONE
+        self._region_chosen = False
         self._protected = False
         """Whether sensitive data can be encrypted here (checked once the user is an adult)."""
         self._encrypt_all = False
@@ -616,6 +616,14 @@ class OnboardingFlow:
     @property
     def step(self) -> Step:
         return self._step
+
+    @property
+    def region(self) -> UserRegion | None:
+        """The country chosen so far (its zone may still be the default), else None: which
+        hotlines to show for a crisis sentence typed during the visit (QA 2026-10-26 #4)."""
+        if not self._region_chosen:
+            return None
+        return UserRegion(country_code=self._country, timezone=self._timezone)
 
     def prompt(self) -> Prompt:
         """The question for the current step. After a reply that was not understood, the
@@ -777,6 +785,7 @@ class OnboardingFlow:
             self._hint = self._text.hints["unrecognized"]
             return
         self._country = code
+        self._region_chosen = True
         default = DEFAULT_TIMEZONES.get(code)
         if default is None:
             self._step = Step.TIMEZONE
@@ -835,9 +844,8 @@ class OnboardingFlow:
         """The chosen keys, or None (with a hint) when a token is not in the list."""
         chosen, unknown = parse_choices(text, keys)
         if unknown:
-            self._hint = self._render(
-                self._text.hints["clinical_unknown"], tokens="、".join(unknown)
-            )
+            # Never the reply itself: it may be a crisis sentence (QA 2026-10-26 #4).
+            self._hint = self._text.hints["clinical_unknown"]
             return None
         return chosen
 

@@ -15,7 +15,6 @@
 #   {max_len} {max_count}         长度与数量上限（只用于 hints）
 #   {consent_sentence}            授权句，原样展示，用户需完整输入
 #   {sensitive_notice}            敏感个人信息告知（见下方 sensitive_notice），只用于两处授权提示
-#   {tokens}                      用户输入中没认出的编号
 #   {system_timezone}             这台电脑的时区（只用于 timezone_free 的提示语和 hints.timezone_free_invalid）
 #
 # 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
@@ -247,7 +246,8 @@ hints:
   # 选“其他地区”时屏幕上没有序号，所以不提序号（试用问题 P2）。
   timezone_free_invalid: "我没有认出这个时区。可以按「大洲/城市」的格式再输入一次，例如 Asia/Singapore；输入「跳过」或直接按回车，就用这台电脑的时区（{system_timezone}）。"
   consent_unrecognized: "如果愿意记录，请完整输入那句话；不想记录的话，输入「跳过」就好。"
-  clinical_unknown: "我没有在列表里找到「{tokens}」。可以从上面选序号吗？"
+  # 认不出的输入不念回原句：那里可能写着危机的话（2026-10-26 测试第 4 条）。草稿：待 G-0。
+  clinical_unknown: "没有在列表里找到你写的那一项。可以从上面选序号吗？"
 
 outcomes:
   completed: |-

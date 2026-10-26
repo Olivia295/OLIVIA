@@ -123,7 +123,8 @@ def test_zero_shreds_every_older_copy(run_cli, data_home):
 def test_an_unknown_choice_is_asked_again(run_cli, data_home):
     save_profile(data_home, contraindications=(CARDIO,))
     run = run_cli(["health"], ["99", str(SAFETY_NO)])
-    assert TEXT.hints["clinical_unknown"].replace("{tokens}", "99") in run.out
+    assert TEXT.hints["clinical_unknown"] in run.out
+    assert "「99」" not in run.out  # what was typed is never read back (QA 2026-10-26 #4)
     assert run.lines[-1] == HEALTH["saved"]
     assert _load(data_home).contraindications == (SAFETY,)
 

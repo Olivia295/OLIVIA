@@ -187,3 +187,60 @@ def test_chinese_is_read_whole_under_a_c_locale(locale_name):
         os.close(fd)
     got = out.decode("utf-8", "replace").split("GOT", 1)[-1].split()[0]
     assert got == "我不想活了".encode("unicode_escape").decode(), out[-300:]
+
+
+# QA 2026-10-26 #14: an unclosed U+202E reversed everything printed after the reply, and a
+# colour code was echoed back with half of it still working.
+DIRECTION_CONTROLS = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c"
+
+
+@pytest.mark.parametrize("mark", list(DIRECTION_CONTROLS))
+def test_clean_input_drops_every_direction_control(mark):
+    assert cli.clean_input(f"我好累{mark}想哭了") == "我好累想哭了"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("\x1b[31m红色\x1b[0m的心情", "红色的心情"),  # SGR colours, whole sequences
+        ("\x1b[2J\x1b[H清屏", "清屏"),  # erase screen, cursor home
+        ("\x1b]0;标题\x07你好", "你好"),  # OSC window title, BEL-terminated
+        ("\x1b]8;;http://x\x1b\\链接\x1b]8;;\x1b\\", "链接"),  # OSC 8 link, ST-terminated
+        ("\x9b31m八位", "八位"),  # the 8-bit CSI
+        ("\x1b7存\x1b8", "存"),  # two-character escapes
+        ("响\x07铃\x00空\x08退\x7f删\x85", "响铃空退删"),  # C0, DEL and C1 controls
+        ("一\t二", "一\t二"),  # tab is kept
+        ("第一行\n第二行", "第一行\n第二行"),  # so is a newline
+        ("没有控制符的一句话", "没有控制符的一句话"),
+    ],
+)
+def test_clean_input_drops_terminal_sequences_and_controls(text, expected):
+    assert cli.clean_input(text) == expected
+
+
+def test_a_gbk_line_with_a_colour_code_is_read_and_cleaned():
+    raw = "\x1b[31m我不想活了\x1b[0m".encode("gbk")
+    assert cli.clean_input(raw.decode("utf-8", "surrogateescape")) == "我不想活了"
+
+
+def test_no_direction_control_or_escape_reaches_a_reply(run_cli):
+    from cli_support import ONBOARD_CN
+
+    run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"])
+    done = run_cli(
+        ["chat", "--rules"],
+        ["", "我好累\u202e想哭\u2066了", "\x1b[31m红色\x1b[0m的心情", "/exit", ""],
+    )
+    assert done.texts == ["我好累想哭了", "红色的心情"]
+    assert not set(done.out) & set(DIRECTION_CONTROLS + "\x1b")
+    assert "[31m" not in done.out
+
+
+def test_a_region_typed_with_controls_is_echoed_without_them(run_cli):
+    from cli_support import ONBOARD_CN
+
+    run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"])
+    done = run_cli(["region", "\x1b[31m火星\u202e"])
+    assert done.code == 2
+    assert "「火星」" in done.out
+    assert "\x1b" not in done.out and "\u202e" not in done.out
