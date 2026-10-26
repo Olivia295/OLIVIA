@@ -8,6 +8,7 @@ on macOS, and print nothing the user typed: names, taboo topics, health or the p
 from __future__ import annotations
 
 import shutil
+import sys
 from datetime import datetime, timedelta
 from importlib import resources
 from pathlib import Path
@@ -119,7 +120,10 @@ def test_after_a_chat_every_store_opens_and_nothing_is_touched(run_cli, doctor, 
         assert _line(run, _store(name)) == f"{OK} {cli.DOCTOR_STORE_NAMES[name]}：能打开"
     assert _line(run, _store("safety_plan")).endswith("：没有")
     assert f"  {cli.DOCTOR_STORES_NOTE}" in run.lines
-    assert _line(run, "数据目录的权限") == f"{OK} {cli.DOCTOR_PERMISSIONS_OK}"
+    permissions = (
+        cli.DOCTOR_PERMISSIONS_WINDOWS if sys.platform == "win32" else cli.DOCTOR_PERMISSIONS_OK
+    )
+    assert _line(run, "数据目录的权限") == f"{OK} {permissions}"
     assert str(data_home) in _line(run, "数据目录：")
 
 
@@ -227,6 +231,7 @@ def test_a_damaged_profile_fails_and_first_visit_is_unknown(doctor, data_home):
     assert _line(run, "第一次设置") == f"{WARN} {cli.DOCTOR_ONBOARDED_UNKNOWN}"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions only")
 def test_loose_permissions_are_a_warning(doctor, data_home):
     save_profile(data_home)
     data_home.chmod(0o700)  # as the CLI creates it (the helper writes the file directly)
