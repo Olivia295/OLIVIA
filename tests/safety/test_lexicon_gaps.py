@@ -441,6 +441,17 @@ def test_a_plain_unless_phrase_still_voids(text: str) -> None:
     assert SCREEN.assess(text).level < L.L2, text
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "不用担心我买好炭了周末烧烤",  # the negator ends more than unless_negation_gap before
+        "买好炭了周末烧烤不去河边",  # the negator comes after the reason
+    ],
+)
+def test_only_a_negator_just_before_the_reason_denies_it(text: str) -> None:
+    assert SCREEN.assess(text).level < L.L2, text
+
+
 def test_unless_negators_may_not_repeat_the_negators(tmp_path) -> None:  # noqa: ANN001
     import shutil
     from importlib import resources
@@ -455,3 +466,38 @@ def test_unless_negators_may_not_repeat_the_negators(tmp_path) -> None:  # noqa:
     risk.write_text(text.replace(old, '  unless_negators: ["并非", "不"]\n'), encoding="utf-8")
     with pytest.raises(LexiconError, match="unless_negators"):
         load_safety_lexicons(TAX, tmp_path)
+
+
+def _reported_lexicons(tmp_path, mutate):  # noqa: ANN001, ANN202
+    import shutil
+    from importlib import resources
+
+    import yaml
+
+    src = resources.files("olivia").joinpath("data/lexicons")
+    for name in ("risk.yaml", "red_flags.yaml", "perception.yaml"):
+        shutil.copy(str(src.joinpath(name)), tmp_path / name)
+    risk = tmp_path / "risk.yaml"
+    data = yaml.safe_load(risk.read_text(encoding="utf-8"))
+    mutate(data)
+    risk.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return load_safety_lexicons(TAX, tmp_path)
+
+
+def test_without_the_reported_speech_section_every_phrase_counts(tmp_path) -> None:  # noqa: ANN001
+    lex = _reported_lexicons(tmp_path, lambda d: d.pop("reported_speech"))
+    assert SafetyScreen(TAX, lex).assess("她跟我说她不想活了").level is L.L2
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda d: d["reported_speech"]["speakers"].append("她"), "repeated"),
+        (lambda d: d["reported_speech"]["speaker_exceptions"].append("今天"), "speakers"),
+        (lambda d: d["reported_speech"]["verb_exceptions"].append("今天"), "verbs"),
+    ],
+)
+def test_rejects_malformed_reported_speech_data(tmp_path, mutate, match) -> None:  # noqa: ANN001
+    # A repeated phrase, or an exception that contains no word it is an exception to.
+    with pytest.raises(LexiconError, match=match):
+        _reported_lexicons(tmp_path, mutate)

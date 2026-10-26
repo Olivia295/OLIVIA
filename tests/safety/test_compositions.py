@@ -181,6 +181,15 @@ def test_a_third_person_subject_voids_but_a_recipient_does_not():
     assert SCREEN.assess("她跟我说打算自杀").level is L.L0
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["我想了想，不打算自杀", "放心，没打算自杀", "我很好，她打算自杀", "我还行，他准备结束生命"],
+)
+def test_the_first_character_after_a_comma_belongs_to_the_new_clause(text):
+    # A negator or a third person right after the comma is read in the clause it opens.
+    assert SCREEN.assess(text).level is L.L0
+
+
 def test_a_third_person_beyond_the_carry_window_is_not_the_subject():
     # 她 lies more than two subject windows before the clause: it is not carried over, and
     # the first-person plan in the last clause stays L3.
