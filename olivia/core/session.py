@@ -38,17 +38,19 @@ Stage handling:
   gate-fallback minimal card), so every crisis turn repeats the full card.
 * ``S_empower``: the solver's available set, minus actions that have no follow-along card
   (``12:tipp_cold_water`` is excluded from the deck pending G-0), is sampled by Thompson
-  sampling in the dominant spectrum. A turn with no spectrum cue uses the conversation's
-  last known spectrum, else ``"02"`` (the low-mood spectrum, the commonest presentation),
-  and the card's feedback is filed under the same spectrum. A card that leaves S_haven on
-  a direct request ends with ``followups.haven_return`` (how to get back to quiet
-  company). No candidate -> m0, a companionship reply from the S_explore templates; any
-  red flag in the plan appends the referral card. While a shown card still waits for
-  feedback, an S_empower turn re-sends the ``after_card`` prompt instead of sampling a
-  new card. That covers a direct request straight after an S_explore stabilization
-  card too: the rule stub reads each turn on its own, so "能给我一个练习试试吗" one turn
-  after "喘不上气" looks calm and would otherwise open the full cognitive pool
-  (red-team rt084-rt086 with the probe turn). The card then waits in S_empower.
+  sampling in the dominant spectrum; only the regular Grade A pool is explored (SDD §6.3,
+  ``AllowedSet.explorable``), every other pool (the stabilization whitelist, an L1 turn,
+  a red flag's closed set) gets the highest posterior mean. A turn with no spectrum cue
+  uses the conversation's last known spectrum, else ``"02"`` (the low-mood spectrum, the
+  commonest presentation), and the card's feedback is filed under the same spectrum. A
+  card that leaves S_haven on a direct request ends with ``followups.haven_return`` (how
+  to get back to quiet company). No candidate -> m0, a companionship reply from the
+  S_explore templates; any red flag in the plan appends the referral card. While a shown
+  card still waits for feedback, an S_empower turn re-sends the ``after_card`` prompt
+  instead of sampling a new card. That covers a direct request straight after an
+  S_explore stabilization card too: the rule stub reads each turn on its own, so
+  "能给我一个练习试试吗" one turn after "喘不上气" looks calm and would otherwise open the
+  full cognitive pool (red-team rt084-rt086 with the probe turn). The card then waits in S_empower.
   F16b: a request on that turn for another method ("再给我一个", "换一个", "有没有别
   的方法"; ``TurnSignals.another_method``) or for a practice other than the waiting one
   ("带我做一下正念", ``therapy_request``) is read as ``/not-now`` for the waiting card
@@ -271,7 +273,10 @@ reply, never on a turn with a red flag active, the listening lock, the D3 questi
 answer, an information card or a follow-up, and never for SILENT_ANCHOR (it asks no
 questions; the state machine keeps it out of C_2 as well). A yes on the next turn (still
 in S_clarify, calm) sets ``core_belief_confirmed`` and the state machine moves to S_empower
-(``CLARIFY_CORE_BELIEF``); a no or anything else leaves the flow as it is.
+(``CLARIFY_CORE_BELIEF``), except on a turn whose effective level is L1 (a risk model's
+score band; SDD §4.2): the yes is still read (``confirmed``) but S_clarify holds, and later
+turns advance by the ordinary turn count only; a no or anything else leaves the flow as it
+is.
 ``inspect`` carries ``distortions``, ``schemas``, ``yearning`` (ids) and ``schema_mirror``
 (``asked``, ``confirmed``, ``declined`` or None).
 
@@ -1419,7 +1424,16 @@ class Session:
         if chosen is None and requested in renderable:
             chosen = requested
         if chosen is None and renderable:
-            chosen = self._sampler.choose(renderable, bucket, perception.arousal, self._rng, now)
+            # SDD §6.3: explore only in the regular Grade A pool (never the stabilization
+            # whitelist, an L1 stabilization turn or a red flag's closed set).
+            chosen = self._sampler.choose(
+                renderable,
+                bucket,
+                perception.arousal,
+                self._rng,
+                now,
+                explore=allowed.explorable,
+            )
         plan = build_plan(tax, chosen, allowed)
         primary = plan.primary
 

@@ -117,6 +117,25 @@ def test_battery_gate_is_only_for_empower(tax: Taxonomy, stage: HelpStage) -> No
         assert not low.battery_gated
 
 
+# SDD §6.3: only the regular Grade A pool may be explored by the sampler.
+def test_only_the_flag_free_right_wing_is_explorable(tax: Taxonomy) -> None:
+    assert allowed_actions(tax, inp(arousal=0.3)).explorable
+    assert allowed_actions(tax, inp(arousal=0.79)).explorable  # the sampler gates arousal
+    assert not allowed_actions(tax, inp(arousal=0.8)).explorable  # the whitelist
+    assert not allowed_actions(tax, inp(arousal=0.3, battery=0.3)).explorable  # battery-gated
+    for stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY, HelpStage.S_HAVEN):
+        for arousal in (0.3, 0.9):
+            assert not allowed_actions(tax, inp(stage, arousal)).explorable
+    assert not allowed_actions(tax, inp(situations=frozenset(M0_SITUATIONS))).explorable
+
+
+@pytest.mark.parametrize("code", ["SIT-02-04", "SIT-06-01", "SIT-08-04", "SIT-09-01", "SIT-10-04"])
+def test_a_red_flag_pool_is_never_explorable(tax: Taxonomy, code: str) -> None:
+    # With or without a red-flag-only action (D-3) in it, the closed set is not the pool.
+    result = allowed_actions(tax, inp(arousal=0.3, flags=frozenset({code})))
+    assert result.candidates and not result.explorable
+
+
 def test_low_battery_gate_keeps_red_flag_closure_and_referral(tax: Taxonomy) -> None:
     result = allowed_actions(tax, inp(flags=frozenset({"SIT-06-01"}), battery=0.3))
     assert result.candidates == ("30:grounding", "SAFE_PLACE_CONTAINER")

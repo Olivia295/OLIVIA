@@ -105,7 +105,7 @@ def test_exploit_only_above_threshold_picks_max_mean(tax: Taxonomy) -> None:
     above = tax.threshold("arousal.thresholds.exploration_allow") + 0.01
     for seed in range(50):
         rng = random.Random(seed)
-        assert sampler.choose([bad, good], "01", above, rng, NOW) == good
+        assert sampler.choose([bad, good], "01", above, rng, NOW, explore=True) == good
 
 
 def test_exploit_only_ties_break_by_candidate_order(tax: Taxonomy) -> None:
@@ -132,12 +132,12 @@ def test_exploration_boundary_samples_at_0_60_and_exploits_at_0_61(tax: Taxonomy
     sampled = set()
     for seed in range(40):
         rng = random.Random(seed)
-        sampled.add(sampler.choose([first, second], "01", 0.60, rng, NOW))
+        sampled.add(sampler.choose([first, second], "01", 0.60, rng, NOW, explore=True))
         assert rng.getstate() != random.Random(seed).getstate()  # a Beta draw was made
     assert sampled == {first, second}
     for seed in range(40):
         rng = random.Random(seed)
-        assert sampler.choose([first, second], "01", 0.61, rng, NOW) == first
+        assert sampler.choose([first, second], "01", 0.61, rng, NOW, explore=True) == first
         assert rng.getstate() == random.Random(seed).getstate()  # no draw: exploit only
 
 
@@ -149,7 +149,9 @@ def test_sampling_below_threshold_favours_much_better_arm(tax: Taxonomy) -> None
         sampler.update(bad, "01", Feedback.UNHELPFUL, NOW)
     rng = random.Random(2026)
     at_threshold = tax.threshold("arousal.thresholds.exploration_allow")
-    picks = [sampler.choose([bad, good], "01", at_threshold, rng, NOW) for _ in range(1000)]
+    picks = [
+        sampler.choose([bad, good], "01", at_threshold, rng, NOW, explore=True) for _ in range(1000)
+    ]
     assert picks.count(good) >= 900
 
 
@@ -157,16 +159,37 @@ def test_sampling_explores_between_equal_arms(tax: Taxonomy) -> None:
     first, second = _two_level_i_methods(tax)
     sampler = ThompsonSampler(tax)
     rng = random.Random(11)
-    picks = {sampler.choose([first, second], "01", 0.2, rng, NOW) for _ in range(200)}
+    picks = {sampler.choose([first, second], "01", 0.2, rng, NOW, explore=True) for _ in range(200)}
     assert picks == {first, second}
 
 
 def test_choose_is_deterministic_for_a_seed(tax: Taxonomy) -> None:
     first, second = _two_level_i_methods(tax)
     sampler = ThompsonSampler(tax)
-    a = [sampler.choose([first, second], "01", 0.3, random.Random(5), NOW) for _ in range(5)]
-    b = [sampler.choose([first, second], "01", 0.3, random.Random(5), NOW) for _ in range(5)]
-    assert a == b
+
+    def picks() -> list[str]:
+        rng = random.Random(5)
+        return [
+            sampler.choose([first, second], "01", 0.3, rng, NOW, explore=True) for _ in range(5)
+        ]
+
+    assert picks() == picks()
+
+
+def test_without_explore_low_arousal_is_exploit_only(tax: Taxonomy) -> None:
+    # SDD §6.3: below the arousal line too, a pool that is not the regular Grade A pool
+    # (the caller leaves ``explore`` off) gets the highest posterior mean, with no draw.
+    good, bad = _two_level_i_methods(tax)
+    sampler = ThompsonSampler(tax)
+    sampler.update(good, "01", Feedback.HELPFUL, NOW)
+    for seed in range(50):
+        rng = random.Random(seed)
+        assert sampler.choose([bad, good], "01", 0.1, rng, NOW) == good
+        assert rng.getstate() == random.Random(seed).getstate()
+    first, second = _two_level_i_methods(tax)
+    fresh = ThompsonSampler(tax)  # equal means: the earlier candidate, every seed
+    picks = {fresh.choose([second, first], "01", 0.1, random.Random(s), NOW) for s in range(50)}
+    assert picks == {second}
 
 
 def test_choose_returns_canonical_id(tax: Taxonomy) -> None:

@@ -29,11 +29,11 @@ Precedence, highest first:
    somatic line retreats to S_explore (``CLARIFY_AROUSAL_RETREAT``) before any advance.
 
 L1 guard (PRD 9.1, taxonomy L1, SDD 8.2: L1 stays in S_explore). On a turn whose
-effective level is L1 the turn-count advances do not fire: no ``EXPLORE_TO_CLARIFY`` and
-no ``CLARIFY_TO_EMPOWER``. A direct request still does. ``CLARIFY_CORE_BELIEF`` is not
-held: the session sets ``core_belief_confirmed`` only on a turn the rule screen found
-below L1, so an L1 level there can only be a risk model's score band (the same rule as
-the D3 answer and the schema mirror).
+effective level is L1 the advances do not fire: no ``EXPLORE_TO_CLARIFY``, no
+``CLARIFY_TO_EMPOWER`` and no ``CLARIFY_CORE_BELIEF`` (SDD 4.2: "自动推进与核心信念识别都
+不触发"). A direct request still does. The session sets ``core_belief_confirmed`` only on
+a turn the rule screen found below L1, so an L1 level there is a risk model's score band;
+the confirmation is not carried to a later turn, which advances by the turn count only.
 
 Stabilization flags on the transition, for the session to act on:
 
@@ -56,7 +56,7 @@ ledger on that reason exactly as on ``Reason.CLOSING_TO_READY``.
 Core belief. A turn whose signals carry ``core_belief_confirmed`` (the session's reading
 of a yes to the schema mirror question, model mode only, decision D4) in S_clarify moves
 to S_empower without waiting for the auto-advance count (PRD C_2 "核心信念识别"); the
-lock, persona and battery gates are the same.
+L1 guard, lock, persona and battery gates are the same.
 
 Turn counts follow SDD 4.2: ``stage_turn_count`` counts turns in the current stage, the
 turn that enters a stage is its first turn, and the gates read the count from before the
@@ -280,7 +280,8 @@ def _route(
         return _from_empower(gates, state, inp)
     if previous is HelpStage.S_CLARIFY and inp.perception.arousal >= gates.clarify_arousal_max:
         return HelpStage.S_EXPLORE, Reason.CLARIFY_AROUSAL_RETREAT
-    # L1 stays in S_explore: no auto-advance on an L1 turn (a direct request still works).
+    # L1 stays in S_explore: neither auto-advance nor a core-belief confirmation moves an L1
+    # turn on (SDD §4.2); a direct request still works.
     held = crisis.level is CrisisLevel.L1
     if previous is HelpStage.S_EXPLORE and (
         not held
@@ -292,7 +293,8 @@ def _route(
         return HelpStage.S_CLARIFY, Reason.EXPLORE_TO_CLARIFY
     confirmed = inp.signals.core_belief_confirmed
     if previous is HelpStage.S_CLARIFY and (
-        (confirmed or (not held and state.stage_turn_count >= gates.auto_advance_turns))
+        not held
+        and (confirmed or state.stage_turn_count >= gates.auto_advance_turns)
         and not locked
         and inp.persona is not PersonaSpectrum.SILENT_ANCHOR
         and battery >= gates.empower_battery

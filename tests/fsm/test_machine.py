@@ -630,11 +630,14 @@ def test_l1_blocks_clarify_to_empower():
     assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
 
 
-def test_l1_does_not_hold_a_confirmed_core_belief():
-    # The session only sets core_belief_confirmed on a turn the rule screen found below L1,
-    # so L1 here is a risk model's score band (MIYI-03 dialogue in model mode).
+def test_l1_holds_a_confirmed_core_belief():
+    # SDD §4.2: on an L1 turn neither auto-advance nor the core-belief identification moves
+    # S_clarify on. The session only sets core_belief_confirmed on a turn the rule screen
+    # found below L1, so L1 here is a risk model's score band (model mode).
     t = run(state(S.S_CLARIFY), turn(arousal=0.3, status=l1(), core_belief_confirmed=True))
-    assert t.state.current_stage is S.S_EMPOWER and t.reason is Reason.CLARIFY_CORE_BELIEF
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
+    t = run(state(S.S_CLARIFY, turns=9), turn(arousal=0.3, status=l1(), core_belief_confirmed=True))
+    assert t.state.current_stage is S.S_CLARIFY and t.reason is Reason.STAY
 
 
 def test_eight_l1_turns_stay_in_explore():
