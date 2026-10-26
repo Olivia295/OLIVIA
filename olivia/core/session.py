@@ -302,7 +302,8 @@ which):
   the age is for the caller to ask the user.
 * 6, someone else's risk: when the message reports a third person's words
   (``SafetyScreen.reported_risk``) and every rule cue lies inside them, and they carry risk
-  (their own level L1 or above, or a time and a means, ``TurnSignals.imminent``), the
+  by the rules (their own rule level L1 or above or a D3 cue, or a time and a means,
+  ``TurnSignals.imminent``; the model's level on them alone never opens it), the
   user's level is at most L1 (read as an L0 turn by the tracker), no D3 question, and the
   reply is one serious line that asks nothing about the user's safety, the region's
   hotlines to pass on (the L3 card with the emergency numbers first when the words carry
@@ -1909,9 +1910,13 @@ class Session:
         when the message reports a third person's words (``SafetyScreen.reported_risk``)
         and every rule cue of the message lies inside those words (``user_clear``: the
         user adds nothing of their own; 我也 vetoes the whole reading), and the words carry
-        risk: their own level is L1 or above, or they name a time and a means ("周末" and
-        "跳下去", ``TurnSignals.imminent``). The model's last prediction is discarded, since
-        the reported words' screen is not the turn's."""
+        risk by the rules: their own rule level is L1 or above or a D3 cue
+        (``ReportedRisk.rule_risk``), or they name a time and a means ("周末" and "跳下去",
+        ``TurnSignals.imminent``). The model's level on the reported clause alone only
+        raises the card (its L3 class leads with the emergency numbers), never opens it:
+        someone's comfort ("我同事说过一阵子就好了") is ordinary talk (re-test 2026-10-27).
+        The model's last prediction is discarded, since the reported words' screen is not
+        the turn's."""
         before = self._last_status
         if answer is not None or (before is not None and before.in_crisis):
             return None
@@ -1919,7 +1924,7 @@ class Session:
         self._risk.take_turn()
         if found is None or not found.user_clear:
             return None
-        if found.level >= CrisisLevel.L1:
+        if found.rule_risk:
             return found
         _, probe = self._shared.stub.perceive(text, assessment)
         return found if probe.imminent else None

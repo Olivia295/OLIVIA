@@ -151,6 +151,10 @@ class ReportedRisk:
     """They carry plan evidence (Stage 1), or the injected model's own class is L3."""
     user_clear: bool
     """Every rule cue of the message lies inside the reported words."""
+    rule_risk: bool = False
+    """The rules themselves find risk in the reported words (L1 or above, or a D3 cue).
+    The model's level on a short reported clause out of context is no evidence alone:
+    "过一阵子就好了" (someone's comfort) is not someone else's risk (re-test 2026-10-27)."""
 
 
 def rules_found_nothing(
@@ -544,15 +548,18 @@ class SafetyScreen:
         )
         level = CrisisLevel.L0
         plan = False
+        rule_risk = False
         for start, end in spans:
             assessment, model = self._assess(normalized[start:end])
             level = max(level, assessment.level)
+            rules = assessment.rule_level or CrisisLevel.L0
+            rule_risk = rule_risk or rules >= CrisisLevel.L1 or assessment.asks_intent
             plan = (
                 plan
                 or assessment.level is CrisisLevel.L3
                 or (model is not None and model.level is CrisisLevel.L3)
             )
-        return ReportedRisk(level, plan, user_clear)
+        return ReportedRisk(level, plan, user_clear, rule_risk)
 
     def _assess(self, text: str) -> tuple[CrisisAssessment, RiskPrediction | None]:
         """The assessment and the injected model's in-contract prediction (None without a
