@@ -37,9 +37,9 @@ SAME_IN_TRADITIONAL = frozenset(
     # fix F16a: L2_MEANS_HOARDED and its everyday stock (布洛芬, 降压, 胰岛素, 药箱 ...).
     "丸惠慢折敏洛狗疫箱糖素胰芬降"
     # 2026-10-26: means made ready, a time before an act, jumping from a height, Cantonese
-    # weariness, irritation masks and reported speech, with their everyday exceptions.
-    "串乜使免入冬冰助化叔口吐吹呢味喺姨嬲山往怨悼抱抽拔拾捆捱控描攰槽歉池泳派淡滑版甲登移竹"
-    "答篷粗索缸羞翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑娘帖座微提昨近阿「『"
+    # weariness and reported speech, with their everyday exceptions.
+    "串乜使免入冬冰助化叔口吐吹呢味喺姨山往怨悼抱抽拔拾捆捱控描攰槽歉池泳派淡滑版甲登移竹"
+    "答粗索缸翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑娘帖座微提昨近阿「『"
     "名街逛头墓灵殡仪馆堂"
 )
 

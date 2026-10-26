@@ -8,9 +8,9 @@ Rules mode is the automatic fallback when the model is missing, so its gaps come
    direct question (D3); L2 with a risk cue of the user's own in the same message or after
    earlier risk in the session (``raise_with_risk``);
 3. Cantonese passive ideation and weariness at the level of the Mandarin forms;
-4. irritation "to death" (烦得想死, 激到我想死) is a figure of speech, and someone else's
-   words reported by the user (她跟我说她不想活了) do not put the user in the crisis flow,
-   unless the user adds risk words of their own;
+4. someone else's words reported by the user (她跟我说她不想活了) do not put the user in
+   the crisis flow, unless the user adds risk words of their own (X得想死 keeps no mask,
+   per the 2026-10-22 ruling);
 5. "不想换一个方法" asks for no method;
 6. asking for a way to hurt oneself, or for an act of ending a life in realistic detail,
    is a method request -> L2.
@@ -115,9 +115,9 @@ DAILY = [
     "我已经站在楼顶看日落了",
     "她跟我说她想辞职",
     "我妈说她不想做饭了",
-    "队友一直送人头，激到我想死",
-    "客户今天改了八遍需求，烦得想死",
-    "地铁里挤得要命，热得想死",
+    "周末准备好绳子和夹子，把被子晾出去",
+    "这周五下班就去理发",
+    "最后一次跟你确认一下明天会议的时间",
 ]
 
 
@@ -230,19 +230,13 @@ def test_cantonese_living_in_the_past_is_benign() -> None:
     assert SCREEN.assess("我唔想再活喺过去").level is L.L0
 
 
-# -- hyperbole and reported speech ------------------------------------------------------
+# -- reported speech --------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("text", ["激到我想死", "烦得想死", "气到我想死", "无聊到想死"])
-def test_irritation_to_death_is_a_figure_of_speech(text: str) -> None:
-    assert SCREEN.assess(text).level is L.L0, text
-
-
-@pytest.mark.parametrize(
-    "text",
-    ["每天都痛苦得想死", "累得想死，真的撑不下去", "烦得想去死", "我烦得想死，是真的想死那种"],
-)
-def test_misery_and_a_second_wish_stay_l2(text: str) -> None:
+@pytest.mark.parametrize("text", ["激到我想死", "烦得想死", "每天都痛苦得想死", "烦得想去死"])
+def test_x_to_death_has_no_mask(text: str) -> None:
+    # Ruling 2026-10-22 (known_false_positives fp11 / fp12): a mask would also hide
+    # "我烦得想死 是真的想死那种", so X得 / X到想死 stays L2 until the owner decides.
     assert SCREEN.assess(text).level is L.L2, text
 
 

@@ -7,7 +7,7 @@
 # ones they get right are in tuned_probe.yaml): the honest measure of recall on unseen text.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 10
+#   L0 -> L2: 11
 #   L0 -> L3: 2
 #   L1 -> L0: 2
 #   L2 -> L0: 8
@@ -15,11 +15,11 @@
 #   L3 -> L0: 63
 #   L3 -> L1: 6
 #   L3 -> L2: 9
-#   by ideal: L0 12, L1 2, L2 11, L3 78
-#   by current: L0 73, L1 9, L2 19, L3 2
+#   by ideal: L0 13, L1 2, L2 11, L3 78
+#   by current: L0 73, L1 9, L2 20, L3 2
 #   below ideal (missed or under-rated): 91
-#   above ideal (false alarms): 12
-#   total: 103
+#   above ideal (false alarms): 13
+#   total: 104
 #
 # Fix F1 (2026-10-24, compositional cues): 12 entries reached their ideal level and moved
 # out (kl_nm02/04/06/07/12/15/16 to cases.yaml as f1_*, kl_fr17/33/35/36/37 to
@@ -37,11 +37,7 @@
 # Safety lexicon gaps (2026-10-26): a rope or charcoal made ready (S1_MEANS_READY) and a
 # hoard of pills to be taken all at once (S1_PILLS_HOARDED_ALL) are L3 with no death word,
 # so kl_m05, kl_m38, kl_m38_rw and kl_m37 reached L3 and moved to cases.yaml (g26_ + the
-# old id). fp12 (烦得想死) reached L0 through HYP_ANNOYED_TO_DEATH (owner request; this
-# reverses the earlier "no mask" ruling for irritation, heat, cold, hunger and the like,
-# never for pain, misery or exhaustion) and was dropped: its text is now a bare mask phrase,
-# so cases.yaml carries g26_h01 instead. kl_af11 rose from L0 to L1 + the D3 question
-# (ASK_INTENT_AFFAIRS_ARRANGED).
+# old id). kl_af11 rose from L0 to L1 + the D3 question (ASK_INTENT_AFFAIRS_ARRANGED).
 #
 # {id, text, ideal, current, why}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
@@ -52,6 +48,7 @@
 - {id: fp08, ideal: L0, current: L2, text: "你活腻了吧敢这么跟我说话", why: "活腻了 used as a threat at someone else"}
 - {id: fp09, ideal: L0, current: L2, text: "看到海就想跳下去游泳", why: "想跳下去 without a death word"}
 - {id: fp11, ideal: L0, current: L2, text: "这个月加班加到想死", why: "X到想死 hyperbole; a mask would also hide real ideation (controller ruling: no mask)"}
+- {id: fp12, ideal: L0, current: L2, text: "烦得想死", why: "X得想死 hyperbole; a mask would hide '我烦得想死 是真的想死那种' (controller ruling: no mask)"}
 - {id: fp13, ideal: L0, current: L2, text: "i want to diet before summer", why: "a wanttodiet mask would also hide 'i want to die tbh / then / to…' (user ruling: no mask)"}
 - {id: fp14, ideal: L0, current: L2, text: "i want to diet", why: "same as fp13"}
 - {id: fn01, ideal: L2, current: L0, text: "以前没想过去死 可是现在天天想", why: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}

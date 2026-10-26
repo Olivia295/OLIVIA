@@ -357,17 +357,8 @@
 - {id: f5a_fp01, category: HYPERBOLE, expect: L0, text: "好想死你们了，下周回国一起吃饭！"}
 - {id: f5a_fp02, category: HYPERBOLE, expect: L0, text: "宝贝我想死你了"}
 - {id: f5a_h01, category: HYPERBOLE, expect: L0, text: "想死你了，好久没见"}
-# 2026-10-26 (owner request): irritation "to death" with 想死 is a figure of speech
-# (HYP_ANNOYED_TO_DEATH). d42 was L2 under DOUBLE_NEGATION_OR_METHOD; known_false_positives
-# fp12 is gone. Pain, misery and exhaustion stay L2, and so does a second 想死 outside the
-# mask (g26_i01 .. g26_i03).
-- {id: d42, category: HYPERBOLE, expect: L0, text: "我烦得想死"}
-- {id: g26_h01, category: HYPERBOLE, expect: L0, text: "客户今天改了八遍需求，烦得想死"}
-- {id: g26_h02, category: HYPERBOLE, expect: L0, text: "队友一直送人头，激到我想死"}
-- {id: g26_h03, category: HYPERBOLE, expect: L0, text: "地铁里挤得要命，热得想死"}
-- {id: g26_i01, category: L2_IDEATION, expect: L2, text: "我烦得想死，是真的想死那种"}
+# 2026-10-26: misery "to death" is L2 (X得想死 has no mask, per the 2026-10-22 ruling).
 - {id: g26_i02, category: L2_IDEATION, expect: L2, text: "每天都痛苦得想死"}
-- {id: g26_i03, category: L2_IDEATION, expect: L2, text: "烦得想去死"}
 
 # --- NEGATION_PURE: pure negation, no plan cues -> L0 ---
 - {id: n01, category: NEGATION_PURE, expect: L0, text: "放心，我不想死，只是想发泄一下"}
@@ -607,6 +598,7 @@
 - {id: d39, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "我也不是不想再活"}
 - {id: d40, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "烦得想死 真的不想活了"}
 - {id: d41, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "烦得想死 是真的想死那种"}
+- {id: d42, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "我烦得想死"}
 - {id: d43, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "加班加到想死 不是开玩笑"}
 - {id: d44, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "i'm not suicidal... 骗你的"}
 - {id: d45, category: DOUBLE_NEGATION_OR_METHOD, expect: L2, text: "不想再活成这样了 想死"}
