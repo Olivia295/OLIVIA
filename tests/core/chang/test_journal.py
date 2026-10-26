@@ -23,6 +23,7 @@ from olivia.core.chang.journal import (
     parse_yes_no,
     render_journal,
     run_command,
+    variant,
 )
 from olivia.core.crypto.errors import NoKeychainError
 from olivia.core.crypto.vault import Vault
@@ -32,7 +33,7 @@ from olivia.core.language.gate import OutputGate, phone_like_runs
 from olivia.core.memory.ledger import JournalEntry, Ledger, MethodRecord, SessionSummary
 from olivia.core.memory.text import load_memory_text
 from olivia.core.methods.bandit import Feedback
-from olivia.core.models import CrisisLevel, HelpStage
+from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum
 from olivia.core.taxonomy import load_taxonomy
 
 SHANGHAI = timezone(timedelta(hours=8))
@@ -41,6 +42,7 @@ TEXT = load_journal_text()
 MEMORY = load_memory_text()
 TITLES = {"12:tipp_breathing": "冷水呼吸", "30:grounding": "五感着陆"}
 PATH = (HelpStage.S_READY, HelpStage.S_EXPLORE, HelpStage.S_CLOSING)
+GENTLE = TEXT.voice(PersonaSpectrum.GENTLE_HOLDING)
 
 
 @pytest.fixture
@@ -156,14 +158,15 @@ def test_journal_from_a_seeded_ledger(ledger):
     assert render_journal(week, TEXT, MEMORY, TITLES) == "\n".join(
         [
             "## 这一周的小结",
-            "这一周聊过的点滴，都整理在这里了。",
+            variant(GENTLE.intro, NOW),
+            variant(GENTLE.bridge, NOW),
             "- 聊天：3 次",
             "- 心情分（开始 → 结束）：4 → 6、5 → 没打",
             "- 有 1 次聊完以后，心情分比开始时高。",
             "- 常聊到的：累和耗尽、低落和没劲、关系里的牵挂",
             "- 试过的小练习：冷水呼吸（有帮助、不太合适）、五感着陆（先收进锦囊）",
             "- 你让我记住的话：1 条，原话都留在记忆账本里。",
-            "下一周也慢慢来，累了就停下来歇一歇。",
+            variant(GENTLE.closing, NOW),
         ]
     )
 
@@ -215,9 +218,10 @@ def test_a_week_without_ratings_or_exercises(ledger):
 def test_a_week_with_a_crisis_uses_the_steadier_voice(ledger):
     ledger.append_summary(_summary(2, crisis_level=CrisisLevel.L3), key="a")
     card = render_journal(gather(ledger, NOW), TEXT, MEMORY).splitlines()
-    assert card[1] == TEXT.card["intro_solemn"]
-    assert card[-1] == TEXT.card["closing_solemn"]
-    assert TEXT.card["closing"] not in card
+    assert card[1] == variant(GENTLE.intro_solemn, NOW)
+    assert card[2] == variant(GENTLE.bridge_solemn, NOW)
+    assert card[-1] == variant(GENTLE.closing_solemn, NOW)
+    assert not set(GENTLE.closing) & set(card)
 
 
 def test_an_empty_week_has_no_card():

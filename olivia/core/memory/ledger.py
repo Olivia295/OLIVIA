@@ -9,7 +9,11 @@ The ledger holds three kinds of entry, and nothing else the user says:
   user marked it) and, from step F12, three counts for ``olivia stats``: the number of
   turns, how many replies carried real-world support guidance (B7) and whether a turn
   fell in the late-night window (``metrics``; entries written before F12 have no
-  ``metrics`` and read as unknown, never migrated);
+  ``metrics`` and read as unknown, never migrated). ``metrics`` also holds the battery
+  figures behind the journal's battery line (CHANG-04): whether a ``[NN%]`` prefix was
+  given, the lowest prefix reading rounded to 0.05 (:func:`round_battery`; none without
+  a prefix) and whether the session was in S_haven. Numbers and booleans only; a
+  ``metrics`` written before them (F12's three counts) reads as battery unknown;
 * a **note**: text the user explicitly asked to have remembered (``notes.py``), kept
   verbatim;
 * a **journal** record (step B6): when the weekly journal was offered, whether it was
@@ -117,6 +121,10 @@ _SUMMARY_KEYS: Final = frozenset(
 _SUMMARY_OPTIONAL: Final = frozenset({"metrics"})
 """Summary keys added after the first format (F12); an entry without them is still valid."""
 _METRICS_KEYS: Final = frozenset({"turns", "real_support_turns", "late_night"})
+_BATTERY_KEYS: Final = frozenset({"battery_prefix", "battery_min", "haven"})
+"""Metrics keys added after F12 (CHANG-04); a ``metrics`` without them is still valid."""
+BATTERY_STEP: Final = 20
+"""The lowest battery reading is kept in steps of 1/20 (0.05)."""
 _NOTE_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "created_at", "significant"})
 _JOURNAL_KEYS: Final = frozenset({"olivia_ledger", "id", "kind", "offered_at", "shown", "helpful"})
 _KIND_ORDER: Final = {"summary": 0, "journal": 1, "note": 2}
@@ -133,6 +141,15 @@ class LedgerUnavailableError(Exception):
     def __init__(self, message: str, *, permanent: bool) -> None:
         super().__init__(message)
         self.permanent = permanent
+
+
+def round_battery(value: float) -> float:
+    """``value`` (0.0-1.0) rounded to the nearest 0.05, as the summary keeps it."""
+    return round(round(min(max(value, 0.0), 1.0) * BATTERY_STEP) / BATTERY_STEP, 2)
+
+
+def _on_battery_grid(value: float) -> bool:
+    return 0.0 <= value <= 1.0 and round_battery(value) == value
 
 
 def _aware(moment: datetime, what: str) -> datetime:
@@ -171,6 +188,12 @@ class SessionSummary:
     """Replies that carried real-world support guidance (B7, PRD §11.1); None: unknown."""
     late_night: bool | None = None
     """A turn fell in the B7 late-night window (00:00-05:00); None: unknown."""
+    battery_prefix: bool | None = None
+    """A turn gave a ``[NN%]`` battery prefix (CHANG-04); None: unknown (an older entry)."""
+    battery_min: float | None = None
+    """The lowest prefix reading, rounded to 0.05; None without a prefix (or unknown)."""
+    haven: bool | None = None
+    """A turn was in S_haven; None: unknown."""
 
     def __post_init__(self) -> None:
         _aware(self.started_at, "started_at")
@@ -190,11 +213,32 @@ class SessionSummary:
         turns, support = self.turns, self.real_support_turns
         if turns is not None and support is not None and not 0 <= support <= turns:
             raise ValueError("support turns are between 0 and the number of turns")
+        self._check_battery()
+
+    def _check_battery(self) -> None:
+        prefix, low, haven = self.battery_prefix, self.battery_min, self.haven
+        if (prefix is None) != (haven is None):
+            raise ValueError("the battery figures are all known or all unknown")
+        if prefix is None:
+            if low is not None:
+                raise ValueError("a lowest battery reading needs the battery figures")
+            return
+        if not self.has_metrics:
+            raise ValueError("the battery figures come with the session counts")
+        if prefix != (low is not None):
+            raise ValueError("a lowest battery reading exactly when a prefix was given")
+        if low is not None and not _on_battery_grid(low):
+            raise ValueError("the lowest battery reading is 0.0-1.0 in steps of 0.05")
 
     @property
     def has_metrics(self) -> bool:
         """The turn, support and late-night counts are known (written from F12 on)."""
         return self.turns is not None
+
+    @property
+    def has_battery(self) -> bool:
+        """The battery figures are known (written from CHANG-04's battery line on)."""
+        return self.battery_prefix is not None
 
     @property
     def entered_crisis(self) -> bool:
@@ -604,6 +648,8 @@ class Ledger:
                 lines.append(st.support.format(count=s.real_support_turns))
             if s.late_night:
                 lines.append(st.late_night)
+        if s.battery_min is not None:
+            lines.append(st.battery.format(percent=round(s.battery_min * 100)))
         if s.entered_crisis:
             lines.append(st.crisis)
         if s.significant:
@@ -669,6 +715,10 @@ def _summary_front(entry: SummaryEntry) -> dict[str, Any]:
             "real_support_turns": s.real_support_turns,
             "late_night": s.late_night,
         }
+        if s.has_battery:
+            front["metrics"].update(
+                {"battery_prefix": s.battery_prefix, "battery_min": s.battery_min, "haven": s.haven}
+            )
     return front
 
 
@@ -762,6 +812,7 @@ def _summary_from(front: Mapping[str, Any]) -> SessionSummary:
     if not isinstance(marked, bool):
         raise ValueError("marked_by_user must be a boolean")
     turns, support, late = _metrics_from(front.get("metrics"))
+    prefix, low, haven = _battery_from(front.get("metrics"))
     return SessionSummary(
         started_at=_time(front["started_at"]),
         ended_at=_time(front["ended_at"]),
@@ -775,6 +826,9 @@ def _summary_from(front: Mapping[str, Any]) -> SessionSummary:
         turns=turns,
         real_support_turns=support,
         late_night=late,
+        battery_prefix=prefix,
+        battery_min=low,
+        haven=haven,
     )
 
 
@@ -782,7 +836,10 @@ def _metrics_from(value: object) -> tuple[int | None, int | None, bool | None]:
     """The F12 counts; an entry from before F12 has none (unknown)."""
     if value is None:
         return None, None, None
-    if not isinstance(value, dict) or set(value) != _METRICS_KEYS:
+    if not isinstance(value, dict) or set(value) not in (
+        _METRICS_KEYS,
+        _METRICS_KEYS | _BATTERY_KEYS,
+    ):
         raise ValueError("bad metrics record")
     turns, support, late = value["turns"], value["real_support_turns"], value["late_night"]
     if _optional_int(turns) is None or _optional_int(support) is None:
@@ -790,3 +847,15 @@ def _metrics_from(value: object) -> tuple[int | None, int | None, bool | None]:
     if not isinstance(late, bool):
         raise ValueError("late_night must be a boolean")
     return turns, support, late
+
+
+def _battery_from(value: object) -> tuple[bool | None, float | None, bool | None]:
+    """The battery figures; a ``metrics`` written before them (or none) has none."""
+    if not isinstance(value, dict) or not set(value) >= _BATTERY_KEYS:
+        return None, None, None
+    prefix, low, haven = value["battery_prefix"], value["battery_min"], value["haven"]
+    if not isinstance(prefix, bool) or not isinstance(haven, bool):
+        raise ValueError("battery_prefix and haven must be booleans")
+    if low is not None and (isinstance(low, bool) or not isinstance(low, int | float)):
+        raise ValueError("battery_min must be a number")
+    return prefix, None if low is None else float(low), haven

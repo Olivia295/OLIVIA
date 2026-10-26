@@ -45,14 +45,17 @@
     crisis reply in ``chat`` shows its coping, distraction and people sections.
 ``olivia journal``
     The weekly journal (``chang/journal.py``, B6): a read-only summary of the last seven
-    days built from the ledger, then one optional "was it helpful" question. Spectra and
-    exercises that name a taboo topic are left out (ruling 21, F11).
+    days built from the ledger, in the profile persona's voice (Q-6), with a battery
+    line when the week's sessions gave a ``[NN%]`` battery (CHANG-04), then one optional
+    "was it helpful" question. Spectra and exercises that name a taboo topic are left
+    out (ruling 21, F11).
 ``olivia stats``
     Local usage numbers (``chang/stats.py``, F12; PRD §11.1), computed from the ledger's
     session summaries and printed only: how many sessions (all, last 7 and 30 days), the
-    share of late-night sessions, the share of replies with real-world support guidance
-    and the mean self-rating change. Numbers only: no conversation text, names, spectra
-    or exercise titles. Reads the ledger and writes nothing.
+    share of late-night sessions, the share of replies with real-world support guidance,
+    the mean self-rating change, the share of sessions whose rating rose and the answers
+    to the journal's "was it helpful" question. Numbers only: no conversation text,
+    names, spectra or exercise titles. Reads the ledger and writes nothing.
 ``olivia memory``
     What this device remembers, on screen only (``memory/forget.py``, B5): the ledger
     entries oldest first and numbered (templated summaries, notes verbatim), then the
@@ -588,6 +591,7 @@ def _chat(
         console.say,
         method_titles=titles,
         taboo_topics=profile.taboo_topics,
+        persona=profile.persona_spectrum,
     )
     try:
         carry = checks.opening(local()) if marker is None else None
@@ -923,6 +927,7 @@ def _journal(console: _Console, clock: Clock) -> int:
         now,
         method_titles=titles,
         taboo_topics=profile.taboo_topics,
+        persona=profile.persona_spectrum,
     )
 
 

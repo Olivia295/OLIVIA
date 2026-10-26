@@ -63,7 +63,9 @@ inspect-no-text [mode]
 stats-numbers-only [mode]
     ``olivia stats`` (F12) printed its numbers (not an "unavailable" or "empty" line), and
     its output holds no typed text, names included, and no line that is not one of the
-    ``stats.yaml`` lines with numbers (or the late-night clock times) in its slots.
+    ``stats.yaml`` lines with numbers (or the late-night clock times) in its slots. The
+    journal answered "有" just before, so the journal-answers line must be there with its
+    numbers (the §11.1 lines added after F12 are covered by the same line check).
 note-recall [mode]
     The second chat answered the question about the note with the note (F15), and its
     panel says so by ids only (``调出笔记 question（found）``), so the two checks above
@@ -565,12 +567,15 @@ def panel_leaks(capture: Capture, typed: Iterable[str]) -> list[str]:
 _NUMBER: Final = r"(?:\d{2}:\d{2}|[+-]?\d+(?:\.\d+)?)"
 
 
+def numbers_pattern(template: str) -> str:
+    """``template`` as a regular expression with a number in each of its slots."""
+    return _NUMBER.join(re.escape(part) for part in re.split(r"\{\w+\}", template))
+
+
 def stats_patterns(text: StatsText) -> list[re.Pattern[str]]:
     """Every line ``olivia stats`` may print: a ``lines`` template with numbers in its
     slots (``unknown`` only appended to another line), or a ``replies`` sentence."""
-
-    def pattern(template: str) -> str:
-        return _NUMBER.join(re.escape(part) for part in re.split(r"\{\w+\}", template))
+    pattern = numbers_pattern
 
     unknown = pattern(text.lines["unknown"])
     lines = [pattern(t) for key, t in text.lines.items() if key != "unknown"]
@@ -812,6 +817,9 @@ def run_checks(run: Run) -> list[Result]:
     numbers = [p for c in stats_runs for p in stats_problems(c, ALL_TYPED, words)]
     if len(stats_runs) != 1:
         numbers.append(f"{len(stats_runs)} stats runs, expected 1")
+    answered = re.compile(numbers_pattern(words.lines["journal_helpful"]))
+    if not any(answered.fullmatch(ln) for c in stats_runs for ln in c.console.splitlines()):
+        numbers.append("no journal-answers line with numbers")
     printed = sum(len(c.console.splitlines()) for c in stats_runs)
     results.append(
         _result(f"stats-numbers-only [{mode}]", numbers, f"{printed} lines, numbers only")

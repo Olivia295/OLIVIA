@@ -29,6 +29,22 @@ topics are a hard filter here too (ruling 21, ONB-04b, F11): a spectrum whose ev
 name or an exercise whose line names one is left out (the line goes when nothing is left
 in it), with the same case-folded substring test as the session's taboo filter.
 
+**The voice** (PRD Q-6). The opening, the line that leads into the facts (``bridge``) and
+the closing follow the profile's persona: each of the four has a pool of each in the
+everyday voice and in the steadier one (``voices`` in the YAML); SILENT_ANCHOR says the
+least. The facts, their numbers and the line structure are the same in every voice. A
+variant is picked by the day (:func:`variant`), so the same card reads the same all day
+and the wording moves from day to day (with two variants, a week later is the other
+one). An old profile or an unknown persona reads as GENTLE_HOLDING.
+
+**The battery line** (CHANG-04, "电量走势"). Summaries written since the battery figures
+(``ledger.py``) say whether a ``[NN%]`` prefix was given, the lowest reading and whether
+the session was in S_haven. The line counts this week's sessions that gave a battery and
+those where it was very low (at or below :data:`LOW_BATTERY`, the haven threshold, or in
+S_haven), with last week's count of very low ones beside it when last week has battery
+data; it states the counts and passes no judgement. No battery data this week (older
+summaries, or no prefix given): no line.
+
 **When.** At a chat opening (after the rating), when the window holds at least
 :data:`MIN_SESSIONS` session summaries and no journal record (shown or declined) is in the
 window: ``prompts.offer``. Yes shows it, then ``prompts.helpful`` (yes / no, skippable).
@@ -66,13 +82,15 @@ from olivia.core.memory.ledger import (
 )
 from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.memory.text import NO_FEEDBACK, MemoryText
-from olivia.core.models import CrisisLevel, HelpStage, SessionState
+from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, SessionState
 from olivia.core.session import ReplyKind, TurnResult
 from olivia.core.taxonomy import Taxonomy
 from olivia.core.yaml_load import safe_load
 
 WINDOW: Final = timedelta(days=7)
 MIN_SESSIONS: Final = 2
+LOW_BATTERY: Final = 0.20
+"""A battery at or below this is "very low": the haven threshold (``battery.thresholds``)."""
 MAX_SPECTRA: Final = 3
 EXIT_COMMAND: Final = "/exit"
 
@@ -91,22 +109,32 @@ _REPLY_KEYS: Final = (
 )
 _CARD_KEYS: Final = (
     "heading",
-    "intro",
-    "intro_solemn",
     "sessions",
     "ratings",
     "no_ratings",
     "rating_missing",
     "rose",
+    "battery_low",
+    "battery_fine",
+    "battery_last_week",
     "spectra",
     "methods",
     "no_methods",
     "notes",
-    "closing",
-    "closing_solemn",
     "joiner",
     "arrow",
 )
+_FRAGMENTS: Final = frozenset({"rating_missing", "battery_last_week", "joiner", "arrow"})
+"""Card pieces never shown on their own (WILLOW and the gate check them inside a line)."""
+VOICE_SLOTS: Final = (
+    "intro",
+    "bridge",
+    "closing",
+    "intro_solemn",
+    "bridge_solemn",
+    "closing_solemn",
+)
+DEFAULT_VOICE: Final = PersonaSpectrum.GENTLE_HOLDING
 _RATING: Final = re.compile(r"\d{1,2}")
 _TRAILING: Final = "。．.！!？?，,～~ "
 
@@ -116,20 +144,49 @@ class JournalTextError(Exception):
 
 
 @dataclass(frozen=True)
+class Voice:
+    """One persona's pools around the facts: everyday and steadier (crisis-week) voice."""
+
+    intro: tuple[str, ...]
+    bridge: tuple[str, ...]
+    closing: tuple[str, ...]
+    intro_solemn: tuple[str, ...]
+    bridge_solemn: tuple[str, ...]
+    closing_solemn: tuple[str, ...]
+
+    def lines(self) -> tuple[str, ...]:
+        return (
+            *self.intro,
+            *self.bridge,
+            *self.closing,
+            *self.intro_solemn,
+            *self.bridge_solemn,
+            *self.closing_solemn,
+        )
+
+
+@dataclass(frozen=True)
 class JournalText:
     prompts: Mapping[str, str]
     replies: Mapping[str, str]
     card: Mapping[str, str]
     agree: frozenset[str]
     decline: frozenset[str]
+    voices: Mapping[str, Voice]
+    """Every :class:`PersonaSpectrum` value -> its voice."""
+
+    def voice(self, persona: str | None) -> Voice:
+        """The voice for ``persona``; GENTLE_HOLDING for None or an unknown persona."""
+        found = self.voices.get(persona) if persona else None
+        return self.voices[DEFAULT_VOICE.value] if found is None else found
 
     def all_texts(self) -> tuple[str, ...]:
         """Every sentence shown on its own, for the WILLOW and gate checks in the tests."""
-        fragments = {"rating_missing", "joiner", "arrow"}
         return (
             *self.prompts.values(),
             *self.replies.values(),
-            *(v for k, v in self.card.items() if k not in fragments),
+            *(v for k, v in self.card.items() if k not in _FRAGMENTS),
+            *(line for voice in self.voices.values() for line in voice.lines()),
         )
 
 
@@ -163,12 +220,34 @@ def _words(value: object, where: str) -> frozenset[str]:
     return frozenset(_normalise(str(v)) for v in value)
 
 
+def _pool(value: object, where: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise JournalTextError(f"{_FILE}: {where} must be a non-empty list")
+    if not all(isinstance(item, str) and item.strip() for item in value):
+        raise JournalTextError(f"{_FILE}: {where} must hold non-empty strings")
+    return tuple(value)
+
+
+def _voices(value: object) -> dict[str, Voice]:
+    personas = {p.value for p in PersonaSpectrum}
+    if not isinstance(value, dict) or set(value) != personas:
+        raise JournalTextError(f"{_FILE}: voices must have exactly {sorted(personas)}")
+    out: dict[str, Voice] = {}
+    for persona in sorted(personas):
+        slots = value[persona]
+        if not isinstance(slots, dict) or set(slots) != set(VOICE_SLOTS):
+            raise JournalTextError(f"{_FILE}: voices.{persona} must have {list(VOICE_SLOTS)}")
+        pools = {slot: _pool(slots[slot], f"voices.{persona}.{slot}") for slot in VOICE_SLOTS}
+        out[persona] = Voice(**pools)
+    return out
+
+
 def _load_text(base: Traversable | Path) -> JournalText:
     try:
         doc = safe_load(base.joinpath(_FILE).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise JournalTextError(f"{_FILE}: cannot read: {exc}") from exc
-    expected = {"version", "prompts", "replies", "card", "answers"}
+    expected = {"version", "prompts", "replies", "card", "voices", "answers"}
     if not isinstance(doc, dict) or doc.get("version") != 1 or set(doc) != expected:
         raise JournalTextError(f"{_FILE}: must be version 1 with sections {sorted(expected)}")
     answers = doc["answers"]
@@ -183,6 +262,7 @@ def _load_text(base: Traversable | Path) -> JournalText:
         card=_strings(doc["card"], _CARD_KEYS, "card"),
         agree=agree,
         decline=decline,
+        voices=_voices(doc["voices"]),
     )
 
 
@@ -223,6 +303,8 @@ class Week:
     sessions: tuple[SessionSummary, ...]
     notes: int
     journals: tuple[JournalEntry, ...]
+    previous: tuple[SessionSummary, ...] = ()
+    """The sessions of the window before (last week), for the battery line only."""
 
     @property
     def solemn(self) -> bool:
@@ -232,12 +314,15 @@ class Week:
 
 def gather(ledger: Ledger, now: datetime) -> Week:
     """The window's entries; raises :class:`LedgerUnavailableError` like ``entries``."""
-    entries = ledger.entries(since=now - WINDOW)
+    start = now - WINDOW
+    found = ledger.entries(since=start - WINDOW)
+    entries = [e for e in found if e.time >= start]
     return Week(
         until=now,
         sessions=tuple(e.summary for e in entries if isinstance(e, SummaryEntry)),
         notes=sum(1 for e in entries if isinstance(e, NoteEntry)),
         journals=tuple(e for e in entries if isinstance(e, JournalEntry)),
+        previous=tuple(e.summary for e in found if isinstance(e, SummaryEntry) and e.time < start),
     )
 
 
@@ -253,6 +338,36 @@ def names_taboo(text: str, taboo_topics: tuple[str, ...]) -> bool:
     return any(topic.casefold() in folded for topic in taboo_topics if topic.strip())
 
 
+def variant(pool: tuple[str, ...], until: datetime) -> str:
+    """The variant of ``pool`` for the day of ``until``: the same all day, moving daily."""
+    return pool[until.date().toordinal() % len(pool)]
+
+
+def _told_battery(s: SessionSummary) -> bool:
+    """The session gave a battery reading (or was in S_haven)."""
+    return bool(s.battery_prefix or s.haven)
+
+
+def _low_battery(s: SessionSummary) -> bool:
+    return bool(s.haven) or (s.battery_min is not None and s.battery_min <= LOW_BATTERY)
+
+
+def _battery_line(week: Week, card: Mapping[str, str]) -> str | None:
+    """This week's battery line, or None without battery data this week."""
+    told = [s for s in week.sessions if _told_battery(s)]
+    if not told:
+        return None
+    low = sum(1 for s in told if _low_battery(s))
+    if low:
+        line = card["battery_low"].format(known=len(told), count=low)
+    else:
+        line = card["battery_fine"].format(known=len(told))
+    before = [s for s in week.previous if _told_battery(s)]
+    if before:
+        line += card["battery_last_week"].format(count=sum(1 for s in before if _low_battery(s)))
+    return line
+
+
 def render_journal(
     week: Week,
     text: JournalText,
@@ -260,15 +375,23 @@ def render_journal(
     method_titles: Mapping[str, str] | None = None,
     *,
     taboo_topics: tuple[str, ...] = (),
+    persona: str | None = None,
 ) -> str:
-    """The journal card for ``week`` (which must hold at least one session); spectra and
-    exercises that name a taboo topic are left out (ruling 21)."""
+    """The journal card for ``week`` (which must hold at least one session) in the voice
+    of ``persona`` (GENTLE_HOLDING when None or unknown); spectra and exercises that name
+    a taboo topic are left out (ruling 21)."""
     if not week.sessions:
         raise ValueError("a journal needs at least one session")
     card = text.card
+    voice = text.voice(persona)
     titles = {} if method_titles is None else method_titles
-    lines = [card["heading"], card["intro_solemn"] if week.solemn else card["intro"]]
-    lines.append(card["sessions"].format(count=len(week.sessions)))
+    solemn = week.solemn
+    lines = [
+        card["heading"],
+        variant(voice.intro_solemn if solemn else voice.intro, week.until),
+        variant(voice.bridge_solemn if solemn else voice.bridge, week.until),
+        card["sessions"].format(count=len(week.sessions)),
+    ]
 
     rated = [s for s in week.sessions if (s.self_rating_before, s.self_rating_after) != (None,) * 2]
     if rated:
@@ -292,6 +415,10 @@ def render_journal(
     else:
         lines.append(card["no_ratings"])
 
+    battery = _battery_line(week, card)
+    if battery is not None:
+        lines.append(battery)
+
     named = [memory.spectra.get(sid, sid) for sid in _dominant_spectra(week.sessions)]
     named = [name for name in named if not names_taboo(name, taboo_topics)][:MAX_SPECTRA]
     if named:
@@ -311,7 +438,7 @@ def render_journal(
 
     if week.notes:
         lines.append(card["notes"].format(count=week.notes))
-    lines.append(card["closing_solemn"] if week.solemn else card["closing"])
+    lines.append(variant(voice.closing_solemn if solemn else voice.closing, week.until))
     return "\n".join(lines)
 
 
@@ -397,7 +524,7 @@ class ChatChecks:
 
     ``ask`` reads one answer line and ``say`` prints one; ``recorder`` is the session's
     ledger recorder (nothing is asked when it is disabled); ``taboo_topics`` are the
-    profile's, left out of the journal card.
+    profile's, left out of the journal card, and ``persona`` is its voice.
     """
 
     def __init__(
@@ -411,9 +538,11 @@ class ChatChecks:
         method_titles: Mapping[str, str] | None = None,
         text: JournalText | None = None,
         taboo_topics: tuple[str, ...] = (),
+        persona: str | None = None,
     ) -> None:
         self._ledger = ledger
         self._taboo = taboo_topics
+        self._persona = persona
         self._recorder = recorder
         self._ask = ask
         self._say = say
@@ -513,7 +642,12 @@ class ChatChecks:
             self._say(self.text.replies["offer_declined"])
             return Carry()
         card = render_journal(
-            week, self.text, self._ledger.text, self._titles, taboo_topics=self._taboo
+            week,
+            self.text,
+            self._ledger.text,
+            self._titles,
+            taboo_topics=self._taboo,
+            persona=self._persona,
         )
         self._say("")
         return _show_and_rate(self._ask, self._say, self._ledger, now, card, self.text)
@@ -528,8 +662,10 @@ def run_command(
     method_titles: Mapping[str, str] | None = None,
     text: JournalText | None = None,
     taboo_topics: tuple[str, ...] = (),
+    persona: str | None = None,
 ) -> int:
-    """``olivia journal``: show the rolling week's journal now; the exit status."""
+    """``olivia journal``: show the rolling week's journal now, in the voice of
+    ``persona``; the exit status."""
     words = load_journal_text() if text is None else text
     try:
         if not ledger.available():
@@ -541,7 +677,9 @@ def run_command(
     if not week.sessions:
         say(words.replies["empty"])
         return 0
-    card = render_journal(week, words, ledger.text, method_titles, taboo_topics=taboo_topics)
+    card = render_journal(
+        week, words, ledger.text, method_titles, taboo_topics=taboo_topics, persona=persona
+    )
     carry = _show_and_rate(ask, say, ledger, now, card, words)
     if not carry.answered and not carry.ended:
         say(words.replies["helpful_skipped"])

@@ -7,10 +7,19 @@
 #   offer    滚动 7 天内聊过 2 次以上、且 7 天内没有提过周记时，开场问一次。
 #   helpful  看完周记后的满意度（有 / 没有）。
 # replies：短句，不带槽位，不出现诊断词与号码。
-# card：周记正文，只由账本里的摘要生成（会话次数、自评、困扰谱系的日常说法、试过的小练习与反馈、
-#   用户要求记住的话的条数），不含任何对话原文；除自评分与次数外不出现数字。
-#   当周进入过危机流程时，用 intro_solemn / closing_solemn（庄重守护口吻，CHANG-04）。
-#   槽位：{count} {pairs} {spectra} {methods}
+# card：周记正文里的事实行，只由账本里的摘要生成（会话次数、自评、电量、困扰谱系的日常说法、
+#   试过的小练习与反馈、用户要求记住的话的条数），不含任何对话原文；除自评分与次数外不出现数字。
+#   各人格共用，措辞不随人格变（数字、事实与行的结构在四种人格里完全相同）。
+#   槽位：{count} {pairs} {spectra} {methods} {known}
+#   battery_*（草稿：待 G-0，CHANG-04“基于电量走势”）：这周用 [NN%] 说过电量的聊天有几次、其中几次
+#     电量很低（不高于避风港阈值 0.20，或进过安静陪伴）；battery_low 有很低的时候，battery_fine 没有；
+#     上周也说过电量时，行末接 battery_last_week（上周很低的次数）。这周没有电量数据（旧摘要，或没说过
+#     电量）时整行不写。只陈述次数，不评判、不比较好坏、不说教。
+# voices（草稿：待 G-0，PRD Q-6）：周记开头（intro）、引出事实行的一句（bridge）、结尾（closing）按画像
+#   人格换语气，语气对齐四个人格模板（gentle_holding / zen_philosopher / rational_peer / silent_anchor）。
+#   当周进入过危机流程时用 *_solemn（庄重守护口吻，CHANG-04）：不用隐喻，closing_solemn 都指向
+#   olivia resources。每项是句池，按日期取一句（同一天不变）；SILENT_ANCHOR 最短最少，每项一句。
+#   旧画像或未知人格用 GENTLE_HOLDING。单段 ≤ 80 字，不提问，不含数字。
 # answers：对“想看吗”“有帮助吗”的回答，去掉空格和句末标点后整句比对。
 version: 1
 prompts:
@@ -30,21 +39,82 @@ replies:
   adults_only: "这里的陪伴只为成年人设计，所以没有小结。"
 card:
   heading: "## 这一周的小结"
-  intro: "这一周聊过的点滴，都整理在这里了。"
-  intro_solemn: "这一周里有过很难熬的时刻。下面是这几天的记录，慢慢看就好。"
   sessions: "- 聊天：{count} 次"
   ratings: "- 心情分（开始 → 结束）：{pairs}"
   no_ratings: "- 这一周没有打心情分，也没关系。"
   rating_missing: "没打"
   rose: "- 有 {count} 次聊完以后，心情分比开始时高。"
+  battery_low: "- 电量：这周有 {known} 次聊天说了电量，其中 {count} 次电量很低。"
+  battery_fine: "- 电量：这周有 {known} 次聊天说了电量，没有哪一次电量很低。"
+  battery_last_week: "上周电量很低的有 {count} 次。"
   spectra: "- 常聊到的：{spectra}"
   methods: "- 试过的小练习：{methods}"
   no_methods: "- 这一周没有试小练习。"
   notes: "- 你让我记住的话：{count} 条，原话都留在记忆账本里。"
-  closing: "下一周也慢慢来，累了就停下来歇一歇。"
-  closing_solemn: "如果那种很难熬的感觉又回来，求助电话一直都在，输入 olivia resources 就能看到。你不用一个人扛着。"
   joiner: "、"
   arrow: " → "
+voices:
+  GENTLE_HOLDING:
+    intro:
+      - "这一周聊过的点滴，都整理在这里了。"
+      - "这一周的聊天，我轻轻整理了一下，都在这里。"
+    bridge:
+      - "我们一起慢慢看看这几天："
+      - "这几天的样子都在下面，慢慢看就好："
+    closing:
+      - "下一周也慢慢来，累了就停下来歇一歇。"
+      - "不管这一周过得怎么样，你都走过来了。下一周也慢慢来。"
+    intro_solemn:
+      - "这一周里有过很难熬的时刻。下面是这几天的记录，慢慢看就好。"
+    bridge_solemn:
+      - "这几天的记录在这里，看到哪里都可以停下来："
+    closing_solemn:
+      - "如果那种很难熬的感觉又回来，求助电话一直都在，输入 olivia resources 就能看到。你不用一个人扛着。"
+  ZEN_PHILOSOPHER:
+    intro:
+      - "一周过去了，像溪水流过一段石滩。这几天留下的痕迹，都在这里。"
+      - "七天像一阵风走过。留下来的，我替你收在这里。"
+    bridge:
+      - "静静看一看："
+      - "慢慢看，不必急："
+    closing:
+      - "下一周，也像云那样慢慢走。累了，就停一停。"
+      - "日子还在流动。按自己的步子走就好。"
+    intro_solemn:
+      - "这一周，有过很难熬的时刻。这几天的记录在下面，慢慢看。"
+    bridge_solemn:
+      - "记录在这里，看到哪里都可以停下："
+    closing_solemn:
+      - "如果那种难熬的感觉又回来，求助电话一直都在，输入 olivia resources 就能看到。你不是一个人。"
+  RATIONAL_PEER:
+    intro:
+      - "这一周的情况，我帮你理了一下，都在这里。"
+      - "把这一周理一理，大概是这样。"
+    bridge:
+      - "一起看看："
+      - "一项一项来看："
+    closing:
+      - "下一周按自己的节奏来就好，累了就先停一停。"
+      - "这些只是记录，不用拿来给自己打分。下一周，我们接着一起看。"
+    intro_solemn:
+      - "这一周有过很难熬的时候。我把这几天理了一下，放在下面，慢慢看。"
+    bridge_solemn:
+      - "这几天的记录："
+    closing_solemn:
+      - "那种很难熬的感觉要是又回来，求助电话一直都在，输入 olivia resources 就能看到。这件事不用一个人扛。"
+  SILENT_ANCHOR:
+    intro:
+      - "这一周，在这里。"
+    bridge:
+      - "这几天："
+    closing:
+      - "我在。"
+    intro_solemn:
+      - "这一周，有过很难的时候。"
+    bridge_solemn:
+      - "这几天："
+    closing_solemn:
+      - "难熬时，输入 olivia resources 能看到求助电话。我在。"
 answers:
   agree: [好, 好的, 好呀, 好啊, 嗯, 嗯嗯, 想, 想看, 要, 可以, 看, 看看, 行, 有, 有帮助, 有的, 是, 是的, y, "yes", ok]
   decline: [不, 不用, 不要, 不想, 不看, 不了, 先不了, 算了, 下次, 没有, 没, 没什么, 帮助不大, n, "no"]

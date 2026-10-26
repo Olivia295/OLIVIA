@@ -18,7 +18,7 @@ from olivia.core.memory.ledger import (
     SessionSummary,
     SummaryEntry,
 )
-from olivia.core.models import HelpStage
+from olivia.core.models import HelpStage, PersonaSpectrum
 from olivia.core.session import ReplyKind
 
 TEXT = load_journal_text()
@@ -214,7 +214,9 @@ def test_a_crisis_week_journal_uses_the_steadier_voice(run_cli, data_home):
     run_cli(["chat", "--rules"], ["", L3_SENTENCE, "/exit"])
     run_cli(["chat", "--rules"], ["", "今天还行", "/exit", ""], now=NOW + timedelta(days=8))
     run = run_cli(["journal"], [""], now=NOW + timedelta(days=5))
-    assert TEXT.card["intro_solemn"] in run.out and TEXT.card["closing_solemn"] in run.out
+    voice = TEXT.voice(PersonaSpectrum.GENTLE_HOLDING)
+    assert any(line in run.lines for line in voice.intro_solemn)
+    assert any(line in run.lines for line in voice.closing_solemn)
 
 
 # -- olivia journal ---------------------------------------------------------------------------
@@ -295,3 +297,34 @@ def test_the_journal_leaves_nothing_readable_on_disk(run_cli, data_home):
         data = path.read_bytes()
         for needle in ("小结", "上班", "journal", "helpful"):
             assert needle.encode() not in data
+
+
+# -- the persona's voice and the battery line (Q-6, CHANG-04) ---------------------------------
+
+
+@pytest.mark.parametrize("persona", list(PersonaSpectrum))
+def test_the_journal_command_speaks_in_the_profile_persona(run_cli, data_home, persona):
+    save_profile(data_home, persona_spectrum=persona)
+    _week_about_exhaustion(data_home)
+    run = run_cli(["journal"], [""])
+    voice = TEXT.voice(persona)
+    assert any(line in run.lines for line in voice.intro)
+    assert any(line in run.lines for line in voice.closing)
+    assert "- 聊天：2 次" in run.lines
+
+
+def test_the_journal_offered_in_chat_speaks_in_the_profile_persona(run_cli, data_home):
+    save_profile(data_home, persona_spectrum=PersonaSpectrum.RATIONAL_PEER)
+    _week_about_exhaustion(data_home)
+    run = run_cli(["chat", "--rules"], ["", "好", "", "/exit"])
+    voice = TEXT.voice(PersonaSpectrum.RATIONAL_PEER)
+    assert any(line in run.lines for line in voice.intro)
+
+
+def test_a_battery_prefix_in_chat_reaches_the_journal(run_cli, data_home):
+    save_profile(data_home)
+    run_cli(["chat", "--rules"], ["", "[10%] 好累，今天不想动脑", "/exit"])
+    (summary,) = [e.summary for e in _summaries(data_home)]
+    assert (summary.battery_prefix, summary.battery_min, summary.haven) == (True, 0.1, True)
+    run = run_cli(["journal"], [""], now=NOW + timedelta(hours=1))
+    assert TEXT.card["battery_low"].format(known=1, count=1) in run.lines

@@ -262,6 +262,8 @@ def _stats_output(*extra: str) -> str:
         + words["unknown"].format(count=1),
         words["support"].format(count=3, turns=20, percent=15),
         words["rating"].format(change="-0.5", count=2),
+        words["rose"].format(count=1, rated=2, percent=50),
+        words["journal_helpful"].format(answered=3, count=2, percent=67),
         *extra,
     ]
     return "\n".join(lines) + "\n"
@@ -276,10 +278,22 @@ def test_stats_output_with_typed_text_or_another_line_fails():
     text = audit.load_stats_text()
     named = _capture("stats", _stats_output(f"- {audit.USER_NAME}"))
     problems = audit.stats_problems(named, audit.ALL_TYPED, text)
-    assert f"typed text: 「{audit.USER_NAME}」" in problems and "not a stats line: 6" in problems
+    assert f"typed text: 「{audit.USER_NAME}」" in problems and "not a stats line: 8" in problems
     worded = text.lines["sessions"].replace("{total}", "很多").format(week=1, month=2)
     other = _capture("stats", f"{text.lines['heading']}\n{worded}\n")
     assert audit.stats_problems(other, audit.ALL_TYPED, text) == ["not a stats line: 2"]
+
+
+@pytest.mark.parametrize("key", ["rose_none", "journal_helpful_none"])
+def test_the_rose_and_journal_lines_are_numbers_only_too(key):
+    """The two §11.1 lines (the share that rose, the journal answers) are stats lines, and
+    only with numbers in their slots."""
+    text = audit.load_stats_text()
+    shown = _capture("stats", _stats_output(text.lines[key]))
+    assert audit.stats_problems(shown, audit.ALL_TYPED, text) == []
+    worded = text.lines["journal_helpful"].format(answered="很多", count=2, percent=67)
+    other = _capture("stats", _stats_output(worded))
+    assert audit.stats_problems(other, audit.ALL_TYPED, text) == ["not a stats line: 8"]
 
 
 def test_stats_that_printed_no_numbers_fail():
