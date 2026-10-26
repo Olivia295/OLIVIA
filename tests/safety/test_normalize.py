@@ -10,6 +10,7 @@ from olivia.core.safety.normalize import (
     PERCEPTION_HEAD,
     PERCEPTION_TAIL,
     clip_for_perception,
+    fold_words,
     normalize,
 )
 from olivia.core.taxonomy import load_taxonomy
@@ -179,3 +180,8 @@ def test_clip_keeps_tail():
     clipped = clip_for_perception(text)
     assert len(clipped) == 384
     assert clipped.startswith("a" * 128) and clipped.endswith("药已经买好了")
+
+
+def test_fold_words_keeps_every_whitespace_as_a_word_break():
+    # Tabs, newlines and the ideographic space separate words just as a plain space does.
+    assert fold_words("No\tI\nmeant　it") == "no i meant it"

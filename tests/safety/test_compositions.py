@@ -21,7 +21,7 @@ import yaml
 
 from olivia.core.models import CrisisLevel as L
 from olivia.core.models import PersonaProfile, UserRegion
-from olivia.core.safety.compose import Composer
+from olivia.core.safety.compose import Composer, _Spans
 from olivia.core.safety.crisis import RiskPrediction, RuleRiskModel, SafetyScreen
 from olivia.core.safety.lexicon import (
     Composition,
@@ -29,6 +29,7 @@ from olivia.core.safety.lexicon import (
     LexiconError,
     load_safety_lexicons,
 )
+from olivia.core.safety.matcher import Match
 from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector
 from olivia.core.session import ReplyKind, Session
@@ -178,6 +179,35 @@ def test_a_third_person_subject_voids_but_a_recipient_does_not():
     assert SCREEN.assess("她打算自杀").level is L.L0
     assert SCREEN.assess("我跟她说我打算自杀").level is L.L2
     assert SCREEN.assess("她跟我说打算自杀").level is L.L0
+
+
+def test_a_third_person_beyond_the_carry_window_is_not_the_subject():
+    # 她 lies more than two subject windows before the clause: it is not carried over, and
+    # the first-person plan in the last clause stays L3.
+    text = "她昨天下午在公司加班到很晚回家路上又堵车堵了好久真烦人，打算明天去死"
+    a = SCREEN.assess(text)
+    assert a.level is L.L3 and a.cue_ids == ("S1_PLAN_ACT_TIME",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我打算去死，这件事想了很久很久，下周再说",
+        "我准备结束生命，这个念头已经很久了，明天还要上班",
+    ],
+)
+def test_a_time_word_outside_the_context_window_is_no_plan_context(text):
+    # A time word beyond the context window does not turn an L2 intent into an L3 plan.
+    a = SCREEN.assess(text)
+    assert (a.level, a.stage) == (L.L2, "STAGE2")
+
+
+def test_spans_cover_with_the_furthest_end_not_the_sum():
+    # Coverage looks at the furthest end of the earlier spans, so two short spans never
+    # reach a later one between them.
+    spans = _Spans([Match("a", 0, 2), Match("b", 5, 7)])
+    assert not spans.covers(Match("c", 7, 9))
+    assert not spans.overlaps(8, 9)
 
 
 def test_compositions_add_only_what_the_phrases_miss():

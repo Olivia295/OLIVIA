@@ -95,3 +95,13 @@ def test_more_self_report_forms(det, text, code):
 @pytest.mark.parametrize("text", ["我没有厌食的毛病", "我不是边缘性人格"])
 def test_new_self_report_forms_respect_negation(det, text):
     assert det.detect(text) == frozenset()
+
+
+def test_a_negated_self_report_does_not_hide_a_later_flag(det):
+    # One negated self-report is skipped; the scan goes on to the rest of the message.
+    assert det.detect("我没有双相，但是产后抑郁一直没好") == frozenset({"SIT-02-06"})
+
+
+def test_a_self_report_at_the_very_start_is_negated(det):
+    # The negation window reaches back to the first character of the message.
+    assert det.detect("没有双相") == frozenset()

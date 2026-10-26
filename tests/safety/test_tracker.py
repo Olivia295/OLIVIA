@@ -1,10 +1,14 @@
+import copy
+from pathlib import Path
+
 import pytest
+import yaml
 
 from olivia.core.models import CrisisLevel as L
 from olivia.core.safety.crisis import CrisisAssessment, SafetyScreen
 from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.safety.tracker import CrisisTracker
-from olivia.core.taxonomy import load_taxonomy
+from olivia.core.taxonomy import Taxonomy, load_taxonomy
 
 
 @pytest.fixture(scope="module")
@@ -100,6 +104,32 @@ def test_non_finite_valence_is_no_evidence(tax, lex):
     t = CrisisTracker(tax, lex)
     statuses = [t.observe(_a(L.L1, 0.40), "x", v) for v in (-0.7, float("nan"), float("inf"))]
     assert statuses[-1].level is L.L2
+
+
+def test_an_infinite_valence_is_no_improvement(tax, lex):
+    # +inf on the middle turn must not count as a rise that clears the run.
+    t = CrisisTracker(tax, lex)
+    statuses = [t.observe(_a(L.L1, 0.40), "x", v) for v in (-0.7, float("inf"), -0.7)]
+    assert statuses[-1].escalated and statuses[-1].level is L.L2
+
+
+@pytest.mark.parametrize("valence", [0.0, 0.4])
+def test_a_calm_l0_resets_the_count_without_an_earlier_l1_valence(tax, lex, valence):
+    # Calm alone resets: no earlier L1 valence is there for a rise to be measured against.
+    t = CrisisTracker(tax, lex)
+    t.observe(_a(L.L1, 0.40), "x")
+    t.observe(_a(L.L1, 0.40), "x")
+    assert t.observe(_a(L.L0, 0.0), "x", valence).consecutive_l1_count == 0
+    assert not t.observe(_a(L.L1, 0.40), "x").escalated
+
+
+def test_a_slightly_negative_l0_turn_only_pauses_the_count(tax, lex):
+    # Calm starts at 0.0: a valence just below it is no reset.
+    t = CrisisTracker(tax, lex)
+    t.observe(_a(L.L1, 0.40), "x")
+    t.observe(_a(L.L1, 0.40), "x")
+    assert t.observe(_a(L.L0, 0.0), "x", -0.2).consecutive_l1_count == 2
+    assert t.observe(_a(L.L1, 0.40), "x").escalated
 
 
 def test_isolated_l0_does_not_break_streak(run):
@@ -400,6 +430,15 @@ def test_model_only_l1_turns_do_not_join_a_rule_l1_run(tax, lex):
     assert tracker.observe(rule_l1, "x").escalated
 
 
+def test_a_calm_model_only_l1_resets_the_run_like_an_l0_turn(tax, lex):
+    # Counted as an L0 turn, a calm model-only L1 resets the run instead of pausing it.
+    tracker = CrisisTracker(tax, lex)
+    tracker.observe(_a(L.L1, 0.40), "x", -0.7)
+    tracker.observe(_a(L.L1, 0.40), "x", -0.7)
+    assert tracker.observe(_model_l1(), "x", 0.3).consecutive_l1_count == 0
+    assert not tracker.observe(_a(L.L1, 0.40), "x", -0.7).escalated
+
+
 def _denial(uncapped=L.L2):
     # F10: a denial the screen capped at L1 (the model alone said L2).
     return CrisisAssessment(
@@ -479,3 +518,63 @@ def test_the_clause_reading_needs_the_screens_all_clear(tax, lex):
     assert s.awaiting_confirmation
     # The phrase and short-answer readings do not depend on it.
     assert not tracker.observe(_a(L.L0, 0.0), "我现在是安全的").awaiting_confirmation
+
+
+# -- confirmation edges, status fields and thresholds ---------------------------------------
+
+
+@pytest.mark.parametrize("text", ["我现在安全了吗。", "我安全了吗！", "我是安全的吗…"])
+def test_a_question_with_trailing_punctuation_does_not_confirm(tax, lex, text):
+    # Trailing punctuation is dropped before the question check, so these still ask.
+    tracker = _in_crisis(tax, lex)
+    assert tracker.observe(_a(L.L0, 0.0), text).awaiting_confirmation
+
+
+@pytest.mark.parametrize("text", ["我现在安全了么", "我安全了么？"])
+def test_a_question_ending_in_me_does_not_confirm(tax, lex, text):
+    tracker = _in_crisis(tax, lex)
+    assert tracker.observe(_a(L.L0, 0.0), text).awaiting_confirmation
+
+
+# Written out rather than read from the module, so the test pins the list itself.
+@pytest.mark.parametrize("prefix", ["不", "没", "没有", "不是", "并非", "哪里"])
+def test_every_negating_prefix_blocks_every_confirm_phrase(tax, lex, prefix):
+    for cue in lex.cues("safety_confirm"):
+        for phrase in cue.patterns:
+            tracker = _in_crisis(tax, lex)
+            status = tracker.observe(_a(L.L0, 0.0), prefix + phrase)
+            assert status.awaiting_confirmation, prefix + phrase
+
+
+def test_only_the_exit_turn_reports_just_exited(tax, lex):
+    tracker = CrisisTracker(tax, lex)
+    assert not tracker.observe(_a(L.L0, 0.0), "今天吃了面").just_exited
+    assert not tracker.observe(_a(L.L2, 0.7), "x").just_exited
+    status = tracker.observe(_a(L.L0, 0.0), "我现在是安全的")
+    assert not status.awaiting_confirmation and not status.just_exited
+    assert not tracker.observe(_a(L.L1, 0.40), "x").just_exited
+    statuses = [tracker.observe(_a(L.L0, 0.0), "嗯") for _ in range(2)]
+    assert [s.just_exited for s in statuses] == [False, True]
+
+
+def test_safe_turns_remaining_is_zero_outside_a_crisis(tax, lex):
+    tracker = CrisisTracker(tax, lex)
+    assert tracker.observe(_a(L.L0, 0.0), "今天吃了面").safe_turns_remaining == 0
+
+
+_RAW_TAXONOMY = yaml.safe_load(
+    (Path(__file__).resolve().parents[2] / "olivia/data/taxonomy.yaml").read_text("utf-8")
+)
+
+
+def _with_ewma_streak(value):
+    data = copy.deepcopy(_RAW_TAXONOMY)
+    data["risk"]["ewma_streak"] = value
+    return Taxonomy(data)
+
+
+def test_tracker_streaks_must_be_positive_whole_numbers(lex):
+    CrisisTracker(_with_ewma_streak(1), lex)  # 1 is the smallest valid streak
+    for bad in (2.5, 0):
+        with pytest.raises(ValueError, match="ewma_streak"):
+            CrisisTracker(_with_ewma_streak(bad), lex)

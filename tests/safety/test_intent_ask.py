@@ -233,6 +233,33 @@ def test_affirmation_with_a_crisis_cue_is_still_affirmed():
     assert _answer("是的，我不想活了") is IntentAnswer.AFFIRMED
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "No, but sometimes I think about it",
+        "No,but I'm ok",  # no space before the unsure word
+        "No, but my debut was a mess",  # a whole word first, then the same letters in one
+        "No, my debut went fine, but the rebuttal did not",  # the whole word in the middle
+    ],
+)
+def test_an_english_unsure_word_voids_an_english_denial(text):
+    # An English hedge after an English "no" is not a denial, wherever it stands.
+    assert _answer(text) is IntentAnswer.UNCLEAR
+
+
+@pytest.mark.parametrize(
+    "text", ["No, I'm just nervous about my debut", "No, I'm just tired of my boss's attitude"]
+)
+def test_an_unsure_word_inside_another_word_does_not_void_a_denial(text):
+    # An unsure word counts as a whole word only, never inside another one ("debut").
+    assert _answer(text) is IntentAnswer.DENIED
+
+
+@pytest.mark.parametrize("text", ["啊不是", "哦没有"])
+def test_fillers_before_a_denial_are_dropped(text):
+    assert _answer(text) is IntentAnswer.DENIED
+
+
 # -- loader validation ----------------------------------------------------------------------
 
 PKG_LEX = Path(__file__).resolve().parents[2] / "olivia/data/lexicons"

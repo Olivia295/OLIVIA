@@ -510,6 +510,23 @@ def test_turn_thresholds_must_be_whole_numbers():
         step(Taxonomy(data), state(), turn())
 
 
+def test_a_turn_threshold_of_one_is_a_valid_whole_number():
+    raw = (Path(__file__).resolve().parents[2] / "olivia/data/taxonomy.yaml").read_text("utf-8")
+    data = yaml.safe_load(raw)
+    data["colbo"]["fsm"]["clarify_min_stage_turns"] = 1
+    t = step(Taxonomy(data), state(S.S_EXPLORE, turns=1), turn(arousal=0.4))
+    assert t.reason is Reason.EXPLORE_TO_CLARIFY
+
+
+def test_close_session_reports_the_stage_it_closed_and_copies_the_shelf():
+    for stage in (S.S_CLOSING, S.S_EXPLORE):
+        before = replace(state(stage), user_shelved_actions=["28"])
+        t = close_session(before)
+        assert t.previous is stage
+        assert t.state.user_shelved_actions == ["28"]
+        assert t.state.user_shelved_actions is not before.user_shelved_actions
+
+
 # --- properties -------------------------------------------------------------------------
 
 unit = st.floats(min_value=0.0, max_value=1.0, allow_nan=False)
@@ -784,6 +801,12 @@ def test_a_new_low_reading_beats_the_haven_exit_words():
     t = run(state(S.S_HAVEN, battery=0.05), turn(battery=0.10, haven_exit=True))
     assert t.state.current_stage is S.S_HAVEN and t.reason is Reason.STAY
     assert t.state.social_battery == 0.10
+
+
+def test_a_new_reading_exactly_at_haven_enter_beats_the_exit_words():
+    # haven_enter (0.20) itself is a low reading: the haven holds.
+    t = run(state(S.S_HAVEN, turns=3, battery=0.05), turn(battery=0.20, haven_exit=True))
+    assert t.state.current_stage is S.S_HAVEN and t.reason is Reason.STAY
 
 
 def test_a_higher_reading_with_the_words_leaves_with_that_reading():
