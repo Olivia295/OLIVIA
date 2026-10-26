@@ -381,6 +381,7 @@ def test_the_audit_passes_on_this_tree(capsys, keychain):
         "network-runtime",
         "health-cleared-shredded [switch-off]",
         "health-cleared-shredded [switch-on]",
+        "edit-and-reset-erase [switch-on]",
         "forget-all-clean [switch-on]",
     )
     for name in (*names, "stats-numbers-only [switch-off]"):

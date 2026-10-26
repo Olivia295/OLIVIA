@@ -98,3 +98,52 @@ def test_backspace_in_a_terminal_deletes_a_whole_character():
         os.close(fd)
     got = out.decode("utf-8", "replace").split("GOT", 1)[-1].split()[0]
     assert got == "\\u5417"  # 吗
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX terminals only")
+def test_a_long_pasted_line_in_a_terminal_is_read_whole():
+    """400 Chinese characters (1,200 bytes) pasted at once: more than a canonical-mode
+    terminal line holds (1,024 bytes on macOS), so before readline it hung."""
+    import pty
+
+    code = (
+        "import sys; from olivia import cli\n"
+        "line = cli._Console(sys.stdin, sys.stdout).ask('> ')\n"
+        "print('GOT', len(line), line == '一二三四五六七八九十' * 40)"
+    )
+    pid, fd = pty.fork()
+    if pid == 0:  # pragma: no cover - the child process
+        os.chdir(ROOT)
+        os.execv(sys.executable, [sys.executable, "-c", code])
+    out = b""
+
+    def drain(wait: float) -> bool:
+        """Read what is there; False once the child has closed the terminal."""
+        nonlocal out
+        while select.select([fd], [], [], wait)[0]:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                return False
+            if not chunk:
+                return False
+            out += chunk
+        return True
+
+    try:
+        deadline = time.monotonic() + 30
+        while b"> " not in out and time.monotonic() < deadline:
+            drain(0.1)
+        pasted = ("一二三四五六七八九十" * 40).encode() + b"\r"
+        while pasted:  # one paste, written as fast as the terminal takes it
+            written = os.write(fd, pasted)
+            pasted = pasted[written:]
+            drain(0)
+        while time.monotonic() < deadline and drain(0.1):
+            if b"GOT" in out and out.rstrip().endswith((b"True", b"False")):
+                break
+    finally:
+        os.waitpid(pid, 0)
+        os.close(fd)
+    got = out.decode("utf-8", "replace").split("GOT", 1)[-1].split()[:2]
+    assert got == ["400", "True"], out[-300:]

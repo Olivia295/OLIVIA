@@ -4,15 +4,20 @@
 # 菜单顺序、确认流程与删除方式都在代码里，这里只放文字。
 #
 # memory：只显示在屏幕上，不导出到任何文件。账本条目旧到新编号，每条是模板化小结、周记记录（B6）
-#   或用户让记住的原话；其余数据只说名字和有没有，从不显示健康信息与安全计划的内容（它们有各自的命令）。
-# forget：五个选项（一条记录、全部聊天记录、锦囊与方法偏好、安全计划、全部数据）；每次删除前都要
-#   输入 confirm_word 确认（--yes 跳过），输入结束即取消。
+#   或用户让记住的原话；其余数据只说名字和有没有，从不显示健康信息与安全计划的内容（它们有各自的命令），
+#   不想谈的话题只说个数（用 olivia profile 看）。方法偏好（PRD RSK-06）按小练习的中文名逐个列出，
+#   每个只配一句人话（preference_*），从不显示数字；序号供 olivia forget --method 使用。
+#   edit_*：olivia memory --edit 序号，只能改用户让记住的话；改完后旧内容和单条删除一样加密擦除。
+# forget：六个选项（一条记录、全部聊天记录、一个小练习的偏好、锦囊与方法偏好、安全计划、全部数据）；
+#   每次删除前都要输入 confirm_word 或 confirm_also 确认（--yes 跳过），其他输入或输入结束即取消。
 #   未成年人的拒绝记录（裁定 22）不含个人信息，一直保留；--all 时用 kept_minor 一句话说明。
 #
 # 槽位（只允许下列几个，加载时校验）：
 #   {n}      条目序号
 #   {count}  数量
 #   {date}   日期（YYYY-MM-DD）
+#   {title}  小练习的中文名（卡片标题）
+#   {status} 方法偏好的一句状态（preference_* 之一）
 #
 # 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
 # 不说教（不用“应该/必须/一定要”）、不用感叹号、不写任何电话号码。
@@ -27,33 +32,52 @@ memory:
   profile: 你的基本设置：称呼、地区、陪伴方式
   health: 健康信息：已经填写（用 olivia health 查看或修改）
   safety_plan: 个人安全计划：已经保存（用 olivia safety-plan 查看或修改）
+  taboo: 不想谈的话题：记着 {count} 个（用 olivia profile 查看或修改）
   kit: 锦囊：{count} 张卡
-  preferences: 方法偏好：记下了哪些小练习更适合你
+  preferences: 方法偏好：下面这些小练习，你说过合不合适（想单独重置其中一个，可以用 olivia forget --method 加序号）
+  preference_item: "{n}. {title}：{status}"
+  preference_unhelpful_recently: 最近说过不适合，会少推荐一段时间
+  preference_helpful: 说过有帮助，会多推荐一些
+  preference_recovered: 以前说过不适合，现在已经照常推荐了
   state_unreadable: 锦囊与方法偏好：存着一份，但现在打不开
   care: 一个关心提醒：下次聊天时先问候你一声，问候完就删掉
   nothing_else: 除此之外，这台电脑上没有存别的。
-  hint: 想让我忘掉其中一些，可以用 olivia forget。
+  hint: 想让我忘掉其中一些，可以用 olivia forget；想改一改你让我记住的话，可以用 olivia memory --edit 加序号。
   no_keychain: 这台电脑上没有可用的系统钥匙串，没办法把记忆加密保存，所以我没有记下我们聊过的任何内容。
   locked: 加密保存的记忆现在打不开：系统钥匙串没有响应。你的文件我没有改动，过一会儿再试试。
   adults_only: 这台电脑上没有存关于你的任何内容。
+  edit_current: 第 {n} 条，你让我记住的话现在是：
+  edit_prompt: 写下新的内容，最多 {count} 个字；直接回车，就先不改。
+  edit_too_long: 这段有点长，最多 {count} 个字，所以还没有改。可以缩短一点再写一次；直接回车，就先不改。
+  edit_not_note: 第 {n} 条是我按固定格式写下的记录，不是你的原话，所以不能改。不想留着它的话，可以用 olivia forget --entry {n} 删掉。
+  edit_about: 要把第 {n} 条改成你刚写的内容，原来的那段话会被加密擦除。
+  edit_done: 第 {n} 条已经改好了。原来的那段话已经加密擦除，留下的旧文件也再也打不开了。
+  edit_unchanged: 好，这条记录没有改动。
 
 forget:
   menu: 想让我忘掉哪些？输入序号；直接回车，就先不删。
   entry: 一条记录
   ledger: 全部聊天记录：每次聊天的小结、你让我记住的话、周记记录，以及关心提醒
+  method: 一个小练习的方法偏好
   kit: 锦囊与方法偏好
   safety_plan: 个人安全计划
   all: 全部数据，包括设置和健康信息；之后从第一次设置重新开始
   pick_entry: 要忘掉哪一条？输入它的序号；直接回车，就先不删。
+  pick_method: 要重置哪一个小练习的偏好？输入它的序号；直接回车，就先不改。
+  no_method: 没有第 {n} 个小练习的偏好记录。用 olivia memory 可以看到每一个的序号。
+  nothing_method: 还没有记下任何小练习的偏好。
+  about_method: 要重置「{title}」的偏好：忘掉你说过它合不合适，之后按一开始的样子推荐它。锦囊和别的小练习都不变。
+  done_method: 「{title}」的偏好已经重置了，留下的旧文件也再也打不开了。之后会按一开始的样子推荐它。
   unknown_choice: 没有认出这个序号，这次先不删了。
   no_entry: 没有第 {n} 条记录。用 olivia memory 可以看到每一条的序号。
-  about_entry: 要忘掉第 {n} 条记录。
+  about_entry: 要忘掉第 {n} 条记录：
   about_ledger: 要忘掉全部聊天记录：每次聊天的小结、你让我记住的话、周记记录，以及关心提醒。
   about_kit: 要忘掉锦囊里的卡，以及记下的方法偏好。
   about_safety_plan: 要删掉你的个人安全计划。
   about_all: 要忘掉这台电脑上的全部数据：设置、健康信息、聊天记录、锦囊、方法偏好和安全计划，加密用的钥匙也一起销毁；打开过的系统提醒也会关掉。之后再打开 olivia chat，会从第一次设置开始。
-  confirm: 删掉之后就找不回来了。确定的话，请输入「确认」；输入别的内容，就先不删。
+  confirm: 删掉之后就找不回来了。确定的话，请输入「确认」或「确定」；输入别的内容，就先不删。
   confirm_word: 确认
+  confirm_also: 确定
   cancelled: 好，这次什么都没有删。
   done_entry: 第 {n} 条记录已经删掉了，留下的加密文件也再也打不开了。
   done_entry_dropped: 另外还有 {count} 条早就打不开的记录，也一起清理掉了。

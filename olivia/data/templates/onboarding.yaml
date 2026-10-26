@@ -16,7 +16,7 @@
 #   {consent_sentence}            授权句，原样展示，用户需完整输入
 #   {sensitive_notice}            敏感个人信息告知（见下方 sensitive_notice），只用于两处授权提示
 #   {tokens}                      用户输入中没认出的编号
-#   {system_timezone}             这台电脑的时区（只用于 prompts.timezone_free）
+#   {system_timezone}             这台电脑的时区（只用于 timezone_free 的提示语和 hints.timezone_free_invalid）
 #
 # 写作约束：不出现诊断词（见 olivia/data/language/willow.yaml 的 diagnosis_terms）、
 # 不说教（不用“应该/必须/一定要”）、不用感叹号。健康信息选项的文字在 clinical_labels
@@ -97,7 +97,7 @@ prompts:
   timezone_free: |-
     再确认一下时区，这样我能知道你那边大概是白天还是深夜。
 
-    可以输入时区名称，例如 Europe/Paris 或 Asia/Singapore；直接按回车的话，就用这台电脑的时区（{system_timezone}）。
+    可以输入时区名称，例如 Europe/Paris 或 Asia/Singapore；输入「跳过」或直接按回车，就用这台电脑的时区（{system_timezone}）。
   clinical_consent: |-
     还有最后一个问题，完全可以跳过。
 
@@ -119,6 +119,26 @@ prompts:
     如果下面有和你相符的，告诉我的话，我会避开可能让你不舒服或不安全的练习，比如需要屏住呼吸、用冷水刺激身体，或者需要反复审视自己想法的练习。它们和刚才的信息一样加密保存，之后也可以随时用 olivia health 修改。
 
     输入序号，多个用逗号隔开；都不相符的话，直接按回车。
+
+# 回答没认出来时，在 hints 那一句之后只重复问题本身（试用问题 P1：输错一次就整段重印十几行说明）；
+# 选项照样列出。键与 prompts 一一对应，槽位同 prompts。
+reprompts:
+  disclaimer: 读完上面的说明，如果愿意继续，请选择「我已阅读并同意」。
+  age_gate: 请问你已经年满 18 周岁了吗？
+  age_confirm: 是确认未满 18 岁吗？刚才选错了的话，选 2 就能回去重新回答。
+  encryption: 这里的内容想怎么保存？拿不准的话，直接按回车，先只加密健康信息就好。
+  user_name: 你希望我怎么称呼你？直接按回车的话，我会叫你「朋友」。
+  agent_name: 你想怎么称呼我呢？直接按回车的话，我就还叫「Olivia」。
+  persona: 选一种陪伴方式：输入序号就可以；直接按回车，就用第一种。
+  taboo: 有没有不希望我主动提起的话题？可以写几个，用逗号或顿号隔开；没有的话，直接按回车就好。
+  region: 你平时主要在哪里生活？选一个序号就可以，不想说也完全没关系。
+  timezone_choice: 你那里用的是哪一个时区？选一个序号，或者直接输入时区名称。
+  timezone_free: 你那边用的是哪个时区？
+  clinical_consent: |-
+    那句话是：
+    {consent_sentence}
+  clinical_history: 下面这些里，有和你情况相符的吗？输入序号，多个用逗号隔开；都不相符的话，直接按回车。
+  contraindications: 下面这三种情况，有和你相符的吗？输入序号，多个用逗号隔开；都不相符的话，直接按回车。
 
 choices:
   disclaimer:
@@ -224,6 +244,8 @@ hints:
   persona_choice: "我没太认出这个选择。可以选一个序号（1 到 4），或者直接按回车，用第一种。"
   taboo_limits: "每个话题请控制在 {max_len} 个字以内，最多 {max_count} 个，可以再调整一下吗？"
   timezone_invalid: "我没有认出这个时区。可以选一个序号，或者按「大洲/城市」的格式再输入一次吗？例如 Asia/Singapore。"
+  # 选“其他地区”时屏幕上没有序号，所以不提序号（试用问题 P2）。
+  timezone_free_invalid: "我没有认出这个时区。可以按「大洲/城市」的格式再输入一次，例如 Asia/Singapore；输入「跳过」或直接按回车，就用这台电脑的时区（{system_timezone}）。"
   consent_unrecognized: "如果愿意记录，请完整输入那句话；不想记录的话，输入「跳过」就好。"
   clinical_unknown: "我没有在列表里找到「{tokens}」。可以从上面选序号吗？"
 

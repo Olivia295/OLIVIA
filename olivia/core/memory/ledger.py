@@ -48,7 +48,8 @@ Without a usable keychain the ledger is disabled: nothing is written, and operat
 raise :class:`LedgerUnavailableError`. :meth:`Ledger.shred` crypto-shreds the ``ledger``
 data key (``Vault.shred``) and deletes the entry files; :meth:`Ledger.forget_entry`
 crypto-shreds one entry by re-keying the rest through a staging store (``olivia forget``,
-step B5).
+step B5); :meth:`Ledger.edit_note` replaces a note's text the same way, so the old text is
+crypto-shredded too (``olivia memory --edit``).
 
 Entries that fail to decrypt or parse are skipped (``Ledger.skipped`` counts them);
 nothing here logs, and errors never carry entry text.
@@ -504,11 +505,49 @@ class Ledger:
         from step 2 on, the next :meth:`entries`, write or forget finishes steps 3-6 from
         the staged copies (:meth:`_finish_rekey`), each step being safe to repeat.
         """
+        return self._rekey(entry_id, None)
+
+    def edit_note(self, entry_id: str, text: str) -> int:
+        """Replace a note's text (``olivia memory --edit``, PRD feature 5) and crypto-shred
+        the old text, the same way :meth:`forget_entry` forgets an entry: the note is
+        re-sealed with its new text (same id and time) together with every other entry
+        under a fresh ``ledger`` key, so the old ciphertext never opens again.
+
+        Returns how many other entries could not be opened and were dropped on the way.
+        ``ValueError`` when the text is empty or over :data:`NOTE_MAX_CHARS`, or when
+        ``entry_id`` is not a readable note (a summary or journal record is written by
+        the program from ids and is never edited).
+        """
+        if not text.strip():
+            raise ValueError("a note cannot be empty")
+        if len(text) > NOTE_MAX_CHARS:
+            raise ValueError("the note is too long")
+        if not _ID.fullmatch(entry_id):
+            raise ValueError("not a ledger entry id")
+        try:
+            self._finish_rekey()
+            current = _parse(self.read_markdown(entry_id), entry_id)
+        except FileNotFoundError as exc:
+            raise ValueError("no such note") from exc
+        except (KeyMissingError, DecryptionError, UnicodeDecodeError) as exc:
+            raise ValueError("the note does not open") from exc
+        except KeychainUnavailableError as exc:
+            raise _unavailable(exc) from exc
+        if not isinstance(current, NoteEntry):
+            raise ValueError("only a note can be edited")
+        edited = NoteEntry(entry_id, text, current.created_at)
+        return self._rekey(entry_id, self.render(edited).encode("utf-8"))
+
+    def _rekey(self, entry_id: str, replacement: bytes | None) -> int:
+        """Steps 1-6 of :meth:`forget_entry`; ``entry_id``'s document is left out, or
+        replaced by ``replacement``."""
         if not _ID.fullmatch(entry_id):
             raise ValueError("not a ledger entry id")
         try:
             self._finish_rekey()
             kept: list[tuple[str, bytes]] = []
+            if replacement is not None:
+                kept.append((entry_id, replacement))
             dropped = 0
             for path in self.entry_paths():
                 if path.stem == entry_id:

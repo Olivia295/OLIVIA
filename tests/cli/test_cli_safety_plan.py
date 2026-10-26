@@ -13,6 +13,7 @@ from cli_support import L3_SENTENCE, NOW, save_profile
 
 from olivia.core.chang.safety_plan import (
     MAX_ENTRY_CHARS,
+    MAX_NAME_CHARS,
     SAFETY_PLAN_FILENAME,
     SAFETY_PLAN_STORE,
     SUGGESTED_FILENAME,
@@ -113,6 +114,66 @@ def test_fill_show_edit_clear_round_trip(run_cli, data_home):
 def _fill_count(out: str, key: str) -> int:
     text = CMD[key].replace("{max_chars}", str(MAX_ENTRY_CHARS))
     return out.count(text)
+
+
+def _people_only(run_cli, data_home, people_lines):
+    """Skip sections 1-3 and 5; ``people_lines`` are the replies in section 4."""
+    save_profile(data_home)
+    run = run_cli(["safety-plan"], ["", "", "", *people_lines, ""])
+    assert run.code == 0, run.out
+    return run
+
+
+def test_a_name_and_phone_on_one_line_are_both_saved(run_cli, data_home):
+    """Dogfood I10: "表姐 13800000000" was refused as too long, and the next Enter
+    skipped the section, so no contact was saved."""
+    run = _people_only(run_cli, data_home, ["表姐 13800000000", ""])
+    assert CMD["person_with_phone"].replace("{name}", "表姐") in run.out
+    assert CMD["person_phone"].replace("{name}", "表姐") not in run.out  # not asked again
+    assert _stored(data_home) == SafetyPlan(people=(Contact("表姐", "13800000000"),))
+
+
+def test_a_phone_number_alone_asks_for_the_name_and_keeps_the_number(run_cli, data_home):
+    run = _people_only(run_cli, data_home, ["13800000000", "表姐", ""])
+    assert CMD["name_for_phone"] in run.out
+    assert _stored(data_home) == SafetyPlan(people=(Contact("表姐", "13800000000"),))
+
+
+def test_a_long_name_is_explained_and_the_phone_kept(run_cli, data_home):
+    long_name = "楼上的王阿姨也就是妈妈的老朋友"
+    assert len(long_name) > MAX_NAME_CHARS
+    run = _people_only(run_cli, data_home, [f"{long_name} 13900000000", "王阿姨", ""])
+    assert CMD["name_too_long"].replace("{max_chars}", str(MAX_NAME_CHARS)) in run.out
+    assert _stored(data_home) == SafetyPlan(people=(Contact("王阿姨", "13900000000"),))
+
+
+def test_enter_after_a_long_name_says_it_was_not_saved_and_goes_on(run_cli, data_home):
+    """Never a silent drop: Enter after the too-long notice says so, then the section
+    goes on, so the next person can still be written."""
+    run = _people_only(run_cli, data_home, ["楼上的王阿姨也就是妈妈的老朋友", "", "阿青", "", ""])
+    assert CMD["entry_not_saved"] in run.out
+    assert _stored(data_home) == SafetyPlan(people=(Contact("阿青"),))
+
+
+def test_enter_after_a_long_entry_says_it_was_not_saved(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(
+        ["safety-plan"], ["听" * (MAX_ENTRY_CHARS + 1), "", "整夜睡不着觉", "", "", "", "", ""]
+    )
+    assert CMD["entry_not_saved"] in run.out
+    assert _stored(data_home) == SafetyPlan(warning_signs=("整夜睡不着觉",))
+
+
+def test_editing_an_empty_section_says_it_is_not_written_yet(run_cli, data_home):
+    """Dogfood P7: "现在写的是：" with nothing after it."""
+    save_profile(data_home)
+    SafetyPlanStore(data_home).save(SafetyPlan(warning_signs=("整夜睡不着觉",)))
+    run = run_cli(["safety-plan"], ["1", "4", "阿青", "", "", ""])
+    assert CMD["current_empty"] in run.out
+    assert CMD["current_heading"] not in run.out
+    assert _stored(data_home) == SafetyPlan(
+        warning_signs=("整夜睡不着觉",), people=(Contact("阿青"),)
+    )
 
 
 def test_skipping_everything_saves_nothing(run_cli, data_home):

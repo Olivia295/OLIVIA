@@ -61,16 +61,24 @@
     the mean self-rating change, the share of sessions whose rating rose and the answers
     to the journal's "was it helpful" question. Numbers only: no conversation text,
     names, spectra or exercise titles. Reads the ledger and writes nothing.
-``olivia memory``
+``olivia memory [--edit N]``
     What this device remembers, on screen only (``memory/forget.py``, B5): the ledger
     entries oldest first and numbered (templated summaries, notes verbatim), then the
-    other data by name only; never health details or the plan. Dates and times show in
-    the profile's current timezone (PRD Q-8, F11); what is stored is never rewritten.
-``olivia forget [--entry N | --ledger | --kit | --safety-plan | --all] [--yes]``
-    Forget one entry, every chat record, the kit and method preferences, the safety plan,
-    or everything (crypto-shredding; ``--all`` also deletes the keychain item, so the
-    next ``chat`` starts onboarding afresh). Without a flag, a numbered menu; every
-    deletion asks for a typed confirmation unless ``--yes``.
+    other data by name only (the taboo topics as a count); never health details or the
+    plan. The method preferences are listed one method at a time, by card title, each
+    with a plain sentence and never a number (PRD RSK-06). Dates and times show in the
+    profile's current timezone (PRD Q-8, F11); what is stored is never rewritten.
+    ``--edit N`` changes the words of note N (PRD feature 5): after the typed
+    confirmation the ledger is re-keyed, so the old words are crypto-shredded; a summary
+    or journal record cannot be edited (exit 2).
+``olivia forget [--entry N | --method N | --ledger | --kit | --safety-plan | --all] [--yes]``
+    Forget one entry, every chat record, one method's preference (``--method``, the
+    number ``olivia memory`` lists it under), the kit and method preferences, the safety
+    plan, or everything (crypto-shredding; ``--all`` also deletes the keychain item, so
+    the next ``chat`` starts onboarding afresh). Without a flag, a numbered menu; every
+    deletion shows what it removes and asks for a typed confirmation (「确认」 or
+    「确定」) unless ``--yes``. A number on the command line that names nothing is a wrong
+    value (exit 2).
 ``olivia privacy``
     A short privacy notice (``chang/privacy.py``, B8): what is stored where, always
     offline, what is encrypted, how to see and delete it. Reads and writes nothing.
@@ -94,7 +102,8 @@ neither lists the hidden ``notify-check``. Exit status, the same for every comma
 (README "退出码"): 0 when the command did what was asked (showing counts); 1 when nothing
 could be done (no profile yet, an under-18 refusal record, unreadable or locked data;
 ``chat`` that ends before a profile exists); 2 for a wrong command line (argparse, or an
-unknown region, timezone or persona). Ctrl-C exits like end of input at the same point:
+unknown region, timezone or persona, or a ``forget --entry``/``--method`` or ``memory
+--edit`` number that names nothing there). Ctrl-C exits like end of input at the same point:
 0 once a chat has started (it ends the conversation like ``/exit``) and in the other
 commands, 1 during onboarding. ``resources``, ``privacy`` and ``forget --all`` work
 without a profile.
@@ -173,6 +182,7 @@ from olivia.core.memory.forget import (
     DataStores,
     Target,
     load_forget_text,
+    run_edit,
     run_forget,
     run_memory,
 )
@@ -1088,6 +1098,7 @@ def _data_stores(profile: PersonaProfile | None) -> DataStores:
         method_titles=_card_titles(_taxonomy()),
         on_forget_all=(lambda: remove_reminders(notify_system.current_host(), base),),
         zone=_profile_zone(profile),
+        taxonomy=_taxonomy(),
     )
 
 
@@ -1099,14 +1110,20 @@ def _profile_quietly() -> tuple[bool, PersonaProfile | None]:
         return False, None
 
 
-def _memory(console: _Console) -> int:
-    """``olivia memory``: what is stored on this device, on screen only (B5)."""
+def _memory(console: _Console, edit: int | None, clock: Clock) -> int:
+    """``olivia memory``: what is stored on this device, on screen only (B5); with
+    ``--edit N``, change the words of note N (PRD feature 5)."""
     readable, profile = _profile_quietly()
     if readable and profile is None:
         console.say(NOT_SET_UP)
         return 1
-    code = run_memory(console.say, _data_stores(profile))
-    return 1 if profile is not None and profile.is_age_gate_refusal else code
+    if profile is not None and profile.is_age_gate_refusal:
+        console.say(load_forget_text().memory["adults_only"])
+        return 1
+    stores = _data_stores(profile)
+    if edit is not None:
+        return run_edit(lambda: console.ask(ANSWER_PROMPT), console.say, stores, edit)
+    return run_memory(console.say, stores, now=clock())
 
 
 _FORGET_FLAGS: Final = (
@@ -1117,7 +1134,7 @@ _FORGET_FLAGS: Final = (
 )
 
 
-def _forget(console: _Console, args: argparse.Namespace) -> int:
+def _forget(console: _Console, args: argparse.Namespace, clock: Clock) -> int:
     """``olivia forget``: the menu, or the target a flag names (B5)."""
     target = next((t for flag, t in _FORGET_FLAGS if getattr(args, flag)), None)
     readable, profile = _profile_quietly()
@@ -1134,7 +1151,9 @@ def _forget(console: _Console, args: argparse.Namespace) -> int:
         _data_stores(profile),
         target=target,
         entry=args.entry,
+        method=args.method,
         assume_yes=args.yes,
+        now=clock(),
     )
 
 
@@ -1380,13 +1399,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="序号（1–4）或简称，例如 2、温和、哲思、理性、树洞",
     )
     commands.add_parser("profile", help="查看或修改双方的称呼和不想谈的话题")
-    commands.add_parser("memory", help="查看 OLIVIA 在这台电脑上记得什么（只显示在屏幕上）")
+    memory = commands.add_parser(
+        "memory", help="查看 OLIVIA 在这台电脑上记得什么（只显示在屏幕上）"
+    )
+    memory.add_argument(
+        "--edit", type=int, metavar="序号", help="修改一条你让我记住的话（序号见 olivia memory）"
+    )
     forget = commands.add_parser("forget", help="让 OLIVIA 忘掉一条记录、一类数据或全部数据")
     which = forget.add_mutually_exclusive_group()
     which.add_argument(
         "--entry", type=int, metavar="序号", help="忘掉一条记录（序号见 olivia memory）"
     )
     which.add_argument("--ledger", action="store_true", help="忘掉全部聊天记录")
+    which.add_argument(
+        "--method",
+        type=int,
+        metavar="序号",
+        help="重置一个小练习的方法偏好（序号见 olivia memory 的“方法偏好”）",
+    )
     which.add_argument("--kit", action="store_true", help="忘掉锦囊与方法偏好")
     which.add_argument("--safety-plan", action="store_true", help="删掉个人安全计划")
     which.add_argument("--all", action="store_true", help="忘掉全部数据，之后从头开始")
@@ -1457,9 +1487,9 @@ def main(
         if args.command == "stats":
             return _stats(console, now)
         if args.command == "memory":
-            return _memory(console)
+            return _memory(console, args.edit, now)
         if args.command == "forget":
-            return _forget(console, args)
+            return _forget(console, args, now)
         if args.command == "privacy":
             return _privacy(console)
         if args.command == "settings":
