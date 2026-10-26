@@ -414,6 +414,11 @@ compositions:
   lookback: 3
   subject_window: 12
   negators: ["不", "没", "别", "未", "莫", "甭", "勿", "防止", "预防", "阻止"]
+  # An everyday reason denied is no reason (2026-10-26): an `unless` phrase with a negator
+  # (above, or these) ending at most `unless_negation_gap` characters before it in its
+  # clause does not void a match (我买好炭了，不是烧烤用的; 不是为了烧烤; 并非为了治病).
+  unless_negators: ["并非"]
+  unless_negation_gap: 3
   non_negators: ["忍不住", "受不了", "不得不", "不如", "要不", "不然", "不行", "不停", "不住",
                  "不知", "了不起", "不少", "说不定", "不管", "不了", "不禁", "不由", "舍不得",
                  "怪不得", "差不多", "不断", "不过", "没准", "没日没夜"]
@@ -541,7 +546,7 @@ compositions:
     # Taking a whole stock of pills at once.
     take_all: ["全吃", "全部吃", "都吃了", "都吃掉", "都吞", "全吞", "全部吞", "一次吃完", "一次性吃",
                "一口气吃", "一起吃下", "一次全", "吃光", "吞下去", "全喝"]
-    hoard_marks: ["攒够", "攒了", "攒好", "攒起来", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
+    hoard_marks: ["攒够", "攒了", "攒好", "攒起来", "攒着", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
                   "凑齐", "偷偷留"]
     pill_exceptions: ["药钱", "药费", "医药费", "药的钱", "药店", "药房", "药箱", "中药", "西药"]
     pill_everyday: ["感冒", "发烧", "退烧", "布洛芬", "医院", "医生", "疫情", "阳了", "慢性", "降压",
@@ -707,7 +712,7 @@ compositions:
     - id: L2_MEANS_HOARDED
       level: L2
       heads: ["药", "药片", "药丸"]
-      tails: ["攒够", "攒了", "攒好", "攒起来", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
+      tails: ["攒够", "攒了", "攒好", "攒起来", "攒着", "攒齐", "囤够", "囤好", "囤起来", "存够", "凑够",
               "凑齐", "偷偷留"]
       max_gap: 4
       order: either

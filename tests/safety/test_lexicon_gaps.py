@@ -366,3 +366,44 @@ def test_raised_cues_are_the_farewell_family() -> None:
     assert "ASK_INTENT_LAST_TIME" in raised and "ASK_INTENT_AFFAIRS_ARRANGED" in raised
     assert not any(cue.startswith("ASK_INTENT_SELF_INJURY") for cue in raised)
     assert all(e.ask for e in LEX.compositions.entries if e.raise_with_risk)
+
+
+# -- an everyday reason denied is no reason ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "level"),
+    [
+        ("我买好炭了，不是烧烤用的", L.L3),
+        ("炭买好了，不是用来烤肉的，今晚", L.L3),
+        ("炭买好了，并非为了取暖", L.L3),
+        ("药我都攒着呢，不是为了治病", L.L2),
+    ],
+)
+def test_a_negated_unless_phrase_does_not_void(text: str, level: L) -> None:
+    assert SCREEN.assess(text).level >= level, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["买好炭了，周末烧烤", "让我周末不用再醒那么早", "感冒药都攒着呢", "炭买好了，周六去河边烤肉"],
+)
+def test_a_plain_unless_phrase_still_voids(text: str) -> None:
+    # A negator inside the match itself (不用再醒) never denies the reason after it.
+    assert SCREEN.assess(text).level < L.L2, text
+
+
+def test_unless_negators_may_not_repeat_the_negators(tmp_path) -> None:  # noqa: ANN001
+    import shutil
+    from importlib import resources
+
+    src = resources.files("olivia").joinpath("data/lexicons")
+    for name in ("risk.yaml", "red_flags.yaml", "perception.yaml"):
+        shutil.copy(str(src.joinpath(name)), tmp_path / name)
+    risk = tmp_path / "risk.yaml"
+    text = risk.read_text(encoding="utf-8")
+    old = '  unless_negators: ["并非"]\n'
+    assert old in text
+    risk.write_text(text.replace(old, '  unless_negators: ["并非", "不"]\n'), encoding="utf-8")
+    with pytest.raises(LexiconError, match="unless_negators"):
+        load_safety_lexicons(TAX, tmp_path)

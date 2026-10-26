@@ -60,7 +60,16 @@ _COMP_GLOBAL_LISTS: Final = (
     "listeners",
 )
 _COMP_KEYS: Final = frozenset(
-    {"stops", "lookback", "subject_window", "lists", "entries", *_COMP_GLOBAL_LISTS}
+    {
+        "stops",
+        "lookback",
+        "subject_window",
+        "unless_negation_gap",
+        "unless_negators",
+        "lists",
+        "entries",
+        *_COMP_GLOBAL_LISTS,
+    }
 )
 _COMP_PHRASE_KEYS: Final = (
     "heads",
@@ -189,6 +198,11 @@ class CompositionRules:
     negators: tuple[str, ...] = ()
     non_negators: tuple[str, ...] = ()
     """Words that contain a negator without negating anything (忍不住, 要不, 差不多)."""
+    unless_negators: tuple[str, ...] = ()
+    """Negators beyond ``negators`` (并非) that void an ``unless`` phrase right after them."""
+    unless_negation_gap: int = 0
+    """How many characters may stand between a negator and an ``unless`` phrase it voids
+    (不是为了烧烤: an everyday reason denied is no everyday reason)."""
     selves: tuple[str, ...] = ()
     others: tuple[str, ...] = ()
     recipients: tuple[str, ...] = ()
@@ -568,6 +582,15 @@ def _parse_compositions(
     shared = {
         name: _normalized_list(node.get(name), f"{where} {name}") for name in _COMP_GLOBAL_LISTS
     }
+    unless_negators: tuple[str, ...] = ()
+    if "unless_negators" in node:
+        unless_negators = _normalized_list(node["unless_negators"], f"{where} unless_negators")
+        clash = sorted(set(unless_negators) & set(shared["negators"]))
+        if clash:
+            raise LexiconError(f"{where}: unless_negators {clash} are already negators")
+    unless_gap = _bounded_int(
+        node.get("unless_negation_gap", 0), 0, 8, f"{where} unless_negation_gap"
+    )
     raw_lists = node.get("lists", {})
     if not isinstance(raw_lists, dict):
         raise LexiconError(f"{where}: 'lists' must be a mapping")
@@ -585,6 +608,8 @@ def _parse_compositions(
         subject_window=subject_window,
         negators=shared["negators"],
         non_negators=shared["non_negators"],
+        unless_negators=unless_negators,
+        unless_negation_gap=unless_gap,
         selves=shared["selves"],
         others=shared["others"],
         recipients=shared["recipients"],
