@@ -25,6 +25,13 @@ the vault finishes an interrupted rotation. A master key is created only on the 
 seal, and never while wrapped keys exist without one, so a keychain that is reset or
 briefly answers "no such item" can never cause a silent overwrite of a lost master.
 
+Another process may change the keys under a vault that holds them in memory (a
+``forget`` in a second terminal rotates the master key and re-keys a store). Only one
+OLIVIA process writes a data directory at a time (:mod:`olivia.core.datalock`); as a
+second line of defence a vault re-reads a store's key file whenever it changed on disk
+since it was read, and re-reads the master key from the keychain before it wraps a new
+data key, so it never seals under a key that is no longer the one on disk.
+
 Nothing here logs, and keychain item names are fixed constants: user text never reaches
 the keychain or an error message.
 """
@@ -39,7 +46,12 @@ from pathlib import Path
 from typing import Final
 
 from olivia.core.crypto import aead, keychain
-from olivia.core.crypto.errors import DecryptionError, KeychainUnavailableError, KeyMissingError
+from olivia.core.crypto.errors import (
+    DecryptionError,
+    KeychainUnavailableError,
+    KeyFileUnreadableError,
+    KeyMissingError,
+)
 from olivia.core.storage import atomic_write_bytes, remove_file
 
 MASTER_ITEM: Final = "master-key"
@@ -104,6 +116,18 @@ def key_file_intact(base_dir: Path, store: str) -> bool:
     )
 
 
+_Signature = tuple[int, int, int]
+
+
+def _signature(path: Path) -> _Signature | None:
+    """What changes when another process rewrites or removes ``path``."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return st.st_ino, st.st_size, st.st_mtime_ns
+
+
 class Vault:
     """Seal and open data for named stores under ``base_dir``.
 
@@ -118,6 +142,8 @@ class Vault:
         self._masters: dict[bytes, bytes] = {}
         self._current: _Master | None = None
         self._deks: dict[str, bytes] = {}
+        self._signatures: dict[str, _Signature | None] = {}
+        """Each cached data key's key file as it was when read or written."""
 
     def available(self) -> bool:
         """Whether the keychain answers now (a cheap read; nothing is created)."""
@@ -148,10 +174,22 @@ class Vault:
     def has_data_key(self, store: str) -> bool:
         return self._key_path(store).is_file()
 
+    def has_data_keys(self) -> bool:
+        """Whether any store has a wrapped key here (so a master key exists somewhere)."""
+        return bool(self._key_files())
+
+    def check_data_key(self, store: str) -> None:
+        """Raise unless ``store``'s data key opens now: :class:`KeyMissingError` (none, or
+        its master is gone), :class:`DecryptionError` (the key file is damaged) or
+        :class:`KeychainUnavailableError`. Nothing is created."""
+        aead.check_identifier(store)
+        self._data_key(store, create=False)
+
     def shred(self, store: str) -> None:
         """Make everything sealed for ``store`` permanently unreadable."""
         path = self._key_path(store)
         self._deks.pop(store, None)
+        self._signatures.pop(store, None)
         remove_file(path)
         if self._key_files():
             self.rotate_master_key()
@@ -165,6 +203,7 @@ class Vault:
         any, is raised afterwards.
         """
         self._deks.clear()
+        self._signatures.clear()
         try:
             for _, path in self._key_files():
                 remove_file(path)
@@ -243,25 +282,50 @@ class Vault:
         self._current = master
         return master
 
+    def _forget_cached_keys(self) -> None:
+        """Drop every key held in memory; the next use reads the keychain and disk again."""
+        self._loaded = False
+        self._masters, self._current = {}, None
+        self._deks.clear()
+        self._signatures.clear()
+
     def _data_key(self, store: str, *, create: bool) -> bytes:
+        path = self._key_path(store)
         cached = self._deks.get(store)
         if cached is not None:
-            return cached
+            if self._signatures.get(store) == _signature(path):
+                return cached
+            self._forget_cached_keys()  # another process changed the keys meanwhile
         self._load()
-        path = self._key_path(store)
         if path.is_file():
             _, dek = self._unwrap(path, store)
         elif not create:
             raise KeyMissingError("this store has no data key")
         else:
+            self._reload_if_master_changed()
             master = self._current_or_new_master()
             dek = aead.new_key()
             self._write_wrapped(path, store, dek, master)
         self._deks[store] = dek
+        self._signatures[store] = _signature(path)
         return dek
 
+    def _reload_if_master_changed(self) -> None:
+        """Before wrapping a new data key: is the master in memory still the keychain's?"""
+        current_raw = self._backend.get(MASTER_ITEM)
+        on_keychain = _decode_master(current_raw).key_id if current_raw is not None else None
+        held = self._current.key_id if self._current is not None else None
+        if on_keychain != held or self._backend.get(NEXT_MASTER_ITEM) is not None:
+            self._forget_cached_keys()
+            self._load()
+
     def _unwrap(self, path: Path, store: str) -> tuple[bytes, bytes]:
-        raw = path.read_bytes()
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError as exc:
+            raise KeyMissingError("this store has no data key") from exc
+        except OSError as exc:
+            raise KeyFileUnreadableError("a wrapped data key cannot be read") from exc
         if (
             len(raw) <= _KEY_HEADER
             or raw[: len(_KEY_MAGIC)] != _KEY_MAGIC
@@ -285,3 +349,5 @@ class Vault:
         body = aead.seal_bytes(master.key, dek, store=store, label=_wrap_label(master.key_id))
         header = _KEY_MAGIC + bytes([aead.FORMAT_VERSION]) + master.key_id
         atomic_write_bytes(path, header + body, snapshot=False)
+        if store in self._deks:
+            self._signatures[store] = _signature(path)

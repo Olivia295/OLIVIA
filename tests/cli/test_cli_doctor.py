@@ -32,11 +32,18 @@ TYPED = ("青禾", "阿屿", "老家的房子", "相亲")
 
 
 def _tree(home: Path) -> dict[str, bytes | None]:
-    """Every path under ``home`` (directories as None) with its contents."""
+    """Every path under ``home`` (directories as None) with its contents.
+
+    A held lock file is listed but not read: Windows refuses to read a locked byte.
+    """
+    from olivia.core.datalock import LOCK_FILENAME
+
     if not home.exists():
         return {}
     return {
-        p.relative_to(home).as_posix(): (p.read_bytes() if p.is_file() else None)
+        p.relative_to(home).as_posix(): (
+            p.read_bytes() if p.is_file() and p.name != LOCK_FILENAME else None
+        )
         for p in sorted(home.rglob("*"))
     }
 
@@ -343,3 +350,46 @@ def test_a_leftover_reminder_is_a_warning(doctor, data_home, machine):
 def test_doctor_is_in_the_sentence_list():
     for text in cli.DOCTOR_TEXTS:
         assert text in cli.USER_TEXTS
+
+
+# -- the data-integrity markers (robustness fixes) ------------------------------------------
+
+
+def test_another_olivia_running_is_shown_and_the_lock_is_left_alone(run_cli, doctor, data_home):
+    from olivia.core.datalock import LOCK_FILENAME, DataDirLock
+
+    assert run_cli(["chat", "--rules"], CHAT).code == 0
+    assert all(cli.DOCTOR_BUSY not in line for line in doctor().lines)
+    with DataDirLock(data_home):
+        run = doctor()  # read-only and lock-free: it runs beside a chat
+        assert _line(run, "另一个 OLIVIA 正在运行") == f"{WARN} {cli.DOCTOR_BUSY}"
+        assert (data_home / LOCK_FILENAME).is_file()
+        assert run.code == 0, run.out
+    assert not (data_home / LOCK_FILENAME).exists()
+
+
+def test_an_unfinished_forget_all_fails_and_names_the_way_out(run_cli, doctor, data_home):
+    from olivia.core.memory.forget import FORGET_ALL_MARKER
+
+    assert run_cli(["chat", "--rules"], CHAT).code == 0
+    (data_home / FORGET_ALL_MARKER).write_bytes(b"")
+    (data_home / FORGET_ALL_MARKER).chmod(0o600)
+    run = doctor()  # not refused like the other commands: it is how to find out
+    assert _line(run, "上一次「全部忘掉」") == f"{FAIL} {cli.DOCTOR_FORGET_UNFINISHED}"
+    assert run.code == 1
+
+
+def test_a_recovery_not_yet_told_is_a_warning_and_stays_untold(run_cli, doctor, data_home):
+    from olivia.core.chang.profile import RECOVERED_FILENAME
+
+    save_profile(data_home)
+    save_profile(data_home, user_name="阿屿")
+    main = data_home / PROFILE_FILENAME
+    main.write_bytes(main.read_bytes()[:20])
+    run_cli(["notify-check"])  # loads the profile, recovers it, tells no one
+    assert (data_home / RECOVERED_FILENAME).is_file()
+    run = doctor()
+    assert _line(run, "设置文件坏过") == f"{WARN} {cli.DOCTOR_RECOVERED}"
+    told = run_cli(["persona"])
+    assert any(line.startswith("设置文件坏了") for line in told.lines)  # doctor did not take it
+    assert all(cli.DOCTOR_RECOVERED not in line for line in doctor().lines)

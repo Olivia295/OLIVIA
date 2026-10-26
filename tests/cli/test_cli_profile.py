@@ -149,7 +149,7 @@ def test_a_save_that_fails_is_reported(run_cli, data_home, monkeypatch):
 
     monkeypatch.setattr(ProfileStore, "save", locked)
     run = run_cli(["profile"], ["1", "林林"])
-    assert run.code == 1 and run.lines[-1] == cli.PROFILE_LOCKED
+    assert run.code == 1 and run.lines[-1] == cli.PROFILE_LOCKED_NOW
 
 
 def test_before_onboarding_and_for_a_minor(run_cli, data_home):

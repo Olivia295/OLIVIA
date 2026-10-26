@@ -18,7 +18,12 @@
   (``student.try_load_student``; nothing is cached);
 * the built-in hotline data's signature and compiled date, and whether a signed update
   in ``<data dir>/resources/`` is used (``bundle.load_hotlines_bytes``);
-* whether the reminder job is installed (``jobs.installed``).
+* whether the reminder job is installed (``jobs.installed``);
+* what the data directory's markers say (robustness fixes): another OLIVIA holding the
+  data directory's lock (``datalock.held_elsewhere``: tried and let go, nothing created),
+  a ``forget --all`` that did not finish (``forget-all.pending``), and a profile recovered
+  from a snapshot that the user has not been told about yet (``profile.recovered``). The
+  lock file and both markers are OLIVIA's own and hold no user data.
 
 Nothing here reads a store's contents or a keychain item, so no user text, name, topic,
 health code or plan can reach the report: it holds states, dates, counts and versions.
@@ -36,10 +41,17 @@ from pathlib import Path
 from typing import Final, Literal
 
 from olivia.core.chang.care import CARE_FILENAME, CARE_STORE
-from olivia.core.chang.profile import PROFILE_FILENAME, PROFILE_STORE, profile_shape
+from olivia.core.chang.profile import (
+    PROFILE_FILENAME,
+    PROFILE_STORE,
+    profile_shape,
+    recovery_pending,
+)
 from olivia.core.chang.safety_plan import SAFETY_PLAN_FILENAME, SAFETY_PLAN_STORE
 from olivia.core.crypto import aead, keychain
 from olivia.core.crypto.vault import key_file_intact
+from olivia.core.datalock import held_elsewhere
+from olivia.core.memory.forget import forget_all_unfinished
 from olivia.core.memory.ledger import LEDGER_STORE, entry_files
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE
 from olivia.core.perception import student
@@ -103,6 +115,16 @@ class HotlineFacts:
 
 
 @dataclass(frozen=True)
+class Activity:
+    busy: bool = False
+    """Another OLIVIA holds the data directory's lock now."""
+    forget_unfinished: bool = False
+    """A ``forget --all`` was interrupted and waits to be run again."""
+    recovered: bool = False
+    """The profile was recovered from a snapshot and the user has not been told yet."""
+
+
+@dataclass(frozen=True)
 class Report:
     data_dir: DataDir
     keychain: keychain.Probe
@@ -113,6 +135,7 @@ class Report:
     """Why the packaged student is unavailable; None when it loaded and verified."""
     hotlines: HotlineFacts
     reminders: bool | None
+    activity: Activity = Activity()
 
 
 def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
@@ -134,6 +157,15 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
         model_reason=student.try_load_student().reason,
         hotlines=_hotlines(base, today),
         reminders=jobs.installed(host()),
+        activity=_activity(base) if kind == "dir" else Activity(),
+    )
+
+
+def _activity(base: Path) -> Activity:
+    return Activity(
+        busy=held_elsewhere(base),
+        forget_unfinished=forget_all_unfinished(base),
+        recovered=recovery_pending(base),
     )
 
 

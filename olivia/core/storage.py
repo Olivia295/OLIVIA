@@ -5,6 +5,16 @@ snapshot the current file, write a temporary sibling, fsync, then rename it
 over the target. A crash at any point leaves either the previous or the new
 content intact, and up to :data:`SNAPSHOT_KEEP` older versions can be used to
 recover from a corrupted main file.
+
+A writer killed between creating its temporary sibling and renaming it leaves
+``.<name>.<random>.tmp`` behind, possibly holding plaintext (robustness finding S4). Every
+write removes the stray temporary files of its own target first: all of them while this
+process holds the data directory's lock (:mod:`olivia.core.datalock`: no other writer can
+be mid-write), otherwise only those older than :data:`STRAY_TEMP_AGE`.
+
+A file the operating system refuses to read (a directory in its place, no permission) is
+not "damaged": :func:`read_with_recovery` raises :class:`StorageAccessError` instead of
+falling back to an older snapshot, which a later save could then never replace.
 """
 
 from __future__ import annotations
@@ -16,12 +26,17 @@ import shutil
 import tempfile
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
 import platformdirs
 
+from olivia.core import datalock
+
 SNAPSHOT_KEEP: Final = 3
+STRAY_TEMP_AGE: Final = 3600.0
+"""Seconds after which a temporary file is a crashed writer's even without the lock."""
 
 _SNAPSHOT_DIR: Final = ".snapshots"
 _PRIVATE_MODE: Final = 0o600  # user data is owner-only on POSIX (ignored on Windows)
@@ -31,6 +46,11 @@ _SNAPSHOT_SUFFIX: Final = re.compile(r"(\d+)(?:\.(\d+))?")
 
 class StorageCorruptError(Exception):
     """The file and all of its snapshots exist but none is valid."""
+
+
+class StorageAccessError(OSError):
+    """A data file exists but the operating system will not read it (a directory in
+    its place, missing permissions); nothing was changed."""
 
 
 def data_dir_location() -> Path:
@@ -75,6 +95,40 @@ def snapshot_paths(path: Path) -> list[Path]:
     ]
     keyed.sort(key=lambda item: item[0], reverse=True)
     return [entry for _, entry in keyed]
+
+
+def snapshot_time(snapshot: Path) -> datetime | None:
+    """When ``snapshot`` was taken (UTC); None if it is not one of ours."""
+    if snapshot.parent.parent.name != _SNAPSHOT_DIR:
+        return None
+    key = _snapshot_key(snapshot)
+    return None if key is None else datetime.fromtimestamp(key[0] / 1e9, UTC)
+
+
+def _temp_prefix(path: Path) -> str:
+    return f".{path.name}."
+
+
+def remove_stray_temps(path: Path) -> None:
+    """Delete the temporary siblings a killed write of ``path`` left behind (only names
+    :func:`atomic_write_bytes` makes for this very file). Without the data directory's
+    lock, a fresh one may be another process's write in progress, so it stays."""
+    directory = path.parent
+    if not directory.is_dir():
+        return
+    locked = datalock.held(directory)
+    prefix = _temp_prefix(path)
+    try:
+        candidates = [p for p in directory.iterdir() if p.name.startswith(prefix)]
+    except OSError:
+        return
+    now = time.time()
+    for stray in candidates:
+        if not stray.name.endswith(".tmp") or len(stray.name) <= len(prefix) + len(".tmp"):
+            continue
+        with contextlib.suppress(OSError):
+            if locked or now - stray.lstat().st_mtime > STRAY_TEMP_AGE:
+                stray.unlink()
 
 
 def _take_snapshot(path: Path) -> None:
@@ -129,10 +183,11 @@ def atomic_write_bytes(path: Path, data: bytes, *, snapshot: bool = True) -> Non
     crypto-shredding.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    remove_stray_temps(path)
     if snapshot and path.exists():
         _take_snapshot(path)
     # mkstemp creates the file 0o600 and uniquely named; os.replace carries that mode over.
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=_temp_prefix(path), suffix=".tmp")
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -160,29 +215,59 @@ def remove_file(path: Path) -> None:
     _fsync_directory(path.parent)
 
 
+def read_bytes_if_present(path: Path) -> bytes | None:
+    """The file's bytes; None when it does not exist.
+
+    Raises :class:`StorageAccessError` when it exists but cannot be read.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise StorageAccessError(f"{path.name} exists but cannot be read") from exc
+
+
 def _read_utf8(path: Path) -> str | None:
-    """File contents, or None if the file is missing or not valid UTF-8."""
+    """File contents, or None if the file is missing or not valid UTF-8 (a snapshot that
+    cannot be read counts as missing)."""
     try:
         return path.read_bytes().decode("utf-8")
-    except (FileNotFoundError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError):
         return None
 
 
-def read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str:
-    """Return the main file if valid, else the newest valid snapshot.
+def read_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> tuple[str, Path]:
+    """The main file if valid, else the newest valid snapshot; and which one it was.
 
-    Raises ``FileNotFoundError`` if neither the file nor any snapshot exists and
+    Raises ``FileNotFoundError`` if neither the file nor any snapshot exists,
+    :class:`StorageAccessError` if the main file exists but cannot be read (no snapshot
+    is used then: the file is not damaged and a later save could not replace it), and
     :class:`StorageCorruptError` if versions exist but none is valid.
     """
-    found_any = False
-    for candidate in (path, *snapshot_paths(path)):
-        text = _read_utf8(candidate)
-        if text is None:
+    main = read_bytes_if_present(path)
+    found_any = main is not None
+    if main is not None:
+        try:
+            text = main.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        else:
+            if is_valid(text):
+                return text, path
+    for candidate in snapshot_paths(path):
+        snap = _read_utf8(candidate)
+        if snap is None:
             found_any = found_any or candidate.exists()
             continue
         found_any = True
-        if is_valid(text):
-            return text
+        if is_valid(snap):
+            return snap, candidate
     if not found_any:
         raise FileNotFoundError(path)
     raise StorageCorruptError(f"no valid version of {path} or its snapshots")
+
+
+def read_text_with_recovery(path: Path, is_valid: Callable[[str], bool]) -> str:
+    """:func:`read_with_recovery` without saying which version it read."""
+    return read_with_recovery(path, is_valid)[0]

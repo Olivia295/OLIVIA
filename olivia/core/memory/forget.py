@@ -37,7 +37,13 @@ menu or by a flag (:class:`Target`):
    removed (:data:`DATA_FILES`, :data:`DATA_DIRS`, stray temporary files), the profile
    and its snapshots included, so the next ``olivia chat`` starts onboarding afresh;
    first, the ``on_forget_all`` hooks run (the CLI passes the B9 one, which removes the
-   reminder job and its "last notified" file).
+   reminder job and its "last notified" file). The empty marker :data:`FORGET_ALL_MARKER`
+   is written before anything goes and removed after the last file, so a run that was
+   killed half-way is recognised (robustness E2: the CLI then asks for ``forget --all``
+   again instead of reporting a keychain that does not answer). Without any keychain in
+   this session while key files exist, the master key sits in a keychain that cannot be
+   reached: the files still go, and the user is told to run it again where the keychain
+   works (robustness S5).
 
 Options 1-5 crypto-shred: the store's data key is destroyed and the master key rotated
 (``Vault.shred``), so a copy of the old ciphertext, or of the old key file, never opens
@@ -77,6 +83,7 @@ from olivia.core.chang.care import CARE_FILENAME, CARE_STORE, CareStore
 from olivia.core.chang.profile import (
     PROFILE_FILENAME,
     PROFILE_REKEY_FILENAME,
+    RECOVERED_FILENAME,
     ProfileCorruptError,
     ProfileLockedError,
     ProfileStore,
@@ -85,6 +92,7 @@ from olivia.core.chang.safety_plan import (
     SAFETY_PLAN_FILENAME,
     SAFETY_PLAN_STORE,
     SUGGESTED_FILENAME,
+    SafetyPlanDamagedError,
     SafetyPlanStore,
 )
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
@@ -106,13 +114,14 @@ from olivia.core.memory.preferences import (
 )
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, CarriedState, StateStore
 from olivia.core.models import PersonaProfile
-from olivia.core.storage import app_data_dir, remove_file
+from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 from olivia.core.yaml_load import safe_load
 
 DATA_FILES: Final = (
     PROFILE_FILENAME,
     PROFILE_REKEY_FILENAME,
+    RECOVERED_FILENAME,
     CARE_FILENAME,
     STATE_FILENAME,
     SAFETY_PLAN_FILENAME,
@@ -121,6 +130,8 @@ DATA_FILES: Final = (
 """Files directly in the data directory that ``forget --all`` removes."""
 DATA_DIRS: Final = (LEDGER_DIRNAME, KEYS_DIRNAME, ".snapshots")
 """Directories in the data directory that ``forget --all`` empties and removes."""
+FORGET_ALL_MARKER: Final = "forget-all.pending"
+"""Empty; present only while a ``forget --all`` is under way (or was killed during one)."""
 
 _TEXT_FILE: Final = "forget.yaml"
 _SLOT_RE: Final = re.compile(r"\{([^{}]*)\}")
@@ -134,6 +145,7 @@ _MEMORY_KEYS: Final = (
     "profile",
     "health",
     "safety_plan",
+    "safety_plan_unreadable",
     "taboo",
     "kit",
     "preferences",
@@ -188,6 +200,8 @@ _FORGET_KEYS: Final = (
     "done_safety_plan",
     "done_all",
     "keychain_left",
+    "keychain_unreachable",
+    "unfinished",
     "nothing_entry",
     "nothing_ledger",
     "nothing_kit",
@@ -423,7 +437,7 @@ def _other_lines(
     if profile is not None and (profile.clinical_history or profile.contraindications):
         found.append(f"- {m['health']}")
     if stores.plan.exists():
-        found.append(f"- {m['safety_plan']}")
+        found.append(f"- {m[_plan_key(stores.plan)]}")
     state, preferences = _preferences(stores, now)
     if state is not None:
         if state.kit:
@@ -436,6 +450,16 @@ def _other_lines(
     if stores.care.path.is_file():
         found.append(f"- {m['care']}")
     return found
+
+
+def _plan_key(plan: SafetyPlanStore) -> str:
+    """Saved, or saved but not opening now (robustness E3: never "saved" for a file that
+    the keychain, its key or the system will not open)."""
+    try:
+        plan.load()
+    except (KeychainUnavailableError, SafetyPlanDamagedError):
+        return "safety_plan_unreadable"
+    return "safety_plan"
 
 
 def run_memory(
@@ -548,22 +572,31 @@ def _remove_dirs(base: Path) -> None:
 def forget_all(stores: DataStores, *, keep: frozenset[Path] = frozenset()) -> bool:
     """Destroy every key, then remove every file except ``keep`` (plaintext files only:
     the age-gate refusal record); False when the keychain item remains (the keychain
-    did not answer: the files are gone and nothing left opens, but the master key could
-    not be deleted yet)."""
+    did not answer, or there is none in this session although key files existed: the
+    files are gone and nothing left opens, but the master key could not be deleted)."""
+    marker = stores.base / FORGET_ALL_MARKER
+    atomic_write_bytes(marker, b"", snapshot=False)
     for hook in stores.on_forget_all:
         hook()
+    had_keys = stores.vault.has_data_keys()
     cleared = True
     try:
         stores.vault.shred_all()
     except NoKeychainError:
-        pass  # no keychain here, so no master key to delete
+        cleared = not had_keys  # no keys, no master key; with keys, one we cannot reach
     except KeychainUnavailableError:
         cleared = False
     for path in list(_owned_paths(stores.base)):
         if path not in keep:
             remove_file(path)
     _remove_dirs(stores.base)
+    remove_file(marker)
     return cleared
+
+
+def forget_all_unfinished(base: Path) -> bool:
+    """Whether a ``forget --all`` in ``base`` was interrupted (robustness E2)."""
+    return (base / FORGET_ALL_MARKER).is_file()
 
 
 def _has_any(stores: DataStores, target: Target) -> bool:
@@ -749,6 +782,7 @@ class _Command:
                 hook()  # the reminder job, should it outlive the data
             with contextlib.suppress(KeychainUnavailableError):
                 self.stores.vault.shred_all()  # a master key left behind, if any
+            remove_file(self.stores.base / FORGET_ALL_MARKER)  # killed after the last file
             self.say(self.f["nothing_all"])
             return 0
         if not self._confirmed(self.f["about_all"], assume_yes):
@@ -756,8 +790,15 @@ class _Command:
         if forget_all(self.stores):
             self.say(self.f["done_all"])
             return 0
-        self.say(self.f["keychain_left"])
+        self.say(self._keychain_left())
         return 1
+
+    def _keychain_left(self) -> str:
+        """Why the master key is still in the keychain: it did not answer, or there is
+        no keychain in this session at all (S5)."""
+        if _keychain(self.stores.vault) is _Keychain.NONE:
+            return self.f["keychain_unreachable"]
+        return self.f["keychain_left"]
 
     def _all_minor(self, assume_yes: bool) -> int:
         """``--all`` on a device holding the age-gate refusal record (ruling 22): remove
@@ -771,7 +812,7 @@ class _Command:
             if forget_all(self.stores, keep=frozenset({record})):
                 self.say(self.f["done_all_minor"])
             else:
-                self.say(self.f["keychain_left"])
+                self.say(self._keychain_left())
                 code = 1
         self.say(self.f["kept_minor"])
         return code

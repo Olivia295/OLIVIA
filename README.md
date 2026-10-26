@@ -75,10 +75,14 @@ pipx uninstall olivia    # 卸载程序
 | 退出码 | 含义 |
 | --- | --- |
 | `0` | 完成了要做的事（包括只是显示信息，或在输入结束时安静地退出；聊天中按 Ctrl-C 与输入结束相同） |
-| `1` | 什么也没做：还没有完成第一次设置（`olivia chat` 在设置完成前结束也算），这台电脑上是未满 18 岁的记录，或者保存的数据现在读不出来、钥匙串打不开（这时 `olivia chat` 和 `olivia resources` 仍会先显示求助电话）；`olivia doctor` 发现了 ✗ 项 |
+| `1` | 什么也没做：还没有完成第一次设置（`olivia chat` 在设置完成前结束也算），这台电脑上是未满 18 岁的记录，保存的数据现在读不出来、钥匙串打不开（这时 `olivia chat` 和 `olivia resources` 仍会先显示求助电话），另一个 OLIVIA 正在运行，或者出了意料之外的问题（这时只说一句话并建议运行 `olivia doctor`，不显示程序内部的报错）；`olivia doctor` 发现了 ✗ 项 |
 | `2` | 命令写错了：参数不对，或者给的值认不出来（例如未知的地区、时区或陪伴方式；`olivia forget --entry`、`--method` 或 `olivia memory --edit` 给的序号不存在，或者 `--edit` 指向的不是你让它记住的话） |
 
 不需要先设置就能用的命令：`olivia resources`、`olivia privacy`、`olivia doctor`、`olivia --help`、`olivia --version`，以及用来清理残留数据的 `olivia forget --all`。
+
+### 同时打开两个 OLIVIA
+
+同一个数据目录同一时间只让一个 OLIVIA 写入，免得两边互相覆盖、写坏加密数据。会写数据的命令——`olivia chat`、`health`、`safety-plan`、`settings`、`profile`、`journal`、`forget`、`memory --edit`，以及要修改时的 `persona` 和 `region`——发现另一个 OLIVIA 正在运行时，什么都不改，提示先关掉它，退出码为 `1`（系统提醒的定时检查则安静地跳过这一次）。只读的命令不受影响，随时可以用：`olivia resources`、`olivia privacy`、`olivia doctor`、`olivia memory`、`olivia stats`，以及只查看时的 `persona`、`region`。程序退出（包括意外中断）时这个限制自动解除。
 
 ## 数据存在哪里
 
@@ -92,9 +96,11 @@ OLIVIA 保存的东西都在下面这个目录里：设置文件 `profile.json`�
 
 设置环境变量 `OLIVIA_HOME` 可以换一个目录。
 
+数据出问题时：设置文件坏了，会从自动备份恢复，并说一次恢复到了什么时候的版本，请用 `olivia health` 和 `olivia profile` 检查；加密用的钥匙坏了或不在了，不会悄悄退回更早的备份（这时会先显示求助电话，并说明可以用 `olivia forget --all` 从头开始）。文件被换成文件夹、或没有读取权限时，什么都不改，并建议运行 `olivia doctor`。`olivia forget --all` 中途被打断时，下次运行任何命令都会提示再运行一次 `olivia forget --all` 把它做完。
+
 求助电话的更新包：维护者发布新的热线资料时，会同时给出 `hotlines.yaml` 和签名文件 `hotlines.yaml.sig`。把这两个文件放进上面目录里的 `resources/` 文件夹，`olivia chat` 和 `olivia resources` 就会改用它；签名验证不通过、缺少签名文件、内容格式不对、缺少随程序附带资料里的地区或紧急电话，或者它不比随程序附带的资料新时，仍然用随程序附带的资料，`olivia resources` 的最后一行会说明原因。删掉这个文件夹即恢复随程序附带的资料。
 
-想清除全部本地数据，请运行 `olivia forget --all`：它会连同系统钥匙串里的那把钥匙一起删掉（只删除目录的话，钥匙还会留在钥匙串里）。
+想清除全部本地数据，请运行 `olivia forget --all`：它会连同系统钥匙串里的那把钥匙一起删掉（只删除目录的话，钥匙还会留在钥匙串里）。这一次用不了系统钥匙串时（例如远程登录的终端），它照样删掉数据文件，并说明钥匙串里那把钥匙还没删，等能用钥匙串时再运行一次。
 
 安装和更新时需要联网下载程序；运行时不联网：没有账号，没有使用统计，也不会自动检查更新。
 

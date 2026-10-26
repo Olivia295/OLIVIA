@@ -34,3 +34,12 @@ class KeyMissingError(CryptoError):
 
 class DecryptionError(CryptoError):
     """Ciphertext or a wrapped key is corrupt, tampered with, or belongs to another store."""
+
+
+class KeyFileUnreadableError(KeychainUnavailableError):
+    """A wrapped key file exists but the operating system will not read it (no
+    permission, a directory in its place).
+
+    Like a locked keychain: nothing was written, and the data may open again once the
+    file is readable (``olivia doctor`` says what is wrong).
+    """

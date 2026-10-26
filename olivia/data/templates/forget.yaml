@@ -32,6 +32,8 @@ memory:
   profile: 你的基本设置：称呼、地区、陪伴方式
   health: 健康信息：已经填写（用 olivia health 查看或修改）
   safety_plan: 个人安全计划：已经保存（用 olivia safety-plan 查看或修改）
+  # 草稿：待 G-0（健壮性 E3：文件在，但钥匙串、钥匙或系统不让打开）
+  safety_plan_unreadable: 个人安全计划：存着一份，但现在打不开（用 olivia safety-plan 看看）
   taboo: 不想谈的话题：记着 {count} 个（用 olivia profile 查看或修改）
   kit: 锦囊：{count} 张卡
   preferences: 方法偏好：下面这些小练习，你说过合不合适（想单独重置其中一个，可以用 olivia forget --method 加序号）
@@ -86,6 +88,10 @@ forget:
   done_safety_plan: 个人安全计划已经删掉了。想重新写的时候，可以用 olivia safety-plan。
   done_all: 这台电脑上的全部数据都已经忘掉了，加密用的钥匙也一起销毁了。下次打开 olivia chat，我们从头认识。
   keychain_left: 文件都已经删掉，留下的也再也打不开了。只是系统钥匙串现在没有响应，里面那把钥匙还没删掉；等钥匙串恢复后，再运行一次 olivia forget --all 就好。
+  # 草稿：待 G-0（健壮性 S5：这次运行连不上任何系统钥匙串，例如远程登录的终端）
+  keychain_unreachable: 数据文件都已经删掉了。只是这一次用不了系统钥匙串，里面那把加密用的钥匙没能一起删掉；等回到能用钥匙串的地方（比如平常登录的桌面），再运行一次 olivia forget --all 就好。
+  # 草稿：待 G-0（健壮性 E2：上一次 forget --all 被中断）
+  unfinished: 上一次「全部忘掉」没有做完，还剩下一部分文件。请再运行一次 olivia forget --all，把它清理干净。
   nothing_entry: 账本里还没有任何记录。
   nothing_ledger: 账本里本来就没有记录。
   nothing_kit: 锦囊和方法偏好里本来就没有记录。

@@ -313,9 +313,14 @@ class Week:
 
 
 def gather(ledger: Ledger, now: datetime) -> Week:
-    """The window's entries; raises :class:`LedgerUnavailableError` like ``entries``."""
+    """The window's entries; raises :class:`LedgerUnavailableError` like ``entries``.
+
+    The window ends at ``now``: an entry dated later (written while the clock ran ahead,
+    robustness E1) belongs to no week yet, so it neither fills this one nor holds back
+    the next journal offer.
+    """
     start = now - WINDOW
-    found = ledger.entries(since=start - WINDOW)
+    found = [e for e in ledger.entries(since=start - WINDOW) if e.time <= now]
     entries = [e for e in found if e.time >= start]
     return Week(
         until=now,

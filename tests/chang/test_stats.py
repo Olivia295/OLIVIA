@@ -204,3 +204,9 @@ def test_journals_without_an_answer_have_no_share():
     assert (stats.journal_answered, stats.journal_helpful) == (0, 0)
     assert TEXT.lines["journal_helpful_none"] in render(stats, TEXT, WINDOW).splitlines()
     assert compute([_s(1)], NOW).journal_answered == 0
+
+
+def test_sessions_after_now_are_not_recent():
+    """Robustness E1: a session written while the clock ran a year fast."""
+    stats = compute([_s(-365), _s(1)], NOW)
+    assert (stats.sessions, stats.last_week, stats.last_month) == (2, 1, 1)

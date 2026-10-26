@@ -120,6 +120,19 @@ unknown region, timezone or persona, or a ``forget --entry``/``--method`` or ``m
 commands, 1 during onboarding. ``resources``, ``privacy``, ``doctor`` and ``forget --all``
 work without a profile.
 
+One writer per data directory (robustness findings D1-D3; ``core/datalock.py``): the
+commands that write data -- ``chat``, ``health``, ``safety-plan``, ``settings``,
+``profile``, ``journal`` (it records the offer), ``forget``, ``notify-check``, and
+``persona`` / ``region`` / ``memory`` when they change something -- take the data
+directory's lock first. When another OLIVIA holds it they change nothing, say so with a
+pointer to ``olivia resources`` and exit 1 (``notify-check`` skips quietly, exit 0).
+``resources``, ``privacy``, ``doctor``, ``memory``, ``stats``, showing a persona or region,
+help and version never wait for it. A ``forget --all`` that was interrupted is named before any
+other command runs (exit 1; ``resources`` still shows the numbers first), a profile
+recovered from a snapshot is said once (``chang/profile.py``), and an error nothing else
+handled ends the command with one plain sentence and ``olivia doctor``, never a
+traceback (exit 1; Ctrl-C keeps its own handling).
+
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
 answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
 decision D1: one templated summary per session plus the notes the user asked to have
@@ -187,16 +200,23 @@ from olivia.core.chang.onboarding import (
     region_from_reply,
 )
 from olivia.core.chang.privacy import privacy_notice
-from olivia.core.chang.profile import ProfileCorruptError, ProfileLockedError, ProfileStore
+from olivia.core.chang.profile import (
+    ProfileCorruptError,
+    ProfileLockedError,
+    ProfileStore,
+    ProfileUnreadableError,
+)
 from olivia.core.chang.profile_command import run_profile
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
 from olivia.core.crypto.keychain import Probe
+from olivia.core.datalock import DataDirBusyError, DataDirLock
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
     DataStores,
     Target,
+    forget_all_unfinished,
     load_forget_text,
     run_edit,
     run_forget,
@@ -232,7 +252,7 @@ from olivia.core.resources.fallback import fallback_text
 from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import LineKind, ResourceDataError, ResourceStore, parse_store
 from olivia.core.session import Session, TurnResult
-from olivia.core.storage import data_dir_location
+from olivia.core.storage import app_data_dir, data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 from olivia.core.yaml_load import safe_load
 from olivia.doctor import HOTLINE_MAX_AGE_DAYS, StoreState
@@ -272,7 +292,7 @@ PROFILE_LOCKED_NOW: Final = (
     "你的文件我没有改动；解锁钥匙串（比如重新登录这台电脑）以后再试一次就好。"
 )
 PROFILE_KEYS_LOST: Final = (
-    "加密保存的信息再也打不开了：解锁它的钥匙已经不在这台电脑的钥匙串里"
+    "加密保存的信息再也打不开了：解锁它的钥匙已经不在这台电脑的钥匙串里，或者钥匙文件坏了"
     "（可能被删掉了，或者这些文件是从别的电脑拷过来的）。你的文件我没有改动。"
 )
 PROFILE_START_OVER: Final = (
@@ -294,6 +314,24 @@ MODEL_UNAVAILABLE: Final = "这台电脑上的模型文件这次用不了，危�
 HEALTH_NOT_SAVED: Final = (
     "这台电脑上没有可用的系统钥匙串，健康信息没办法加密保存，所以之前记下的健康信息已经删除了。"
     "其他的一切都照常。"
+)
+# 草稿：待 G-0 -- robustness findings D1-D4, C2 (2026-10-26).
+DATA_DIR_BUSY: Final = (
+    "另一个 OLIVIA 正在运行，请先关掉它，再来这里。这次我什么都没有改动。"
+    "需要求助电话的话，olivia resources 随时都能用。"
+)
+PROFILE_RECOVERED: Final = (
+    "设置文件坏了，已经恢复到 {time} 前后保存的版本，在那之后改过的地方可能没有了。"
+    "请用 olivia health 和 olivia profile 检查一下。"
+)
+PROFILE_UNREADABLE: Final = (
+    "设置文件现在打不开（可能是权限不对，或者被换成了文件夹）。我没有改动它。"
+    "可以运行 olivia doctor 看看是哪里不对。"
+)
+UNEXPECTED_ERROR: Final = (
+    "出了点问题，这次没能做完，已经停下了。"
+    "可以运行 olivia doctor 检查一下这台电脑上的设置和数据文件。"
+    "需要求助电话的话，olivia resources 随时都能用。"
 )
 NOT_ONBOARDED: Final = "还没有完成第一次设置。先运行 olivia chat，之后就可以修改地区了。"
 NOT_SET_UP: Final = (
@@ -426,6 +464,17 @@ DOCTOR_REMINDERS_LEFTOVER: Final = (
     "系统提醒：设置里是关闭的，系统里却还留着它的定时任务。"
     "在 olivia settings 里打开再关掉，就会把它删掉"
 )
+# 草稿：待 G-0 -- what the data-integrity markers say (only shown when true).
+DOCTOR_BUSY: Final = (
+    "另一个 OLIVIA 正在运行：在它关掉之前，会改动数据的命令不会动手"
+    "（olivia resources 和自检不受影响）"
+)
+DOCTOR_FORGET_UNFINISHED: Final = (
+    "上一次「全部忘掉」没有做完：请再运行一次 olivia forget --all，把它清理干净"
+)
+DOCTOR_RECOVERED: Final = (
+    "设置文件坏过，已经从自动备份恢复：请用 olivia health 和 olivia profile 检查一下"
+)
 DOCTOR_KEYCHAIN: Final = {
     Probe.READY: (DOCTOR_OK, DOCTOR_KEYCHAIN_READY),
     Probe.NONE: (DOCTOR_WARN, DOCTOR_KEYCHAIN_NONE),
@@ -433,6 +482,9 @@ DOCTOR_KEYCHAIN: Final = {
     Probe.UNCHECKED: (DOCTOR_WARN, DOCTOR_KEYCHAIN_UNCHECKED),
 }
 DOCTOR_TEXTS: Final = (
+    DOCTOR_BUSY,
+    DOCTOR_FORGET_UNFINISHED,
+    DOCTOR_RECOVERED,
     DOCTOR_HEADING,
     DOCTOR_FOOTER,
     DOCTOR_VERSION,
@@ -470,6 +522,10 @@ USER_TEXTS: Final = (
     GOODBYE,
     CHAT_HINT,
     CHAT_HELP,
+    DATA_DIR_BUSY,
+    PROFILE_RECOVERED,
+    PROFILE_UNREADABLE,
+    UNEXPECTED_ERROR,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     PROFILE_LOCKED_NOW,
@@ -750,6 +806,7 @@ def _chat(
         console.say(HEALTH_NOT_SAVED)
     if profile is None:  # declined, under 18, or input ended: nothing was set up
         return 1
+    _tell_recovery(console, profile)  # before the conversation, not after it
     local = _local_clock(clock, profile)
     # The posteriors and the kit from earlier sessions (B3); None starts fresh.
     state_store = StateStore(store.path.parent, store.vault)
@@ -940,10 +997,14 @@ def render_browsing(card: ResourceCard, tax: Taxonomy) -> str:
 
 def _unreadable_profile(exc: ProfileCorruptError | ProfileLockedError) -> tuple[str, ...]:
     """Why the profile cannot be opened, and what to do next (S1): a keychain that is only
-    locked or unreachable (try again later), or keys gone for good or damaged data
-    (starting over with ``olivia forget --all`` loses the records)."""
+    locked or unreachable (try again later); keys gone for good or damaged (D4: a damaged
+    key is ``ProfileLockedError(lost)``, never a rollback) or damaged data (starting over
+    with ``olivia forget --all`` loses the records); a file the system will not read (C2:
+    ``olivia doctor``, nothing is lost)."""
     if isinstance(exc, ProfileLockedError):
         return (PROFILE_KEYS_LOST, PROFILE_START_OVER) if exc.lost else (PROFILE_LOCKED_NOW,)
+    if isinstance(exc, ProfileUnreadableError):
+        return (PROFILE_UNREADABLE,)
     return (PROFILE_CORRUPT, PROFILE_START_OVER)
 
 
@@ -962,13 +1023,30 @@ def _load_profile(console: _Console) -> tuple[bool, PersonaProfile | None]:
 
 
 def _save_profile(console: _Console, profile: PersonaProfile) -> bool:
-    """Save, or report (and change nothing) when encrypted data cannot be written now."""
+    """Save, or report (and change nothing) when encrypted data cannot be written now
+    (a damaged key included: robustness C3)."""
     try:
         ProfileStore().save(profile)
-    except ProfileLockedError:
-        console.say(PROFILE_LOCKED)
+    except (ProfileCorruptError, ProfileLockedError) as exc:
+        for line in _unreadable_profile(exc):
+            console.say(line)
         return False
     return True
+
+
+def _tell_recovery(console: _Console, profile: PersonaProfile | None = None) -> None:
+    """Say once that the profile was recovered from a snapshot (robustness D4), with the
+    snapshot's time in the profile's timezone (this computer's without a profile)."""
+    base = data_dir_location()
+    if not base.is_dir():
+        return
+    moment = ProfileStore(base).take_recovery_notice()
+    if moment is None:
+        return
+    zone = _profile_zone(profile)
+    shown = moment.astimezone(zone) if zone is not None else moment
+    console.say(PROFILE_RECOVERED.format(time=shown.strftime("%Y-%m-%d %H:%M")))
+    console.say()
 
 
 def _show_hotlines(console: _Console, profile: PersonaProfile | None, clock: Clock) -> bool:
@@ -1129,8 +1207,11 @@ def _region(
 
 def _health(console: _Console, clock: Clock) -> int:
     """``olivia health``: the interactive exchange of ``chang/health.py``."""
+    store = ProfileStore()
     try:
-        editor = HealthEditor(_taxonomy(), ProfileStore(), clock())
+        editor = HealthEditor(_taxonomy(), store, clock())
+        if store.dropped_sensitive_data:  # robustness E4: say what the migration removed
+            console.say(HEALTH_NOT_SAVED)
         outcome = editor.outcome
         if outcome is None:
             step: HealthPrompt | HealthDone = editor.prompt()
@@ -1144,11 +1225,9 @@ def _health(console: _Console, clock: Clock) -> int:
                 console.say()
                 step = editor.answer(answer)
             outcome = step
-    except ProfileCorruptError:
-        console.say(PROFILE_CORRUPT)
-        return 1
-    except ProfileLockedError:
-        console.say(PROFILE_LOCKED)
+    except (ProfileCorruptError, ProfileLockedError) as exc:
+        for line in _unreadable_profile(exc):
+            console.say(line)
         return 1
     console.say(outcome.text)
     return 0 if outcome.ok else 1
@@ -1353,6 +1432,18 @@ def _doctor_store_rows(report: doctor.Report) -> list[Row]:
     return rows
 
 
+def _doctor_activity_rows(found: doctor.Activity) -> list[Row]:
+    """The data directory's markers, one line each, only when they say something."""
+    rows: list[Row] = []
+    if found.busy:
+        rows.append((DOCTOR_WARN, DOCTOR_BUSY))
+    if found.forget_unfinished:
+        rows.append((DOCTOR_FAIL, DOCTOR_FORGET_UNFINISHED))
+    if found.recovered:
+        rows.append((DOCTOR_WARN, DOCTOR_RECOVERED))
+    return rows
+
+
 def _doctor_hotline_rows(found: doctor.HotlineFacts, today: date) -> list[Row]:
     if not found.builtin_ok or found.builtin_on is None:
         return [(DOCTOR_FAIL, DOCTOR_HOTLINES_BROKEN), (DOCTOR_WARN, DOCTOR_UPDATE_UNCHECKED)]
@@ -1400,6 +1491,7 @@ def doctor_rows(report: doctor.Report, today: date) -> list[Row]:
         *_doctor_dir_rows(report.data_dir),
         DOCTOR_KEYCHAIN[report.keychain],
         *_doctor_store_rows(report),
+        *_doctor_activity_rows(report.activity),
         (DOCTOR_OK, DOCTOR_MODEL_OK)
         if reason is None
         else (DOCTOR_FAIL, DOCTOR_MODEL_FAILED.format(reason=reason)),
@@ -1706,6 +1798,110 @@ def _use_utf8_stdio() -> None:
         reconfigure(errors="surrogateescape")
 
 
+_WRITING_COMMANDS: Final = frozenset(
+    {"chat", "health", "safety-plan", "settings", "profile", "journal", "forget", "notify-check"}
+)
+"""Commands that always write data; ``persona``, ``region`` and ``memory`` write only
+when asked to change something (:func:`_writes`)."""
+_EXEMPT_FROM_UNFINISHED: Final = frozenset({"resources", "privacy", "doctor"})
+"""Read-only commands that still run while a ``forget --all`` waits to be finished
+(``doctor`` reports it as one of its checks)."""
+
+
+def _writes(args: argparse.Namespace) -> bool:
+    """Whether this command line writes to the data directory (and so takes its lock)."""
+    if args.command in _WRITING_COMMANDS:
+        return True
+    if args.command == "persona":
+        return args.choice is not None
+    if args.command == "region":
+        return bool(args.code is not None or args.timezone is not None or args.clear)
+    if args.command == "memory":
+        return args.edit is not None
+    return False
+
+
+def _forget_all_pending(args: argparse.Namespace) -> bool:
+    """An interrupted ``forget --all`` waits to be finished, and this command is not the
+    one that finishes it (robustness E2)."""
+    base = data_dir_location()
+    if not base.is_dir() or not forget_all_unfinished(base):
+        return False
+    if args.command == "forget" and args.all:
+        return False
+    return args.command not in _EXEMPT_FROM_UNFINISHED
+
+
+def _dispatch(
+    args: argparse.Namespace,
+    console: _Console,
+    now: Clock,
+    rng: random.Random | None,
+) -> int:
+    if args.command == "chat":
+        return _chat(console, args.inspect, now, rng, student=not args.rules)
+    if args.command == "resources":
+        return _resources(console, now)
+    if args.command == "health":
+        return _health(console, now)
+    if args.command == "persona":
+        return _persona(console, args.choice, now)
+    if args.command == "profile":
+        return _profile(console, now)
+    if args.command == "safety-plan":
+        return _safety_plan(console)
+    if args.command == "journal":
+        return _journal(console, now)
+    if args.command == "stats":
+        return _stats(console, now)
+    if args.command == "memory":
+        return _memory(console, args.edit, now)
+    if args.command == "forget":
+        return _forget(console, args, now)
+    if args.command == "privacy":
+        return _privacy(console)
+    if args.command == "settings":
+        return _settings(console, now)
+    if args.command == "doctor":
+        return _doctor(console, now)
+    if args.command == "notify-check":
+        return _notify_check(now)
+    return _region(console, args.code, args.timezone, args.clear, now)
+
+
+def _run(
+    args: argparse.Namespace,
+    console: _Console,
+    now: Clock,
+    rng: random.Random | None,
+) -> int:
+    """One command under the data directory's lock when it writes (D1-D3)."""
+    if _forget_all_pending(args):
+        console.say(load_forget_text().forget["unfinished"])
+        return 1
+    lock: DataDirLock | None = None
+    if _writes(args):
+        lock = DataDirLock(app_data_dir())
+        try:
+            lock.acquire()
+        except DataDirBusyError:
+            if args.command != "notify-check":  # the scheduled job stays silent
+                console.say(DATA_DIR_BUSY)
+                return 1
+            return 0
+    try:
+        code = _dispatch(args, console, now, rng)
+        if args.command not in ("notify-check", "doctor"):  # doctor writes nothing at all
+            _tell_recovery(console)
+        if args.command == "resources" and forget_all_unfinished(data_dir_location()):
+            console.say()
+            console.say(load_forget_text().forget["unfinished"])
+        return code
+    finally:
+        if lock is not None:
+            lock.release()
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -1730,39 +1926,17 @@ def main(
     console = _Console(stdin or sys.stdin, stdout or sys.stdout)
     now = clock if clock is not None else _system_clock
     try:
-        if args.command == "chat":
-            return _chat(console, args.inspect, now, rng, student=not args.rules)
-        if args.command == "resources":
-            return _resources(console, now)
-        if args.command == "health":
-            return _health(console, now)
-        if args.command == "persona":
-            return _persona(console, args.choice, now)
-        if args.command == "profile":
-            return _profile(console, now)
-        if args.command == "safety-plan":
-            return _safety_plan(console)
-        if args.command == "journal":
-            return _journal(console, now)
-        if args.command == "stats":
-            return _stats(console, now)
-        if args.command == "memory":
-            return _memory(console, args.edit, now)
-        if args.command == "forget":
-            return _forget(console, args, now)
-        if args.command == "privacy":
-            return _privacy(console)
-        if args.command == "settings":
-            return _settings(console, now)
-        if args.command == "doctor":
-            return _doctor(console, now)
-        if args.command == "notify-check":
-            return _notify_check(now)
-        return _region(console, args.code, args.timezone, args.clear, now)
+        return _run(args, console, now, rng)
     except KeyboardInterrupt:
         console.say()
         console.say(GOODBYE)
         return 0
+    except Exception:  # noqa: BLE001 - the last resort: one sentence, never a traceback
+        if args.command == "notify-check":
+            return 1  # the scheduled job prints nothing
+        with contextlib.suppress(Exception):
+            console.say(UNEXPECTED_ERROR)
+        return 1
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -15,6 +16,7 @@ from olivia.core.memory.ledger import (
     Ledger,
     LedgerUnavailableError,
     NoteEntry,
+    SessionSummary,
     SummaryEntry,
 )
 from olivia.core.memory.recorder import SessionRecorder
@@ -382,3 +384,52 @@ def test_a_request_to_remember_everything_stores_only_its_own_words(ledger):
     assert note.text == "我们刚才聊的全部内容"
     raw = "\n".join(ledger.read_markdown(path.stem) for path in ledger.entry_paths())
     assert "风筝" not in raw and "外婆" not in raw
+
+
+# -- clocks that step back (robustness D5, D6) ----------------------------------------------
+
+
+def test_a_clock_stepped_back_between_turns_still_writes_the_summary(ledger):
+    chat = Chat(ledger)
+    chat.say("今天上班好累")
+    chat.clock.now -= timedelta(minutes=1, seconds=1)  # NTP steps the clock back
+    chat.recorder.observe("还是很累", chat.session.turn("还是很累"))
+    assert chat.recorder.close()
+    (entry,) = _summaries(ledger)
+    assert entry.summary.ended_at >= entry.summary.started_at
+
+
+def test_a_dst_fall_back_compares_real_time_not_wall_time():
+    new_york = ZoneInfo("America/New_York")
+    start = datetime(2026, 11, 1, 5, 50, tzinfo=UTC).astimezone(new_york)  # 01:50 EDT
+    end = datetime(2026, 11, 1, 6, 10, tzinfo=UTC).astimezone(new_york)  # 01:10 EST
+    assert end.replace(tzinfo=None) < start.replace(tzinfo=None)
+    summary = SessionSummary(
+        started_at=start, ended_at=end, stage_path=(HelpStage.S_READY,), spectra=(), methods=()
+    )
+    assert summary.ended_at == end
+    with pytest.raises(ValueError, match="cannot end before"):
+        replace(summary, ended_at=start - timedelta(minutes=1))
+
+
+def test_a_dst_fall_back_inside_a_session_keeps_the_summary(ledger):
+    new_york = ZoneInfo("America/New_York")
+    chat = Chat(ledger)
+    for minute, message in ((5 * 60 + 50, "今天上班好累"), (6 * 60 + 10, "还是很累")):
+        moment = datetime(2026, 11, 1, tzinfo=UTC) + timedelta(minutes=minute)
+        chat.clock.now = moment.astimezone(new_york)  # 01:50 EDT, then 01:10 EST
+        chat.recorder.observe(message, chat.session.turn(message))
+    assert chat.recorder.close()
+    (entry,) = _summaries(ledger)
+    assert entry.summary.ended_at - entry.summary.started_at == timedelta(minutes=20)
+
+
+def test_no_failure_while_writing_escapes_close(ledger, monkeypatch):
+    chat = Chat(ledger)
+    chat.say("今天上班好累")
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(ledger, "append_summary", boom)
+    assert chat.recorder.close() is False  # the CLI says the summary was not saved

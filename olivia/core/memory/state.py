@@ -25,8 +25,10 @@ Damage and versions: a file that does not open (tampered, truncated, key shredde
 not parse is treated as absent, and the next save overwrites it. A document written by a
 later version (``olivia_state`` above :data:`FORMAT_VERSION`) is ignored and never
 overwritten, and so is a file that cannot be opened because the keychain is locked right
-now. Without any keychain nothing is written (:class:`StateRecorder` stops trying) and
-nothing is said: the ledger already tells the user once that memory is unavailable.
+now, or that the operating system will not read (a directory in its place, no permission;
+robustness C2): such a store is left alone for this session. Without any keychain
+nothing is written (:class:`StateRecorder` stops trying) and nothing is said: the ledger
+already tells the user once that memory is unavailable.
 
 :meth:`StateStore.shred` is the hook for ``olivia forget`` (B5); :meth:`StateStore.rekey`
 rewrites the state under a fresh key after one method's preference is reset
@@ -145,6 +147,9 @@ class StateStore:
             blob = self.path.read_bytes()
         except FileNotFoundError:
             return None
+        except OSError:
+            self._keep = True  # not ours to replace: perhaps intact, readable again later
+            return None
         try:
             data = json.loads(self.vault.open(STATE_STORE, blob, label=_LABEL))
         except KeychainUnavailableError:
@@ -176,7 +181,10 @@ class StateStore:
             raise
         except CryptoError:
             return False  # locked now, or the store's keys are damaged
-        atomic_write_bytes(self.path, blob, snapshot=False)
+        try:
+            atomic_write_bytes(self.path, blob, snapshot=False)
+        except OSError:
+            return False  # the file cannot be replaced; tried again at the next change
         return True
 
     def rekey(self, state: CarriedState) -> bool:

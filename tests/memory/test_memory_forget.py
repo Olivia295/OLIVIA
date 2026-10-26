@@ -9,13 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from olivia.core.crypto.errors import KeychainUnavailableError
+from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import OutputGate, phone_like_runs
+from olivia.core.memory import forget as forget_module
 from olivia.core.memory.forget import (
     DATA_DIRS,
     DATA_FILES,
+    FORGET_ALL_MARKER,
     DataStores,
     ForgetTextError,
     forget_all,
@@ -79,3 +81,30 @@ def test_forget_all_reports_a_keychain_that_did_not_answer(tmp_path: Path, keych
     assert forget_all(stores) is False
     assert not any(tmp_path.rglob("*.key"))
     assert keychain.items  # the master key is still there
+
+
+def test_forget_all_without_a_keychain_but_with_keys_is_not_cleared(tmp_path: Path, keychain):
+    """Robustness S5: the keys exist, so a master key sits in a keychain this session
+    cannot reach; the files go, but the result must not claim the key was destroyed."""
+    stores = DataStores.open(tmp_path)
+    stores.vault.seal("state", b"x")
+    keychain.broken = NoKeychainError("none")
+    assert forget_all(stores) is False
+    assert not any(tmp_path.rglob("*.key"))
+
+
+def test_forget_all_marks_itself_until_every_file_is_gone(tmp_path: Path, monkeypatch):
+    """Robustness E2: killed half-way, the marker tells the next command what happened."""
+    stores = DataStores.open(tmp_path)
+    stores.vault.seal("state", b"x")
+    seen: list[bool] = []
+    real = forget_module.remove_file
+
+    def spy(path: Path) -> None:
+        seen.append((tmp_path / FORGET_ALL_MARKER).is_file())
+        real(path)
+
+    monkeypatch.setattr(forget_module, "remove_file", spy)
+    assert forget_all(stores) is True
+    assert seen and all(seen[:-1])
+    assert not (tmp_path / FORGET_ALL_MARKER).exists()

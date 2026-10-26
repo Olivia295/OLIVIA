@@ -1,17 +1,23 @@
+import os
 import stat
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 from olivia.core import storage
+from olivia.core.datalock import DataDirLock
 from olivia.core.storage import (
     SNAPSHOT_KEEP,
+    StorageAccessError,
     StorageCorruptError,
     app_data_dir,
     atomic_write_text,
     read_text_with_recovery,
+    read_with_recovery,
     snapshot_paths,
+    snapshot_time,
 )
 
 
@@ -191,3 +197,66 @@ def test_main_file_and_snapshots_are_owner_only(tmp_path):
     assert snaps
     for snap in snaps:
         assert stat.S_IMODE(snap.stat().st_mode) == 0o600
+
+
+# -- leftovers of a killed writer (robustness S4) -------------------------------------------
+
+
+def test_a_writer_holding_the_lock_removes_its_files_stray_temps(tmp_path):
+    p = tmp_path / "profile.json"
+    atomic_write_text(p, "one")
+    stray = tmp_path / ".profile.json.k1ll3d00.tmp"
+    stray.write_text('{"user_name": "小林"}', encoding="utf-8")
+    others = [tmp_path / ".state.bin.k1ll3d00.tmp", tmp_path / "profile.json.tmp"]
+    for other in others:
+        other.write_text("x", encoding="utf-8")
+    with DataDirLock(tmp_path):
+        atomic_write_text(p, "two")
+    assert not stray.exists()
+    assert all(other.exists() for other in others)
+
+
+def test_without_the_lock_only_old_stray_temps_are_removed(tmp_path):
+    p = tmp_path / "profile.json"
+    fresh = tmp_path / ".profile.json.fresh000.tmp"
+    old = tmp_path / ".profile.json.old00000.tmp"
+    for stray in (fresh, old):
+        stray.write_text("x", encoding="utf-8")
+    long_ago = time.time() - 2 * storage.STRAY_TEMP_AGE
+    os.utime(old, (long_ago, long_ago))
+    atomic_write_text(p, "one")
+    assert fresh.exists() and not old.exists()
+
+
+# -- files the operating system will not open (robustness C2) ---------------------------------
+
+
+def test_a_directory_in_place_of_the_file_is_an_access_error(tmp_path):
+    p = tmp_path / "profile.json"
+    p.mkdir()
+    with pytest.raises(StorageAccessError):
+        read_text_with_recovery(p, lambda s: True)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_an_unreadable_file_is_an_access_error_not_a_reason_to_roll_back(tmp_path):
+    p = tmp_path / "profile.json"
+    atomic_write_text(p, "one")
+    atomic_write_text(p, "two")
+    p.chmod(0)
+    try:
+        with pytest.raises(StorageAccessError):
+            read_text_with_recovery(p, lambda s: True)
+    finally:
+        p.chmod(0o600)
+
+
+def test_recovery_says_which_version_it_read(tmp_path):
+    p = tmp_path / "data.txt"
+    atomic_write_text(p, "one")
+    atomic_write_text(p, "two")
+    assert read_with_recovery(p, lambda s: True) == ("two", p)
+    p.write_bytes(b"\xff")
+    text, source = read_with_recovery(p, lambda s: True)
+    assert text == "one" and source == snapshot_paths(p)[0]
+    assert snapshot_time(source) is not None and snapshot_time(p) is None
