@@ -69,7 +69,7 @@ starts with 你.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final
 
@@ -96,6 +96,14 @@ class Utterance(StrEnum):
     """Only a goodbye for now ("今天就到这里吧", "我去睡了"), F5b."""
     FOREIGN = "FOREIGN"
     """No Chinese at all (the mirror would only echo another language back)."""
+    COMPANION = "COMPANION"
+    """A remark about what the companion said or did in this chat ("上次你一直问我安不安
+    全", dogfood I3): the mirror would turn 你 into 对方 and talk about itself."""
+    TOPIC = "TOPIC"
+    """Only a change of topic ("说点别的", "换个话题"; dogfood I3)."""
+    DIALECT = "DIALECT"
+    """Cantonese or another variety the mirror cannot turn round safely ("份工搵钱少";
+    dogfood I3): it would only echo the words back."""
     HAVEN_EXIT = "HAVEN_EXIT"
     """The words that leave the quiet company ("我好多了", "换个话题吧"; FSM-15, F10). Only
     the session sets it, on the turn that leaves S_haven on them; :func:`utterance_kind`
@@ -104,6 +112,8 @@ class Utterance(StrEnum):
 
 class _Tag(StrEnum):
     STATEMENT = "statement"
+    COMPANION = "companion"
+    TOPIC = "topic"
     QUESTION = "question"
     REQUEST = "request"
     GREETING = "greeting"
@@ -123,7 +133,8 @@ class _Clause:
 _BATTERY_RE: Final = re.compile(r"^\s*[\[［【]\s*\d{1,3}\s*[%％]\s*[\]］】]\s*")
 # A sentence ends at one of these; ? and ？ also mark the sentence as a question.
 _SENTENCE_END_RE: Final = re.compile(r"([。！？!?\n…；;]+)")
-_CLAUSE_RE: Final = re.compile(r"[，,、：:]+")
+# A space between two Chinese characters ends a clause too ("行 试试", dogfood I3).
+_CLAUSE_RE: Final = re.compile(r"[，,、：:]+|(?<=[一-鿿])[ 　]+(?=[一-鿿])")
 _EDGE_PUNCT: Final = " \t　～~。，,、！？!?；;：:…“”\"'‘’（）()"
 _CJK_RE: Final = re.compile(r"[一-鿿]")
 _MEANINGFUL_RE: Final = re.compile(r"[一-鿿A-Za-z0-9]")
@@ -344,8 +355,52 @@ _FILLERS: Final = frozenset(
         "知道了",
         "ok",
         "okay",
+        # dogfood I3: agreeing to try is an answer, not news ("行 试试" -> "你提到行 试试").
+        "试试",
+        "试试吧",
+        "试一下",
+        "试一试",
+        "那试试",
+        "那就试试",
+        "可以试试",
     }
 )
+# dogfood I3: a change of topic ("说点别的") is no news about the user; the rest of the
+# message is mirrored ("行吧，说点别的，周末想去钓鱼" -> "你周末想去钓鱼").
+_TOPIC_CHANGES: Final = (
+    "说点别的",
+    "聊点别的",
+    "说说别的",
+    "聊聊别的",
+    "说别的",
+    "聊别的",
+    "换个话题",
+    "换一个话题",
+    "不说这个了",
+    "不聊这个了",
+    "别说这个了",
+    "别聊这个了",
+)
+_TOPIC_SLACK: Final = 3
+# dogfood I3: a remark about what the companion said or did in this chat ("上次你一直问我
+# 安不安全"): 你 (after a time word and adverbs) doing one of these. Mirrored, it would read
+# "你感到上次对方一直问你…", so the sentence it is in is not mirrored at all.
+_COMPANION_RE: Final = re.compile(
+    r"^(?:上次|刚才|刚刚|之前|以前|前面|昨天|今天|每次)?[你您](?!们|好|我)"
+    r"(?:一直|总是|老是|总|老|又|还|也|都|刚才|刚刚|上次|之前|就|只|怎么|老给我|总给我)*"
+    r"(?:问|说|回|发|给|教|推荐|提醒|讲|告诉|劝|建议|安慰)"
+)
+# dogfood I3: Cantonese written as spoken ("份工搵钱少", "去行下海旁"): characters and words
+# Mandarin hardly uses. The mirror would only echo them back, so it acknowledges instead.
+_DIALECT_CHARS: Final = frozenset("搵揾嘅唔冇咗喺啲嚟佢哋乜咩嘢嗰噉啱睇攰瞓踎嘞囉㗎咁")
+_DIALECT_WORDS: Final = ("海旁", "行下", "返工", "收工", "返屋企", "点算", "边度", "好攰")
+# dogfood I3: laughter or a particle after a question ("你钓过鱼吗哈哈") still ends it.
+_TRAILING_RE: Final = re.compile(r"(?:[哈呵嘿嘻]+|h{2,}|2333*|[~～]+|[啊呀啦哦])+$")
+# Questions without a question particle (dogfood I1, I3): asking how to do something
+# ("我该怎么开口跟妈妈聊"), why ("为什么不行"), or "and if ...?" ("那用冷水敷脸呢").
+_HOW_WORDS: Final = ("该怎么", "要怎么", "怎么开口", "怎么说", "怎么跟", "怎么和", "怎么回", "如何")
+_WHY_STARTS: Final = ("为什么", "为啥", "凭什么", "怎么会")
+_WHAT_IF_STARTS: Final = ("那", "要是", "如果", "万一")
 # Fillers dropped from a clause's front ("就是想有人听我说说", F5b).
 _LEAD_FILLERS: Final = (
     "怎么说呢",
@@ -418,6 +473,16 @@ _BRIEF: Final = frozenset(
         "可能吧",
         "ok",
         "okay",
+        "试试",
+        "试试吧",
+        "试一下",
+        "试一试",
+        "那试试",
+        "那就试试",
+        "可以试试",
+        "好试试",
+        "行试试",
+        "好的试试",
     }
 )
 _GREETINGS: Final = frozenset(
@@ -525,6 +590,8 @@ _OPENERS: Final = (
     "可不可以",
     "那你",
     "你就",
+    "你直接",
+    "直接",
     "现在",
     "可以",
     "麻烦",
@@ -549,6 +616,9 @@ _DIRECTIVES: Final = (
     "听我说",
     "听我讲",
     "别给",
+    "别老给",
+    "别再给",
+    "不要老给",
     "别问",
     "别劝",
     "别管",
@@ -782,6 +852,8 @@ def utterance_kind(user_text: str) -> Utterance:
         return Utterance.GREETING
     if plain in _BRIEF or (len(plain) == 1 and not _feeling(plain)):
         return Utterance.BRIEF
+    if _dialect(text):
+        return Utterance.DIALECT
     tags = [c.tag for sentence in _sentences(raw) for c in sentence]
     if _Tag.STATEMENT in tags:
         return Utterance.STATEMENT
@@ -790,6 +862,8 @@ def utterance_kind(user_text: str) -> Utterance:
         (_Tag.THANKS, Utterance.THANKS),
         (_Tag.REQUEST, Utterance.REQUEST),
         (_Tag.QUESTION, Utterance.QUESTION),
+        (_Tag.COMPANION, Utterance.COMPANION),
+        (_Tag.TOPIC, Utterance.TOPIC),
         (_Tag.GREETING, Utterance.GREETING),
     ):
         if tag in tags:
@@ -829,6 +903,8 @@ def mirror(user_text: str) -> str:
                 if body.startswith(lead) and len(body) > len(lead):
                     body = body[len(lead) :]
                     break
+        if i > 0 and _fragment(body):
+            continue
         body = _swap(body, conflict)
         if i == 0 and not body.startswith("你"):
             body = _lead(clause, body, conflict)
@@ -859,6 +935,12 @@ def _sentences(text: str) -> list[list[_Clause]]:
                 continue
             c = _drop_lead_fillers(c if item is None else item[0])
             tagged.append(_Clause(c, _tag(c, asked=asked and j == len(raw) - 1)))
+        if any(c.tag is _Tag.COMPANION for c in tagged):
+            # The rest of a remark about the companion goes with it ("上次你一直问我安不
+            # 安全，吓我一跳": "吓我一跳" alone would lose what it is about).
+            tagged = [
+                replace(c, tag=_Tag.COMPANION) if c.tag is _Tag.STATEMENT else c for c in tagged
+            ]
         sentences.append(tagged)
     return sentences
 
@@ -933,13 +1015,31 @@ def _tag(clause: str, *, asked: bool) -> _Tag:
         return _Tag.GREETING
     if any(t in plain for t in _THANKS):
         return _Tag.THANKS
+    if _topic_change(plain):
+        return _Tag.TOPIC
     if _closing(plain):
         return _Tag.CLOSING
     if _directive(clause):
         return _Tag.REQUEST
     if asked or _question(clause):
         return _Tag.QUESTION
+    if _COMPANION_RE.match(clause):
+        return _Tag.COMPANION
     return _Tag.STATEMENT
+
+
+def _topic_change(plain: str) -> bool:
+    """The clause only changes the topic ("说点别的", "那我们换个话题吧"; dogfood I3)."""
+    bare = plain.rstrip(_CLOSING_PARTICLES)
+    return any(
+        bare.endswith(phrase) and len(bare) - len(phrase) <= _TOPIC_SLACK
+        for phrase in _TOPIC_CHANGES
+    )
+
+
+def _dialect(text: str) -> bool:
+    """Cantonese as spoken (dogfood I3): a character or word Mandarin hardly uses."""
+    return any(ch in _DIALECT_CHARS for ch in text) or any(w in text for w in _DIALECT_WORDS)
 
 
 def _directive(clause: str) -> bool:
@@ -959,6 +1059,11 @@ def _directive(clause: str) -> bool:
 def _question(clause: str) -> bool:
     if any(word in clause for word in _UNSURE):
         return False
+    clause = _TRAILING_RE.sub("", clause) or clause
+    if any(word in clause for word in _HOW_WORDS) or clause.startswith(_WHY_STARTS):
+        return True
+    if clause.endswith("呢") and clause.startswith(_WHAT_IF_STARTS):
+        return True
     if clause.endswith(_QUESTION_PARTICLES):
         return True
     if clause.endswith("么") and not clause.endswith(_NOT_PARTICLE_ME):
@@ -1072,7 +1177,9 @@ def _lead(clause: str, body: str, conflict: bool) -> str:
         return fronted
     if _REPORTED_RE.match(clause):
         return ("你" if clause.startswith(_KIN) else _SAID_PREFIX) + body
-    about_user = bool(_me_positions(clause))
+    # A 我 that only names a relative ("我爸") says nothing about the user's own state
+    # (dogfood I3: "明天是我爸的忌日" is news, never "你感到明天是你爸的忌日").
+    about_user = any(not _possessive(clause, i) for i in _me_positions(clause))
     view = next((v for v in _VIEW_VERBS if clause.startswith(v) and len(body) > len(v)), None)
     if view is not None:
         # "觉得好孤单" -> "你觉得好孤单"; "觉得他不爱我了" -> "你感到他不爱你了".
@@ -1112,6 +1219,18 @@ def _me_positions(clause: str) -> list[int]:
             found.append(i)
         i += 1
     return found
+
+
+def _possessive(clause: str, i: int) -> bool:
+    """The 我 at ``i`` only names whose relative follows ("我爸", "我男朋友")."""
+    return clause.startswith(_KIN, i + 1)
+
+
+def _fragment(clause: str) -> bool:
+    """A spoken fragment after the first clause ("他走了两年了，肺癌"): at most two
+    characters, no feeling and nobody in it (dogfood I3)."""
+    plain = _plain(clause)
+    return len(plain) <= 2 and not _feeling(plain) and not any(p in plain for p in "你您我")
 
 
 def _only_object_me(clause: str) -> bool:

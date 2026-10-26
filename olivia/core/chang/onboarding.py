@@ -50,6 +50,7 @@ from typing import Any, Final
 import yaml
 
 from olivia.core.chang.profile import ProfileLockedError, ProfileStore
+from olivia.core.language.spacing import fill as spaced_fill
 from olivia.core.models import (
     NAME_MAX_LEN,
     PROFILE_CONTRAINDICATIONS,
@@ -465,8 +466,9 @@ def region_from_reply(reply: str, text: OnboardingText, *, numbers: bool = True)
 
 
 def fill_slots(template: str, **values: str) -> str:
-    """Fill ``{slot}`` placeholders; a slot not given raises ``KeyError``."""
-    return _SLOT.sub(lambda m: values[m.group(1)], template)
+    """Fill ``{slot}`` placeholders; a slot not given raises ``KeyError``. A Latin name
+    next to a Chinese character gets a space ("Olivia 都在"; dogfood P8)."""
+    return spaced_fill(template, values, pattern=_SLOT)
 
 
 def name_hint(text: OnboardingText, name: str) -> str | None:
