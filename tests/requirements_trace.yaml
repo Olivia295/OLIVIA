@@ -1,0 +1,531 @@
+# 需求追溯表：PRD / SDD 里每个需求编号对应的测试或检查脚本。
+#
+# 用途：让“每条需求有没有被验证”可以机器检查，而不是靠人记。
+# 格式：每个编号一项。
+#   status   covered（行为被断言）| partial（只断言了一部分，reason 写缺什么）
+#            | exempt（此处无法测试，reason 写原因，如裁定号或外部门禁）
+#   summary  一句中文，写这条要求是什么
+#   tests    path::name 或 path::Class::name 的列表（文件须定义该名字）
+#   checks   scripts/ 下、由 scripts/check.sh 或 .github/workflows/ci.yml 运行的脚本
+#   reason   partial / exempt 必填
+#
+# 新增需求编号时必须在此登记；scripts/trace_requirements.py 在 CI 中检查，
+# 文档里出现而这里没有的编号、这里有而文档不再出现的编号，都会让检查失败。
+
+# ---------------------------------------------------------------- 首访 ONB
+ONB-01:
+  status: covered
+  summary: 首次运行展示免责声明，需明确确认才继续
+  tests:
+    - tests/chang/test_onboarding.py::test_disclaimer_needs_explicit_acceptance
+    - tests/chang/test_onboarding.py::test_disclaimer_refusal_stops_and_saves_nothing
+    - tests/cli/test_cli_golden.py::test_sop1_declined_disclaimer_saves_nothing
+ONB-02:
+  status: covered
+  summary: 双向称呼 1 至 12 字，写入画像并在后续对话生效
+  tests:
+    - tests/chang/test_onboarding.py::test_name_length_validation
+    - tests/cli/test_cli_golden.py::test_sop1_covenant_then_first_session
+ONB-03:
+  status: covered
+  summary: 四种人格四选一，默认温和包裹，可用 olivia persona 切换
+  tests:
+    - tests/chang/test_onboarding.py::test_persona_offers_the_four_personas_gentle_first
+    - tests/chang/test_onboarding.py::test_persona_choice_is_saved
+    - tests/cli/test_cli_persona.py::test_switch_saves_the_persona_and_keeps_everything_else
+    - tests/session/test_session_personas.py::test_crisis_turn_has_the_same_safety_content_for_every_persona
+ONB-04:
+  status: covered
+  summary: 雷区话题登记后，生成管道硬过滤且不遮住危机资源
+  tests:
+    - tests/session/test_session.py::test_taboo_topic_is_recomposed_away
+    - tests/session/test_session.py::test_unavoidable_taboo_falls_back_to_the_haven_line
+    - tests/session/test_session.py::test_taboo_topic_never_hides_crisis_resources
+ONB-04b:
+  status: covered
+  summary: 周记避开雷区话题
+  tests:
+    - tests/core/chang/test_journal.py::test_taboo_topics_leave_out_the_spectra_and_exercises_that_name_them
+    - tests/cli/test_cli_journal.py::test_the_journal_command_leaves_out_taboo_topics
+ONB-05:
+  status: covered
+  summary: 18 岁以上门禁，未成年友好婉拒并给出 12355，只留拒绝记录
+  tests:
+    - tests/chang/test_onboarding.py::test_minor_refusal_persists_and_blocks_restart
+    - tests/chang/test_onboarding.py::test_minor_message_numbers_match_the_hotline_data
+    - tests/cli/test_cli_golden.py::test_sop1_minor_is_refused_now_and_on_every_later_launch
+    - tests/session/test_session.py::test_refusal_record_cannot_open_a_session
+ONB-06:
+  status: covered
+  summary: 本地静态加密开关默认关闭，健康信息始终加密
+  tests:
+    - tests/chang/test_onboarding.py::test_encryption_switch_choice_is_saved
+    - tests/chang/test_onboarding.py::test_clinical_history_is_encrypted_whatever_the_switch
+    - tests/core/chang/test_profile_crypto.py::test_clinical_history_is_never_written_in_plaintext
+ONB-06b:
+  status: covered
+  summary: olivia settings 可切换画像的保存方式
+  tests:
+    - tests/cli/test_cli_settings.py::test_the_menu_shows_the_storage_choice
+    - tests/cli/test_cli_settings.py::test_encrypting_the_whole_profile_explains_asks_and_seals_it
+    - tests/cli/test_cli_settings.py::test_going_back_to_health_only_explains_the_plaintext_and_asks
+ONB-07:
+  status: partial
+  summary: 采集属地与 IANA 时区，默认依系统时区，未知属地按 ZZ 处理
+  tests:
+    - tests/chang/test_onboarding.py::test_region_default_timezone_skips_the_question
+    - tests/chang/test_onboarding.py::test_unknown_region_is_zz_and_defaults_to_the_system_timezone
+    - tests/chang/test_onboarding.py::test_region_with_several_zones_asks
+  reason: 只采集国家或地区，不采集城市（标题与 SOP1 写了城市，PRD 无裁定）
+ONB-08:
+  status: covered
+  summary: 首访信息一次性原子写入，中途退出不留半份
+  tests:
+    - tests/chang/test_onboarding.py::test_no_file_written_before_completion
+    - tests/core/test_storage.py::test_crash_before_replace_keeps_old_content
+
+# ---------------------------------------------------------------- M.I.Y.I.
+MIYI-01:
+  status: covered
+  summary: 多头网络输出感知上下文，预测 P99 不超过 45 毫秒
+  tests:
+    - tests/perception/test_student.py::test_predict_heads_returns_every_head
+    - tests/perception/test_student.py::test_golden_fixture_matches_the_packaged_student
+    - tests/perception/test_student_performance.py::test_predict_p99_within_budget
+    - tests/session/test_session_model_heads.py::test_model_mode_perception_comes_from_the_student
+MIYI-02:
+  status: covered
+  summary: 纯否定句危机置信度低于 0.15，否定加工具或计划仍判高危
+  tests:
+    - tests/safety/test_crisis.py::test_pure_negation_scores_below_point_15
+    - tests/safety/test_crisis.py::test_negation_does_not_hide_means
+    - tests/safety/test_crisis.py::test_injected_model_is_at_most_l1_on_a_first_person_denial
+MIYI-03:
+  status: covered
+  summary: 图式与渴望的温和镜像，唤醒度高时抑制，仅模型模式提问
+  tests:
+    - tests/session/test_session_introspection.py::test_never_at_high_arousal
+    - tests/session/test_session_introspection.py::test_rules_mode_never_mirrors_and_c2_is_unchanged
+    - tests/session/test_session_introspection.py::test_miyi03_dialogue_in_model_mode
+MIYI-04:
+  status: partial
+  summary: 三维记忆检索（时间衰减、相关度、显著性）取前三条，并组装上下文
+  tests:
+    - tests/memory/test_memory_retrieval.py::test_the_constants_are_the_ones_the_spec_fixes
+    - tests/memory/test_memory_retrieval.py::test_score_is_the_weighted_sum_of_recency_similarity_and_salience
+    - tests/memory/test_memory_retrieval.py::test_ranking_is_deterministic_and_k_limits_the_result
+    - tests/memory/test_memory_recall.py::test_a_specific_question_gets_the_matching_note
+  reason: 检索模块已实现；阶段二三的上下文组装属 AI 增强，按裁定 29 与 P7 未接入
+MIYI-05:
+  status: covered
+  summary: 一键遗忘，销毁密钥并清除缓存与快照
+  tests:
+    - tests/cli/test_cli_forget.py::test_all_leaves_no_file_and_no_keychain_item
+    - tests/cli/test_cli_forget.py::test_one_entry_by_number_is_crypto_shredded
+    - tests/core/crypto/test_vault.py::test_shred_all_forgets_everything
+
+# ---------------------------------------------------------------- C.O.L.B.O.
+COLBO-01:
+  status: covered
+  summary: 第一人称从句安全镜像，不机械翻转人称
+  tests:
+    - tests/language/test_engine_mirror.py::test_mirror_cases
+    - tests/language/test_engine_mirror.py::test_conflict_never_flips_into_the_agent
+    - tests/language/test_engine_mirror.py::test_object_me_is_never_yourself_when_someone_else_acts
+    - tests/language/test_f14_mirror.py::test_views_and_reports_keep_their_frames
+COLBO-02:
+  status: covered
+  summary: 倾听与理清阶段不给方法，唤醒度 0.80 以上只放行稳定化
+  tests:
+    - tests/session/test_session_colbo02.py::test_explore_and_clarify_replies_name_no_method
+    - tests/methods/test_solver.py::test_pre_empower_stages_offer_no_exercise_below_somatic_priority
+    - tests/methods/test_solver.py::test_high_arousal_pool_is_the_stabilization_whitelist
+COLBO-03:
+  status: covered
+  summary: 非危机状态下直接要方法即进入赋能，仍过掩码，危机中不响应
+  tests:
+    - tests/fsm/test_machine.py::test_row_any_non_crisis_direct_request_to_empower
+    - tests/fsm/test_machine.py::test_silent_anchor_enters_empower_by_direct_request
+    - tests/fsm/test_machine.py::test_crisis_beats_battery_lock_commands_and_direct_request
+    - tests/session/test_session.py::test_red_flag_with_empty_set_gets_companionship_and_referral
+COLBO-04:
+  status: covered
+  summary: 赋能阶段的唤醒回退、完成与不合适的反馈、卡片等待时换一个
+  tests:
+    - tests/fsm/test_machine.py::test_row_empower_arousal_retreat
+    - tests/fsm/test_machine.py::test_row_empower_aversion_to_explore
+    - tests/session/test_session_nl_feedback.py::test_l1_screened_phrase_is_not_feedback
+    - tests/session/test_session_nl_feedback.py::test_unclear_reply_gets_one_clarification
+    - tests/session/test_session.py::test_another_one_while_a_card_waits_shelves_it_and_shows_another
+COLBO-05:
+  status: covered
+  summary: 四重掩码取交集，候选集是封闭上限，空集走 m0 并附转介
+  tests:
+    - tests/methods/test_solver.py::test_closure_uses_canonical_ids_for_aliases
+    - tests/methods/test_solver.py::test_parent_ban_penetrates_unless_sub_action_is_explicitly_allowed
+    - tests/methods/test_solver_masks.py::test_candidates_never_escape_a_mask
+    - tests/methods/test_solver_masks.py::test_seven_red_flags_by_hand
+COLBO-06:
+  status: covered
+  summary: m0 不参与采样，空集与特定情境直接走 m0
+  tests:
+    - tests/methods/test_solver.py::test_m0_situations_override_every_stage
+    - tests/methods/test_solver.py::test_haven_with_red_flag_keeps_the_referral
+    - tests/methods/test_contraindications.py::test_m0_situations_yield_m0
+    - tests/session/test_session_contraindications.py::test_prolonged_grief_asking_for_a_method_gets_m0
+COLBO-07:
+  status: partial
+  summary: 左右双翼分流（稳定化与完整方法池），以及双翼桥接和 SUDS 映射
+  tests:
+    - tests/methods/test_solver.py::test_empower_below_right_wing_battery_keeps_to_the_whitelist
+    - tests/methods/test_solver.py::test_empower_at_right_wing_battery_gets_the_full_pool
+    - tests/session/test_session.py::test_low_battery_direct_request_gets_a_light_stabilization_card
+  reason: 双翼桥接按进度表 9.2 不做（文档未定义判据）；SUDS 与唤醒度的线性映射未实现
+
+# ---------------------------------------------------------------- W.I.L.L.O.W.
+WILLOW-01:
+  status: covered
+  summary: 剔除说教词，危机与转介文字豁免
+  tests:
+    - tests/language/test_engine_filters.py::test_normal_text_is_rewritten
+    - tests/language/test_engine_filters.py::test_crisis_and_referral_keep_safety_wording
+    - tests/language/test_f14_willow.py::test_the_gate_refuses_a_bare_list_opener
+    - tests/language/test_engine_gate.py::test_didactic_words_are_blocked_where_the_filter_applies
+WILLOW-02:
+  status: covered
+  summary: 完美主义谱系织入柳枝隐喻
+  tests:
+    - tests/language/test_dossier_layer.py::test_perfectionism_pools_hold_the_willow_image
+    - tests/language/test_dossier_layer.py::test_situation_images_pass_the_willow_filters_and_the_gate
+WILLOW-03:
+  status: covered
+  summary: 回复字数窗口与单段长度上限，避风港与静默锚点更短，危机豁免
+  tests:
+    - tests/language/test_engine.py::test_haven_and_ready_windows
+    - tests/language/test_f14_willow.py::test_every_card_paragraph_fits_with_one_step_each
+    - tests/session/test_session_personas.py::test_silent_anchor_haven_window_is_the_narrower_one
+WILLOW-04:
+  status: covered
+  summary: 去病理化措辞，转介卡中的术语豁免
+  tests:
+    - tests/language/test_engine_filters.py::test_normal_text_is_rewritten
+    - tests/language/test_engine_filters.py::test_grade_c_info_keeps_clinical_wording
+    - tests/language/test_willow_data.py::test_depathologize_examples
+
+# ---------------------------------------------------------------- C.H.A.N.G.
+CHANG-01:
+  status: exempt
+  summary: AI 增强双通道网关加本地校验器，失败无感退回模板
+  reason: P7，裁定 35（云端 AI 增强不在当前版本）
+CHANG-02:
+  status: covered
+  summary: 电量前缀经危机筛查后锁定避风港，单向陪伴不提问
+  tests:
+    - tests/fsm/test_machine.py::test_battery_prefix_persists_and_defaults_to_six_tenths
+    - tests/cli/test_cli_golden.py::test_sop2_low_battery_late_at_night_gets_the_haven
+    - tests/language/test_gentle_holding_templates.py::test_haven_is_one_short_line_without_questions
+CHANG-03:
+  status: covered
+  summary: Beta-Bernoulli 反馈更新，软性衰减，只更新主导谱系，唤醒度高时只利用
+  tests:
+    - tests/methods/test_bandit.py::test_helpful_increments_alpha
+    - tests/methods/test_bandit.py::test_unhelpful_increments_beta_and_records_time
+    - tests/methods/test_bandit.py::test_not_now_changes_nothing
+    - tests/methods/test_bandit.py::test_exploration_boundary_samples_at_0_60_and_exploits_at_0_61
+CHANG-04:
+  status: partial
+  summary: 满七天且活跃时征询同意，生成 Markdown 周记，危机周用庄重语态
+  tests:
+    - tests/core/chang/test_journal.py::test_due_needs_two_sessions_in_the_rolling_window
+    - tests/core/chang/test_journal.py::test_due_waits_a_week_after_the_last_journal
+    - tests/core/chang/test_journal.py::test_a_week_with_a_crisis_uses_the_steadier_voice
+    - tests/cli/test_cli_journal.py::test_two_sessions_bring_the_offer_and_yes_shows_it
+  reason: 周记不含电量走势，也不按人格换语气（Q-6）
+CHANG-05:
+  status: partial
+  summary: 保存走临时文件、落盘、原子替换，并保留三个版本快照
+  tests:
+    - tests/core/test_storage.py::test_keeps_only_three_snapshots
+    - tests/core/test_storage.py::test_crash_before_replace_keeps_old_content
+    - tests/core/test_storage.py::test_corrupt_main_falls_back_to_newest_valid_snapshot
+    - tests/core/chang/test_profile_store.py::test_corrupt_profile_recovers_from_snapshot
+  reason: 只有画像留三份快照，账本等密文不留快照（SDD 6.5，避免加密擦除后留下可解副本）
+CHANG-06:
+  status: exempt
+  summary: 首次启用云端 AI 增强时单独明示授权并告知跨境
+  reason: P7，裁定 35（当前没有云端通道）
+
+# ---------------------------------------------------------------- GEO
+GEO-01:
+  status: covered
+  summary: 按国家代码解析资源，缺失或不支持的一律按 ZZ
+  tests:
+    - tests/resources/test_resource_resolver.py::test_unknown_or_unsupported_region_falls_back_to_zz
+    - tests/resources/test_resource_resolver.py::test_supported_codes_resolve_to_themselves
+GEO-02:
+  status: covered
+  summary: 中国大陆热线分级，12355 只给未满 18 岁者
+  tests:
+    - tests/resources/test_resource_resolver.py::test_crisis_card_contents
+    - tests/resources/test_resource_resolver.py::test_minor_sees_12355_at_cn_l2_only
+    - tests/resources/test_resource_resolver.py::test_adults_never_see_minors_only_lines
+GEO-03:
+  status: covered
+  summary: 非大陆卡片绝无大陆条目
+  tests:
+    - tests/resources/test_resource_resolver.py::test_non_cn_cards_never_show_mainland_entries
+    - tests/resources/test_hotline_data.py::test_mainland_only_numbers_stay_in_cn
+GEO-04:
+  status: covered
+  summary: 香港热线分级，L3 先给 999
+  tests:
+    - tests/resources/test_resource_resolver.py::test_crisis_card_contents
+    - tests/session/test_session.py::test_hong_kong_l3_shows_999_and_never_12356
+GEO-05:
+  status: covered
+  summary: 澳门热线分级
+  tests:
+    - tests/resources/test_resource_resolver.py::test_crisis_card_contents
+GEO-06:
+  status: covered
+  summary: 台湾热线分级
+  tests:
+    - tests/resources/test_resource_resolver.py::test_crisis_card_contents
+GEO-07:
+  status: covered
+  summary: 美加英澳与未知属地的分级矩阵，核验超 180 天标注可能已过期
+  tests:
+    - tests/resources/test_resource_resolver.py::test_crisis_card_contents
+    - tests/resources/test_resource_resolver.py::test_canada_never_shows_741741
+    - tests/resources/test_resource_resolver.py::test_entries_older_than_180_days_are_flagged
+    - tests/session/test_session.py::test_unknown_region_l3_points_to_the_nearest_emergency_room_and_l2_does_not
+GEO-08:
+  status: covered
+  summary: 热线数据用 Ed25519 签名，客户端核验，覆盖包须更新且签名有效
+  tests:
+    - tests/resources/test_bundle.py::test_committed_signature_matches_committed_data
+    - tests/resources/test_bundle.py::test_tampered_builtin_raises
+    - tests/resources/test_bundle.py::test_override_tampered_after_signing
+    - tests/cli/test_cli_hotline_updates.py::test_chat_ignores_a_tampered_update
+
+# ---------------------------------------------------------------- 安全核心
+SAFE-09:
+  status: covered
+  summary: 两阶段危机检测先于电量与避风港，电量前缀不能绕过，危机态只能经确认离开
+  tests:
+    - tests/session/test_session.py::test_low_battery_crisis_enters_s_crisis_with_12356_and_no_haven
+    - tests/session/test_session.py::test_crisis_holds_through_low_battery_and_commands
+    - tests/safety/test_tracker.py::test_battery_prefix_cannot_bypass_crisis
+    - tests/fsm/test_machine.py::test_crisis_exit_never_routes_to_haven
+
+# ---------------------------------------------------------------- 非目标 NG
+NG-1:
+  status: covered
+  summary: 不输出诊断代码、鉴别诊断或处方
+  tests:
+    - tests/language/test_engine_gate.py::test_diagnosis_terms_are_blocked_for_every_kind
+    - tests/language/test_engine_filters.py::test_diagnosis_sentences_are_dropped_for_every_kind
+NG-2:
+  status: covered
+  summary: 不给药物增减或替代指导
+  tests:
+    - tests/language/test_f3_language.py::test_medication_and_diagnosis_questions_get_one_plain_line
+    - tests/session/test_session_f3.py::test_medication_and_diagnosis_questions_are_acknowledged_first
+NG-3:
+  status: covered
+  summary: 仅限 18 岁以上使用
+  tests:
+    - tests/chang/test_onboarding.py::test_minor_refusal_persists_and_blocks_restart
+    - tests/session/test_session.py::test_refusal_record_cannot_open_a_session
+NG-4:
+  status: covered
+  summary: 不诱导病态依恋，45 分钟提醒、深夜关怀、现实支持引导
+  tests:
+    - tests/core/chang/test_wellbeing.py::test_no_break_at_44_59_and_a_break_at_45_00
+    - tests/session/test_session_wellbeing.py::test_break_reminder_at_45_minutes_not_before
+    - tests/session/test_session_wellbeing.py::test_late_night_line_once_per_session_in_shanghai
+NG-5:
+  status: covered
+  summary: 不做无监护的创伤暴露，非 A 级方法不装配练习
+  tests:
+    - tests/methods/test_solver.py::test_build_plan_refuses_non_grade_a_methods
+NG-6:
+  status: covered
+  summary: 不倒卖或滥用心理数据，包内不导入任何联网模块
+  tests:
+    - tests/scripts/test_privacy_audit.py::test_the_package_imports_no_networking_module
+    - tests/scripts/test_privacy_audit.py::test_the_audit_passes_on_this_tree
+  checks:
+    - scripts/privacy_audit.py
+NG-7:
+  status: covered
+  summary: 无未完成惩罚，可存入锦囊，负反馈以外不扣分
+  tests:
+    - tests/methods/test_bandit.py::test_not_now_changes_nothing
+    - tests/session/test_session.py::test_not_now_shelves_without_penalty_and_closes
+    - tests/cli/test_cli_golden.py::test_sop4_hesitation_itself_shelves_without_penalty
+NG-8:
+  status: covered
+  summary: 不引入星盘、塔罗等玄学体系，内容扎根于临床文献
+  tests:
+    - tests/language/test_ng8_no_pseudoscience.py::test_no_divination_words_in_data
+    - tests/language/test_ng8_no_pseudoscience.py::test_no_divination_words_in_cli_sentences
+NG-9:
+  status: covered
+  summary: 高危时清晰呈现属地官方热线与急救
+  tests:
+    - tests/session/test_session.py::test_l3_card_keeps_emergency_numbers_for_the_whole_crisis
+    - tests/session/test_session.py::test_taboo_topic_never_hides_crisis_resources
+    - tests/language/test_engine.py::test_crisis_gate_block_keeps_every_number
+    - tests/session/test_session_escalation.py::test_sessions_yaml_case_through_session_turn
+NG-10:
+  status: covered
+  summary: 未经单独同意不回传原文，没有任何网络通道
+  tests:
+    - tests/scripts/test_privacy_audit.py::test_network_block_refuses_records_and_restores
+    - tests/cli/test_offline_full.py::test_every_feature_works_offline
+  checks:
+    - scripts/privacy_audit.py
+
+# ---------------------------------------------------------------- 风险登记 RSK
+RSK-01:
+  status: partial
+  summary: 口癖式夸张不弹危机卡，第二阶段复核，L1 不弹卡
+  tests:
+    - tests/safety/test_crisis.py::test_hyperbole_is_not_ideation
+    - tests/redteam/test_redteam.py::test_hard_expectations
+  reason: 红队已知缺口，规则模式 6 条、模型模式 10 条误报，以严格 xfail 登记
+RSK-02:
+  status: covered
+  summary: 电量前缀加“不想活了”不能逃逸危机检测
+  tests:
+    - tests/safety/test_tracker.py::test_battery_prefix_cannot_bypass_crisis
+    - tests/session/test_session.py::test_low_battery_crisis_enters_s_crisis_with_12356_and_no_haven
+    - tests/cli/test_cli_golden.py::test_sop2_low_battery_never_hides_a_crisis
+RSK-03:
+  status: exempt
+  summary: 大模型篡改步骤或虚构疗法，由本地校验器拦截
+  reason: P7，裁定 35（没有大模型通道）
+RSK-04:
+  status: covered
+  summary: 未成年人由 18 岁以上门禁与 12355 兜住
+  tests:
+    - tests/chang/test_onboarding.py::test_minor_refusal_persists_and_blocks_restart
+    - tests/cli/test_cli_golden.py::test_sop1_minor_is_refused_now_and_on_every_later_launch
+RSK-05:
+  status: covered
+  summary: AES-256-GCM 静态加密，密钥只在本机钥匙串
+  tests:
+    - tests/core/crypto/test_aead.py::test_round_trip_and_fresh_nonce
+    - tests/core/crypto/test_aead.py::test_key_must_be_256_bits
+    - tests/core/crypto/test_vault.py::test_keychain_items_never_carry_user_text
+    - tests/scripts/test_privacy_audit.py::test_keys_on_disk_finds_the_master_key_in_any_encoding
+RSK-06:
+  status: partial
+  summary: 负反馈的软性时间衰减，随时间恢复，并可透明管理
+  tests:
+    - tests/methods/test_bandit.py::test_decay_halves_excess_beta_after_half_life
+  reason: 衰减已实现；用户看不到也改不了单个方法的后验，只能整体清除
+RSK-07:
+  status: covered
+  summary: 45 分钟软限制、深夜提醒、现实支持占比
+  tests:
+    - tests/core/chang/test_wellbeing.py::test_no_break_at_44_59_and_a_break_at_45_00
+    - tests/core/chang/test_wellbeing.py::test_real_support_share_and_cadence
+    - tests/session/test_session_wellbeing.py::test_break_reminder_at_45_minutes_not_before
+RSK-08:
+  status: exempt
+  summary: 云端超时首字监测与断网无感降级
+  reason: P7，裁定 35（当前本就离线）
+
+# ---------------------------------------------------------------- 待决问题 Q
+Q-1:
+  status: exempt
+  summary: 端侧模型是否量化为 ONNX INT8
+  reason: 假设 A-5，只用 NumPy 推理，不引入 ONNX
+Q-2:
+  status: covered
+  summary: 热线分层目录加签名包，每季度复核，180 天防呆期
+  tests:
+    - tests/scripts/test_check_hotline_freshness.py::test_an_entry_older_than_90_days_fails
+    - tests/resources/test_resource_resolver.py::test_entries_older_than_180_days_are_flagged
+    - tests/resources/test_bundle.py::test_committed_signature_matches_committed_data
+Q-3:
+  status: covered
+  summary: 周记在开场被动提示一次
+  tests:
+    - tests/cli/test_cli_journal.py::test_two_sessions_bring_the_offer_and_yes_shows_it
+Q-4:
+  status: covered
+  summary: 说“只想说说”开启纯倾听锁，说“想听建议”解除
+  tests:
+    - tests/fsm/test_machine.py::test_listening_lock_on_blocks_and_off_releases
+    - tests/fsm/test_machine.py::test_direct_request_releases_listening_lock
+    - tests/perception/test_rule_stub.py::test_lock_on
+    - tests/perception/test_rule_stub.py::test_lock_off_uses_the_prd_wording
+Q-5:
+  status: covered
+  summary: 当前严格 18 岁以上，不试点 16 至 17 岁
+  tests:
+    - tests/chang/test_onboarding.py::test_minor_refusal_persists_and_blocks_restart
+    - tests/session/test_session.py::test_refusal_record_cannot_open_a_session
+Q-6:
+  status: exempt
+  summary: 周记风格继承用户选的人格
+  reason: 未实现（周记只有一套文案，不读人格）；待实现后补测试
+Q-7:
+  status: covered
+  summary: 记忆衰减时间常数七天，显著事件永久保护
+  tests:
+    - tests/memory/test_memory_retrieval.py::test_recency_is_an_exponential_in_age_with_tau_seven_days
+    - tests/memory/test_memory_retrieval.py::test_significant_entries_never_decay
+    - tests/memory/test_memory_retrieval.py::test_a_significant_entry_outranks_an_equally_relevant_ordinary_one_however_old
+Q-8:
+  status: covered
+  summary: 时间戳保持记录时的值，展示按当前时区
+  tests:
+    - tests/memory/test_memory_ledger.py::test_summary_times_are_kept_in_their_own_zone
+    - tests/memory/test_memory_ledger.py::test_bodies_show_times_in_the_display_zone_and_store_them_as_recorded
+    - tests/cli/test_cli_memory.py::test_memory_shows_times_in_the_current_timezone_after_a_move
+
+# ---------------------------------------------------------------- 发布门禁 G
+G-0:
+  status: exempt
+  summary: 32 张 A 级卡经两名注册心理师签字
+  reason: 外部门禁（临床签字）；进度表 9.2（2026-10-25）搁置，所有文案标“草稿：待 G-0”
+G-1:
+  status: covered
+  summary: 断网状态下全部功能闭环可用
+  tests:
+    - tests/cli/test_offline_full.py::test_every_feature_works_offline
+G-2:
+  status: partial
+  summary: 危机集召回率不低于 98%，口癖误报不高于 5%
+  tests:
+    - tests/scripts/test_eval_crisis.py::test_rules_mode_counts
+    - tests/scripts/test_eval_crisis.py::test_model_mode_runs_through_the_student_switch
+  reason: 评估脚本已就绪但未达标（EVAL-4 只报告，模型模式召回约 89.9%）；独立评估与临床复核属外部
+G-3:
+  status: covered
+  summary: 单核控制回路 P99 不超过 55 毫秒
+  tests:
+    - tests/session/test_session_performance.py::test_turn_p99_within_the_control_loop_budget
+    - tests/session/test_step_performance.py::test_step_p99_within_its_budget
+  checks:
+    - scripts/bench_loop.py
+G-4:
+  status: partial
+  summary: PIPL 合规，单独同意、本地加密、加密擦除可审计
+  tests:
+    - tests/chang/test_onboarding.py::test_consent_comes_after_a_standalone_notice
+    - tests/scripts/test_privacy_audit.py::test_the_audit_passes_on_this_tree
+  checks:
+    - scripts/privacy_audit.py
+  reason: 自动审计已覆盖；法务报告属外部，发布前才需要
+G-5:
+  status: partial
+  summary: 诱导开药、诱导自残、状态机越权的红队拦截率 100%
+  tests:
+    - tests/redteam/test_redteam.py::test_hard_expectations
+    - tests/redteam/test_redteam.py::test_case
+  reason: 未达 100%，规则模式与模型模式各有已知缺口（含诱导自残问方法 4 条漏检），以严格 xfail 登记

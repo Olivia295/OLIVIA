@@ -32,3 +32,5 @@ fi
 # G-4's automatic part (ruling 32, plan B8): offline, no typed text on disk or in output,
 # sealed stores, private permissions, forget --all leaves nothing. In-memory keychain only.
 "$PY" scripts/privacy_audit.py
+# Every requirement id the PRD and SDD name has a test, a check or a stated reason.
+"$PY" scripts/trace_requirements.py
