@@ -671,17 +671,21 @@ def test_red_flag_user_in_explore_gets_only_whitelisted_stabilization():
 
 @BOTH_MODES
 def test_referral_card_once_per_flag_from_profile_and_text(rules_only):
+    # dogfood I5: a flag known only from the profile is not put on screen on the first,
+    # unrelated turn of every session; it comes with a plan. A flag the conversation
+    # brings up is referred on that turn, once.
     session = _open(rules_only=rules_only, clinical_history=("SIT-02-04",))
     first = session.turn("今天上班好累")
     assert first.stage is HelpStage.S_EXPLORE
-    assert first.reply_kind is ReplyKind.REFERRAL
-    assert first.referral_flags == ("SIT-02-04",)
+    assert first.referral_flags == () and first.reply_kind is ReplyKind.NORMAL
     second = session.turn("还是好累")
     assert second.referral_flags == () and second.reply_kind is ReplyKind.NORMAL
     third = session.turn("其实我得了厌食症")
     assert third.referral_flags == ("SIT-08-04",)
     assert third.reply_kind is ReplyKind.REFERRAL
     assert session.turn("嗯").referral_flags == ()
+    plan = session.turn("给我一个方法")
+    assert "SIT-02-04" in plan.referral_flags
 
 
 def test_referral_waits_out_a_crisis():
@@ -692,7 +696,7 @@ def test_referral_waits_out_a_crisis():
 
 
 def test_referral_in_haven_keeps_haven_wording():
-    result = _open(clinical_history=("SIT-09-01",)).turn("[5%] 好累")
+    result = _open(clinical_history=("SIT-09-01",)).turn("[5%] 好累，我是边缘型人格")
     assert result.stage is HelpStage.S_HAVEN
     assert result.reply_kind is ReplyKind.REFERRAL
     assert result.referral_flags == ("SIT-09-01",)

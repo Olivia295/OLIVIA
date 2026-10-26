@@ -309,6 +309,35 @@ crisis, D3, haven or gate-fallback reply; the profile is never written.
 lens their dossier's Grade B methods (``language/dossiers.py``); neither reaches crisis
 replies, the referral card or the m0 rule.
 
+Language understanding (dogfood I1-I5, I8, P6, P8; 2026-10-26; new wording 草稿：待 G-0),
+never on a crisis turn and never changing the crisis flow:
+
+* A request whose words are apart ("有什么五分钟能做的放松方法吗", ``perception.yaml``
+  ``direct_request_patterns``) is a direct request like any other (COLBO-03). Asking how
+  to say something ("我该怎么开口跟妈妈聊", ``advice_request``) is advice, which the PRD
+  has no mechanism for: no card, the ordinary reply led by ``notices.advice_heard``.
+  "别老给我发热线电话" (``hotline_pushback``) leads the reply with
+  ``notices.hotline_heard``, which says when hotlines do show.
+* A practice the user's own heart or breathing condition masks, named on a calm turn
+  ("憋气那种", "冷水敷脸呢"; ``contraindicated_practice`` with the contraindication
+  active) is a direct request served from the stabilization whitelist (slow breathing,
+  not breath holding), and while a card waits a request for another one (F16b), never
+  feedback; the reply opens with ``notices.masked_practice``, which names no diagnosis.
+  "为什么不行" up to two turns later is a meta turn answered by
+  ``notices.masked_practice_why``. Chest or heart symptoms with that condition end the
+  reply once per session with ``notices.cardiac_care``.
+* "你会把我说的话存下来吗" (``privacy_question``) is a meta turn answered by
+  ``privacy.yaml`` ``chat_answer`` (the facts of ``olivia privacy``).
+* S_clarify names a need at most once in three replies, never after a very short reply.
+* After a bereavement (grief, SIT-06-04) the S_clarify lens never comes from the trauma
+  and bereavement or the attachment spectrum (talk of the person lost reads as their
+  cues), and a lens listed in ``grade_bc_info.yaml`` ``lens_requires``
+  (couples therapy, CBASP) needs one of its words to have come up (only the method ids
+  are kept).
+* Referral (§9.3, SDD §8.4): a red flag known only from the profile is referred with a
+  plan (a card or m0, as the solver requires), not on the first turn of every session;
+  a flag the conversation brings up is referred on that turn, as before.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -326,6 +355,7 @@ from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
+from olivia.core.chang.privacy import load_privacy_text
 from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
 from olivia.core.chang.wellbeing import Reminder, Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
@@ -340,6 +370,7 @@ from olivia.core.language.engine import (
 )
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance
+from olivia.core.language.spacing import fill as spaced_fill
 from olivia.core.memory.notes import NoteCues, load_note_cues
 from olivia.core.memory.state import KIT_MAX, CarriedState, KitEntry, restore_sampler
 from olivia.core.methods.bandit import Feedback
@@ -444,6 +475,15 @@ _FORGET_RE: Final = re.compile(
     r"(?:清空|清除|删除|删掉|删了|忘掉|忘了)"
 )
 _FORGET_MAX_CHARS: Final = 20
+# dogfood I3: S_clarify names a need at most once in this many of its replies.
+_NEED_GAP: Final = 3
+# dogfood I2: the contraindication whose masked practices and symptoms the session hears.
+_CARDIO: Final = "CARDIORESPIRATORY_INSTABILITY"
+# dogfood I2: "why not" is read up to this many turns after the masked practice was named.
+_WHY_WINDOW: Final = 2
+_GRIEF_EMOTION: Final = "grief"
+_BEREAVEMENT: Final = "SIT-06-04"
+_AFTER_LOSS_NO_LENS: Final = frozenset({"06", "07"})
 
 
 class FeedbackSource(StrEnum):
@@ -507,6 +547,8 @@ class _Shared:
     externalize: ExternalizeText
     note_cues: NoteCues
     """The recorder's "记住：……" cues: a note turn gets no information card (F5b)."""
+    privacy_answer: str = ""
+    """``privacy.yaml`` ``chat_answer``: the reply to "你会把我说的话存下来吗" (I8)."""
 
 
 @lru_cache(maxsize=4)
@@ -529,6 +571,7 @@ def _shared(tax: Taxonomy, today_iso: str, hotline_updates: Path | None = None) 
         mirror_lines=load_mirror_lines(tax),
         externalize=load_externalize_text(tax),
         note_cues=load_note_cues(),
+        privacy_answer=load_privacy_text().chat_answer.strip(),
     )
 
 
@@ -670,6 +713,19 @@ class Session:
         # a row it has come again (F5b).
         self._last_referral: tuple[tuple[str, ...], int] | None = None
         self._referral_again = 0
+        # Red flags heard in this conversation's text (I5): a profile flag alone is referred
+        # with a plan, not on the first turn of every session.
+        self._text_flags: set[str] = set()
+        # The turn (count before it) on which a masked practice was explained (I2).
+        self._masked_turn: int | None = None
+        self._cardiac_noted = False
+        # S_clarify replies since the last one that named a need (I3): due at _NEED_GAP.
+        self._since_need = _NEED_GAP
+        self._need_due = True
+        self._need_named = False
+        # I4: a loss was talked about; lens topics heard (method ids only).
+        self._loss_seen = False
+        self._lens_topics: set[str] = set()
 
     @classmethod
     def open(
@@ -799,6 +855,7 @@ class Session:
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
+        self._text_flags |= self._shared.detector.detect(text)
         self._context = self._contra.observe(signals, perception, status, flags)
         ask = answer is None and assessment.asks_intent and not status.in_crisis
         # The request on an ask turn is not a request for an exercise, and the answer to the
@@ -836,6 +893,28 @@ class Session:
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
+        before_turns = self._state.global_turn_count
+        # dogfood I2: a practice the user's own heart or breathing condition masks, named on
+        # a calm turn, is a request for a practice (another one while a card waits, as F16b
+        # reads a named practice), never feedback; the reply says gently why not that one.
+        masked = (
+            bool(signals.contraindicated_practice & self._context.contraindications)
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L1
+            and rules.level < CrisisLevel.L1
+            and signals.command is None
+            and not ask
+            and answer is None
+        )
+        if masked:
+            signals = replace(
+                signals,
+                direct_request=True,
+                another_method=True,
+                feedback=None,
+                feedback_unclear=False,
+            )
+            self._masked_turn = before_turns
         # A command, or a pick from the naming offer (C3), is not something to mirror back.
         mirror_text = "" if signals.command is not None or naming is not None else text
         # Two meta turns outside a crisis: a feedback command with no card waiting for it,
@@ -851,6 +930,25 @@ class Session:
             and answer is None
             and _asks_to_forget(text)
         )
+        # dogfood I8: "你会把我说的话存下来吗" gets the privacy facts; I2: "为什么不行" right
+        # after a masked practice was explained gets a little more. Meta turns, as above.
+        calm_meta = (
+            meta
+            and not no_pending
+            and not forget
+            and assessment.level < CrisisLevel.L1
+            and not ask
+            and answer is None
+        )
+        privacy = calm_meta and signals.privacy_question and bool(self._shared.privacy_answer)
+        why = (
+            calm_meta
+            and not privacy
+            and not masked
+            and signals.why_not
+            and self._masked_turn is not None
+            and before_turns - self._masked_turn <= _WHY_WINDOW
+        )
         if no_pending:
             signals = replace(signals, command=None)
         transition = step(
@@ -858,14 +956,16 @@ class Session:
             self._state,
             TurnInput(perception, status, signals, self._profile.persona_spectrum),
         )
-        if no_pending or forget:
+        if no_pending or forget or privacy or why:
             transition = self._held(transition)
         # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
-        self._stabilization_only = transition.stabilization_only
+        # A masked calming practice asked for by name (dogfood I2) is replaced by one from
+        # the same whitelist: slow breathing for 4-7-8, never a thought record.
+        self._stabilization_only = transition.stabilization_only or masked
         spectrum = dominant_spectrum(perception.distress_vector)
         reason = transition.reason.value
         if self._reopens(transition, signals, follow, perception, spectrum) and not (
-            no_pending or forget or ask or answer is not None
+            no_pending or forget or privacy or why or ask or answer is not None
         ):
             transition = self._reopen(transition, perception)
             reason = CLOSING_REOPEN
@@ -886,6 +986,7 @@ class Session:
             feedback = Feedback.NOT_NOW
         if spectrum is not None:
             self._last_spectrum = spectrum
+        self._observe_topics(text, perception, spectrum)
         note = self._shared.note_cues.find(text) is not None
         # Leaving for now with no card waiting (F5d): a short goodbye, nothing else. The
         # rules screen the turn L0; an L1 only an injected model's score band gives (F10,
@@ -903,7 +1004,7 @@ class Session:
             and stage not in _OWN_REPLY_STAGES
         )
         info = None
-        if not leaving:
+        if not (leaving or privacy or why):
             info = self._info_choice(
                 stage, perception, flags, signals, status, assessment.level, feedback, transition
             )
@@ -925,6 +1026,8 @@ class Session:
             or answer is not None
             or no_pending
             or forget
+            or privacy
+            or why
             or leaving
             or signals.command is not None
             or signals.direct_request
@@ -977,6 +1080,9 @@ class Session:
         )
 
         templates = self._engine.data.templates
+        # dogfood I3: S_clarify names a need at most once in _NEED_GAP + 1 of its replies.
+        self._need_due = self._since_need >= _NEED_GAP
+        self._need_named = False
         # Only the plain composed reply of the current stage carries a wellbeing prompt.
         ordinary = False
         if stage is HelpStage.S_CRISIS:
@@ -1002,6 +1108,10 @@ class Session:
             rendered = self._followup(templates.no_pending_feedback, stage)
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
+        elif privacy:
+            rendered = self._followup((self._shared.privacy_answer,), stage)
+        elif why:
+            rendered = self._followup(self._notice("masked_practice_why"), stage)
         elif leaving:
             rendered = self._closing(self._after_close(now), stage)
         elif follow.clarify and still_waiting:
@@ -1102,6 +1212,9 @@ class Session:
             self._add_line(rendered, templates.unhelpful_ack, stage, first=True)
         if switch and rendered.kind is ReplyKind.CARD:
             self._add_line(rendered, templates.card_switched, stage, first=True)
+        if masked and stage is not HelpStage.S_CRISIS:
+            # Not the diagnosis, only that the body needs care (dogfood I2, 草稿：待 G-0).
+            self._add_line(rendered, self._notice("masked_practice"), stage, first=True)
         if (
             transition.previous is HelpStage.S_HAVEN
             and stage is HelpStage.S_EMPOWER
@@ -1111,6 +1224,24 @@ class Session:
             self._add_line(rendered, templates.haven_return, stage, first=False)
 
         settled = not status.in_crisis and assessment.level < CrisisLevel.L1
+        if stage is HelpStage.S_CLARIFY and rendered.kind in (ReplyKind.NORMAL, ReplyKind.INFO):
+            self._since_need = 0 if self._need_named else self._since_need + 1
+        if (
+            ordinary
+            and settled
+            and signals.advice_request
+            and stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY)
+        ):
+            # "我该怎么开口跟妈妈聊": the question is heard (dogfood I1, 草稿：待 G-0).
+            self._add_line(rendered, self._notice("advice_heard"), stage, first=True)
+        if (
+            signals.hotline_pushback
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L2
+            and stage is not HelpStage.S_CRISIS
+            and not ask
+        ):
+            self._add_line(rendered, self._notice("hotline_heard"), stage, first=True)
         plain = rendered.kind is ReplyKind.NORMAL or stage is HelpStage.S_HAVEN
         prompted = self._wellbeing.prompt(
             rendered.reply,
@@ -1140,6 +1271,7 @@ class Session:
         if stage is not HelpStage.S_CRISIS and not ask:
             self._append_referral(rendered, flags)
             self._append_health_hint(rendered, stage)
+            self._append_cardiac_care(rendered, signals, status, stage)
             if settled and stage is HelpStage.S_CLOSING:
                 self._append_plan_suggestion(rendered, stage)
 
@@ -1575,14 +1707,24 @@ class Session:
             and self._profile.persona_spectrum is not PersonaSpectrum.SILENT_ANCHOR
         ):
             # Only a lens that fits: the active situations' spectra when there are any,
-            # so a breakup or a loss never gets a relationship-skills lens (F3).
+            # so a breakup or a loss never gets a relationship-skills lens (F3); else the
+            # spectrum the conversation showed last, and a lens for one topic only when
+            # that topic came up (dogfood I4: couples therapy with a partner).
             fit = fitting_spectra(self._context.situations, self._last_spectrum)
+            if self._loss_seen:
+                # After a bereavement, talk of the person lost reads as attachment or
+                # trauma cues (dogfood I4: a couples-therapy card after a father's death):
+                # no lens from those spectra for the rest of the session.
+                fit = fit - _AFTER_LOSS_NO_LENS
             pool = lens_pool(
                 info_cards(self._tax, inp),
                 data.situation_lenses,
                 self._context.situations,
                 [mid for sid in sorted(fit) for mid in data.info_lenses.get(sid, ())],
             )
+            pool = [
+                mid for mid in pool if mid not in data.lens_requires or mid in self._lens_topics
+            ]
             chosen, lens = (self._rng.choice(pool) if pool else None), True
         else:
             return None
@@ -1711,9 +1853,14 @@ class Session:
         self._engine.last_gate = None
         if short is None:
             short = bool(mirror_text) and is_short_input(mirror_text)
+        if stage is HelpStage.S_CLARIFY and (short or not self._need_due):
+            # Not every S_clarify reply names a need, never one after "嗯" (dogfood I3).
+            slots = replace(slots, need="")
         text = self._engine.compose(stage, slots, card=card, light=light, tips=tips, short=short)
         if not self._note_gate():
             return None
+        if stage is HelpStage.S_CLARIFY and slots.need and slots.need in text:
+            self._need_named = True
         return text, slots.mirror
 
     def _compose_mirror(
@@ -1929,9 +2076,7 @@ class Session:
         values = self._plain_slots().values()
         if not all(values[s] for s in slots_of(variant)):
             return None
-        text = variant
-        for name, value in values.items():
-            text = text.replace("{" + name + "}", value)
+        text = _fill_names(variant, values)
         text = apply_willow(text, ContentKind.NORMAL, self._engine.data.willow)
         self._engine.last_gate = self._engine.gate.check(text, kind=ContentKind.NORMAL, stage=stage)
         if not self._note_gate() or self._has_taboo(text, ""):
@@ -1951,8 +2096,10 @@ class Session:
         return _Rendered(self._engine.gate.fallback, ReplyKind.HAVEN)
 
     def _append_referral(self, rendered: _Rendered, flags: frozenset[str]) -> None:
-        """Add the referral card for the plan's flags and for flags not yet referred."""
-        wanted = set(rendered.referral_flags) | (flags - self._referred)
+        """Add the referral card for the plan's flags and for flags not yet referred that
+        the conversation brought up. A flag known only from the profile comes with a plan
+        (a card or m0), never on the first, unrelated turn of every session (dogfood I5)."""
+        wanted = set(rendered.referral_flags) | ((flags & self._text_flags) - self._referred)
         if not wanted:
             return
         codes = tuple(code for code in self._tax.red_flags() if code in wanted)
@@ -1998,6 +2145,44 @@ class Session:
             return
         self._contra.mark_hinted(unsaved)
         rendered.reply = f"{rendered.reply}\n\n{line[0]}"
+
+    def _append_cardiac_care(
+        self, rendered: _Rendered, signals: TurnSignals, status: CrisisStatus, stage: HelpStage
+    ) -> None:
+        """End the reply once per session with the line about medical help when a user with
+        a heart or breathing condition tells of chest or heart symptoms (dogfood I2)."""
+        if (
+            self._cardiac_noted
+            or not signals.cardiac_symptom
+            or _CARDIO not in self._context.contraindications
+            or status.in_crisis
+        ):
+            return
+        before = rendered.reply
+        self._add_line(rendered, self._notice("cardiac_care"), stage, first=False)
+        self._cardiac_noted = rendered.reply != before
+
+    def _notice(self, name: str) -> tuple[str, ...]:
+        """``utterances.yaml`` ``notices[name]``: persona-neutral lines (dogfood I1, I2)."""
+        return self._engine.data.utterances.notices[name]
+
+    def _observe_topics(
+        self, text: str, perception: PerceptionContext, spectrum: str | None
+    ) -> None:
+        """What the conversation has been about, for the S_clarify lens (dogfood I4): a
+        bereavement (grief, or SIT-06-04), and the lens topics of
+        ``grade_bc_info.yaml`` ``lens_requires`` that came up (method ids, no user text)."""
+        if (
+            perception.fine_grained_emotion == _GRIEF_EMOTION
+            or _BEREAVEMENT in self._context.situations
+        ):
+            self._loss_seen = True
+        requires = self._engine.data.lens_requires
+        if requires:
+            folded = normalize(text)
+            self._lens_topics |= {
+                mid for mid, words in requires.items() if any(w in folded for w in words)
+            }
 
     def _append_plan_suggestion(self, rendered: _Rendered, stage: HelpStage) -> None:
         """End the first S_closing reply with the ``olivia safety-plan`` line (B10), once."""
@@ -2285,9 +2470,8 @@ class Session:
 
 
 def _fill_names(template: str, values: Mapping[str, str]) -> str:
-    for name, value in values.items():
-        template = template.replace("{" + name + "}", value)
-    return template
+    # A Latin name next to a Chinese character gets a space ("Olivia 都在"; dogfood P8).
+    return spaced_fill(template, values)
 
 
 def _uncapped(assessment: CrisisAssessment) -> dict[str, object]:
