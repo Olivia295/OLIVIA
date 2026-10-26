@@ -5,7 +5,9 @@ no feedback yet sits at the prior of its method's evidence level; a registry sub
 uses its parent method's level; a standalone registry action (the red-flag-only actions,
 plan D-3) has no evidence level and takes the lowest listed one,
 :data:`STANDALONE_EVIDENCE_LEVEL` (draft pending G-0). Every number (priors, decay rate,
-the exploit-only arousal threshold) comes from the taxonomy.
+the exploit-only arousal threshold) comes from the taxonomy. Sampling explores only when
+the caller says the pool is the regular Grade A pool (SDD §6.3); every other pool is
+exploit only.
 
 ``UNHELPFUL`` sets ``beta`` to its decayed value plus 1 and records the time; at read
 time the excess over the prior decays: ``beta_eff = beta0 + (beta - beta0) *
@@ -63,7 +65,7 @@ def _positive_float(value: object, where: str) -> float:
 
 
 class ThompsonSampler:
-    """Thompson sampling with an arousal-gated exploit-only fallback.
+    """Thompson sampling with a pool- and arousal-gated exploit-only fallback.
 
     The caller passes the dominant spectrum id; only that spectrum's posteriors are read
     or updated. Randomness and time are injected so results are reproducible.
@@ -89,12 +91,16 @@ class ThompsonSampler:
         arousal: float,
         rng: random.Random,
         now: datetime,
+        *,
+        explore: bool = False,
     ) -> str:
         """Return the canonical id of the chosen candidate.
 
-        Above the exploit-only arousal threshold the highest posterior mean wins
-        (sampling variance forced to zero); otherwise one Beta draw per candidate
-        decides. Ties go to the earlier candidate.
+        One Beta draw per candidate decides only when ``explore`` is set and arousal is at
+        or below the exploit-only threshold (SDD §6.3: the caller sets ``explore`` only
+        when the pool is strictly the regular Grade A pool, ``AllowedSet.explorable``);
+        otherwise the highest posterior mean wins (sampling variance forced to zero).
+        Ties go to the earlier candidate.
         """
         if not candidates:
             raise ValueError("choose needs at least one candidate")
@@ -104,10 +110,10 @@ class ThompsonSampler:
         _require_aware(now, "now")
         ids = [self._tax.canonical_action_id(raw) for raw in candidates]
         params = [self._effective(spectrum, aid, now) for aid in ids]
-        if arousal > self._exploit_above:
-            scores = [a / (a + b) for a, b in params]
-        else:
+        if explore and arousal <= self._exploit_above:
             scores = [rng.betavariate(a, b) for a, b in params]
+        else:
+            scores = [a / (a + b) for a, b in params]
         best = max(range(len(ids)), key=lambda i: (scores[i], -i))
         return ids[best]
 

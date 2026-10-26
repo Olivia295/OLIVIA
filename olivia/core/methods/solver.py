@@ -13,7 +13,9 @@ false empty set.
   Grade A methods (COLBO-07, the right wing). ``S_explore``, ``S_clarify`` and
   ``S_empower`` at or above that arousal threshold, and ``S_empower`` below that
   battery threshold, get only the stabilization whitelist (COLBO-02, the left wing);
-  the battery case is reported as ``AllowedSet.battery_gated``. ``S_explore`` and
+  the battery case is reported as ``AllowedSet.battery_gated``. Only the right-wing
+  pool with no red flag active (so no red-flag-only action) is ``AllowedSet.explorable``,
+  the only pool the sampler explores (SDD §6.3). ``S_explore`` and
   ``S_clarify`` below the arousal threshold, and every other stage, get nothing. A pool
   entry that is a method also admits that method's registered sub-actions; each
   sub-action is then filtered on its own.
@@ -94,6 +96,10 @@ class AllowedSet:
     referral_flags: tuple[str, ...]  # red-flag codes that require a referral card
     # S_empower below the right-wing battery: the pool was cut to the stabilization whitelist.
     battery_gated: bool = False
+    # The candidates are strictly the regular Grade A pool (the right wing: S_empower below
+    # the somatic line, not battery-gated, no red flag active, so no red-flag-only action):
+    # the only pool the sampler may explore (SDD §6.3).
+    explorable: bool = False
 
     def __post_init__(self) -> None:
         if self.use_m0 == bool(self.candidates):
@@ -133,7 +139,18 @@ def allowed_actions(tax: Taxonomy, inp: SolverInput) -> AllowedSet:
     pool -= {tax.canonical_action_id(aid) for aid in inp.shelved_actions}
 
     candidates = tuple(aid for aid in _ordered_ids(tax) if aid in pool)
-    return AllowedSet(candidates, not candidates, referral, battery_gated=gated)
+    # An active red flag bounds the pool by its closed set (red-flag-only actions included),
+    # so only a flag-free right wing is the regular Grade A pool.
+    explorable = (
+        inp.stage is HelpStage.S_EMPOWER
+        and not gated
+        and inp.arousal < tax.threshold(_SOMATIC_PRIORITY_KEY)
+        and not flags
+        and bool(candidates)
+    )
+    return AllowedSet(
+        candidates, not candidates, referral, battery_gated=gated, explorable=explorable
+    )
 
 
 def build_plan(tax: Taxonomy, chosen_id: str | None, allowed: AllowedSet) -> ActionPlan:

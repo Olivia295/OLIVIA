@@ -22,8 +22,9 @@ import pytest
 
 from olivia.core.fsm import Reason
 from olivia.core.language.data import load_language_data
-from olivia.core.models import HelpStage, PersonaProfile, PersonaSpectrum, UserRegion
+from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, PersonaSpectrum, UserRegion
 from olivia.core.perception.introspector import load_mirror_lines
+from olivia.core.safety.crisis import RiskPrediction
 from olivia.core.session import ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
 
@@ -188,6 +189,40 @@ def test_an_unclear_reply_is_no_answer():
     assert later.inspect["schema_mirror"] is None and later.stage is HelpStage.S_CLARIFY
 
 
+YES = "是的，一直都是这样"
+
+
+class _YesIsL1:
+    """A risk model whose score band makes the yes L1 while the rule screen stays L0."""
+
+    def predict(self, text: str) -> RiskPrediction:
+        return RiskPrediction(CrisisLevel.L1 if text == YES else CrisisLevel.L0, 0.0, ())
+
+
+def test_a_yes_on_an_l1_turn_is_read_but_holds_s_clarify():
+    # SDD §4.2: on a turn whose effective level is L1, S_clarify -> S_empower fires neither
+    # on auto-advance nor on the core-belief identification. The rule screen is L0, so the
+    # mirror still reads the yes; the confirmation is not carried over to a later turn: the
+    # session goes on by the ordinary auto-advance (SDD §3.2, no extra rule).
+    session = Session.open(TAX, _profile(), rng=random.Random(7), now=lambda: NOW, model=_YesIsL1())
+    _to_mirror(_enable_mirror(session))
+    held = session.turn(YES)
+    assert held.inspect["assessed_level"] == "L1"
+    assert held.inspect["schema_mirror"] == "confirmed"
+    assert held.stage is HelpStage.S_CLARIFY and held.inspect["reason"] == "STAY"
+    assert held.reply_kind is not ReplyKind.CARD
+    assert session.snapshot()["schema_mirror"] == "confirmed"
+    advance = TAX.threshold("colbo.fsm.empower_auto_advance_stage_turns")
+    later: list[TurnResult] = []
+    while session.state.stage_turn_count < advance:
+        later.append(session.turn("今天外面下雨了"))
+        assert later[-1].stage is HelpStage.S_CLARIFY and later[-1].inspect["reason"] == "STAY"
+    moved = session.turn("今天外面下雨了")
+    assert moved.stage is HelpStage.S_EMPOWER
+    assert moved.inspect["reason"] == Reason.CLARIFY_TO_EMPOWER.value
+    assert all(r.inspect["schema_mirror"] is None for r in (*later, moved))
+
+
 def test_a_yes_on_a_crisis_turn_is_not_read():
     session = _enable_mirror(_open())
     _to_mirror(session)
@@ -294,7 +329,21 @@ def test_miyi03_dialogue_in_model_mode():
     assert asked.inspect["schema_mirror"] == "asked"
     assert asked.inspect["arousal"] < TAX.threshold("arousal.thresholds.somatic_priority")
     assert asked.reply.split("\n\n")[-1] in LINES["APPROVAL_SEEKING"]
-    confirmed = session.turn("对")
+    # The student scores a bare "对" in the L1 band (about 0.25), and an L1 turn never
+    # advances (SDD §4.2), so the answer here is one it scores L0.
+    confirmed = session.turn("嗯，是这样")
+    assert confirmed.inspect["assessed_level"] == "L0"
     assert confirmed.inspect["schema_mirror"] == "confirmed"
     assert confirmed.stage is HelpStage.S_EMPOWER
     assert confirmed.inspect["reason"] == Reason.CLARIFY_CORE_BELIEF.value
+
+
+def test_miyi03_a_yes_the_student_scores_l1_holds_s_clarify():
+    # SDD §4.2 with the real student: "对，就是这样" scores in the L1 band (about 0.28) while
+    # the rule screen stays L0, so the yes is read but S_clarify holds.
+    session = _open(student=True)
+    _run(session, (*TO_CLARIFY, MORE_SCHEMA))
+    held = session.turn("对，就是这样")
+    assert held.inspect["assessed_level"] == "L1"
+    assert held.inspect["schema_mirror"] == "confirmed"
+    assert held.stage is HelpStage.S_CLARIFY and held.inspect["reason"] == "STAY"

@@ -11,10 +11,11 @@ import pytest
 
 import olivia.core.session as session_module
 from olivia.core.language.data import load_language_data
+from olivia.core.methods.bandit import ThompsonSampler
 from olivia.core.methods.solver import M0_ACTION_ID
 from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, UserRegion
 from olivia.core.safety.crisis import RiskPrediction
-from olivia.core.session import AgeGateRefusedError, ReplyKind, Session
+from olivia.core.session import AgeGateRefusedError, ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
 
 TAX = load_taxonomy()
@@ -294,16 +295,84 @@ def test_red_flag_with_empty_set_gets_companionship_and_referral():
     assert result.inspect["candidates"] == []
 
 
+# -- SDD §6.3: the sampler explores only the regular Grade A pool --------------------------
+
+
+class _AlwaysL1:
+    """A risk model whose score band makes every turn L1 while the rules stay L0."""
+
+    def predict(self, text: str) -> RiskPrediction:
+        return RiskPrediction(CrisisLevel.L1, 0.0, ())
+
+
+def _best_mean(candidates: list[str]) -> str:
+    # Every arm still at its prior: the highest prior mean, ties to the earlier candidate.
+    sampler = ThompsonSampler(TAX)
+
+    def mean(aid: str) -> float:
+        a, b = sampler.posterior(aid, "01", NOW)
+        return a / (a + b)
+
+    return max(candidates, key=lambda aid: (mean(aid), -candidates.index(aid)))
+
+
+def _picks(text: str, seeds: int = 15, **open_kwargs: object) -> list[TurnResult]:
+    results = []
+    for seed in range(seeds):
+        if open_kwargs.get("model") is not None:
+            session = Session.open(
+                TAX, _profile(), rng=random.Random(seed), now=lambda: NOW, **open_kwargs
+            )
+        else:
+            session = _open(seed, **open_kwargs)
+        results.append(session.turn(text))
+    return results
+
+
+def test_an_l1_stabilization_turn_at_low_arousal_never_explores():
+    # Ruling 5: a direct request on an L1 turn gets the stabilization pool; low arousal
+    # does not make that pool explorable, so every seed gets the highest mean.
+    results = _picks("给我一个方法", model=_AlwaysL1())
+    for result in results:
+        assert result.inspect["level"] == "L1" and result.reply_kind is ReplyKind.CARD
+        assert result.inspect["arousal"] <= TAX.threshold("arousal.thresholds.exploration_allow")
+    candidates = results[0].inspect["candidates"]
+    assert isinstance(candidates, list) and "28" in candidates
+    assert {r.action_id for r in results} == {_best_mean(candidates)}
+
+
+def test_a_battery_gated_pool_at_low_arousal_never_explores():
+    results = _picks("[30%] 给我一个方法")
+    assert all(r.stage is HelpStage.S_EMPOWER and r.reply_kind is ReplyKind.CARD for r in results)
+    candidates = results[0].inspect["candidates"]
+    assert isinstance(candidates, list)
+    assert {r.action_id for r in results} == {_best_mean(candidates)}
+
+
+def test_a_pool_with_a_red_flag_only_action_never_explores():
+    results = _picks("给我一个方法", clinical_history=("SIT-06-01",))
+    candidates = results[0].inspect["candidates"]
+    assert candidates == ["30:grounding", "SAFE_PLACE_CONTAINER"]
+    assert {r.action_id for r in results} == {_best_mean(candidates)}
+
+
+def test_the_regular_grade_a_pool_at_low_arousal_still_explores():
+    results = _picks("给我一个方法")
+    assert all(r.inspect["arousal"] <= 0.60 for r in results)
+    assert len(results[0].inspect["candidates"]) == 36  # type: ignore[arg-type]
+    assert len({r.action_id for r in results}) > 1
+
+
 # -- D-3 (F13, draft G-0): red-flag-only actions --------------------------------------------
 
 
 @BOTH_MODES
 def test_bipolar_user_gets_the_circadian_or_stimulus_card(rules_only):
-    shown = set()
+    # A red-flag pool is never explored (SDD §6.3): with equal priors the first candidate
+    # wins for every seed; the other card comes once the first is shelved.
     for seed in range(12):
-        result = _open(seed, rules_only=rules_only, clinical_history=("SIT-02-04",)).turn(
-            "给我一个方法"
-        )
+        session = _open(seed, rules_only=rules_only, clinical_history=("SIT-02-04",))
+        result = session.turn("给我一个方法")
         assert result.stage is HelpStage.S_EMPOWER
         assert result.reply_kind is ReplyKind.CARD
         assert result.referral_flags == ("SIT-02-04",)
@@ -311,10 +380,12 @@ def test_bipolar_user_gets_the_circadian_or_stimulus_card(rules_only):
             "CIRCADIAN_RHYTHM_STABILIZATION",
             "ENVIRONMENT_STIMULUS_REDUCTION",
         ]
-        shown.add(result.action_id)
-        if result.action_id == "CIRCADIAN_RHYTHM_STABILIZATION":
-            assert "「让作息稳一稳」" in result.reply and "· " in result.reply
-    assert shown == {"CIRCADIAN_RHYTHM_STABILIZATION", "ENVIRONMENT_STIMULUS_REDUCTION"}
+        assert result.action_id == "CIRCADIAN_RHYTHM_STABILIZATION"
+        assert "「让作息稳一稳」" in result.reply and "· " in result.reply
+    session.turn("/not-now")
+    other = session.turn("给我一个方法")
+    assert other.reply_kind is ReplyKind.CARD
+    assert other.action_id == "ENVIRONMENT_STIMULUS_REDUCTION"
 
 
 def test_circadian_card_is_framed_as_tips():
@@ -351,11 +422,14 @@ def test_substance_user_gets_the_withdrawal_warning_on_the_referral_card():
 
 
 def test_ptsd_user_can_get_the_safe_place_card_in_empower():
-    shown = {
-        _open(seed, clinical_history=("SIT-06-01",)).turn("给我一个方法").action_id
-        for seed in range(20)
-    }
-    assert shown == {"30:grounding", "SAFE_PLACE_CONTAINER"}
+    # Exploit only in a red-flag pool (SDD §6.3): grounding's prior mean is the higher one,
+    # so it comes first for every seed; the safe place comes once grounding is shelved.
+    for seed in range(20):
+        session = _open(seed, clinical_history=("SIT-06-01",))
+        assert session.turn("给我一个方法").action_id == "30:grounding"
+    session.turn("/not-now")
+    other = session.turn("给我一个方法")
+    assert other.reply_kind is ReplyKind.CARD and other.action_id == "SAFE_PLACE_CONTAINER"
 
 
 @BOTH_MODES
