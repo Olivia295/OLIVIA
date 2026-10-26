@@ -81,6 +81,7 @@ def test_the_session_uses_the_profiles_region(region, expected, absent):
         clinical_history=("SIT-02-06",),
     )
     session = Session.open(TAX, profile, rng=random.Random(3), now=lambda: NOW)
-    result = session.turn("今天有点累")
+    # The flag comes up in the conversation (dogfood I5: a profile flag alone waits for a plan).
+    result = session.turn("我有产后抑郁，今天有点累")
     assert result.referral_flags == ("SIT-02-06",)
     assert expected in result.reply and absent not in result.reply

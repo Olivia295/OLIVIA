@@ -7,6 +7,9 @@ All wording is in ``olivia/data/templates/privacy.yaml`` (a G-0 / G-4 legal draf
 Showing it reads and writes nothing: not the profile, not the keychain, not even the
 data directory, which is only located (``storage.data_dir_location``), never created.
 ``scripts/privacy_audit.py`` checks the claims automatically.
+
+``chat_answer`` (dogfood I8, 草稿：待 G-0 / G-4) is the short answer the chat gives when the
+user asks whether their words are kept or sent anywhere: the same facts, no directory.
 """
 
 from __future__ import annotations
@@ -35,6 +38,8 @@ class PrivacyTextError(Exception):
 class PrivacyText:
     notice: str
     """The notice, with one ``{data_dir}`` slot."""
+    chat_answer: str = ""
+    """The in-chat answer to "你会把我说的话存下来吗" (no slots); "" in a file without one."""
 
 
 def load_privacy_text(directory: Path | None = None) -> PrivacyText:
@@ -54,7 +59,10 @@ def load_privacy_text(directory: Path | None = None) -> PrivacyText:
     slots = _SLOT.findall(notice)
     if slots != [_DATA_DIR_SLOT]:
         raise PrivacyTextError(f"{_TEXT_FILE}: notice needs exactly one {{data_dir}}, has {slots}")
-    return PrivacyText(notice=notice)
+    answer = doc.get("chat_answer", "")
+    if not isinstance(answer, str) or _SLOT.search(answer):
+        raise PrivacyTextError(f"{_TEXT_FILE}: chat_answer must be a string without slots")
+    return PrivacyText(notice=notice, chat_answer=answer)
 
 
 def privacy_notice(data_dir: Path, text: PrivacyText | None = None) -> str:

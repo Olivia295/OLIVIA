@@ -186,7 +186,9 @@ def test_red_flag_referral_waits_for_the_next_ordinary_turn():
     asked = session.turn(ASK)
     _assert_ask(asked)
     later = session.turn("不是，我就是想辞职")
-    assert later.referral_flags == ("SIT-02-04",)
+    # dogfood I5: a profile flag alone is referred with a plan, not on any first turn.
+    assert later.referral_flags == ()
+    assert "SIT-02-04" in session.turn("给我一个方法").referral_flags
 
 
 def test_inspect_carries_the_key_but_never_text():

@@ -133,6 +133,8 @@ COLBO-01:
     - tests/language/test_engine_mirror.py::test_conflict_never_flips_into_the_agent
     - tests/language/test_engine_mirror.py::test_object_me_is_never_yourself_when_someone_else_acts
     - tests/language/test_f14_mirror.py::test_views_and_reports_keep_their_frames
+    - tests/language/test_lu_mirror.py::test_mirror
+    - tests/language/test_lu_mirror.py::test_the_reply_never_echoes_these
 COLBO-02:
   status: covered
   summary: 倾听与理清阶段不给方法，唤醒度 0.80 以上只放行稳定化
@@ -140,6 +142,7 @@ COLBO-02:
     - tests/session/test_session_colbo02.py::test_explore_and_clarify_replies_name_no_method
     - tests/methods/test_solver.py::test_pre_empower_stages_offer_no_exercise_below_somatic_priority
     - tests/methods/test_solver.py::test_high_arousal_pool_is_the_stabilization_whitelist
+    - tests/session/test_session_lu.py::test_a_story_about_methods_gets_no_card
 COLBO-03:
   status: covered
   summary: 非危机状态下直接要方法即进入赋能，仍过掩码，危机中不响应
@@ -148,6 +151,9 @@ COLBO-03:
     - tests/fsm/test_machine.py::test_silent_anchor_enters_empower_by_direct_request
     - tests/fsm/test_machine.py::test_crisis_beats_battery_lock_commands_and_direct_request
     - tests/session/test_session.py::test_red_flag_with_empty_set_gets_companionship_and_referral
+    - tests/perception/test_lu_signals.py::test_explicit_requests_are_direct_requests
+    - tests/session/test_session_lu.py::test_an_explicit_request_gets_a_card
+    - tests/session/test_session_lu.py::test_a_masked_practice_named_gets_an_allowed_one
 COLBO-04:
   status: covered
   summary: 赋能阶段的唤醒回退、完成与不合适的反馈、卡片等待时换一个
@@ -197,6 +203,7 @@ WILLOW-02:
   tests:
     - tests/language/test_dossier_layer.py::test_perfectionism_pools_hold_the_willow_image
     - tests/language/test_dossier_layer.py::test_situation_images_pass_the_willow_filters_and_the_gate
+    - tests/language/test_lu_metaphor_grammar.py::test_every_image_reads_in_every_slot
 WILLOW-03:
   status: covered
   summary: 回复字数窗口与单段长度上限，避风港与静默锚点更短，危机豁免

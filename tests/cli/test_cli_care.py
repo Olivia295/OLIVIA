@@ -11,6 +11,7 @@ from olivia.core.chang.care import CARE_FILENAME, CARE_STORE
 from olivia.core.crypto.errors import NoKeychainError
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
+from olivia.core.language.spacing import fill
 from olivia.core.session import ReplyKind
 from olivia.core.taxonomy import load_taxonomy
 
@@ -22,7 +23,8 @@ def _greetings(pool: str) -> set[str]:
     data = load_language_data(load_taxonomy())
     texts = set()
     for variant in getattr(data.templates, pool):
-        text = variant.replace("{user_name}", "小林").replace("{agent_name}", "Olivia")
+        # Names are filled the way the session fills them ("Olivia 都在", dogfood P8).
+        text = fill(variant, {"user_name": "小林", "agent_name": "Olivia"})
         texts.add(f"Olivia：{apply_willow(text, ContentKind.NORMAL, data.willow)}")
     return texts
 

@@ -45,7 +45,7 @@ from __future__ import annotations
 import itertools
 import random
 import re
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass, fields
 from datetime import datetime
@@ -65,6 +65,7 @@ from olivia.core.language.dossiers import situation_images
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
 from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance, mirror, utterance_kind
+from olivia.core.language.spacing import fill as spaced_fill
 from olivia.core.models import ActionSkeleton, ActionType, CrisisLevel, HelpStage, SafetyGrade
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.store import LineKind
@@ -92,6 +93,14 @@ _CLAUSE_ENDS: Final = frozenset("，,。.！!？?；;：:、\n…")
 _WORK_DAYS: Final = range(0, 5)
 _WORK_HOURS: Final = range(9, 18)
 _HK_MO_TW: Final = frozenset({"HK", "MO", "TW"})
+# compose: once a fitting reply with a least-used opening is in hand, look at no more than
+# this many combinations for a better one (generation stays within its 2 ms budget).
+_SEARCH_CAP: Final = 6
+# The S_clarify part that names a need; left out on a turn that names none (dogfood I3).
+_NEED_PART: Final = "need"
+# A bereavement (SIT-06-04) draws the bereavement spectrum's images (dogfood P6).
+_BEREAVEMENT: Final = "SIT-06-04"
+_GRIEF_SPECTRUM: Final = "06"
 
 
 @dataclass(frozen=True)
@@ -167,6 +176,9 @@ class LanguageEngine:
         self.last_plan_gate: GateResult | None = None
         # Paragraphs of the last few composed replies, never repeated verbatim (F3).
         self._recent: deque[frozenset[str]] = deque(maxlen=RECENT_REPLIES)
+        # How often each template variant has been composed into a reply this session
+        # (dogfood I3, P8): an opening is not used again while an unused one is left.
+        self._variant_uses: Counter[str] = Counter()
         self._last_crisis_opening: str | None = None
         # Images the composed replies used (F5b): each at most once while others are left.
         self._used_images: set[str] = set()
@@ -228,7 +240,10 @@ class LanguageEngine:
         own = self._data.metaphors.by_persona.get(self._data.templates.persona)
         tiers: list[Sequence[str]]
         if own is not None:
-            listed = own.by_spectrum.get(spectrum_id or "")
+            # After a bereavement the persona's own bereavement-spectrum images, never its
+            # fallback ("厨房里慢慢炖着的一锅汤" after a father's death; dogfood P6).
+            key = _GRIEF_SPECTRUM if _BEREAVEMENT in situations else (spectrum_id or "")
+            listed = own.by_spectrum.get(key)
             tiers = [listed, own.fallback] if listed else [own.fallback]
         else:
             tiers = []
@@ -396,7 +411,9 @@ class LanguageEngine:
             raise ValueError("only S_empower frames a tips card")
         values = slots.values()
         short = short and stage in _SHORT_STAGES and self._data.templates.short_window is not None
-        pools = self._pools(stage, returning_after_crisis, named=bool(slots.emotion))
+        pools = self._pools(
+            stage, returning_after_crisis, named=bool(slots.emotion), need=bool(slots.need)
+        )
         if tips:
             pools[0] = self._data.templates.tips_bridge
             pools[1] = self._data.templates.tips_intro
@@ -414,25 +431,45 @@ class LanguageEngine:
         # Never a paragraph of the reply just before; avoid the older recent ones too.
         last: frozenset[str] = self._recent[-1] if self._recent else frozenset()
         older: frozenset[str] = frozenset().union(*list(self._recent)[:-1])
-        best: tuple[tuple[bool, bool, float], str] | None = None
-        for combo in combos:
+        uses = self._variant_uses
+        # The best a combination can do; reaching it ends the search (the other parts'
+        # use only breaks ties among the ones seen before). The least used openings are
+        # tried first, in shuffled order, so the search ends early.
+        ideal = (False, False, min(uses[v] for v in usable[0]), False, 0.0)
+        combos.sort(key=lambda combo: uses[combo[0]])
+        best: tuple[tuple[bool, bool, int, bool, float, int], str, tuple[str, ...]] | None = None
+        for tried, combo in enumerate(combos):
+            if best is not None and best[0][:2] == (False, False):
+                if uses[combo[0]] > best[0][2]:
+                    break  # every later opening is used more: none can beat the best one
+                if best[0][2] == ideal[2] and tried >= _SEARCH_CAP:
+                    break  # a fitting, least-used opening: good enough after this many
             text = apply_willow(
                 "\n\n".join(_fill(part, values) for part in combo),
                 ContentKind.NORMAL,
                 self._data.willow,
             )
             shown = paragraphs(text)
+            # dogfood I3: the mirror makes every paragraph look new, so among the combinations
+            # that fit the word window the opening variant itself is not used again while an
+            # unused one is left (the least used one after that), nor the other parts.
+            penalty = self.window_penalty(stage, text, short=short)
+            # An opening heard before weighs more than a later paragraph of an older reply.
             key = (
                 bool(last.intersection(shown)),
+                penalty > 0,
+                uses[combo[0]],
                 bool(older.intersection(shown)),
-                self.window_penalty(stage, text, short=short),
+                penalty,
+                sum(uses[part] for part in combo[1:]),
             )
             if best is None or key < best[0]:
-                best = (key, text)
-            if key == (False, False, 0.0):
+                best = (key, text, combo)
+            if key[:5] == ideal:
                 break
         assert best is not None
         text = best[1]
+        uses.update(best[2])
         self._recent.append(frozenset(paragraphs(text)))
         self.note_image(text, slots.metaphor)
         if stage is HelpStage.S_EMPOWER:
@@ -475,13 +512,25 @@ class LanguageEngine:
                 penalty += float(over) ** 2
         return penalty
 
-    def _pools(self, stage: HelpStage, returning: bool, *, named: bool) -> list[Sequence[str]]:
+    def _pools(
+        self, stage: HelpStage, returning: bool, *, named: bool, need: bool = True
+    ) -> list[Sequence[str]]:
         tpl = self._data.templates
         if stage in tpl.parts:
             pools: list[Sequence[str]] = [
                 part.variants if named or not part.unnamed else part.unnamed
                 for part in tpl.parts[stage]
             ]
+            if not need and stage is HelpStage.S_CLARIFY:
+                # No need to name this turn (dogfood I3): the S_explore image paragraph
+                # takes the need paragraph's place; a persona without one (SILENT_ANCHOR)
+                # keeps to its variants that name no need.
+                image = next(
+                    (p for p in tpl.parts.get(HelpStage.S_EXPLORE, ()) if p.name == "image"), None
+                )
+                names = [part.name for part in tpl.parts[stage]]
+                if image is not None and _NEED_PART in names:
+                    pools[names.index(_NEED_PART)] = image.variants
             if stage is HelpStage.S_EMPOWER:
                 pools.append(tpl.after_card)
             return pools
@@ -845,4 +894,5 @@ def _about_others(text: str, end: int) -> bool:
 
 
 def _fill(template: str, values: dict[str, str]) -> str:
-    return _SLOT_RE.sub(lambda m: values[m.group(1)], template)
+    # A Latin name next to a Chinese character gets a space ("Olivia 都在"; dogfood P8).
+    return spaced_fill(template, values, pattern=_SLOT_RE)

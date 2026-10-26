@@ -42,6 +42,7 @@ import yaml
 from olivia.core.language.mirror import MAX_MIRROR, Utterance
 from olivia.core.models import CrisisLevel, HelpStage, PersonaSpectrum, SafetyGrade
 from olivia.core.resources.store import EmergencyPurpose
+from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
 from olivia.core.yaml_load import safe_load
 
@@ -108,6 +109,15 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
+# utterances.yaml ``notices`` (dogfood I1, I2; 草稿：待 G-0): one paragraph each.
+NOTICES: Final = (
+    "advice_heard",
+    "hotline_heard",
+    "masked_practice",
+    "masked_practice_why",
+    "cardiac_care",
+)
+_NOTICE_MAX: Final = 80
 # A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.
 _NOT_TIPS_WORDS: Final = ("练习", "步骤", "做法", "分钟", "跟练")
 # An ``after_close`` line with one of these points at the evening ("愿你今晚…", "早点休息",
@@ -414,6 +424,9 @@ class Utterances:
     """``medication`` and ``diagnosis``."""
     reassurance: tuple[str, ...] = ()
     """Words of an "I'm fine" that is not a safety confirmation ("我没事", "好多了"), F5b."""
+    notices: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    """``NOTICES`` -> persona-neutral plain lines the session puts before (``cardiac_care``:
+    after) a reply (dogfood I1, I2; 草稿：待 G-0)."""
 
 
 def _no_feelings() -> Feelings:
@@ -447,6 +460,9 @@ class LanguageData:
     utterances: Utterances = field(default_factory=_no_utterances)
     exercise_info: Mapping[str, InfoEntry] = field(default_factory=_no_info)
     """Grade A practices a user can ask about by name -> a short explainer (F3)."""
+    lens_requires: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
+    """Grade B lens id -> words one of which the conversation must have had for that lens
+    to be offered unasked (dogfood I4: couples therapy only with a partner; draft, G-0)."""
 
     def for_persona(self, persona: PersonaSpectrum) -> LanguageData:
         """The same data speaking with ``persona``'s templates (PRD ONB-03, plan D-1)."""
@@ -497,6 +513,7 @@ def load_language_data(
         feelings=_parse_feelings(_read(root, "language/feelings.yaml"), tax),
         utterances=_parse_utterances(_read(root, "language/utterances.yaml")),
         exercise_info=_parse_exercise_info(info_doc, tax),
+        lens_requires=_parse_lens_requires(info_doc, info),
     )
 
 
@@ -1090,7 +1107,7 @@ def _parse_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntr
         data,
         {"entries", "clarify_lenses"},
         where,
-        optional={"situation_lenses", "grade_a_entries"},
+        optional={"situation_lenses", "grade_a_entries", "lens_requires"},
     )
     grades = {"B": SafetyGrade.GRADE_B, "C": SafetyGrade.GRADE_C}
     entries: dict[str, InfoEntry] = {}
@@ -1167,6 +1184,23 @@ def _parse_situation_lenses(
                 raise LanguageDataError(f"{where}.{code}: {mid} is not a Grade B method")
         lenses[code] = ids
     return MappingProxyType(lenses)
+
+
+def _parse_lens_requires(
+    data: Mapping[str, Any], info: Mapping[str, InfoEntry]
+) -> Mapping[str, tuple[str, ...]]:
+    """``lens_requires``: Grade B id -> words (folded) the conversation must have had."""
+    where = "grade_bc_info.yaml lens_requires"
+    node = data.get("lens_requires", {})
+    raw = _map(node, where) if node else {}
+    out: dict[str, tuple[str, ...]] = {}
+    for mid, words in raw.items():
+        entry = info.get(str(mid))
+        if entry is None or entry.grade is not SafetyGrade.GRADE_B:
+            raise LanguageDataError(f"{where}: {mid} is not a Grade B method")
+        here = f"{where}.{mid}"
+        out[str(mid)] = tuple(normalize(w) for w in _unique(_strs(words, here), here))
+    return MappingProxyType(out)
 
 
 def _parse_exercise_info(data: Mapping[str, Any], tax: Taxonomy) -> Mapping[str, InfoEntry]:
@@ -1247,7 +1281,7 @@ def _parse_feelings(data: Mapping[str, Any], tax: Taxonomy) -> Feelings:
 
 def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
     where = "utterances.yaml"
-    _keys(data, {"version", "acks", "boundaries", "reassurance"}, where)
+    _keys(data, {"version", "acks", "boundaries", "reassurance", "notices"}, where)
     _version(data, where)
     kinds = {u.value for u in Utterance if u is not Utterance.STATEMENT}
     acks_raw = _map(data["acks"], f"{where} acks")
@@ -1285,7 +1319,28 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
     reassurance = _unique(
         _strs(data["reassurance"], f"{where} reassurance"), f"{where} reassurance"
     )
-    return Utterances(MappingProxyType(acks), MappingProxyType(bounds), reassurance)
+    raw_notices = _map(data["notices"], f"{where} notices")
+    _keys(raw_notices, set(NOTICES), f"{where} notices")
+    notices: dict[str, tuple[str, ...]] = {}
+    for name in NOTICES:
+        here = f"{where} notices.{name}"
+        lines = _unique(_strs(raw_notices[name], here), here)
+        for line in lines:
+            # Plain, persona-neutral lines: no slot, number or question, one paragraph.
+            if (
+                slots_of(line)
+                or any(ch.isdigit() for ch in line)
+                or any(mark in line for mark in ("吗", "？", "?", "\n"))
+                or len(line) > _NOTICE_MAX
+            ):
+                raise LanguageDataError(
+                    f"{here}: a notice has no slot, number or question and at most"
+                    f" {_NOTICE_MAX} characters: {line!r}"
+                )
+        notices[name] = lines
+    return Utterances(
+        MappingProxyType(acks), MappingProxyType(bounds), reassurance, MappingProxyType(notices)
+    )
 
 
 # -- primitives ----------------------------------------------------------------------------

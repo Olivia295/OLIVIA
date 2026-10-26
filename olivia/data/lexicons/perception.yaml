@@ -1459,6 +1459,190 @@ direct_request_whole:
   - 还有其他的吗
   - 有没有别的
 
+# Requests for a practice whose words are not next to each other (dogfood I1, 2026-10-26;
+# 草稿：待 G-0): "有什么五分钟能做的放松方法吗", "教我一个睡前放松的方法", "给我一个不用动嘴
+# 的练习", "能不能让我放松一下". Regular expressions over the folded message (whitespace
+# dropped), each anchored at the start of a clause by {S}; {C} is one character of the
+# same clause. A match is void when a negation prefix stands right before it, and when
+# its clause has a leave_taking_reported word before it (someone else's words or deeds:
+# "我妈问我有没有什么好方法", "老师教我一个记单词的方法"). A story about methods ("我试过
+# 很多方法都没用") names no request and matches none of these. A message that names a
+# therapy or practice is left to therapy_names / therapy_request_cues (F3), so these
+# patterns never turn a named method into a request on their own.
+direct_request_patterns:
+  # 有什么 / 有没有什么 …… 方法 / 办法 / 练习 / 技巧
+  - "{S}(?:那|那么|请问|所以|你|还)?有(?:什么|没有什么|没有|啥|没有啥){C}{0,12}?(?:方法|办法|练习|技巧|妙招)"
+  # 教我 …… 方法 / 放松 / 呼吸；"你直接教我吧" as a clause of its own
+  - "{S}(?:那|你|请|能不能|可不可以|可以|能|就|直接|现在|快){0,4}教(?:教)?我{C}{0,12}?(?:方法|办法|练习|技巧|放松|呼吸|冥想|招)"
+  - "{S}(?:那|你|请|就|直接|快){0,3}教(?:教)?我(?:吧|呗|啊|呀|一下|一下吧|一招)?{E}"
+  # 给我 / 来 一个 …… 方法 / 练习
+  - "{S}(?:那|你|请|能不能|可不可以|可以|能|就|直接|现在|快|再){0,4}(?:给我|给|来)(?:一个|个|一些|些|几个|点|一点|一组){C}{0,12}?(?:方法|办法|练习|技巧)"
+  # 能不能 …… 放松 / 平静 / 缓解
+  - "{S}(?:那|你)?(?:能不能|可不可以|能否|你能|你可以)(?:帮我|让我|带我|教我)?{C}{0,6}?(?:放松|平静|冷静|缓解|镇定|好受)"
+
+# Asking how to say or do something ("我该怎么开口跟妈妈聊", "你能帮我想想怎么说吗";
+# dogfood I1, 2026-10-26; 草稿：待 G-0): advice, not a practice. The PRD has no advice
+# mechanism, so no direct request: the session only says it heard the question
+# (utterances.yaml notices.advice_heard). Same placeholders as direct_request_patterns;
+# void when 不知道 / 不晓得 / 不清楚 comes right before it ("我不知道该怎么说" tells).
+advice_patterns:
+  - "(?:该|要|能|可以)?怎么(?:开口|说|讲|回|回复|沟通|拒绝|表达|提|跟|和|面对|处理)"
+  - "帮我想想(?:怎么|该|要)"
+  - "如何(?:开口|说|讲|回复|沟通|拒绝|表达|跟|和)"
+
+# "Stop sending me hotlines" outside a crisis (dogfood I1; 草稿：待 G-0): heard, with the
+# plain fact of when the hotlines show (utterances.yaml notices.hotline_heard). In a
+# crisis the crisis flow runs as always and this is never read.
+hotline_pushback:
+  - 别老给我发热线
+  - 别给我发热线
+  - 别再发热线
+  - 别发热线
+  - 别老发热线
+  - 不要发热线
+  - 不要再发热线
+  - 不要给我发热线
+  - 不要老发热线
+  - 别给我热线
+  - 不要给我热线
+  - 不想看热线
+  - 不想再看到热线
+  - 又是热线
+  - 怎么又是热线
+  - 老是发热线
+  - 总是发热线
+  - 总发热线
+  - 老发热线
+  - 热线电话好烦
+  - 热线好烦
+
+# Practices a self-disclosed contraindication masks, named by the user (dogfood I2,
+# 2026-10-26; 草稿：待 G-0): contraindication enum id -> phrases. A non-negated hit sets
+# TurnSignals.contraindicated_practice; the session reads it only when that
+# contraindication is active, says gently why that practice may not suit them and offers
+# one the masks allow. CARDIORESPIRATORY_INSTABILITY masks breath holding and cold-water
+# stimulation (taxonomy: "需避免剧烈屏气呼吸或冷水迷走神经刺激").
+contraindicated_practices:
+  CARDIORESPIRATORY_INSTABILITY:
+    - 憋气
+    - 屏气
+    - 屏息
+    - 屏住呼吸
+    - 憋住气
+    - 憋一口气
+    - 4-7-8
+    - 478呼吸
+    - 憋7秒
+    - 憋七秒
+    - 冷水敷脸
+    - 冷水洗脸
+    - 冷水泼脸
+    - 冷水扑脸
+    - 冷水浸脸
+    - 冷水浸面
+    - 冰水敷脸
+    - 冰水洗脸
+    - 冰敷脸
+    - 脸泡冷水
+    - 脸埋进冷水
+    - 冷水澡
+
+# "Why not?" (dogfood I2): read only on the turn right after the session said a practice
+# may not suit the user's body, which it then explains a little more.
+why_not:
+  - 为什么不行
+  - 为什么不能
+  - 为什么不可以
+  - 为啥不行
+  - 为啥不能
+  - 怎么不行
+  - 怎么就不行
+  - 凭什么不行
+  - 为什么不适合
+  - 为啥不适合
+  - 你说清楚
+  - 你讲清楚
+  - 解释一下
+
+# Heart or breathing symptoms (dogfood I2; 草稿：待 G-0): with a heart or breathing
+# condition active, the reply ends once per session with a line about seeing a doctor or
+# calling emergency services if it lasts or gets worse.
+cardiac_symptom_cues:
+  - 胸口发紧
+  - 胸口紧
+  - 胸口疼
+  - 胸口痛
+  - 胸痛
+  - 胸闷
+  - 胸口闷
+  - 胸口压着
+  - 心跳很快
+  - 心跳得很快
+  - 心跳好快
+  - 心跳特别快
+  - 心跳得好快
+  - 心又跳得很快
+  - 心跳加速
+  - 心跳得厉害
+  - 心悸
+  - 心律不齐
+  - 喘不过气
+  - 喘不上气
+  - 呼吸困难
+  - 透不过气
+
+# Questions about what OLIVIA keeps (dogfood I8; 草稿：待 G-0): "你会把我说的话存下来吗",
+# "会不会被上传". The session answers with the short facts of privacy.yaml chat_answer
+# (the same source as olivia privacy), never with a feeling mirror. Every phrase asks,
+# and the message must also name what it asks about (privacy_subjects).
+privacy_questions:
+  - 会把我说的话存下来吗
+  - 存下来吗
+  - 会不会存下来
+  - 会存下来吗
+  - 会不会保存
+  - 会保存吗
+  - 保存下来吗
+  - 记下来吗
+  - 会不会记下来
+  - 会记下来吗
+  - 记录下来吗
+  - 会不会被记录
+  - 会被记录吗
+  - 会不会上传
+  - 会不会被上传
+  - 会上传吗
+  - 被上传吗
+  - 上传到哪
+  - 会联网吗
+  - 会不会联网
+  - 要联网吗
+  - 会不会泄露
+  - 会泄露吗
+  - 会不会被别人看到
+  - 会被别人看到吗
+  - 别人能看到吗
+  - 谁能看到
+  - 保存在哪
+  - 存到哪里
+  - 隐私安全吗
+  - 数据安全吗
+
+# The other half of a privacy question: what it is about. A message needs a live hit of
+# both lists ("我发的朋友圈会不会被别人看到" is about something else).
+privacy_subjects:
+  - 你
+  - 我说的
+  - 我跟你说的
+  - 聊天
+  - 对话
+  - 这里
+  - 记录
+  - 数据
+  - 隐私
+  - 今天的话
+  - 这些话
+
 # Knowledge questions (guide §4.2 step 4: knowledge, mechanism, method, "is this normal").
 information_cues:
   - 正常吗
@@ -1759,6 +1943,9 @@ therapy_request_cues:
   - 来一次
   - 一起做
   - 一起练
+  # dogfood I1 (草稿：待 G-0): "来个呼吸练习吧".
+  - 来个
+  - 来一个
 
 # Leaving the haven (FSM-15, SDD §4.2 S_haven row "用户心力恢复或发起新探索议题"; 草稿：待 G-0).
 # A non-negated hit sets TurnSignals.haven_exit; only S_haven reads it and goes back to
