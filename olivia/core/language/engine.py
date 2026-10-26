@@ -93,6 +93,9 @@ _CLAUSE_ENDS: Final = frozenset("，,。.！!？?；;：:、\n…")
 _WORK_DAYS: Final = range(0, 5)
 _WORK_HOURS: Final = range(9, 18)
 _HK_MO_TW: Final = frozenset({"HK", "MO", "TW"})
+# compose: once a fitting reply with a least-used opening is in hand, look at no more than
+# this many combinations for a better one (generation stays within its 2 ms budget).
+_SEARCH_CAP: Final = 6
 # The S_clarify part that names a need; left out on a turn that names none (dogfood I3).
 _NEED_PART: Final = "need"
 # A bereavement (SIT-06-04) draws the bereavement spectrum's images (dogfood P6).
@@ -429,8 +432,18 @@ class LanguageEngine:
         last: frozenset[str] = self._recent[-1] if self._recent else frozenset()
         older: frozenset[str] = frozenset().union(*list(self._recent)[:-1])
         uses = self._variant_uses
+        # The best a combination can do; reaching it ends the search (the other parts'
+        # use only breaks ties among the ones seen before). The least used openings are
+        # tried first, in shuffled order, so the search ends early.
+        ideal = (False, False, min(uses[v] for v in usable[0]), False, 0.0)
+        combos.sort(key=lambda combo: uses[combo[0]])
         best: tuple[tuple[bool, bool, int, bool, float, int], str, tuple[str, ...]] | None = None
-        for combo in combos:
+        for tried, combo in enumerate(combos):
+            if best is not None and best[0][:2] == (False, False):
+                if uses[combo[0]] > best[0][2]:
+                    break  # every later opening is used more: none can beat the best one
+                if best[0][2] == ideal[2] and tried >= _SEARCH_CAP:
+                    break  # a fitting, least-used opening: good enough after this many
             text = apply_willow(
                 "\n\n".join(_fill(part, values) for part in combo),
                 ContentKind.NORMAL,
@@ -452,7 +465,7 @@ class LanguageEngine:
             )
             if best is None or key < best[0]:
                 best = (key, text, combo)
-            if key == (False, False, 0, False, 0.0, 0):
+            if key[:5] == ideal:
                 break
         assert best is not None
         text = best[1]

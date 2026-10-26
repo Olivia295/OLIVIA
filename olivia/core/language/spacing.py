@@ -27,7 +27,9 @@ def _cjk(char: str) -> bool:
 
 def _mixed(left: str, right: str) -> bool:
     """A space belongs between ``left`` and ``right`` (one character each)."""
-    return (_cjk(left) and _latin(right)) or (_latin(left) and _cjk(right))
+    if _latin(right):
+        return _cjk(left)
+    return _latin(left) and _cjk(right)
 
 
 def fill(
@@ -40,21 +42,16 @@ def fill(
     the slot name), spaced against the template text around it. A missing name raises
     ``KeyError`` as a plain lookup would."""
     get = values if callable(values) else values.__getitem__
-    out: list[str] = []
-    end = 0
-    before = ""  # the last character written so far
-    for match in pattern.finditer(template):
-        segment = template[end : match.start()]
-        out.append(segment)
-        before = segment[-1:] or before
+
+    def spaced(match: re.Match[str]) -> str:
         value = get(match.group(1))
-        after = template[match.end() : match.end() + 1]
-        if value and before and _mixed(before, value[0]):
+        if not value:
+            return value
+        start, end = match.start(), match.end()
+        if start and _mixed(template[start - 1], value[0]):
             value = " " + value
-        if value and after and _mixed(value[-1], after):
+        if end < len(template) and _mixed(value[-1], template[end]):
             value = value + " "
-        out.append(value)
-        before = value[-1:] or before
-        end = match.end()
-    out.append(template[end:])
-    return "".join(out)
+        return value
+
+    return pattern.sub(spaced, template)

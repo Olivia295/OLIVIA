@@ -71,6 +71,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from functools import lru_cache
 from typing import Final
 
 MAX_MIRROR: Final = 20
@@ -915,10 +916,13 @@ def mirror(user_text: str) -> str:
 # -- sentences and clauses ---------------------------------------------------------------
 
 
-def _sentences(text: str) -> list[list[_Clause]]:
-    """Tagged clauses per sentence, empty clauses dropped."""
+@lru_cache(maxsize=4)
+def _sentences(text: str) -> tuple[tuple[_Clause, ...], ...]:
+    """Tagged clauses per sentence, empty clauses dropped. Cached: a turn reads the same
+    message as an utterance kind and as a mirror (generation budget, SDD §10.1); only the
+    last few messages are held, in memory only."""
     parts = _SENTENCE_END_RE.split(text)
-    sentences: list[list[_Clause]] = []
+    sentences: list[tuple[_Clause, ...]] = []
     for i in range(0, len(parts), 2):
         body = parts[i].strip(_EDGE_PUNCT)
         end = parts[i + 1] if i + 1 < len(parts) else ""
@@ -941,8 +945,8 @@ def _sentences(text: str) -> list[list[_Clause]]:
             tagged = [
                 replace(c, tag=_Tag.COMPANION) if c.tag is _Tag.STATEMENT else c for c in tagged
             ]
-        sentences.append(tagged)
-    return sentences
+        sentences.append(tuple(tagged))
+    return tuple(sentences)
 
 
 def _list_item(clause: str) -> tuple[str, bool] | None:

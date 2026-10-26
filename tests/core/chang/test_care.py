@@ -28,6 +28,7 @@ from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.crypto.vault import Vault
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
+from olivia.core.language.spacing import fill
 from olivia.core.models import CrisisLevel, HelpStage, PersonaProfile, UserRegion
 from olivia.core.session import ReplyKind, Session
 from olivia.core.taxonomy import load_taxonomy
@@ -268,7 +269,8 @@ def _filled(pool: tuple[str, ...]) -> set[str]:
     willow = load_language_data(TAX).willow
     texts = set()
     for variant in pool:
-        text = variant.replace("{user_name}", "小林").replace("{agent_name}", "Olivia")
+        # Names are filled the way the session fills them ("我是 Olivia", dogfood P8).
+        text = fill(variant, {"user_name": "小林", "agent_name": "Olivia"})
         texts.add(apply_willow(text, ContentKind.NORMAL, willow))
     return texts
 
