@@ -21,7 +21,7 @@ import yaml
 
 from olivia.core.models import CrisisLevel as L
 from olivia.core.models import PersonaProfile, UserRegion
-from olivia.core.safety.compose import Composer
+from olivia.core.safety.compose import Composer, _Spans
 from olivia.core.safety.crisis import RiskPrediction, RuleRiskModel, SafetyScreen
 from olivia.core.safety.lexicon import (
     Composition,
@@ -29,6 +29,7 @@ from olivia.core.safety.lexicon import (
     LexiconError,
     load_safety_lexicons,
 )
+from olivia.core.safety.matcher import Match
 from olivia.core.safety.normalize import normalize
 from olivia.core.safety.red_flags import RedFlagDetector
 from olivia.core.session import ReplyKind, Session
@@ -178,6 +179,44 @@ def test_a_third_person_subject_voids_but_a_recipient_does_not():
     assert SCREEN.assess("她打算自杀").level is L.L0
     assert SCREEN.assess("我跟她说我打算自杀").level is L.L2
     assert SCREEN.assess("她跟我说打算自杀").level is L.L0
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["我想了想，不打算自杀", "放心，没打算自杀", "我很好，她打算自杀", "我还行，他准备结束生命"],
+)
+def test_the_first_character_after_a_comma_belongs_to_the_new_clause(text):
+    # A negator or a third person right after the comma is read in the clause it opens.
+    assert SCREEN.assess(text).level is L.L0
+
+
+def test_a_third_person_beyond_the_carry_window_is_not_the_subject():
+    # 她 lies more than two subject windows before the clause: it is not carried over, and
+    # the first-person plan in the last clause stays L3.
+    text = "她昨天下午在公司加班到很晚回家路上又堵车堵了好久真烦人，打算明天去死"
+    a = SCREEN.assess(text)
+    assert a.level is L.L3 and a.cue_ids == ("S1_PLAN_ACT_TIME",)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我打算去死，这件事想了很久很久，下周再说",
+        "我准备结束生命，这个念头已经很久了，明天还要上班",
+    ],
+)
+def test_a_time_word_outside_the_context_window_is_no_plan_context(text):
+    # A time word beyond the context window does not turn an L2 intent into an L3 plan.
+    a = SCREEN.assess(text)
+    assert (a.level, a.stage) == (L.L2, "STAGE2")
+
+
+def test_spans_cover_with_the_furthest_end_not_the_sum():
+    # Coverage looks at the furthest end of the earlier spans, so two short spans never
+    # reach a later one between them.
+    spans = _Spans([Match("a", 0, 2), Match("b", 5, 7)])
+    assert not spans.covers(Match("c", 7, 9))
+    assert not spans.overlaps(8, 9)
 
 
 def test_compositions_add_only_what_the_phrases_miss():
@@ -463,3 +502,33 @@ def test_loaded_entries_have_levels_scores_and_ids():
 def test_rejects_malformed_composition_data(tmp_path, mutate, match):
     with pytest.raises(LexiconError, match=match):
         load_safety_lexicons(TAX, _copy(tmp_path, mutate))
+
+
+# (section or entry id, key, lowest allowed, highest allowed)
+WINDOW_BOUNDS = [
+    ("compositions", "lookback", 0, 8),
+    ("compositions", "subject_window", 0, 16),
+    ("compositions", "unless_negation_gap", 0, 8),
+    ("L2_INTENT_ACT", "max_gap", 0, 12),
+    ("S1_PLAN_ACT_TIME", "context_window", 0, 24),
+    ("S1_NOTE_PREPARED", "unless_window", 1, 24),
+    ("reported_speech", "speaker_gap", 0, 24),
+]
+
+
+def _set(owner: str, key: str, value: int) -> Callable[[dict[str, Any]], None]:
+    def mutate(d: dict[str, Any]) -> None:
+        node = d[owner] if owner in ("compositions", "reported_speech") else _entry(d, owner)
+        node[key] = value
+
+    return mutate
+
+
+@pytest.mark.parametrize(("owner", "key", "low", "high"), WINDOW_BOUNDS)
+def test_window_and_gap_bounds_are_inclusive(tmp_path, owner, key, low, high):
+    # Both ends of each range load; one step outside either end is rejected.
+    for value in (low, high):
+        load_safety_lexicons(TAX, _copy(tmp_path / f"ok{value}", _set(owner, key, value)))
+    for value in (low - 1, high + 1):
+        with pytest.raises(LexiconError, match=key):
+            load_safety_lexicons(TAX, _copy(tmp_path / f"bad{value}", _set(owner, key, value)))

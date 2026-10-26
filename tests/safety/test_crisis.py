@@ -1,3 +1,4 @@
+from dataclasses import replace
 from fractions import Fraction
 
 import pytest
@@ -10,7 +11,7 @@ from olivia.core.safety.crisis import (
     _MaskCover,
     arbitrate,
 )
-from olivia.core.safety.lexicon import load_safety_lexicons
+from olivia.core.safety.lexicon import DenialRules, load_safety_lexicons
 from olivia.core.safety.matcher import Match
 from olivia.core.taxonomy import load_taxonomy
 
@@ -547,3 +548,51 @@ def test_the_denial_cap_blocks_model_plan_evidence(tax):
 def test_the_rules_alone_are_unchanged_by_the_denial_cap(screen, text):
     a = screen.assess(text)
     assert a.level is L.L0 and a.uncapped_level is None
+
+
+@pytest.mark.parametrize("text", ["我不想死但好累", "我没事可是心里很乱", "我已经好多了不过还是怕"])
+def test_a_contrast_right_after_the_denial_voids_the_cap(tax, text):
+    # A contrast word directly after the denial, with no comma between, still voids the cap.
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
+    assert a.level >= L.L2 and a.uncapped_level is None
+
+
+@pytest.mark.parametrize("text", ["我没事，没有想要自杀", "我好多了，不要去死"])
+def test_a_masked_risk_phrase_outside_the_denial_voids_the_cap(tax, text):
+    # A Stage 2 phrase a negation masks, but no denial phrase covers, keeps the model's L2.
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess(text)
+    assert a.rule_level is L.L0
+    assert a.level >= L.L2 and a.uncapped_level is None
+
+
+def test_a_hyperbole_after_a_denial_keeps_the_cap(tax):
+    # Only Stage 2 phrases void the cap: a hyperbole phrase outside the denial does not.
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess("我没事，笑死我了")
+    assert (a.level, a.uncapped_level) == (L.L1, L.L2)
+
+
+def test_a_denial_next_to_a_pair_phrase_does_not_crash(tax):
+    # Pair anchors are matches without a risk cue; the denial check must skip them.
+    lexicons = load_safety_lexicons(tax)
+    screen = _screen_with(tax, _FixedModel(L.L2, 0.6))
+    for pair in (*lexicons.pairs, *lexicons.ask_pairs):
+        screen.assess("我没事，" + pair.anchors[0])
+
+
+def test_a_model_score_of_exactly_one_is_in_contract(tax):
+    a = _screen_with(tax, _FixedModel(L.L2, 1.0)).assess("今天吃了面")
+    assert "MODEL_FAILURE" not in a.cue_ids and a.score == 1.0
+
+
+def test_without_denial_phrases_the_denial_cap_is_off(tax):
+    # An empty denial section means no cap at all, not a cap on every rule-L0 turn.
+    lexicons = replace(load_safety_lexicons(tax), denial=DenialRules())
+    a = SafetyScreen(tax, lexicons, _FixedModel(L.L2, 0.6)).assess("我不会伤害自己")
+    assert a.level is L.L2 and a.uncapped_level is None
+
+
+@pytest.mark.parametrize("tail", ["don't want to die", "not suicidal"])
+def test_the_note_recall_cap_needs_no_risk_phrase_at_all(tax, tail):
+    # An English negation phrase has no Chinese veto word, yet it is a risk phrase: no cap.
+    a = _screen_with(tax, _FixedModel(L.L2, 0.6)).assess("我妈生日是哪天来着，" + tail)
+    assert a.level is L.L2
