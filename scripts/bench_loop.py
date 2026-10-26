@@ -31,8 +31,9 @@ FSM step               1.5 ms       SDD §0 SLO; SDD §10.1 Step 4
 solver                 3 ms         SDD §10.1 Step 5
 generation + gate      2 ms         SDD §10.1 Step 6
 peak RSS               <= 100 MB    SDD §0 Resource Envelope (the PRD sets none)
-installed size         < 4 MB       SDD §0 Resource Envelope: weights and knowledge
-                                    data; applied to the whole installed package
+data size              < 4 MB       SDD §0 Resource Envelope: the weights and knowledge
+                                    data (installed ``olivia/data/``); the code is
+                                    reported, not budgeted
 =====================  ===========  ===============================================
 
 The PRD itself only fixes the control loop (G-3: P99 <= 55 ms on one core) and the
@@ -129,7 +130,7 @@ BUDGETS: tuple[Budget, ...] = (
     Budget("solver", 0.003, "s", "SDD §10.1 Step 5"),
     Budget("generation", 0.002, "s", "SDD §10.1 Step 6"),
     Budget("rss", 100 * MB, "B", "SDD §0 Resource Envelope", latency=False),
-    Budget("installed", 4 * MB, "B", "SDD §0 Resource Envelope", latency=False),
+    Budget("data", 4 * MB, "B", "SDD §0 Resource Envelope", latency=False),
 )
 
 
@@ -561,13 +562,13 @@ def report(results: dict[str, dict[str, Any]], size: dict[str, Any], turns: int)
     print(f"{'size':<24}{'MB':>12}{'budget':>10}  result")
     wheel = size["wheel"]
     print(f"{'wheel':<24}{(wheel / MB if wheel else math.nan):>12.3f}{'n/a':>10}  {size['note']}")
-    allowed = budget_for("installed")
-    verdict = "pass" if size["installed"] < allowed else "FAIL"
+    allowed = budget_for("data")
+    verdict = "pass" if size["data"] < allowed else "FAIL"
     if verdict == "FAIL":
-        failures.append(f"installed size {size['installed'] / MB:.3f} MB >= 4 MB")
+        failures.append(f"data size {size['data'] / MB:.3f} MB >= 4 MB")
     installed = size["installed"] / MB
-    print(f"{'installed olivia/':<24}{installed:>12.3f}{allowed / MB:>10.1f}  {verdict}")
-    print(f"{'  of which data/':<24}{size['data'] / MB:>12.3f}{'':>10}  weights + data files")
+    print(f"{'installed olivia/':<24}{installed:>12.3f}{'n/a':>10}  code + data")
+    print(f"{'  of which data/':<24}{size['data'] / MB:>12.3f}{allowed / MB:>10.1f}  {verdict}")
     return failures
 
 
