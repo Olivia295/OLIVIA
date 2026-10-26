@@ -211,10 +211,20 @@ def test_a_no_with_a_veto_contrast_or_new_risk_enters_the_crisis_flow(answer):
     assert result.inspect["safety_check"] == "unclear"
 
 
-def test_the_models_own_alarm_on_the_answer_enters_the_crisis_flow():
+def test_the_models_own_alarm_on_a_clear_no_counts_as_l1():
+    # 问题单第 3 条 (2026-10-26): the no is accepted (D3 and F10 conditions) and the rules
+    # found no cue in it, so the model's own L2 on the no itself does not lock the session.
     session = _open({TRIP: L2, "不是": L2})
     session.turn(TRIP)
-    _assert_crisis(session.turn("不是"))
+    result = session.turn("不是")
+    assert result.inspect["safety_check"] == "denied"
+    assert not result.in_crisis and result.crisis_level is CrisisLevel.L1
+
+
+def test_the_models_own_alarm_on_a_no_with_a_rule_cue_enters_the_crisis_flow():
+    session = _open({TRIP: L2, "不是，就是累死了": L2})
+    session.turn(TRIP)
+    _assert_crisis(session.turn("不是，就是累死了"))
 
 
 @pytest.mark.parametrize(
@@ -386,12 +396,14 @@ def test_reported_speech_ask_compositions_and_raised_cues_are_rule_cues(text):
 
 def test_reported_speech_stays_l0_for_the_rules_but_is_not_clear():
     """The rules narrow a friend's reported words to L0, but they did see a death phrase:
-    a model alarm on it is not "the rules found nothing", so it never asks first."""
+    a model alarm on it is not "the rules found nothing", so it never asks first. Since
+    问题单第 6 条 (2026-10-26) the user is not put into the crisis flow for someone else's
+    words either: the reply is the card to pass on (``test_session_safety_round2.py``)."""
     assessment = RULES.assess(REPORTED)
     assert assessment.rule_level is CrisisLevel.L0 and not assessment.rule_clear
     result = _open({REPORTED: L2}).turn(REPORTED)
-    _assert_crisis(result)
-    assert result.inspect["safety_check"] is None
+    assert result.reply_kind is ReplyKind.RESOURCES and not result.in_crisis
+    assert result.inspect["safety_check"] is None and "12356" in result.reply
 
 
 def test_an_ask_composition_the_model_raises_enters_the_crisis_flow():

@@ -211,13 +211,27 @@ class _RaisesDenials:
         return RiskPrediction(CrisisLevel.L0, 0.25, ())
 
 
-def test_a_model_l2_on_the_answer_turn_still_enters_crisis():
-    # The rule screen decides that the answer is a no; the model's own L2 still counts.
+def test_a_model_l2_on_an_accepted_no_counts_as_l1():
+    # The rule screen decides that the answer is a no. Since 问题单第 3 条 (2026-10-26) a
+    # no that also passes the F10 denial conditions, with no rule cue in it, caps the
+    # model's own L2 on that no at L1, as F10 caps a denial outside a crisis.
     session = Session.open(
         TAX, _profile(), rng=random.Random(3), now=lambda: NOW, model=_RaisesDenials()
     )
     _assert_ask(session.turn(ASK))
     result = session.turn("不是，我就是想辞职")
+    assert result.inspect["safety_check"] == "denied"
+    assert not result.in_crisis and result.reply_kind is not ReplyKind.CRISIS
+    assert result.crisis_level is CrisisLevel.L1 and result.inspect["uncapped_level"] == "L2"
+
+
+def test_a_model_l2_on_a_no_with_a_rule_cue_still_enters_crisis():
+    # "累死了" is a hyperbole cue: the rules saw a death word, so the model's L2 stays.
+    session = Session.open(
+        TAX, _profile(), rng=random.Random(3), now=lambda: NOW, model=_RaisesDenials()
+    )
+    _assert_ask(session.turn(ASK))
+    result = session.turn("不是，就是累死了")
     assert result.inspect["safety_check"] == "denied"
     assert result.reply_kind is ReplyKind.CRISIS and result.in_crisis
 

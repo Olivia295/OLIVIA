@@ -78,7 +78,9 @@ from olivia.core.session import ReplyKind, TurnResult
 
 MAX_SPECTRA: Final = 3
 MAX_STAGE_PATH: Final = 64
-_NO_NOTE_KINDS: Final = frozenset({ReplyKind.CRISIS, ReplyKind.SAFETY_CHECK})
+# A resource reply (2026-10-26) keeps no note either: after a user says they are under 18
+# nothing they say is kept ("记住：我才14岁"), and a hotline request is no note.
+_NO_NOTE_KINDS: Final = frozenset({ReplyKind.CRISIS, ReplyKind.SAFETY_CHECK, ReplyKind.RESOURCES})
 # Replies a note turn replaces with its confirmation (F3); any other kind keeps its card.
 _NOTE_ONLY_KINDS: Final = frozenset({ReplyKind.NORMAL, ReplyKind.HAVEN})
 

@@ -72,6 +72,12 @@ _PHRASE_SECTIONS: Final = (
     "privacy_questions",
     "privacy_subjects",
     "hotline_pushback",
+    "hotline_anonymous",
+    "hotline_abroad",
+    "strain_cues",
+    "imminent_times",
+    "imminent_means",
+    "keep_secret_cues",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -95,6 +101,8 @@ _SECTIONS: Final = frozenset(
         "direct_request_whole",
         "direct_request_patterns",
         "advice_patterns",
+        "hotline_request_patterns",
+        "minor_disclosure_patterns",
         "contraindicated_practices",
         *_PHRASE_SECTIONS,
     }
@@ -217,6 +225,22 @@ class PerceptionLexicon:
     """Asking how to say or do something ("怎么开口"; dogfood I1): advice, not a practice."""
     hotline_pushback: tuple[str, ...] = ()
     """"Stop sending me hotlines" ("别老给我发热线"; dogfood I1)."""
+    hotline_request_patterns: tuple[re.Pattern[str], ...] = ()
+    """Asking for a hotline or help number ("能给我一个心理援助热线的号码吗"; 问题单第 7 条)."""
+    hotline_anonymous: tuple[str, ...] = ()
+    """Whether a hotline needs one's real name ("实名", "匿名")."""
+    hotline_abroad: tuple[str, ...] = ()
+    """Calling from abroad ("国外", "打国内")."""
+    minor_disclosure_patterns: tuple[re.Pattern[str], ...] = ()
+    """The user's own age under 18 ("我才初二", "其实我14岁"; 问题单第 5 条)."""
+    strain_cues: tuple[str, ...] = ()
+    """Strain that is no crisis cue ("撑不了多久了"), read only after a crisis (第 11 条)."""
+    imminent_times: tuple[str, ...] = ()
+    """Time words that, with ``imminent_means``, make reported risk urgent (第 6 条)."""
+    imminent_means: tuple[str, ...] = ()
+    """Means and place words that, with ``imminent_times``, make reported risk urgent."""
+    keep_secret_cues: tuple[str, ...] = ()
+    """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
 def strip_marks(text: str) -> str:
@@ -335,6 +359,18 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         privacy_subjects=phrases["privacy_subjects"],
         advice_patterns=_patterns(doc.get("advice_patterns"), "advice_patterns"),
         hotline_pushback=phrases["hotline_pushback"],
+        hotline_request_patterns=_patterns(
+            doc.get("hotline_request_patterns"), "hotline_request_patterns"
+        ),
+        hotline_anonymous=phrases["hotline_anonymous"],
+        hotline_abroad=phrases["hotline_abroad"],
+        minor_disclosure_patterns=_patterns(
+            doc.get("minor_disclosure_patterns"), "minor_disclosure_patterns"
+        ),
+        strain_cues=phrases["strain_cues"],
+        imminent_times=phrases["imminent_times"],
+        imminent_means=phrases["imminent_means"],
+        keep_secret_cues=phrases["keep_secret_cues"],
     )
 
 
