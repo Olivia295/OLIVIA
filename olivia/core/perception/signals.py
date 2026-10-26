@@ -108,6 +108,26 @@ class TurnSignals:
     ``prolonged_grief`` rule (a loss long past and still not borne), with no acute
     bereavement cue on the same turn (F13, draft pending G-0): the session then keeps m0
     but does not set ``ACUTE_BEREAVEMENT_SHOCK``, whose source is the early phase."""
+    contraindicated_practice: frozenset[str] = frozenset()
+    """Contraindication enum ids whose masked practice the message names, not negated
+    ("憋气那种" -> ``CARDIORESPIRATORY_INSTABILITY``; dogfood I2, 草稿：待 G-0). The stub
+    also sets ``direct_request``; the session acts on it only while that contraindication
+    is active."""
+    why_not: bool = False
+    """The message asks why not ("为什么不行"; dogfood I2): the session reads it only right
+    after it said a named practice may not suit the user."""
+    cardiac_symptom: bool = False
+    """A heart or breathing symptom ("胸口发紧", "心跳很快"; dogfood I2): with a heart or
+    breathing condition active, the reply ends with a line about getting medical help."""
+    privacy_question: bool = False
+    """The message asks whether its words are kept or sent anywhere ("你会把我说的话存下来
+    吗"; dogfood I8): the session answers with the privacy facts, never a mirror."""
+    advice_request: bool = False
+    """The message asks how to say or do something ("我该怎么开口跟妈妈聊"; dogfood I1):
+    advice, which the PRD has no mechanism for; the reply says it heard the question."""
+    hotline_pushback: bool = False
+    """The message asks not to be sent hotlines ("别老给我发热线电话"; dogfood I1): outside
+    a crisis the reply says it heard that, and when hotlines do show."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

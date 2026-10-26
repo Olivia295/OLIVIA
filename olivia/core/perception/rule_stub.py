@@ -180,6 +180,26 @@ _SITUATION: Final = "situation"
 _CONTRAINDICATION: Final = "contraindication"
 _HAVEN_EXIT: Final = "haven_exit"
 _NOTE_RECALL: Final = "note_recall"
+_PRACTICE: Final = "contraindicated_practice"
+_WHY_NOT: Final = "why_not"
+_CARDIAC: Final = "cardiac_symptom"
+_PRIVACY: Final = "privacy_question"
+_PRIVACY_SUBJECT: Final = "privacy_subject"
+_HOTLINE: Final = "hotline_pushback"
+# "我不知道该怎么说" tells how hard it is; it asks nothing (dogfood I1).
+_NOT_KNOWING: Final = ("不知道", "不晓得", "不清楚", "不明白")
+# What makes a message ask about a named practice (dogfood I2): "冷水敷脸呢", "行不行".
+_ASKING_MARKS: Final = (
+    "?",
+    "吗",
+    "呢",
+    "行不行",
+    "可不可以",
+    "能不能",
+    "好不好",
+    "怎么样",
+    "要不要",
+)
 # F16b: a direct_request phrase with one of these asks for another or a different method.
 _ANOTHER_MARKERS: Final = ("再给", "再来", "换", "别的", "其他", "其它")
 # COLBO-06b: prolonged grief is the SIT-06-04 dossier (延长哀伤障碍与未完成丧失悲恸).
@@ -283,6 +303,15 @@ class RuleStub:
             raise ValueError(f"taxonomy has no {PROLONGED_GRIEF_CODE!r} situation")
         for key, group in zip(GRIEF_KEYS, _GRIEF_GROUPS, strict=True):
             add(group, key, lexicon.prolonged_grief[key])
+        for enum_id, phrases in lexicon.contraindicated_practices.items():
+            add(_PRACTICE, enum_id, phrases)
+        add(_WHY_NOT, _WHY_NOT, lexicon.why_not)
+        add(_CARDIAC, _CARDIAC, lexicon.cardiac_symptom_cues)
+        add(_PRIVACY, _PRIVACY, lexicon.privacy_questions)
+        add(_PRIVACY_SUBJECT, _PRIVACY_SUBJECT, lexicon.privacy_subjects)
+        add(_HOTLINE, _HOTLINE, lexicon.hotline_pushback)
+        self._request_patterns = lexicon.direct_request_patterns
+        self._advice_patterns = lexicon.advice_patterns
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
 
@@ -361,7 +390,27 @@ class RuleStub:
         note_recall = next((r for r in NoteRecall if r in recall_labels), None)
         labels = {label for label, _ in signals}
         asked, requested = _therapy(body, hits, self._practices)
-        direct = _DIRECT in labels or requested is not None or another
+        # Someone else's words or deeds ("他给我一个方法") ask for nothing (dogfood I1).
+        phrase_request = any(
+            label == _DIRECT and not self._reported_before(body, match.start)
+            for label, match in signals
+        )
+        # A named therapy or practice is the therapy rules' call (F3), never a pattern's.
+        patterned = not hits.get(_THERAPY) and self._patterned_request(body)
+        # A masked practice counts only when the message asks for it or about it
+        # ("憋气那种", "冷水敷脸呢"), never in a story ("冷水敷脸我试过了").
+        masked = frozenset(label for label, _ in hits.get(_PRACTICE, ()))
+        if masked and not (
+            phrase_request
+            or patterned
+            or hits.get(_THERAPY_REQUEST)
+            or any(mark in body for mark in _ASKING_MARKS)
+        ):
+            masked = frozenset()
+        direct = phrase_request or requested is not None or another or bool(masked) or patterned
+        if masked:
+            # Naming another practice ("憋气那种我听说很管用") is no feedback on the card.
+            feedback, unclear = None, False
         another_method = another or any(
             label == _DIRECT and any(m in match.key for m in _ANOTHER_MARKERS)
             for label, match in signals
@@ -414,8 +463,38 @@ class RuleStub:
             contraindication_cues=frozenset(label for label, _ in hits.get(_CONTRAINDICATION, ())),
             note_recall=note_recall,
             prolonged_grief=prolonged and not acute_grief,
+            contraindicated_practice=masked,
+            why_not=bool(hits.get(_WHY_NOT)),
+            cardiac_symptom=bool(hits.get(_CARDIAC)),
+            privacy_question=bool(hits.get(_PRIVACY)) and bool(hits.get(_PRIVACY_SUBJECT)),
+            advice_request=not direct and self._advice(body),
+            hotline_pushback=bool(hits.get(_HOTLINE)),
         )
         return context, turn
+
+    def _advice(self, body: str) -> bool:
+        """An ``advice_patterns`` match that is not "我不知道该怎么说" and not about someone
+        else ("他怎么跟我说话的"; a ``leave_taking_reported`` word before it in its clause;
+        dogfood I1)."""
+        for pattern in self._advice_patterns:
+            for match in pattern.finditer(body):
+                start = match.start()
+                if any(body.endswith(w, 0, start) for w in _NOT_KNOWING):
+                    continue
+                if not self._reported_before(body, start):
+                    return True
+        return False
+
+    def _patterned_request(self, body: str) -> bool:
+        """A ``direct_request_patterns`` match that is not negated and is not someone
+        else's words or deeds (a ``leave_taking_reported`` word earlier in its clause)."""
+        for pattern in self._request_patterns:
+            for match in pattern.finditer(body):
+                start = match.start()
+                if self._negated(body, start) or self._reported_before(body, start):
+                    continue
+                return True
+        return False
 
     # -- matching ------------------------------------------------------------------
 

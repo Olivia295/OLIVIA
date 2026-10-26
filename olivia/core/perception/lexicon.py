@@ -33,9 +33,10 @@ only together, in one message (COLBO-06b; draft, G-0); a phrase belongs to one l
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -66,6 +67,11 @@ _PHRASE_SECTIONS: Final = (
     "haven_exit",
     "note_recall",
     "note_recall_questions",
+    "why_not",
+    "cardiac_symptom_cues",
+    "privacy_questions",
+    "privacy_subjects",
+    "hotline_pushback",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -87,6 +93,9 @@ _SECTIONS: Final = frozenset(
         "leave_taking_lead_ins",
         "leave_taking_reported",
         "direct_request_whole",
+        "direct_request_patterns",
+        "advice_patterns",
+        "contraindicated_practices",
         *_PHRASE_SECTIONS,
     }
 )
@@ -101,6 +110,14 @@ _SIGNAL_GROUP: Final = (
     "intent_confirmed",
     "kit_recall",
 )
+# The placeholders of ``direct_request_patterns``: the start of a clause, one character
+# of the same clause, and the end of a clause (dogfood I1).
+_CLAUSE_MARKS: Final = "，。！？,.!?；;~～…\n"
+_PATTERN_SLOTS: Final = {
+    "{S}": f"(?:^|(?<=[{_CLAUSE_MARKS}]))",
+    "{C}": f"[^{_CLAUSE_MARKS}]",
+    "{E}": f"(?=[{_CLAUSE_MARKS}]|$)",
+}
 _FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
 _ANSWER_KEYS: Final = ("affirm", "decline")
 GRIEF_KEYS: Final = ("loss", "duration", "unresolved")
@@ -180,6 +197,26 @@ class PerceptionLexicon:
     message with a live hit of all three reveals SIT-06-04 (COLBO-06b; draft, G-0)."""
     contraindication_cues: Mapping[str, tuple[str, ...]]
     """Taxonomy contraindication enum id -> folded phrases (A1)."""
+    direct_request_patterns: tuple[re.Pattern[str], ...] = ()
+    """Requests whose words are apart ("有什么五分钟能做的放松方法吗"; dogfood I1),
+    compiled with the ``{S}`` / ``{C}`` / ``{E}`` placeholders expanded."""
+    contraindicated_practices: Mapping[str, tuple[str, ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    """Contraindication enum id -> names of the practices it masks ("憋气", "冷水敷脸";
+    dogfood I2)."""
+    why_not: tuple[str, ...] = ()
+    """"Why not?" ("为什么不行"), read right after a masked practice was explained."""
+    cardiac_symptom_cues: tuple[str, ...] = ()
+    """Heart or breathing symptoms ("胸口发紧", "心跳很快"; dogfood I2)."""
+    privacy_questions: tuple[str, ...] = ()
+    """Questions about what is kept ("会不会上传"; dogfood I8)."""
+    privacy_subjects: tuple[str, ...] = ()
+    """What a privacy question must also name ("你", "聊天", "我说的")."""
+    advice_patterns: tuple[re.Pattern[str], ...] = ()
+    """Asking how to say or do something ("怎么开口"; dogfood I1): advice, not a practice."""
+    hotline_pushback: tuple[str, ...] = ()
+    """"Stop sending me hotlines" ("别老给我发热线"; dogfood I1)."""
 
 
 def strip_marks(text: str) -> str:
@@ -282,6 +319,22 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
                 tax.values("contraindication_enums"),
             )
         ),
+        direct_request_patterns=_patterns(
+            doc.get("direct_request_patterns"), "direct_request_patterns"
+        ),
+        contraindicated_practices=MappingProxyType(
+            _keyed_cues(
+                doc.get("contraindicated_practices"),
+                "contraindicated_practices",
+                tax.values("contraindication_enums"),
+            )
+        ),
+        why_not=phrases["why_not"],
+        cardiac_symptom_cues=phrases["cardiac_symptom_cues"],
+        privacy_questions=phrases["privacy_questions"],
+        privacy_subjects=phrases["privacy_subjects"],
+        advice_patterns=_patterns(doc.get("advice_patterns"), "advice_patterns"),
+        hotline_pushback=phrases["hotline_pushback"],
     )
 
 
@@ -322,6 +375,28 @@ def _phrases(node: Any, where: str) -> tuple[str, ...]:
         if folded in out:
             raise PerceptionLexiconError(f"{_FILE}: {where}: phrase {folded!r} is repeated")
         out.append(folded)
+    return tuple(out)
+
+
+def _patterns(node: Any, where: str) -> tuple[re.Pattern[str], ...]:
+    """A non-empty list of regular expressions with the clause placeholders expanded;
+    each must compile and must not match the empty string."""
+    if not isinstance(node, list) or not node:
+        raise PerceptionLexiconError(f"{_FILE}: '{where}' must be a non-empty list")
+    out: list[re.Pattern[str]] = []
+    for raw in node:
+        if not isinstance(raw, str) or not raw.strip():
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {raw!r} is not a pattern")
+        source = raw
+        for slot, expansion in _PATTERN_SLOTS.items():
+            source = source.replace(slot, expansion)
+        try:
+            pattern = re.compile(source)
+        except re.error as exc:
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {raw!r}: {exc}") from exc
+        if pattern.fullmatch(""):
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {raw!r} matches empty text")
+        out.append(pattern)
     return tuple(out)
 
 
