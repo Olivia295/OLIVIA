@@ -10,8 +10,10 @@ hotline numbers are always one command away.
 The lock is ``fcntl.flock`` on POSIX and ``msvcrt.locking`` on Windows, held on the file
 :data:`LOCK_FILENAME` inside the data directory (created 0600, empty, no user data). The
 operating system drops it when the process ends, crashes included, so a stale lock never
-blocks the next run. On POSIX the file is removed on release; a process that opened it
-just before then notices (the path no longer names the file it locked) and tries again.
+blocks the next run. The file is removed on release. On POSIX that happens while still
+locked; a process that opened it just before then notices (the path no longer names the
+file it locked) and tries again. On Windows it happens after unlocking, and only when no
+other process has the file open (Windows refuses otherwise).
 
 :func:`held` tells :mod:`olivia.core.storage` whether this process holds the lock for a
 directory, so stray temporary files there can only be another crashed writer's.
@@ -149,6 +151,11 @@ class DataDirLock:
                 if _same_file(fd, self.path):
                     self.path.unlink()  # while still locked: no one can be holding it
         os.close(fd)
+        if os.name == "nt":
+            # Windows refuses to remove a file another process has open, so this only
+            # succeeds when no other OLIVIA has the lock file open.
+            with contextlib.suppress(OSError):
+                self.path.unlink()
 
     def __enter__(self) -> DataDirLock:
         self.acquire()
