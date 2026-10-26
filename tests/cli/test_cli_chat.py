@@ -306,7 +306,7 @@ def test_region_change_that_cannot_be_encrypted_is_refused(run_cli, data_home, m
 
     monkeypatch.setattr(ProfileStore, "save", locked)  # the keychain locks between load and save
     run = run_cli(argv)
-    assert run.code == 1 and cli.PROFILE_LOCKED in run.out
+    assert run.code == 1 and cli.PROFILE_LOCKED_NOW in run.out
     assert "已经保存" not in run.out and cli.REGION_CLEARED not in run.out
     assert (data_home / PROFILE_FILENAME).read_bytes() == before
 

@@ -55,7 +55,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
@@ -240,7 +240,9 @@ class SessionRecorder:
             previous = _stage(inspect.get("previous_stage"))
             if previous is not None:
                 segment.add_stage(previous)
-        segment.ended_at = now
+        # A clock stepped back (NTP, a DST fall-back) never ends a segment before it began
+        # or before an earlier turn (robustness D5, D6); times compare in UTC.
+        segment.ended_at = _latest(segment.ended_at, segment.started_at, now)
         segment.turns += 1
         if inspect.get("real_support") is True:
             segment.support_turns += 1
@@ -338,21 +340,31 @@ class SessionRecorder:
         return recall_note(message, notes, now, self._cues.recall_ignore)
 
     def _flush(self) -> bool:
-        """Write the open segment's summary; True when one was written."""
-        summary = self._segment.summary()
-        if summary is None:
-            return False
+        """Write the open segment's summary; True when one was written.
+
+        Nothing raised while building or writing it escapes: the session is ending, and
+        the CLI says "the summary was not saved" instead of a traceback.
+        """
         key = f"{self._session_id}/{self._index}"
-        written = True
+        written = False
         try:
+            summary = self._segment.summary()
+            if summary is None:
+                return False
             self._ledger.append_summary(summary, key=key)
             self._written = (key, summary)
-        except LedgerUnavailableError:
+            written = True
+        except Exception:  # noqa: BLE001 - LedgerUnavailableError and anything unforeseen
             self._lost = True
-            written = False
         self._segment = _Segment()
         self._index += 1
         return written
+
+
+def _latest(*moments: datetime | None) -> datetime:
+    """The latest of ``moments`` (some may be None) in real time, as given."""
+    known = [m for m in moments if m is not None]
+    return max(known, key=lambda m: m.astimezone(UTC))
 
 
 def _check_rating(rating: int) -> None:

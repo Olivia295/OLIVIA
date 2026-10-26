@@ -120,6 +120,7 @@ _COMMAND_KEYS: Final = (
     "no_keychain",
     "locked",
     "damaged",
+    "unreadable",
     "not_onboarded",
     "adults_only",
 )
@@ -131,6 +132,11 @@ class SafetyPlanTextError(Exception):
 
 class SafetyPlanDamagedError(Exception):
     """The saved plan cannot be opened (its key is gone or the file was changed)."""
+
+
+class SafetyPlanUnreadableError(SafetyPlanDamagedError):
+    """The plan's file exists but the operating system will not read it (a directory in
+    its place, no permission); it may well be intact, so nothing replaces it."""
 
 
 # -- the plan ---------------------------------------------------------------------------------
@@ -349,13 +355,16 @@ class SafetyPlanStore:
     def load(self) -> SafetyPlan | None:
         """The saved plan, or None when there is none.
 
-        Raises :class:`KeychainUnavailableError` while the keychain does not answer and
-        :class:`SafetyPlanDamagedError` when the file can never be opened again.
+        Raises :class:`KeychainUnavailableError` while the keychain does not answer,
+        :class:`SafetyPlanDamagedError` when the file can never be opened again and its
+        :class:`SafetyPlanUnreadableError` when the system will not read the file.
         """
         try:
             blob = self.path.read_bytes()
         except FileNotFoundError:
             return None
+        except OSError as exc:
+            raise SafetyPlanUnreadableError("the safety plan's file cannot be read") from exc
         try:
             raw = self.vault.open(SAFETY_PLAN_STORE, blob, label=_LABEL)
             return SafetyPlan.from_json(raw)
@@ -466,6 +475,9 @@ class _Command:
             plan = self._store.load()
         except KeychainUnavailableError:
             self._say(cmd["locked"])
+            return 1
+        except SafetyPlanUnreadableError:
+            self._say(cmd["unreadable"])
             return 1
         except SafetyPlanDamagedError:
             self._say(cmd["damaged"])

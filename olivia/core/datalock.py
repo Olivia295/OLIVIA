@@ -75,6 +75,38 @@ def _same_file(fd: int, path: Path) -> bool:
     return (on_disk.st_dev, on_disk.st_ino) == (mine.st_dev, mine.st_ino)
 
 
+def held_elsewhere(directory: Path) -> bool:
+    """Whether another process holds ``directory``'s lock now (for ``olivia doctor``).
+
+    Read-only: nothing is created, and a lock taken for the test is let go at once.
+    """
+    path = directory / LOCK_FILENAME
+    flags = os.O_RDWR if sys.platform == "win32" else os.O_RDONLY
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return False  # no lock file: no one holds it
+    try:
+        if not _try_lock(fd):
+            return True
+        _unlock(fd)
+        return False
+    finally:
+        os.close(fd)
+
+
+def _unlock(fd: int) -> None:
+    if sys.platform == "win32":  # pragma: no cover - Windows only
+        import msvcrt
+
+        with contextlib.suppress(OSError):
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
 class DataDirLock:
     """The exclusive lock of one data directory (which must exist).
 

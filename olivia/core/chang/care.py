@@ -19,6 +19,7 @@ without snapshots, so taking a marker leaves no older copy behind.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -105,7 +106,7 @@ class CareStore:
         kind = marker.kind
         try:
             existing = self._read()
-        except (KeychainUnavailableError, KeyMissingError, DecryptionError, ValueError):
+        except (KeychainUnavailableError, KeyMissingError, DecryptionError, ValueError, OSError):
             existing = None  # unreadable now or ever: the new marker replaces it
         if existing is not None:
             kind = _stronger(kind, existing.kind)
@@ -118,7 +119,10 @@ class CareStore:
             return False
         except (KeyMissingError, DecryptionError):
             return False  # the store's keys are damaged; never overwrite anything else
-        atomic_write_bytes(self.path, blob, snapshot=False)
+        try:
+            atomic_write_bytes(self.path, blob, snapshot=False)
+        except OSError:
+            return False  # the file cannot be replaced (robustness C2)
         return True
 
     def take(self, now: datetime) -> CareMarker | None:
@@ -129,14 +133,18 @@ class CareStore:
         """
         try:
             marker = self._read()
-        except KeychainUnavailableError:
-            return None
+        except (KeychainUnavailableError, OSError):
+            return None  # locked, or a file the system will not read: kept for later
         except (KeyMissingError, DecryptionError, ValueError):
-            remove_file(self.path)
+            with contextlib.suppress(OSError):
+                remove_file(self.path)
             return None
         if marker is None:
             return None
-        remove_file(self.path)
+        try:
+            remove_file(self.path)
+        except OSError:
+            return None  # a marker that cannot be removed would greet every time
         if now - marker.at > MAX_AGE:
             return None
         return marker

@@ -113,7 +113,7 @@ def test_a_profile_that_cannot_be_saved_rolls_the_install_back(
 
     monkeypatch.setattr(ProfileStore, "save", locked)
     run = run_cli(["settings"], ["1", "1"])
-    assert run.code == 1 and cli.PROFILE_LOCKED in run.lines
+    assert run.code == 1 and cli.PROFILE_LOCKED_NOW in run.lines
     assert machine.argvs[-1] == BOOTOUT and not _plist(machine).exists()
     assert _saved(data_home).notifications is False
 
@@ -228,7 +228,7 @@ def test_a_storage_change_that_cannot_be_saved_changes_nothing(run_cli, data_hom
 
     monkeypatch.setattr(ProfileStore, "save", locked)
     run = run_cli(["settings"], ["2", "1"])
-    assert run.code == 1 and run.lines[-1] == cli.PROFILE_LOCKED
+    assert run.code == 1 and run.lines[-1] == cli.PROFILE_LOCKED_NOW
     assert _profile_json(data_home)["user_name"] == "小林"
 
 

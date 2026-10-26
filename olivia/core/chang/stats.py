@@ -171,8 +171,10 @@ def compute(
     answers = [j.helpful for j in journals if j.helpful is not None]
     return Stats(
         sessions=len(items),
-        last_week=sum(1 for s in items if s.started_at >= now - WEEK),
-        last_month=sum(1 for s in items if s.started_at >= now - MONTH),
+        # Up to ``now``: a session dated later (a clock that ran ahead, robustness E1) is
+        # counted in the total only.
+        last_week=sum(1 for s in items if now - WEEK <= s.started_at <= now),
+        last_month=sum(1 for s in items if now - MONTH <= s.started_at <= now),
         late_night=sum(1 for s in with_counts if s.late_night),
         counted=len(with_counts),
         support_turns=sum(s.real_support_turns or 0 for s in with_counts),

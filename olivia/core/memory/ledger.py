@@ -199,7 +199,9 @@ class SessionSummary:
     def __post_init__(self) -> None:
         _aware(self.started_at, "started_at")
         _aware(self.ended_at, "ended_at")
-        if self.ended_at < self.started_at:
+        # In UTC: two times in one ZoneInfo compare by wall clock, which runs backwards
+        # across a DST fall-back (robustness D6).
+        if self.ended_at.astimezone(UTC) < self.started_at.astimezone(UTC):
             raise ValueError("a session cannot end before it starts")
         if not self.stage_path:
             raise ValueError("a session visits at least one stage")
@@ -440,8 +442,8 @@ class Ledger:
         for path in self.entry_paths():
             try:
                 entry = _parse(self.read_markdown(path.stem), path.stem)
-            except (KeyMissingError, DecryptionError, UnicodeDecodeError, ValueError):
-                skipped += 1
+            except (KeyMissingError, DecryptionError, UnicodeDecodeError, ValueError, OSError):
+                skipped += 1  # OSError: a file the system will not read (robustness C2)
                 continue
             if since is None or entry.time >= since:
                 found.append(entry)
@@ -657,8 +659,11 @@ class Ledger:
             raise _unavailable(exc) from exc
         except CryptoError as exc:  # the master key is gone while data keys remain
             raise LedgerUnavailableError("the ledger key cannot be used", permanent=False) from exc
-        self._ensure_directory()
-        atomic_write_bytes(self.directory / f"{entry.entry_id}{_SUFFIX}", blob, snapshot=False)
+        try:
+            self._ensure_directory()
+            atomic_write_bytes(self.directory / f"{entry.entry_id}{_SUFFIX}", blob, snapshot=False)
+        except OSError as exc:  # robustness C2: a directory or file the system refuses
+            raise LedgerUnavailableError("the entry cannot be written", permanent=False) from exc
 
     def _summary_body(self, s: SessionSummary) -> str:
         t = self.text

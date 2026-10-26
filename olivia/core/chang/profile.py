@@ -41,6 +41,17 @@ an interrupted save, or a version written before re-keying existed, left readabl
 when the main file itself was read; a keychain that does not answer leaves that for a
 later load).
 
+A damaged main file is recovered from the newest snapshot that opens, and never silently
+(robustness finding D4): ``load`` sets :attr:`ProfileStore.recovered_at` and writes the
+marker :data:`RECOVERED_FILENAME` (only the snapshot's time, no user data) before anything
+can save over the recovered version; the CLI says it once (:meth:`take_recovery_notice`)
+and the marker goes with the next load of an intact main file. While recovered, no sealed
+snapshot is deleted. A damaged or missing ``profile`` *key* is not a damaged file: no
+snapshot is tried (they would only bring back an older, less protected profile) and
+``load`` raises :class:`ProfileLockedError` with ``lost``. A main file the operating
+system will not read (a directory in its place, no permission) raises
+:class:`ProfileUnreadableError` and changes nothing.
+
 A plaintext profile written before B1 is migrated on ``load``: re-saved in its proper
 form, after which every snapshot that still holds plaintext sensitive data (or, with
 the switch on, any plaintext at all) is deleted. On a device with no keychain the
@@ -56,6 +67,7 @@ import binascii
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Final
@@ -71,13 +83,16 @@ from olivia.core.crypto.errors import (
 from olivia.core.crypto.vault import Vault
 from olivia.core.models import PersonaProfile
 from olivia.core.storage import (
+    StorageAccessError,
     StorageCorruptError,
     app_data_dir,
     atomic_write_bytes,
     atomic_write_text,
-    read_text_with_recovery,
+    read_with_recovery,
     remove_file,
+    remove_stray_temps,
     snapshot_paths,
+    snapshot_time,
 )
 
 PROFILE_FILENAME: Final = "profile.json"
@@ -86,6 +101,8 @@ PROFILE_REKEY_STORE: Final = "profile_rekey"
 """The staging store a re-keying save seals the new profile under (used, then shredded)."""
 PROFILE_REKEY_FILENAME: Final = "profile.rekey"
 """The staging copy of a re-keying save; it exists only while one is under way."""
+RECOVERED_FILENAME: Final = "profile.recovered"
+"""Marks a profile recovered from a snapshot until the user has been told (D4)."""
 SENSITIVE_FIELDS: Final = ("clinical_history", "contraindications")
 """Profile keys that are sealed regardless of the at-rest switch (ruling 28, D2)."""
 
@@ -94,11 +111,17 @@ _WHOLE_KEY: Final = "sealed_profile"
 _FIELDS_LABEL: Final = "fields"
 _WHOLE_LABEL: Final = "whole"
 _STAGED_LABEL: Final = "staged"
-_PARSE_ERRORS: Final = (ValueError, TypeError, OverflowError, RecursionError, DecryptionError)
+_FORMAT_ERRORS: Final = (ValueError, TypeError, OverflowError, RecursionError)
+_PARSE_ERRORS: Final = (*_FORMAT_ERRORS, DecryptionError)
 
 
 class ProfileCorruptError(Exception):
     """The profile file and all of its snapshots are unreadable or invalid."""
+
+
+class ProfileUnreadableError(ProfileCorruptError):
+    """The profile file exists but the operating system will not read it (a directory in
+    its place, missing permissions); nothing was changed."""
 
 
 class ProfileLockedError(Exception):
@@ -224,8 +247,12 @@ class ProfileStore:
         self.path: Path = directory / PROFILE_FILENAME
         self._staging: Path = directory / PROFILE_REKEY_FILENAME
         self.vault: Vault = Vault(directory) if vault is None else vault
+        self._marker: Path = directory / RECOVERED_FILENAME
         self.dropped_sensitive_data: bool = False
         """Set by ``load`` when legacy sensitive fields had to be deleted (no keychain)."""
+        self.recovered_at: datetime | None = None
+        """Set by ``load`` when the main file was damaged: when the snapshot it read was
+        taken (UTC)."""
 
     def can_protect_sensitive(self) -> bool:
         """Whether sensitive fields (and the whole profile) can be encrypted on this device."""
@@ -233,6 +260,8 @@ class ProfileStore:
 
     def load(self) -> PersonaProfile | None:
         self.dropped_sensitive_data = False
+        self.recovered_at = None
+        remove_stray_temps(self.path)  # a killed save's copy may hold plaintext (S4)
         try:
             self._finish_rekey()
         except CryptoError as exc:
@@ -242,25 +271,35 @@ class ProfileStore:
         def is_valid(text: str) -> bool:
             try:
                 decoded[text] = self._decode(text)
-            except _PARSE_ERRORS:
+            except DecryptionError:
+                self._raise_if_key_damaged()  # a damaged key is not a damaged file
+                return False
+            except _FORMAT_ERRORS:
                 return False
             return True
 
         try:
-            text = read_text_with_recovery(self.path, is_valid)
+            text, source = read_with_recovery(self.path, is_valid)
         except FileNotFoundError:
             return None
+        except StorageAccessError as exc:
+            raise ProfileUnreadableError(f"{self.path.name} cannot be read") from exc
         except StorageCorruptError as exc:
             raise ProfileCorruptError(
                 f"profile at {self.path} and its snapshots are unreadable or invalid"
             ) from exc
         except CryptoError as exc:
             raise _locked(exc) from exc
+        recovered = source != self.path
+        if recovered:
+            self._mark_recovered(source)
+        else:
+            self._clear_told_marker()
         profile, form = decoded[text]
         target = _target_form(profile)
         if form.value >= target.value:
-            self._purge_snapshots(target)
-            if self._is_main(text):
+            self._purge_snapshots(target, keep_sealed=recovered)
+            if not recovered:
                 self._settle(profile, target)
             return profile
         # Less protected than it must be (a pre-B1 plaintext profile): migrate.
@@ -300,7 +339,7 @@ class ProfileStore:
             return True
 
         try:
-            read_text_with_recovery(self.path, is_valid)
+            read_with_recovery(self.path, is_valid)
         except (OSError, StorageCorruptError):  # missing, unreadable, or no valid version
             return None
         return found[-1]
@@ -311,7 +350,60 @@ class ProfileStore:
         except CryptoError as exc:
             raise _locked(exc) from exc
 
+    def take_recovery_notice(self) -> datetime | None:
+        """When a recovery the user has not been told about read its snapshot (UTC; the
+        marker's own time if that is unreadable); None when there is nothing to tell.
+        Each recovery is told once."""
+        try:
+            data = _json_object(self._marker.read_bytes())
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError, RecursionError):
+            data = {}
+        if data.get("told") is True:
+            return None
+        moment = _parse_time(data.get("from"))
+        if moment is None:
+            try:
+                moment = datetime.fromtimestamp(self._marker.stat().st_mtime, UTC)
+            except OSError:
+                moment = datetime.now(UTC)
+        self._write_marker(moment, told=True)
+        return moment
+
     # -- internals ---------------------------------------------------------------------
+
+    def _raise_if_key_damaged(self) -> None:
+        """Raise the key's own error when the ``profile`` key does not open."""
+        if self.vault.has_data_key(PROFILE_STORE):
+            self.vault.check_data_key(PROFILE_STORE)
+
+    def _mark_recovered(self, snapshot: Path) -> None:
+        """Remember the recovery (before any save could overwrite it) until it is told."""
+        moment = snapshot_time(snapshot) or datetime.now(UTC)
+        self.recovered_at = moment
+        try:
+            data = _json_object(self._marker.read_bytes())
+        except (OSError, ValueError, RecursionError):
+            data = {}
+        if _parse_time(data.get("from")) == moment:
+            return  # this recovery is already marked (and perhaps told)
+        self._write_marker(moment, told=False)
+
+    def _write_marker(self, moment: datetime, *, told: bool) -> None:
+        body = json.dumps({"from": moment.astimezone(UTC).isoformat(), "told": told})
+        atomic_write_bytes(self._marker, body.encode("utf-8"), snapshot=False)
+
+    def _clear_told_marker(self) -> None:
+        """The main file is intact again: a recovery already told is over."""
+        try:
+            data = _json_object(self._marker.read_bytes())
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError, RecursionError):
+            data = {"told": True}
+        if data.get("told") is True:
+            remove_file(self._marker)
 
     def _save(self, profile: PersonaProfile) -> None:
         self._finish_rekey()
@@ -394,12 +486,6 @@ class ProfileStore:
         except CryptoError:
             pass  # keychain locked or keys damaged: retried on the next load
 
-    def _is_main(self, text: str) -> bool:
-        try:
-            return self.path.read_bytes().decode("utf-8") == text
-        except (OSError, UnicodeDecodeError):
-            return False
-
     def _encode(self, profile: PersonaProfile) -> str:
         data = profile.to_dict()
         if profile.enable_at_rest_encryption:
@@ -437,13 +523,17 @@ class ProfileStore:
             raise ValueError("sealed fields hold an unexpected key")
         return PersonaProfile.from_dict(data | fields), _Form.FIELDS
 
-    def _purge_snapshots(self, form: _Form) -> None:
+    def _purge_snapshots(self, form: _Form, *, keep_sealed: bool = False) -> None:
         """Delete snapshots that hold data the current form says must be protected, and
-        those whose ciphertext no longer opens (its key was shredded by a re-key)."""
+        those whose ciphertext no longer opens (its key was shredded by a re-key).
+        ``keep_sealed`` (after a recovery) keeps every snapshot that holds only
+        ciphertext: nothing in it is exposed, and it may be all that is left."""
         for snapshot in snapshot_paths(self.path):
             try:
                 raw = snapshot.read_bytes()
             except OSError:
+                continue
+            if keep_sealed and _sealed(raw):
                 continue
             if not _snapshot_compliant(raw, form) or self._dead(raw):
                 remove_file(snapshot)
@@ -466,9 +556,43 @@ class ProfileStore:
         return False
 
 
+def recovery_pending(base_dir: Path) -> bool:
+    """Whether a recovery from a snapshot has not been told yet (read-only; ``doctor``)."""
+    try:
+        data = _json_object((base_dir / RECOVERED_FILENAME).read_bytes())
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, RecursionError):
+        return True
+    return data.get("told") is not True
+
+
+def _sealed(raw: bytes) -> bool:
+    """Whether a snapshot holds sealed data and no sensitive field in plaintext."""
+    try:
+        data = _json_object(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return False
+    if _WHOLE_KEY in data:
+        return True
+    return _FIELDS_KEY in data and not _sensitive_values(data)
+
+
+def _parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
 def _locked(exc: CryptoError) -> Exception:
     if isinstance(exc, KeyMissingError):
         return ProfileLockedError("the profile's encryption keys are gone", lost=True)
     if isinstance(exc, KeychainUnavailableError):
         return ProfileLockedError("the keychain is unavailable", lost=False)
-    return ProfileCorruptError("the profile's encryption keys are damaged")
+    # Only a key unwraps without being asked to: a DecryptionError here is a damaged key
+    # file, and what it sealed can never be opened again (robustness D4, C3).
+    return ProfileLockedError("the profile's encryption key is damaged", lost=True)

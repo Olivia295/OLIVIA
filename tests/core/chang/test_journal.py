@@ -327,3 +327,15 @@ def test_command_without_a_keychain(tmp_path, keychain):
     ledger = Ledger(tmp_path, Vault(tmp_path, keychain))
     assert run_command(script.ask, script.say, ledger, NOW) == 1
     assert script.said == [TEXT.replies["unavailable"]]
+
+
+def test_entries_from_a_clock_that_ran_ahead_do_not_count_as_this_week(ledger):
+    """Robustness E1: a clock a year fast once must not block the journal for a year."""
+    ledger.append_summary(_summary(-365), key="future-a")
+    ledger.append_summary(_summary(-364), key="future-b")
+    ledger.record_journal(NOW + timedelta(days=365), shown=False)
+    week = gather(ledger, NOW)
+    assert week.sessions == () and week.journals == ()
+    ledger.append_summary(_summary(1), key="a")
+    ledger.append_summary(_summary(2), key="b")
+    assert is_due(gather(ledger, NOW))
