@@ -5,8 +5,9 @@ Twelve files feed the language engine:
 * ``language/willow.yaml``: didactic rewrites, diagnosis terms, depathologizing
   replacements, protected terms and per-filter exemptions;
 * ``language/metaphors.yaml``: spectrum x yearning nature images, a fallback list, the
-  dossier imagery per situation code (``by_situation``, plan D-2) and the personas that
-  speak in everyday images instead of nature (``by_persona``, F3);
+  dossier imagery per situation code (``by_situation``, plan D-2), the personas that
+  speak in everyday images instead of nature (``by_persona``, F3) and the words an image
+  never holds, or not on a topic (``avoid``, trial report 2026-10-26);
 * ``language/needs.yaml``: need phrases per Satir yearning;
 * ``language/render.yaml``: labels and fixed sentences around cards;
 * ``language/feelings.yaml``: how the ``{emotion}`` slot names a feeling (F3);
@@ -190,6 +191,27 @@ def _no_persona_images() -> Mapping[PersonaSpectrum, PersonaImages]:
 
 
 @dataclass(frozen=True)
+class ImageTopic:
+    """Images a topic must not get (``metaphors.yaml`` ``avoid.topics``, draft G-0).
+
+    The topic is on once a turn's spectrum is in ``spectra``, a situation in
+    ``situations`` is active, the referral card of a red flag in ``flags`` was shown or
+    the user's message holds one of ``cues``; from then on the session draws no image
+    holding one of ``words``.
+    """
+
+    words: tuple[str, ...]
+    spectra: frozenset[str] = frozenset()
+    situations: frozenset[str] = frozenset()
+    flags: frozenset[str] = frozenset()
+    cues: tuple[str, ...] = ()
+
+
+def _no_topics() -> Mapping[str, ImageTopic]:
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True)
 class MetaphorData:
     by_spectrum_yearning: Mapping[str, Mapping[str, tuple[str, ...]]]
     fallback: tuple[str, ...]
@@ -197,6 +219,10 @@ class MetaphorData:
     """Situation code -> images drawn from its dossier (plan D-2; ``language/dossiers.py``)."""
     by_persona: Mapping[PersonaSpectrum, PersonaImages] = field(default_factory=_no_persona_images)
     """Personas with their own everyday images; the others keep the nature images."""
+    never: tuple[str, ...] = ()
+    """Words no image holds (checked at load: death, a farewell letter, drinking as relief)."""
+    topics: Mapping[str, ImageTopic] = field(default_factory=_no_topics)
+    """Topic name -> the images it must not get (substance use, grief and breakups)."""
 
 
 @dataclass(frozen=True)
@@ -583,7 +609,7 @@ def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
         data,
         {"version", "by_spectrum_yearning", "fallback"},
         where,
-        optional={"by_situation", "by_persona"},
+        optional={"by_situation", "by_persona", "avoid"},
     )
     _version(data, where)
     grid_raw = _map(data["by_spectrum_yearning"], f"{where} by_spectrum_yearning")
@@ -597,12 +623,71 @@ def _parse_metaphors(data: Mapping[str, Any], tax: Taxonomy) -> MetaphorData:
         grid[sid] = MappingProxyType(
             {yid: _strs(cell[yid], f"{where} {sid}.{yid}") for yid in sorted(yearnings)}
         )
-    return MetaphorData(
+    metaphors = MetaphorData(
         MappingProxyType(grid),
         _strs(data["fallback"], f"{where} fallback"),
         _parse_situation_images(data.get("by_situation", {}), tax),
         _parse_persona_images(data.get("by_persona", {}), tax),
     )
+    if "avoid" in data:
+        never, topics = _parse_avoid(data["avoid"], tax)
+        metaphors = replace(metaphors, never=never, topics=topics)
+        _check_avoid(metaphors)
+    return metaphors
+
+
+def _parse_avoid(node: Any, tax: Taxonomy) -> tuple[tuple[str, ...], Mapping[str, ImageTopic]]:
+    """``avoid``: words no image holds, and per topic the words its images must not hold."""
+    where = "metaphors.yaml avoid"
+    raw = _map(node, where)
+    _keys(raw, {"never"}, where, optional={"topics"})
+    never = _unique(_strs(raw["never"], f"{where}.never"), f"{where}.never")
+    topics: dict[str, ImageTopic] = {}
+    for name, value in _map(raw.get("topics", {}), f"{where}.topics").items():
+        here = f"{where}.topics.{name}"
+        body = _map(value, here)
+        _keys(body, {"words"}, here, optional={"spectra", "situations", "flags", "cues"})
+        spectra = _strs(body.get("spectra", []), f"{here}.spectra", allow_empty=True)
+        _keys(dict.fromkeys(spectra), set(), f"{here}.spectra", optional=set(tax.spectrum_ids()))
+        situations = _strs(body.get("situations", []), f"{here}.situations", allow_empty=True)
+        _situation_keys(dict.fromkeys(situations), tax, f"{here}.situations")
+        flags = _strs(body.get("flags", []), f"{here}.flags", allow_empty=True)
+        _keys(dict.fromkeys(flags), set(), f"{here}.flags", optional=set(tax.red_flags()))
+        cues = _unique(_strs(body.get("cues", []), f"{here}.cues", allow_empty=True), here)
+        if not (spectra or situations or flags or cues):
+            raise LanguageDataError(f"{here}: a topic needs spectra, situations, flags or cues")
+        topics[name] = ImageTopic(
+            words=_unique(_strs(body["words"], f"{here}.words"), f"{here}.words"),
+            spectra=frozenset(spectra),
+            situations=frozenset(situations),
+            flags=frozenset(flags),
+            cues=cues,
+        )
+    return never, MappingProxyType(topics)
+
+
+def _check_avoid(metaphors: MetaphorData) -> None:
+    """No image holds a ``never`` word, and every fallback list keeps an image with every
+    topic on at once (the last tier the engine draws from is never empty)."""
+    where = "metaphors.yaml avoid"
+    images = [
+        *metaphors.fallback,
+        *(i for cell in metaphors.by_spectrum_yearning.values() for c in cell.values() for i in c),
+        *(i for found in metaphors.by_situation.values() for i in found),
+    ]
+    fallbacks = {"fallback": metaphors.fallback}
+    for persona, own in metaphors.by_persona.items():
+        images += [*own.fallback, *(i for found in own.by_spectrum.values() for i in found)]
+        fallbacks[f"by_persona.{persona.value}.fallback"] = own.fallback
+    hits = sorted({i for i in images if any(w in i for w in metaphors.never)})
+    if hits:
+        raise LanguageDataError(f"{where}.never: images hold a never word: {hits}")
+    words = [w for topic in metaphors.topics.values() for w in topic.words]
+    for name, fallback in fallbacks.items():
+        if not [i for i in fallback if not any(w in i for w in words)]:
+            raise LanguageDataError(
+                f"{where}.topics: no image of {name} is left with every topic on"
+            )
 
 
 def _parse_persona_images(node: Any, tax: Taxonomy) -> Mapping[PersonaSpectrum, PersonaImages]:
