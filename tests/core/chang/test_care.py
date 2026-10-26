@@ -8,6 +8,7 @@ a keychain nothing is stored. Every test uses the in-memory keychain from confte
 
 from __future__ import annotations
 
+import json
 import random
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -155,7 +156,12 @@ def test_marker_is_encrypted_at_rest(tmp_path, keychain, kind):
     marker = CareMarker(datetime(2026, 10, 22, 15, 4, 5, tzinfo=UTC), kind)
     assert store.save(marker)
     raw = (tmp_path / CARE_FILENAME).read_bytes()
-    for plain in (kind.value, f'"{kind.value}"', "2026-10-22", "15:04:05", '"kind"', '"at"'):
+    # Only plaintext that cannot turn up in random ciphertext by chance: a two-byte kind
+    # ("L3") did once (CI run 40323401642 saw b"-L3S", a false alarm). The whole JSON the
+    # store writes and fragments of 8 bytes or more say the same thing reliably.
+    payload = json.dumps({"at": marker.at.isoformat(), "kind": kind.value})
+    for plain in (payload, f'"kind": "{kind.value}"', "2026-10-22", "15:04:05"):
+        assert len(plain.encode()) >= 8
         assert plain.encode() not in raw, plain
     assert (tmp_path / "keys" / f"{CARE_STORE}.key").is_file()
     assert not (tmp_path / ".snapshots").exists()  # no older copy survives a take
