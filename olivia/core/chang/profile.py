@@ -17,6 +17,30 @@ Sensitive data is never written in plaintext. If the keychain cannot be used, ``
 raises :class:`ProfileLockedError` and leaves the file untouched; callers decide what to
 tell the user (onboarding then saves without the sensitive fields).
 
+Changing or deleting health information is a crypto-shred (SDD §6.5, §6.6; ``olivia health``
+promises that ``0`` deletes it all): a save whose sensitive fields differ from those of
+any sealed version on disk that still opens re-keys the ``profile`` store, so no older
+version -- snapshot or previous main file -- opens again, and recovery skips them like
+any other version that does not open. Order, so that an interruption never loses the
+profile:
+
+1. seal the new profile under the staging store :data:`PROFILE_REKEY_STORE` into
+   :data:`PROFILE_REKEY_FILENAME` (an atomic write: the commit point);
+2. ``Vault.shred`` the ``profile`` key (the master key rotates as well);
+3. write ``profile.json`` under a fresh ``profile`` key and delete every snapshot whose
+   ciphertext no longer opens;
+4. delete the staging file and shred the staging store.
+
+Interrupted before step 1 nothing changed; from step 1 on, the next ``load`` or ``save``
+finishes steps 2-4. A profile that ends up plain (no sensitive data, switch off) needs
+no key at all: the file is written, every snapshot holding ciphertext is deleted and the
+``profile`` key is shredded. A save that changes only non-sensitive fields (or only the
+form) keeps the key. While the keychain does not answer, a save that would have to
+shred changes nothing and raises :class:`ProfileLockedError`. ``load`` also shreds what
+an interrupted save, or a version written before re-keying existed, left readable (only
+when the main file itself was read; a keychain that does not answer leaves that for a
+later load).
+
 A plaintext profile written before B1 is migrated on ``load``: re-saved in its proper
 form, after which every snapshot that still holds plaintext sensitive data (or, with
 the switch on, any plaintext at all) is deleted. On a device with no keychain the
@@ -48,6 +72,7 @@ from olivia.core.models import PersonaProfile
 from olivia.core.storage import (
     StorageCorruptError,
     app_data_dir,
+    atomic_write_bytes,
     atomic_write_text,
     read_text_with_recovery,
     remove_file,
@@ -56,6 +81,10 @@ from olivia.core.storage import (
 
 PROFILE_FILENAME: Final = "profile.json"
 PROFILE_STORE: Final = "profile"
+PROFILE_REKEY_STORE: Final = "profile_rekey"
+"""The staging store a re-keying save seals the new profile under (used, then shredded)."""
+PROFILE_REKEY_FILENAME: Final = "profile.rekey"
+"""The staging copy of a re-keying save; it exists only while one is under way."""
 SENSITIVE_FIELDS: Final = ("clinical_history", "contraindications")
 """Profile keys that are sealed regardless of the at-rest switch (ruling 28, D2)."""
 
@@ -63,6 +92,7 @@ _FIELDS_KEY: Final = "sealed_fields"
 _WHOLE_KEY: Final = "sealed_profile"
 _FIELDS_LABEL: Final = "fields"
 _WHOLE_LABEL: Final = "whole"
+_STAGED_LABEL: Final = "staged"
 _PARSE_ERRORS: Final = (ValueError, TypeError, OverflowError, RecursionError, DecryptionError)
 
 
@@ -102,6 +132,11 @@ def _has_sensitive(profile: PersonaProfile) -> bool:
     return any(_has_value(v) for v in _sensitive_values(profile.to_dict()).values())
 
 
+def _sensitive_content(profile: PersonaProfile) -> dict[str, object]:
+    """The sensitive fields that hold something (what a re-key compares)."""
+    return {k: v for k, v in _sensitive_values(profile.to_dict()).items() if _has_value(v)}
+
+
 def _target_form(profile: PersonaProfile) -> _Form:
     if profile.enable_at_rest_encryption:
         return _Form.WHOLE
@@ -137,6 +172,8 @@ def _snapshot_compliant(raw: bytes, form: _Form) -> bool:
     except (UnicodeDecodeError, ValueError, RecursionError):
         # Unreadable junk: keep it only if it cannot hold anything that must be protected.
         return form is not _Form.WHOLE and not any(n.encode() in raw for n in SENSITIVE_FIELDS)
+    if form is _Form.PLAIN and (_FIELDS_KEY in data or _WHOLE_KEY in data):
+        return False  # a plain profile has no key: its ciphertext could only be stale data
     if set(data) == {_WHOLE_KEY}:
         return True
     if form is _Form.WHOLE:
@@ -154,6 +191,7 @@ class ProfileStore:
     def __init__(self, base_dir: Path | None = None, vault: Vault | None = None) -> None:
         directory = app_data_dir() if base_dir is None else base_dir
         self.path: Path = directory / PROFILE_FILENAME
+        self._staging: Path = directory / PROFILE_REKEY_FILENAME
         self.vault: Vault = Vault(directory) if vault is None else vault
         self.dropped_sensitive_data: bool = False
         """Set by ``load`` when legacy sensitive fields had to be deleted (no keychain)."""
@@ -164,6 +202,10 @@ class ProfileStore:
 
     def load(self) -> PersonaProfile | None:
         self.dropped_sensitive_data = False
+        try:
+            self._finish_rekey()
+        except CryptoError as exc:
+            raise _locked(exc) from exc
         decoded: dict[str, tuple[PersonaProfile, _Form]] = {}
 
         def is_valid(text: str) -> bool:
@@ -187,6 +229,8 @@ class ProfileStore:
         target = _target_form(profile)
         if form.value >= target.value:
             self._purge_snapshots(target)
+            if self._is_main(text):
+                self._settle(profile, target)
             return profile
         # Less protected than it must be (a pre-B1 plaintext profile): migrate.
         try:
@@ -210,8 +254,91 @@ class ProfileStore:
     # -- internals ---------------------------------------------------------------------
 
     def _save(self, profile: PersonaProfile) -> None:
+        self._finish_rekey()
+        target = _target_form(profile)
+        if not self.vault.has_data_key(PROFILE_STORE):
+            self._write(profile, target)  # nothing was ever sealed: nothing to shred
+        elif target is _Form.PLAIN:
+            self.vault.check()  # shredding needs the keychain: change nothing without it
+            self._write(profile, target)
+            self.vault.shred(PROFILE_STORE)
+        elif self._stale(profile):
+            self._rekey(profile)
+        else:
+            self._write(profile, target)
+
+    def _write(self, profile: PersonaProfile, target: _Form) -> None:
         atomic_write_text(self.path, self._encode(profile))
-        self._purge_snapshots(_target_form(profile))
+        self._purge_snapshots(target)
+
+    def _stale(self, profile: PersonaProfile) -> bool:
+        """Whether a version on disk still opens to sealed sensitive data other than
+        ``profile``'s (plaintext is the snapshot purge's business)."""
+        wanted = _sensitive_content(profile)
+        for candidate in (self.path, *snapshot_paths(self.path)):
+            try:
+                old, form = self._decode(candidate.read_bytes().decode("utf-8"))
+            except (OSError, UnicodeDecodeError, KeyMissingError, *_PARSE_ERRORS):
+                continue  # does not open: nothing in it can be read
+            held = _sensitive_content(old)
+            if form is not _Form.PLAIN and held and held != wanted:
+                return True
+        return False
+
+    def _rekey(self, profile: PersonaProfile) -> None:
+        """Steps 1-4 of the module docstring."""
+        staged = json.dumps(profile.to_dict(), ensure_ascii=False).encode("utf-8")
+        blob = self.vault.seal(PROFILE_REKEY_STORE, staged, label=_STAGED_LABEL)
+        atomic_write_bytes(self._staging, blob, snapshot=False)
+        self._apply_rekey(profile)
+
+    def _apply_rekey(self, profile: PersonaProfile) -> None:
+        """Steps 2-4; each is safe to repeat."""
+        if self.vault.has_data_key(PROFILE_STORE):
+            self.vault.shred(PROFILE_STORE)
+        self._write(profile, _target_form(profile))
+        self._discard_staging()
+
+    def _finish_rekey(self) -> None:
+        """Complete a re-keying save interrupted after its commit point, or discard one
+        interrupted before it."""
+        if not self._staging.is_file():
+            if self.vault.has_data_key(PROFILE_REKEY_STORE):
+                self.vault.shred(PROFILE_REKEY_STORE)
+            return
+        try:
+            blob = self._staging.read_bytes()
+            inner = _json_object(self.vault.open(PROFILE_REKEY_STORE, blob, label=_STAGED_LABEL))
+            if _WHOLE_KEY in inner or _FIELDS_KEY in inner:
+                raise ValueError("nested sealed profile")
+            profile = PersonaProfile.from_dict(inner)
+        except (OSError, KeyMissingError, *_PARSE_ERRORS):
+            self._discard_staging()  # unreadable: the files on disk stay authoritative
+            return
+        self._apply_rekey(profile)
+
+    def _discard_staging(self) -> None:
+        remove_file(self._staging)
+        if self.vault.has_data_key(PROFILE_REKEY_STORE):
+            self.vault.shred(PROFILE_REKEY_STORE)
+
+    def _settle(self, profile: PersonaProfile, target: _Form) -> None:
+        """On load: shred what an interrupted save or a pre-re-key version left readable."""
+        if not self.vault.has_data_key(PROFILE_STORE):
+            return
+        try:
+            if target is _Form.PLAIN:
+                self.vault.shred(PROFILE_STORE)
+            elif self._stale(profile):
+                self._rekey(profile)
+        except CryptoError:
+            pass  # keychain locked or keys damaged: retried on the next load
+
+    def _is_main(self, text: str) -> bool:
+        try:
+            return self.path.read_bytes().decode("utf-8") == text
+        except (OSError, UnicodeDecodeError):
+            return False
 
     def _encode(self, profile: PersonaProfile) -> str:
         data = profile.to_dict()
@@ -251,14 +378,32 @@ class ProfileStore:
         return PersonaProfile.from_dict(data | fields), _Form.FIELDS
 
     def _purge_snapshots(self, form: _Form) -> None:
-        """Delete snapshots that hold data the current form says must be protected."""
+        """Delete snapshots that hold data the current form says must be protected, and
+        those whose ciphertext no longer opens (its key was shredded by a re-key)."""
         for snapshot in snapshot_paths(self.path):
             try:
                 raw = snapshot.read_bytes()
             except OSError:
                 continue
-            if not _snapshot_compliant(raw, form):
+            if not _snapshot_compliant(raw, form) or self._dead(raw):
                 remove_file(snapshot)
+
+    def _dead(self, raw: bytes) -> bool:
+        """Whether ``raw`` is sealed profile data that can never be opened again."""
+        try:
+            text = raw.decode("utf-8")
+            data = _json_object(text)
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            return False
+        if _FIELDS_KEY not in data and _WHOLE_KEY not in data:
+            return False
+        try:
+            self._decode(text)
+        except (DecryptionError, KeyMissingError):
+            return True
+        except (KeychainUnavailableError, *_PARSE_ERRORS):
+            return False
+        return False
 
 
 def _locked(exc: CryptoError) -> Exception:

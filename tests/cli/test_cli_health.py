@@ -105,6 +105,21 @@ def test_zero_deletes_everything(run_cli, data_home):
     assert profile.clinical_history == () and profile.contraindications == ()
 
 
+def test_zero_shreds_every_older_copy(run_cli, data_home):
+    """``0`` is a crypto-shred: the profile key is gone and no snapshot holds ciphertext,
+    so a damaged main file can never bring the deleted health information back."""
+    save_profile(data_home, clinical_history=(FLAGS[0],), contraindications=(CARDIO,))
+    save_profile(data_home, user_name="阿青", clinical_history=(FLAGS[0],))
+    run = run_cli(["health"], ["0"])
+    assert run.code == 0 and run.lines[-1] == HEALTH["cleared"]
+    assert not (data_home / "keys" / "profile.key").exists()
+    for path in files_under(data_home):
+        assert b"sealed_fields" not in path.read_bytes(), path
+    (data_home / "profile.json").write_text("{ damaged", encoding="utf-8")
+    run = run_cli(["health"], [""])
+    assert FLAGS[0] not in run.out and CARDIO not in run.out
+
+
 def test_an_unknown_choice_is_asked_again(run_cli, data_home):
     save_profile(data_home, contraindications=(CARDIO,))
     run = run_cli(["health"], ["99", str(SAFETY_NO)])

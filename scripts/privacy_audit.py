@@ -14,7 +14,8 @@ goes through ``chat --rules --inspect`` (onboarding with the health consent and 
 item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
 crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``, a second
 ``chat --inspect`` (care greeting, model path: the default since F7, and a question about
-the note, "周四要见的那个人是谁来着", F15), then ``forget --all``.
+the note, "周四要见的那个人是谁来着", F15), ``health`` twice more (a clinical-history code in
+and a checklist item out, then ``0``: delete everything), then ``forget --all``.
 
 The real OS keychain is never reached: ``PYTHON_KEYRING_BACKEND`` names keyring's failing
 backend before ``keyring`` is imported, ``keyring.get_keyring`` is replaced by a function
@@ -68,6 +69,13 @@ note-recall [mode]
     The second chat answered the question about the note with the note (F15), and its
     panel says so by ids only (``调出笔记 question（found）``), so the two checks above
     really cover a recalled note.
+health-cleared-shredded [mode]
+    After ``health`` with ``0`` no file under ``OLIVIA_HOME`` (snapshots included) holds
+    any health item the run ever recorded, in the clear or as ciphertext that opens under
+    a data key the current keychain unwraps (every key file, with the profile's labels):
+    deleting health information is a crypto-shred, and a damaged main file can never
+    bring it back. Not vacuous: the items are read from the sealed profile beforehand,
+    and the same search must find them there just before the deletion.
 forget-all-clean [mode]
     After ``forget --all --yes`` no file is left under ``OLIVIA_HOME`` and the keychain
     holds no item.
@@ -119,7 +127,9 @@ from olivia.core.chang.safety_plan import SAFETY_PLAN_FILENAME, SUGGESTED_FILENA
 from olivia.core.chang.stats import StatsText, load_stats_text  # noqa: E402
 from olivia.core.crypto import keychain as keychain_module  # noqa: E402
 from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
-from olivia.core.crypto.vault import KEYS_DIRNAME  # noqa: E402
+from olivia.core.crypto.errors import CryptoError  # noqa: E402
+from olivia.core.crypto.keychain import KeyBackend  # noqa: E402
+from olivia.core.crypto.vault import KEYS_DIRNAME, Vault  # noqa: E402
 from olivia.core.memory.ledger import LEDGER_DIRNAME  # noqa: E402
 from olivia.core.memory.state import STATE_FILENAME  # noqa: E402
 from olivia.core.memory.text import load_memory_text  # noqa: E402
@@ -500,6 +510,91 @@ def keys_on_disk(files: Files, keychain_items: Iterable[tuple[str, str]]) -> lis
     return [f"{rel}: {name}" for rel, data in files for form, name in forms.items() if form in data]
 
 
+OPEN_LABELS: Final = ("", "fields", "whole", "staged")
+"""The labels the profile store seals under (``olivia/core/chang/profile.py``), and none."""
+Opener = Callable[[bytes], list[bytes]]
+"""A blob -> every plaintext it opens to under the keys on hand."""
+
+
+def ciphertexts(data: bytes) -> list[bytes]:
+    """The OLVD blobs a file holds: the file itself, or base64 values of a JSON object."""
+    found = [data] if data.startswith(DATA_MAGIC) else []
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return found
+    if isinstance(doc, dict):
+        for value in doc.values():
+            if isinstance(value, str):
+                with contextlib.suppress(binascii.Error, ValueError):
+                    blob = base64.b64decode(value, validate=True)
+                    if blob.startswith(DATA_MAGIC):
+                        found.append(blob)
+    return found
+
+
+def key_opener(home: Path, backend: KeyBackend) -> Opener:
+    """Opens a blob under every data key in ``home`` that ``backend`` unwraps now."""
+    vault = Vault(home, backend)
+    keys = home / KEYS_DIRNAME
+    stores = sorted(p.stem for p in keys.glob("*.key")) if keys.is_dir() else []
+
+    def open_all(blob: bytes) -> list[bytes]:
+        plain = []
+        for store in stores:
+            for label in OPEN_LABELS:
+                with contextlib.suppress(CryptoError, ValueError):
+                    plain.append(vault.open(store, blob, label=label))
+        return plain
+
+    return open_all
+
+
+def held_health(files: Files, opener: Opener) -> set[str]:
+    """The health items the sealed ``profile.json`` holds (its fields or the whole profile)."""
+    items: set[str] = set()
+    for rel, data in files:
+        if rel != PROFILE_FILENAME:
+            continue
+        for blob in ciphertexts(data):
+            for plain in opener(blob):
+                with contextlib.suppress(UnicodeDecodeError, ValueError, RecursionError):
+                    doc = json.loads(plain.decode("utf-8"))
+                    if isinstance(doc, dict):
+                        for name in SENSITIVE_FIELDS:
+                            values = doc.get(name)
+                            if isinstance(values, list):
+                                items.update(v for v in values if isinstance(v, str))
+    return items
+
+
+def readable_health(files: Files, opener: Opener, items: Iterable[str]) -> list[str]:
+    """``file: item`` for each health item a file holds in the clear or opens to."""
+    wanted = {json.dumps(item, ensure_ascii=False).encode("utf-8"): item for item in items}
+    problems = []
+    for rel, data in files:
+        if rel.startswith(f"{KEYS_DIRNAME}/"):
+            continue
+        texts = [data, *(plain for blob in ciphertexts(data) for plain in opener(blob))]
+        for form, item in wanted.items():
+            if any(form in text for text in texts):
+                problems.append(f"{rel}: {item}")
+    return problems
+
+
+def health_erasure(
+    before: list[str], after: list[str], items: Iterable[str], *, deleted: bool
+) -> list[str]:
+    """Problems of ``health-cleared-shredded``: ``before``/``after`` are
+    :func:`readable_health` just before and after ``health`` with ``0``."""
+    problems = [] if deleted else ["health 0 did not delete the health information"]
+    if not set(items):
+        problems.append("no health item was recorded by the scripted run")
+    elif not before:
+        problems.append("the recorded health items were not found before the deletion")
+    return problems + [f"still opens after 0: {hit}" for hit in after]
+
+
 def permission_problems(modes: Iterable[tuple[str, bool, int]]) -> list[str]:
     """``modes``: (relative path, is a directory, permission bits)."""
     problems = []
@@ -652,6 +747,10 @@ class Run:
     network: list[str] = field(default_factory=list)
     user_dir_calls: int = 0
     outside_home: list[str] = field(default_factory=list)
+    health_items: list[str] = field(default_factory=list)
+    health_before: list[str] = field(default_factory=list)
+    health_after: list[str] = field(default_factory=list)
+    health_deleted: bool = False
 
     @property
     def mode(self) -> str:
@@ -720,6 +819,30 @@ def _invoke(argv: list[str], lines: list[str]) -> Capture:
     )
 
 
+def _home_files(home: Path) -> list[tuple[str, bytes]]:
+    return [
+        (path.relative_to(home).as_posix(), path.read_bytes())
+        for path in sorted(home.rglob("*"))
+        if path.is_file()
+    ]
+
+
+def _clear_health(run: Run, home: Path, backend: MemoryKeychain) -> None:
+    """``health`` twice: a clinical-history code in and a checklist item out (a re-key
+    while health stays recorded), then ``0``; see ``health-cleared-shredded``."""
+    items = held_health(_home_files(home), key_opener(home, backend))
+    flags = len(load_taxonomy().red_flags())
+    run.captures.append(_invoke(["health"], [f"1，{flags + 1}"]))
+    run.record(home, backend.items)  # still recorded: the other checks cover this version
+    items |= held_health(_home_files(home), key_opener(home, backend))
+    run.health_before = readable_health(_home_files(home), key_opener(home, backend), items)
+    capture = _invoke(["health"], ["0"])
+    run.captures.append(capture)
+    run.health_deleted = load_onboarding_text().health["cleared"] in capture.console
+    run.health_after = readable_health(_home_files(home), key_opener(home, backend), items)
+    run.health_items = sorted(items)
+
+
 def run_scripted(whole: bool) -> Run:
     """One scripted run in a fresh temporary ``OLIVIA_HOME``; see the module docstring."""
     run = Run(whole)
@@ -746,6 +869,7 @@ def run_scripted(whole: bool) -> Run:
             for argv, lines in script(whole):
                 run.captures.append(_invoke(argv, lines))
                 run.record(home, backend.items)
+            _clear_health(run, home, backend)
             run.captures.append(_invoke(["forget", "--all", "--yes"], []))
             run.left_after_forget = sorted(
                 p.relative_to(home).as_posix() for p in home.rglob("*") if p.is_file()
@@ -821,6 +945,16 @@ def run_checks(run: Run) -> list[Result]:
     if RECALL_PANEL not in chats[-1].console:
         recall.append(f"no panel line {RECALL_PANEL}")
     results.append(_result(f"note-recall [{mode}]", recall, "recalled in the reply, ids in panel"))
+    erasure = health_erasure(
+        run.health_before, run.health_after, run.health_items, deleted=run.health_deleted
+    )
+    results.append(
+        _result(
+            f"health-cleared-shredded [{mode}]",
+            erasure,
+            f"{len(run.health_items)} health item(s) recorded, none opens after 0",
+        )
+    )
     forget = [f"file left: {rel}" for rel in run.left_after_forget]
     forget += [f"keychain item left: {name}" for name in run.keychain_after]
     results.append(_result(f"forget-all-clean [{mode}]", forget, "no file, no keychain item"))

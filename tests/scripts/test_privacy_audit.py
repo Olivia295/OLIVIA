@@ -194,6 +194,64 @@ def test_keys_on_disk_finds_the_master_key_in_any_encoding():
     assert audit.keys_on_disk([("keys/x.key", OLVK)], items) == []
 
 
+# -- health-cleared-shredded -------------------------------------------------------------------
+
+OLD_HEALTH = b'{"clinical_history": ["SIT-02-04"], "contraindications": ["CARDIO"]}'
+
+
+def _opener(blob: bytes) -> list[bytes]:
+    """Stands in for the keychain: only ``OLVD`` opens, to the old health information."""
+    return [OLD_HEALTH] if blob == OLVD else []
+
+
+def test_ciphertexts_finds_sealed_files_and_sealed_json_values():
+    assert audit.ciphertexts(OLVD) == [OLVD]
+    doc = json.dumps({"sealed_fields": SEALED_B64, "user_name": "eA==", "n": 1}).encode()
+    assert audit.ciphertexts(doc) == [OLVD]
+    assert audit.ciphertexts(b"\xff not json") == []
+
+
+def test_held_health_reads_the_sealed_main_profile_only():
+    profile = json.dumps({"sealed_fields": SEALED_B64}).encode()
+    files = [("profile.json", profile), (".snapshots/profile.json/1", OLVD)]
+    assert audit.held_health(files, _opener) == {"SIT-02-04", "CARDIO"}
+    assert audit.held_health(files[1:], _opener) == set()
+
+
+def test_readable_health_finds_plaintext_and_ciphertext_that_opens():
+    snapshot = json.dumps({"sealed_fields": SEALED_B64}).encode()
+    files = [
+        (".snapshots/profile.json/1", snapshot),
+        ("profile.rekey", OLVD),
+        ("legacy.json", b'{"contraindications": ["CARDIO"]}'),
+        ("keys/profile.key", OLVK + OLD_HEALTH),  # key files are not data
+        ("profile.json", b'{"user_name": "x"}'),
+    ]
+    assert sorted(audit.readable_health(files, _opener, ["SIT-02-04", "CARDIO"])) == [
+        ".snapshots/profile.json/1: CARDIO",
+        ".snapshots/profile.json/1: SIT-02-04",
+        "legacy.json: CARDIO",
+        "profile.rekey: CARDIO",
+        "profile.rekey: SIT-02-04",
+    ]
+    assert audit.readable_health(files, lambda _blob: [], ["SIT-02-04"]) == []
+
+
+def test_health_erasure_is_never_vacuous():
+    hit = ["profile.json: CARDIO"]
+    assert audit.health_erasure(hit, [], ["CARDIO"], deleted=True) == []
+    assert audit.health_erasure(hit, hit, ["CARDIO"], deleted=True) == [
+        "still opens after 0: profile.json: CARDIO"
+    ]
+    assert audit.health_erasure([], [], [], deleted=True) == [
+        "no health item was recorded by the scripted run"
+    ]
+    assert audit.health_erasure([], [], ["CARDIO"], deleted=False) == [
+        "health 0 did not delete the health information",
+        "the recorded health items were not found before the deletion",
+    ]
+
+
 def test_permission_problems():
     modes = [("", True, 0o700), ("keys", True, 0o755), ("profile.json", False, 0o644)]
     assert audit.permission_problems(modes) == [
@@ -304,7 +362,13 @@ def test_the_audit_passes_on_this_tree(capsys, keychain):
     assert audit.main() == 0
     out = capsys.readouterr().out
     assert "all checks passed" in out and "FAIL" not in out
-    names = ("network-imports", "network-runtime", "forget-all-clean [switch-on]")
+    names = (
+        "network-imports",
+        "network-runtime",
+        "health-cleared-shredded [switch-off]",
+        "health-cleared-shredded [switch-on]",
+        "forget-all-clean [switch-on]",
+    )
     for name in (*names, "stats-numbers-only [switch-off]"):
         assert name in out
     assert keychain.items == {}  # the suite's keychain was never used either

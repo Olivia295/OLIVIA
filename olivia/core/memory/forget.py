@@ -62,6 +62,7 @@ import yaml
 from olivia.core.chang.care import CARE_FILENAME, CARE_STORE, CareStore
 from olivia.core.chang.profile import (
     PROFILE_FILENAME,
+    PROFILE_REKEY_FILENAME,
     ProfileCorruptError,
     ProfileLockedError,
     ProfileStore,
@@ -89,6 +90,7 @@ from olivia.core.yaml_load import safe_load
 
 DATA_FILES: Final = (
     PROFILE_FILENAME,
+    PROFILE_REKEY_FILENAME,
     CARE_FILENAME,
     STATE_FILENAME,
     SAFETY_PLAN_FILENAME,
