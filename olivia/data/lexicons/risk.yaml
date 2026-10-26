@@ -65,7 +65,11 @@ stage2:
                "想死他们了解", "想死她们了解", "想死你了不了解", "想死你们了不了解",
                # 想到死 only with a frequency adverb: bare 想到死 also hits 死党 / 死机 / 死亡.
                "常想到死", "总想到死", "总是想到死", "老想到死", "老是想到死", "一直想到死",
-               "又想到死", "反复想到死", "天天想到死", "整天想到死", "每天都想到死"]
+               "又想到死", "反复想到死", "天天想到死", "整天想到死", "每天都想到死",
+               # English (round 2, 2026-10-26): "unalive" is the euphemism for kill, and the
+               # wish to be dead (whitespace is removed before matching).
+               "unalivemyself", "unalivingmyself", "wanttobeunalive", "wishiwasdead", "wishiweredead",
+               "betteroffdead", "aboutkillingmyself", "ofkillingmyself"]
   - id: L2_NOT_WANT_LIVE
     level: L2
     patterns: ["不想活了", "活不下去了", "不想再活下去", "死了算了", "不如死了",
@@ -75,14 +79,25 @@ stage2:
                "我死了大家", "如果我死了", "死是唯一的出路",
                # Cantonese (2026-10-26), as the Mandarin forms above: 唔想(再)活(落去) =
                # 不想(再)活(下去), 活唔落去 = 活不下去, 死咗算 = 死了算了.
-               "唔想活", "唔想再活", "活唔落去", "冇得活落去", "死咗算", "死咗就解脱", "死咗就唔使"]
+               "唔想活", "唔想再活", "活唔落去", "冇得活落去", "死咗算", "死咗就解脱", "死咗就唔使",
+               # Round 2 (2026-10-26): 不想活在这个世界 and the like (bare 不想活 is the
+               # composition L2_NOT_WANT_LIVE_BARE, whose exceptions keep 不想活在过去 out).
+               # Dialect 算球 / 算逑 for 算了, 生存下去 for 活下去 (Cantonese 生存落去), and English.
+               "不想活在这个世界", "不想活在这个世上", "不想活在这世上", "不想活在世上",
+               "不想活在世界上", "死了算球", "死了算逑", "死了算求", "不想再生存下去", "不想生存下去",
+               "唔想再生存落去", "唔想生存落去", "生存唔落去", "don'twanttoliveanymore",
+               "dontwanttoliveanymore", "don'twannaliveanymore", "dontwannaliveanymore",
+               "don'twanttobealive", "dontwanttobealive", "don'twanttoliveanylonger",
+               "dontwanttoliveanylonger", "nolongerwanttolive"]
   - id: L2_END_LIFE
     level: L2
     patterns: ["想结束自己的生命", "想离开这个世界",
                "想结束自己", "结束自己的命", "结束我的生命", "想结束生命", "怎么结束生命", "想结束这一切",
                "想早点离开这个世界", "我要离开这个世界", "想去另一个世界", "让自己永远睡着", "结束这条命",
                # Classical "end this life" (R-MS); not 了此残生, which also means "live out my days".
-               "了结此生", "了却此生"]
+               "了结此生", "了却此生",
+               # Net slang for ending one's life (round 2, 2026-10-26).
+               "登出人生", "注销人生", "退出地球online"]
   # Wish to fall asleep and not wake up: passive suicidal ideation (C-SSRS item 1, "wish to
   # be dead"), so L2 rather than weariness (PRD §9.1).
   - id: L2_SLEEP_NO_WAKE
@@ -394,6 +409,8 @@ intent_answers:
 #     (any clause with `unless_across: true`: an everyday reason in the next clause);
 #   - `trailing` is given and anything other than its phrases (sentence particles) follows
 #     the match before the clause ends ("…，就在今晚" fires, "…，就在今晚吃火锅" does not).
+#   - `leading` is given and anything other than its phrases (fillers) stands between the
+#     clause start and the match (round 2: "zs" fires alone, "zs老师" and "ran5kms" do not).
 # Levels: L1 / L2 are rule-model cues, voided by the negation and hyperbole masks like the
 # stage2 phrases; L3 is Stage 1 plan evidence (id S1_*), never masked; ASK is an L1 D3 cue
 # (id ASK_INTENT*) that sets CrisisAssessment.asks_intent, never masked. An ASK entry with
@@ -421,7 +438,12 @@ compositions:
   unless_negation_gap: 3
   non_negators: ["忍不住", "受不了", "不得不", "不如", "要不", "不然", "不行", "不停", "不住",
                  "不知", "了不起", "不少", "说不定", "不管", "不了", "不禁", "不由", "舍不得",
-                 "怪不得", "差不多", "不断", "不过", "没准", "没日没夜"]
+                 "怪不得", "差不多", "不断", "不过", "没准", "没日没夜",
+                 # Words that hold 别 / 未 / 莫 / 没 / 不 and negate nothing (round 2, 2026-10-26):
+                 # 有时候特别想… was read as negated by the 别 of 特别.
+                 "特别", "分别", "区别", "差别", "告别", "离别", "道别", "永别", "别墅", "级别", "类别",
+                 "性别", "个别", "识别", "辨别", "别致", "未来", "莫名", "埋没", "淹没", "沉没", "出没",
+                 "不错", "不仅", "不久", "不同", "不得了"]
   selves: ["我", "自己", "俺", "咱", "本人", "老子"]
   others: ["他", "她", "它", "你", "您", "人家", "别人", "有人", "朋友", "同学", "同事", "室友",
            "闺蜜", "兄弟", "姐姐", "妹妹", "哥哥", "弟弟", "表哥", "表姐", "表弟", "表妹", "妈",
@@ -566,6 +588,37 @@ compositions:
     # a relative as the subject is voided by the person check.
     grief: ["去世", "过世", "离世", "葬礼", "追悼", "火化", "下葬", "丧事", "头七", "墓地", "灵堂",
             "殡仪馆"]
+    # Round 2 (2026-10-26, QA issue 1): fillers that may start a clause before a short code
+    # read as a clause of its own (`leading`: wxs, zs, kms), and the sentence particles and
+    # English tags that may end one (`trailing`).
+    clause_fillers: ["我", "真的", "好", "唉", "哎", "哎呀", "呜呜", "呜呜呜", "呜", "救命", "啊", "其实",
+                     "说真的", "有时候", "最近", "今天", "现在", "感觉", "觉得", "就是", "已经", "又",
+                     "也", "都", "真", "是", "就"]
+    particles: ["了", "吧", "啊", "呀", "哦", "嘛", "啦", "呢"]
+    en_fillers: ["i", "i'm", "im", "iam", "i'll", "ill", "iwill", "gonna", "goingto", "wanna",
+                 "wantto", "want", "to", "just", "literally", "honestly", "ugh", "omg", "lol",
+                 "seriously", "really", "so", "might", "could", "will", "should", "about", "fr",
+                 "tbh", "imma", "ima", "need", "needto", "may", "go", "and", "then", "ngl",
+                 "我", "真的", "好", "想", "唉", "哎", "救命", "说真的"]
+    en_trailing: ["lol", "lmao", "tbh", "rn", "now", "rightnow", "tonight", "today", "honestly",
+                  "fr", "already", "please", "pls", "plz", "ngl", "fml", "了", "吧", "啊", "呀", "啦"]
+    # English times for a plan (S1_EN_PLAN_TIME).
+    en_time: ["tonight", "tomorrow", "thisweekend", "thisfriday", "thissaturday", "thissunday",
+              "thismonday", "thistuesday", "thiswednesday", "thisthursday", "onfriday",
+              "onsaturday", "onsunday", "onmonday", "ontuesday", "onwednesday", "onthursday",
+              "nextweek", "thisweek", "rightnow", "atmidnight", "inthemorning", "afterwork",
+              "bytheendoftheweek", "beforemybirthday", "aftermybirthday"]
+    # Endings that are a relationship, a task or a show (ending it with him, ending the
+    # series): they void an English "ending it" nearby.
+    en_end_everyday: ["relationship", "boyfriend", "girlfriend", "partner", "husband", "wife",
+                      "marriage", "divorce", "breakup", "breakingup", "brokeup", "cheated",
+                      "dating", "engagement", "situationship", "contract", "subscription",
+                      "lease", "membership", "account", "project", "series", "show", "story",
+                      "book", "novel", "chapter", "season", "episode", "game", "meeting",
+                      "stream", "podcast", "class", "course", "job", "career", "business",
+                      "company", "friendship", "band", "tour", "streak", "semester", "term",
+                      "exam", "shift", "speech", "presentation", "essay", "paper", "thread",
+                      "conversation", "argument", "fight", "debate", "match", "race", "party"]
   entries:
     # --- Stage 1 (L3): plan, preparation, farewell with a death context ---
     - id: S1_PLAN_ACT_TIME
@@ -793,6 +846,174 @@ compositions:
       unless: ["那么早", "这么早", "太早", "早起", "闹钟", "半夜", "夜里", "起夜", "吵醒", "惊醒",
                "上班", "上课"]
       unless_window: 10
+    # --- Round 2 (2026-10-26, QA issue 1): rules-mode misses found in black-box testing ---
+    # A wish to jump from a height (想 / 干脆 / 不如 + 从…楼顶… + 跳下去): "我想从顶楼跳下去",
+    # "最近总想着干脆从楼顶跳下去算了". A wish with a concrete means and place but no plan, so
+    # L2 like the stage2 phrase 想跳下去 (L2_METHOD_IDEATION); a plan verb is
+    # S1_PLAN_JUMP_HEIGHT. The height must lie between the wish and the jump (context window
+    # 0: inside the match), so 从楼顶看日落 never matches. Diving, sport jumps, animals,
+    # drills, stories and dreams, and an escape from a fire or a quake void it in its clause.
+    - id: L2_WISH_JUMP_HEIGHT
+      level: L2
+      heads: ["想", "干脆", "不如", "索性", "恨不得", "巴不得", "宁愿"]
+      tails: jumps
+      max_gap: 10
+      context: heights
+      context_window: 0
+      blockers: act_blockers
+      unless: ["跳水", "跳台", "泳池", "游泳", "水里", "蹦极", "跳伞", "降落伞", "滑翔", "蹦床", "演习",
+               "消防", "猫", "狗", "宠物", "鸟", "表演", "拍戏", "拍摄", "电影", "游戏", "梦", "小说",
+               "故事", "逃生", "火灾", "着火", "失火", "地震"]
+      unless_window: 16
+    # 不想活 without 了 (有时候我也不想活, 我不想活着, 我真的不想活): the same wish as the
+    # L2_NOT_WANT_LIVE phrases 不想活了 / 不想活下去. A composition rather than a phrase so
+    # that the lifestyle senses (how to live, not whether: 不想活在过去, 不想活成那样, 不想活得
+    # 那么累, 不想活动) are exceptions that leave no rule cue behind, and so that the shared
+    # checks apply: a negator just before it is the wish to live (不是不想活, 没有不想活, 不代表
+    # 不想活: the reverse of 不是不想死, which is L2), and someone else's wish is voided by the
+    # person check. 不想活在这个世界 and the like stay L2 phrases.
+    - id: L2_NOT_WANT_LIVE_BARE
+      level: L2
+      heads: ["不想活"]
+      exceptions: ["不想活在", "不想活成", "不想活得", "不想活动", "不想活跃", "不想活泼", "不想活给",
+                   "不想活出", "不想活像", "不想活血", "谁不想活"]
+    # Jumping from a height "and be done with it" with no wish word: "从楼顶跳下去算了".
+    - id: L2_HEIGHT_JUMP_RESIGNED
+      level: L2
+      heads: heights
+      tails: ["跳下去算了", "跳下去得了", "跳下去就好了", "跳下去就完了", "跳下去算球", "跳下去拉倒"]
+      max_gap: 4
+      blockers: act_blockers
+      unless: jump_everyday
+      unless_window: 16
+    # "Gone after tonight" (今晚过后我就不在了): a time boundary, then the speaker no longer
+    # exists. No act of dying is named, but a time-bound end of oneself said as a whole
+    # clause points at death, so L2 (no self-harm anchor: not Stage 1). The time may stand
+    # in the clause before (今晚过后，我就不在了). The clause must end there (`trailing`), so
+    # 不在公司了 / 不在北京了 never match; leaving, work, travel, a handover or a version
+    # nearby voids it (下周我就不在了，你有事找小王).
+    - id: L2_GONE_AFTER
+      level: L2
+      heads: ["我就不在了", "我就已经不在了", "我就不会在了", "我就不存在了", "我就没了",
+              "我就消失了", "我就永远消失了", "就没有我了", "这个世界就没有我了", "世界上就没有我了",
+              "我就不在这个世界上了", "我就不在这个世界了"]
+      context: ["今晚过后", "过了今晚", "今晚之后", "今天过后", "过了今天", "今天之后", "明天过后",
+                "过了明天", "天亮以后", "天亮之后", "这周过后", "过了这周", "这个周末过后", "生日过后",
+                "过完生日", "过完今晚", "明天以后", "从明天起", "以后"]
+      context_window: 8
+      trailing: particles
+      unless: ["出差", "培训", "离职", "辞职", "搬家", "出国", "回国", "留学", "回老家", "回家", "毕业",
+               "转学", "放假", "休假", "请假", "旅游", "旅行", "调岗", "交接", "上班", "公司", "学校",
+               "宿舍", "群", "账号", "微信", "版本", "值班", "找小", "找他", "找她", "有事", "联系"]
+      unless_window: 24
+      unless_across: true
+    # Belongings put in order and a letter written (东西都收拾好了，信也写好了): two
+    # preparations for death said together (C-SSRS preparatory behaviour: putting one's
+    # things in order, a note) with no death word, so L2 like the stage2 L2_PLAN_NO_ANCHOR
+    # phrases, not Stage 1 (遗书 / 遗言 are S1_NOTE_PREPARED). Either one alone is everyday.
+    # A move, a trip, studies abroad, a job hunt or a letter to post voids it nearby.
+    - id: L2_THINGS_AND_LETTER
+      level: L2
+      heads: ["信也写好", "信都写好", "信写好了", "写好了信", "信也写完", "信写完了", "信也留好",
+              "信留好了", "信也放好", "信放好了", "留了一封信", "信也留下"]
+      context: ["东西都收拾好", "东西都整理好", "东西都处理好", "东西都清理好", "东西都送人",
+                "东西都分好", "东西都收好", "该收拾的都收拾好", "该处理的都处理好", "房间都收拾干净",
+                "房间都收拾好", "身边的事都处理好", "东西也收拾好", "东西也整理好"]
+      context_window: 24
+      exceptions: ["求职信也写好", "求职信写好了", "推荐信也写好", "推荐信写好了", "申请信写好了",
+                   "感谢信写好了", "感谢信也写好"]
+      unless: ["搬家", "毕业", "出国", "留学", "旅行", "旅游", "出差", "求职", "申请", "简历", "推荐",
+               "寄", "快递", "邮局", "退宿", "宿舍", "交接", "离职", "辞职", "入职", "面试", "表白",
+               "情书", "生日", "节日", "贺卡", "明信片", "老师", "学校", "作业", "作文", "比赛"]
+      unless_window: 24
+      unless_across: true
+    # Fearing or wishing to "do something stupid" oneself (我怕我会做傻事, Cantonese 我惊我会
+    # 做傻事): the common euphemism for suicide in this frame, like 怕我想不开 (an
+    # L2_SUICIDE_TERMS phrase), so L2. Bare 傻事 (傻事做多了, 年轻时做过很多傻事) has no head
+    # or carries a past word. Someone else (我怕他会做傻事; 我惊佢会做傻事: Cantonese 佢 is
+    # not in the shared person list, so its forms are exceptions here), a negator (我不会做傻
+    # 事), the past and the everyday "stupid things" (a spending spree, an ex, drink) void it.
+    - id: L2_FOOLISH_ACT
+      level: L2
+      heads: ["怕", "惊", "担心", "想", "想要", "差点", "忍不住", "就要", "快要", "会"]
+      tails: ["做傻事", "做出傻事", "干傻事", "做了傻事", "做啲傻事", "做出啲傻事"]
+      max_gap: 4
+      exceptions: ["佢做傻事", "佢会做傻事", "佢就要做傻事", "佢快要做傻事", "佢想做傻事", "佢差点做傻事",
+                   "佢忍唔住做傻事", "佢做啲傻事", "佢会做啲傻事", "佢哋会做傻事", "佢哋做傻事"]
+      blockers: ["佢", "过", "了很多", "了好多", "了不少", "很多", "好多", "那些"]
+      unless: ["以前", "曾经", "过去", "小时候", "年轻", "当年", "那时候", "冲动消费", "买", "花钱",
+               "剁手", "表白", "前任", "复合", "喝酒", "喝醉", "赌", "辞职"]
+      unless_window: 16
+      unless_across: true
+    # The wish to die in pinyin or a number (想si, 想4了, 想zs): si / 4 for 死, zs for 自杀
+    # (zisha is an L2_SUICIDE_TERMS phrase). Only right after the wish and ending its clause
+    # (`trailing`), so 想4点出发, 想4个人 and 想sing never match; 4 needs 了 (想4 alone also
+    # picks a menu item). 不想si is negated.
+    - id: L2_WISH_DIE_CODED
+      level: L2
+      heads: ["想", "打算", "准备"]
+      tails: ["si", "去si", "4了", "去4了", "zs", "去zs"]
+      max_gap: 0
+      trailing: particles
+    # English, a plan verb and a time next to an act that names ending one's own life
+    # ("I'm going to kill myself tonight"): Stage 1, like S1_PLAN_ACT_TIME. Every act here is
+    # an unambiguous self-harm anchor; "end it" is not, so with a time it stays L2 below.
+    - id: S1_EN_PLAN_TIME
+      level: L3
+      heads: ["goingto", "gonna", "i'll", "iwill", "planto", "planningto", "plannedto", "decidedto",
+              "readyto", "imma"]
+      tails: ["killmyself", "endmylife", "takemyownlife", "takemylife", "commitsuicide",
+              "unalivemyself"]
+      max_gap: 3
+      context: en_time
+      context_window: 20
+    # English "ending it" with no object ("I've been thinking about ending it this weekend"):
+    # in this frame the common euphemism for suicide, so L2 with or without a time (no
+    # self-harm anchor, so not Stage 1: a plan with a time but no anchor is L2, like
+    # L2_PLAN_NO_ANCHOR). "Ending it with him", a relationship, a show or a task nearby void
+    # it, and so do the negated forms (exceptions).
+    - id: L2_EN_ENDING_IT
+      level: L2
+      heads: ["thinkingabout", "thinkingof", "thoughtabout", "thoughtof", "considering", "consider",
+              "wantto", "wanna", "goingto", "gonna", "readyto", "planningto", "planto", "decidedto",
+              "i'm", "i'll", "shouldjust", "justwantto"]
+      tails: ["endingit", "endit"]
+      max_gap: 0
+      exceptions: ["endingitwith", "enditwith", "endingitallwith", "enditallwith", "endingithere",
+                   "endithere", "enditfortoday", "endingitfortoday", "enditona", "endingitona",
+                   "notthinkingabout", "notthinkingof", "neverthoughtabout", "neverthoughtof",
+                   "don'twantto", "dontwantto", "notgoingto", "notgonna", "notreadyto"]
+      unless: en_end_everyday
+      unless_window: 24
+      unless_across: true
+    # "End it all" said of oneself with no object (I just want to end it all): the same.
+    - id: L2_EN_END_IT_ALL
+      level: L2
+      heads: ["enditall", "endingitall"]
+      exceptions: ["spenditall", "senditall", "lenditall", "blenditall", "spendingitall",
+                   "sendingitall", "lendingitall", "enditallwith", "endingitallwith", "enditallnight",
+                   "enditallup"]
+      unless: en_end_everyday
+      unless_window: 24
+      unless_across: true
+    # "I just want it all to end": the English counterpart of 想结束这一切 (an L2_END_LIFE
+    # phrase). A semester, a week, a meeting or a show ending voids it.
+    - id: L2_EN_ALL_TO_END
+      level: L2
+      heads: ["wantitalltoend", "wantittoallend", "wanteverythingtoend", "wantitalltostop",
+              "wantittoallstop", "wantitalltobeover", "wantittoallbeover", "wanteverythingtostop",
+              "wanteverythingtobeover", "wishitwouldallend", "wishitallwouldend"]
+      unless: en_end_everyday
+      unless_window: 24
+      unless_across: true
+    # "kms" (kill myself) as a clause of its own: the counterpart of the L2_WANT_DIE phrase
+    # killmyself. Only fillers may precede it and only tags follow it, so 5 kms, check ms
+    # teams and other run-together text never match.
+    - id: L2_EN_KMS
+      level: L2
+      heads: ["kms"]
+      leading: en_fillers
+      trailing: en_trailing
     # --- Stage 2 L1: weariness with a word inserted ---
     # Cantonese forms (2026-10-26) rate as the Mandarin ones: 活落去 / 活住 (活下去 / 活着),
     # 冇(咩 / 乜)意思 (没(什么)意思), 冇意义, 好攰 (好累).
@@ -806,6 +1027,17 @@ compositions:
               "好攰", "好辛苦", "有咩意思", "有乜意思", "有咩用", "冇盼头"]
       max_gap: 4
       blockers: ["的人", "的时候", "的事"]
+    # Feeling it would be easier to disappear (觉得消失好像比较轻松; Traditional text is folded
+    # first): the weariness of the L1_DISAPPEAR phrases (想消失, 消失就好了), so L1. A short
+    # break (消失几天, 消失一会儿) is everyday_end.
+    - id: L1_DISAPPEAR_RELIEF
+      level: L1
+      heads: ["消失", "不存在", "不在了"]
+      tails: ["比较轻松", "更轻松", "会轻松", "就轻松了", "轻松多了", "轻松一点", "轻松些", "比较好",
+              "会更好", "更好"]
+      max_gap: 4
+      unless: everyday_end
+      unless_window: 10
     # --- D3 (L1 + the direct question): farewell, burden, absence, reunion, self-injury ---
     - id: ASK_INTENT_FAREWELL
       level: ASK
@@ -1056,6 +1288,104 @@ compositions:
       exceptions: ["绝食抗议", "自残过", "自伤过", "绝食过"]
       unless: past
       unless_window: 8
+    # --- Round 2 D3 cues (2026-10-26, QA issue 1) ---
+    # "Tonight is the last time" as a whole clause (今晚是最后一次了): with no object it reads
+    # as a farewell, so L1 + the direct question, and L2 with a risk cue of the user's own or
+    # after earlier risk (raise_with_risk). ASK_INTENT_LAST_TIME takes the forms that name
+    # talking to the listener. The clause must end there, so 今晚是最后一次加班了 never asks;
+    # quitting, a last shift, a show, a class or a break nearby voids it.
+    - id: ASK_INTENT_LAST_NIGHT
+      level: ASK
+      raise_with_risk: true
+      heads: ["今晚是最后一次", "今晚就是最后一次", "今天是最后一次", "今天就是最后一次", "今夜是最后一次",
+              "今晚是最后一晚", "今晚就是最后一晚", "这是最后一晚", "今晚是我最后一次", "今天是我最后一次",
+              "今晚是最后一天", "今天是最后一天", "今天就是最后一天", "今天是我最后一天"]
+      trailing: particles
+      unless: ["烟", "酒", "戒", "加班", "值班", "上班", "演出", "排练", "训练", "比赛", "上课", "考试",
+               "放假", "休假", "明天", "下周", "以后再", "再来", "营业", "打折", "活动", "直播", "更新",
+               "实习", "工作", "公司", "学校", "宿舍", "旅行", "旅游", "假期", "开学", "出差", "熬夜",
+               "吃", "喝", "玩", "买", "试用", "会员", "报名", "截止"]
+      unless_window: 24
+      unless_across: true
+    # A letter left for the family, said without 遗书 (给爸妈的信写好了): L1 + the direct
+    # question like ASK_INTENT_WORDS_LEFT; with belongings put in order it is
+    # L2_THINGS_AND_LETTER. Occasions, school and posting void it.
+    - id: ASK_INTENT_LETTER_LEFT
+      level: ASK
+      raise_with_risk: true
+      heads: ["给爸妈的信", "给家人的信", "给家里人的信", "给你们的信", "给大家的信", "留给家人的信",
+              "留给爸妈的信", "写给爸妈的信", "写给家人的信", "留给你们的信", "给爸爸妈妈的信"]
+      tails: ["写好", "写完", "留好", "放好", "放在", "留在", "都写了"]
+      max_gap: 5
+      order: either
+      unless: ["生日", "节日", "母亲节", "父亲节", "新年", "春节", "中秋", "感恩", "毕业", "出国", "留学",
+               "搬家", "军训", "夏令营", "作文", "作业", "老师", "学校", "寄", "快递", "时光胶囊", "纪念"]
+      unless_window: 16
+      unless_across: true
+    # Can't go on, said about living itself (我想不下去了，感觉活着没意思; 活着好累，我撑不下去
+    # 了): L1 + the direct question. Either part alone stays as it was (撑不下去了 alone is the
+    # L1 weariness cue; sessions.yaml escalation cases rely on it asking nothing); a game, a
+    # job or a test nearby voids it.
+    - id: ASK_INTENT_CANT_GO_ON
+      level: ASK
+      heads: ["想不下去了", "撑不下去了", "熬不下去了", "坚持不下去了", "挺不下去了", "撑不住了",
+              "熬不住了", "扛不住了", "顶不住了", "撑唔落去", "顶唔落去", "捱唔落去"]
+      context: ["活着", "人生", "活下去", "这辈子", "活得", "活住", "活落去"]
+      context_window: 16
+      unless: ["游戏", "关卡", "这关", "副本", "比赛", "考试", "题", "项目", "加班", "减肥", "健身",
+               "跑步", "论文", "工作", "上班", "老板", "这个班"]
+      unless_window: 16
+      unless_across: true
+    # A short code as a clause of its own: wxs (我想死; also 我笑死, so only the question, not
+    # L2) and zs (自杀). Only fillers before it and particles after it, so zs老师, zsxw and
+    # 哈哈哈wxs never ask; 想zs is L2_WISH_DIE_CODED. bxs is no recognised crisis code and is
+    # left out on purpose.
+    - id: ASK_INTENT_CODED
+      level: ASK
+      heads: ["wxs", "zs"]
+      leading: clause_fillers
+      trailing: particles
+    # "Once and for all" as a clause of its own (一了百了): L1 + the direct question, as the
+    # same euphemism with a way word (ASK_INTENT_VEILED_METHOD). 想一了百了 and 一了百了算了 are
+    # L2_SUICIDE_TERMS phrases. Quitting, selling, deleting or fixing a bug nearby voids it.
+    - id: ASK_INTENT_ONCE_FOR_ALL
+      level: ASK
+      heads: ["一了百了"]
+      leading: ["我", "真的", "唉", "哎", "干脆", "索性", "不如", "就", "就这样", "这样", "那就", "死了",
+                "走了"]
+      trailing: particles
+      unless: ["辞职", "分手", "卖", "扔", "删", "拉黑", "换", "搬", "退", "解决", "处理", "搞定", "bug",
+               "问题", "作业", "考试", "工作", "项目", "债", "手机", "账号", "房子", "车"]
+      unless_window: 16
+      unless_across: true
+    # Not wanting to "huo" any more in the homophone 火 (不想火了 for 不想活了): the question
+    # only, since a creator who no longer wants to be famous says the same; videos,
+    # followers and fame nearby void it.
+    - id: ASK_INTENT_NOT_LIVE_HOMOPHONE
+      level: ASK
+      heads: ["不想火了", "不想再火了", "火不下去了"]
+      trailing: particles
+      unless: ["视频", "博主", "粉丝", "流量", "网红", "出名", "红", "直播", "账号", "作品", "歌", "热搜",
+               "曝光", "关注", "涨粉", "平台", "抖音", "快手", "小红书", "b站", "up主", "店", "生意"]
+      unless_window: 24
+      unless_across: true
+    # Going to meet one's great-grandmother (见太奶, slang for dying) with a wish or intent:
+    # the question only, since the meme is mostly hyperbole (笑到差点见太奶, 热得要去见太奶);
+    # those causes and a real visit (回老家见太奶) void it.
+    - id: ASK_INTENT_GREAT_GRANDMA
+      level: ASK
+      heads: ["见太奶", "见到太奶", "找太奶", "陪太奶"]
+      context: ["想", "要", "该", "准备", "打算", "可以", "快"]
+      context_window: 4
+      unless: ["差点", "笑", "热", "吓", "累", "饿", "冷", "困", "辣", "好吃", "梦", "游戏", "哈哈", "绝了",
+               "上头", "回老家", "回家", "过年", "生日", "看望", "探望", "医院", "带孩子", "周末", "放假"]
+      unless_window: 12
+    # The same words as a clause of their own (见太奶, 去见太奶了).
+    - id: ASK_INTENT_GREAT_GRANDMA_ALONE
+      level: ASK
+      heads: ["见太奶", "见到太奶", "找太奶", "陪太奶"]
+      leading: ["我", "真的", "唉", "哎", "去", "要去", "想去", "该去", "可以去", "准备去", "快去", "直接"]
+      trailing: ["了", "吧", "啊", "呀", "啦", "奶", "去了"]
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]

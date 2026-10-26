@@ -87,6 +87,7 @@ _COMP_PHRASE_KEYS: Final = (
     "exceptions",
     "blockers",
     "trailing",
+    "leading",
 )
 _COMP_ENTRY_KEYS: Final = frozenset(
     {
@@ -161,7 +162,9 @@ class Composition:
     None), or an ``unless`` phrase lies within ``unless_window`` characters of it in the
     same clause (in any clause with ``unless_across``). With ``trailing``, the match must
     also end its clause: only ``trailing`` phrases (sentence particles such as 了, 吧) may
-    stand between it and the next clause punctuation or the end of the message. ``ask``
+    stand between it and the next clause punctuation or the end of the message; with
+    ``leading``, the match must start its clause the same way: only ``leading`` phrases
+    (fillers such as 真的, honestly) may stand between the clause start and it. ``ask``
     marks a D3 cue (L1); a level of L3 is Stage 1 plan evidence. ``raise_with_risk`` (ask
     cues only: a farewell, the last words, affairs arranged, a resolve) makes the cue L2
     instead of a question when the same message holds a risk cue of the user's own, or
@@ -189,6 +192,10 @@ class Composition:
     trailing: tuple[str, ...] | None = None
     """None: anything may follow the match. Otherwise the match ends its clause: only
     these phrases may follow it before the clause punctuation or the end of the text."""
+    leading: tuple[str, ...] | None = None
+    """None: anything may precede the match. Otherwise the match starts its clause: only
+    these phrases may stand between the clause start and it (a short code such as zs or
+    kms counts only as a clause of its own, never inside other text)."""
     raise_with_risk: bool = False
 
 
@@ -800,6 +807,7 @@ def _parse_composition(
         blockers=phrases["blockers"],
         persons=persons,
         trailing=phrases["trailing"] if "trailing" in item else None,
+        leading=phrases["leading"] if "leading" in item else None,
         raise_with_risk=raise_with_risk,
     )
 

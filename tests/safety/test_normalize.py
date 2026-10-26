@@ -42,6 +42,9 @@ SAME_IN_TRADITIONAL = frozenset(
     "串乜使免入冬冰助化叔口吐吹呢味喺姨山往怨悼抱抽拔拾捆捱控描攰槽歉池泳派淡滑版甲登移竹"
     "答粗索缸翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑娘帖座微提昨近阿「『"
     "名街逛头墓灵殡仪馆堂"
+    # Round 2 (2026-10-26): heights, farewells, slang, the 别 non-negators and their
+    # everyday exceptions.
+    "令剁副合品哈埋培墅夏宿寄局恩截扔扛拉持探推播曝沉注流淹特球申白粉肥辣辨逑醉震音"
 )
 
 

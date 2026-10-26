@@ -12,11 +12,11 @@
 #   L1 -> L0: 2
 #   L2 -> L0: 8
 #   L2 -> L1: 3
-#   L3 -> L0: 63
-#   L3 -> L1: 6
+#   L3 -> L0: 61
+#   L3 -> L1: 8
 #   L3 -> L2: 9
 #   by ideal: L0 13, L1 2, L2 11, L3 78
-#   by current: L0 73, L1 9, L2 20, L3 2
+#   by current: L0 71, L1 11, L2 20, L3 2
 #   below ideal (missed or under-rated): 91
 #   above ideal (false alarms): 13
 #   total: 104
@@ -38,6 +38,9 @@
 # hoard of pills to be taken all at once (S1_PILLS_HOARDED_ALL) are L3 with no death word,
 # so kl_m05, kl_m38, kl_m38_rw and kl_m37 reached L3 and moved to cases.yaml (g26_ + the
 # old id). kl_af11 rose from L0 to L1 + the D3 question (ASK_INTENT_AFFAIRS_ARRANGED).
+#
+# Rules recall round 2 (2026-10-26): a letter left for the family (ASK_INTENT_LETTER_LEFT)
+# lifted kl_af27 and kl_fr11 from L0 to L1 + the D3 question; their ideal stays L3.
 #
 # {id, text, ideal, current, why}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
@@ -104,7 +107,7 @@
 - {id: kl_af23, ideal: L3, current: L0, text: "最后跟你说一声谢谢 以后不会再来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af23)"}
 - {id: kl_af24, ideal: L3, current: L0, text: "刚划了好几刀 这次割得很深", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af24; it moved here as kl_af24_rw in fix round 5)"}
 - {id: kl_af25, ideal: L3, current: L0, text: "已经吞了好多片了 意识有点模糊", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af25)"}
-- {id: kl_af27, ideal: L3, current: L0, text: "给爸妈的信放在书桌抽屉里了，对不起", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af27)"}
+- {id: kl_af27, ideal: L3, current: L1, text: "给爸妈的信放在书桌抽屉里了，对不起", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af27); round 2: ASK_INTENT_LETTER_LEFT asks the D3 question (L1)"}
 - {id: kl_nm09, ideal: L3, current: L0, text: "我不会自杀的，农药放在床底下而已", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm09)"}
 - {id: kl_nm14, ideal: L3, current: L0, text: "我说了不会自杀 刀藏在枕头下面只是让我安心", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm14)"}
 - {id: kl_nm18, ideal: L3, current: L0, text: "我不想自杀 只是一个人坐在楼顶边上吹风", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml nm18)"}
@@ -129,7 +132,7 @@
 - {id: kl_fr08, ideal: L3, current: L0, text: "我站在桥上往下看，准备跳了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr09, ideal: L3, current: L0, text: "我把药都吃了，现在头很晕", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr10, ideal: L3, current: L1, text: "这是最后一条消息了，谢谢你陪我", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
-- {id: kl_fr11, ideal: L3, current: L0, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr11, ideal: L3, current: L1, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 2: ASK_INTENT_LETTER_LEFT asks the D3 question (L1)"}
 - {id: kl_fr12, ideal: L3, current: L0, text: "炭已经烧起来了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr13, ideal: L2, current: L0, text: "我真的撑不住了，想一死百了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr16, ideal: L2, current: L0, text: "有时候觉得死了会比较轻松", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
