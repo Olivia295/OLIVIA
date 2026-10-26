@@ -580,6 +580,8 @@ _UTF8_LOCALES: Final = ("C.UTF-8", "C.utf8", "en_US.UTF-8", "UTF-8")
 def _utf8_ctype() -> str | None:  # pragma: no cover - terminal only
     """Make the character-set locale UTF-8: "" when it already was, the name of the UTF-8
     locale switched to, or None when the system has none."""
+    if sys.platform == "win32":  # no readline, and the console reads Unicode
+        return None
     import locale
 
     if locale.nl_langinfo(locale.CODESET).replace("-", "").upper() == "UTF8":
