@@ -35,6 +35,14 @@ def test_the_fallback_text_is_locked():
     assert fallback_text() == EXPECTED
 
 
+def test_without_the_damage_note_only_that_sentence_goes():
+    """The CLI's last resort for an unexpected error (QA 2026-10-26 #8): the same numbers,
+    without claiming the hotline data is damaged."""
+    *kept, damaged = EXPECTED.split("\n")
+    assert damaged.startswith("程序自带的求助电话资料没有通过校验")
+    assert fallback_text(damaged=False) == "\n".join(kept)
+
+
 def test_every_region_and_emergency_number_matches_the_verified_data():
     store = load_store()
     assert [code for code, _label, _numbers in EMERGENCY] == list(store.regions)
@@ -50,9 +58,9 @@ def test_the_directory_is_the_verified_global_directory():
 
 def test_the_fallback_text_passes_willow():
     data = load_language_data(load_taxonomy())
-    text = fallback_text()
-    assert apply_willow(text, ContentKind.CRISIS, data.willow) == text
-    assert "！" not in text and "!" not in text
+    for text in (fallback_text(), fallback_text(damaged=False)):
+        assert apply_willow(text, ContentKind.CRISIS, data.willow) == text
+        assert "！" not in text and "!" not in text
 
 
 def test_region_labels_are_the_programs_own():
