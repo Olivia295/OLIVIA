@@ -32,11 +32,18 @@ TYPED = ("青禾", "阿屿", "老家的房子", "相亲")
 
 
 def _tree(home: Path) -> dict[str, bytes | None]:
-    """Every path under ``home`` (directories as None) with its contents."""
+    """Every path under ``home`` (directories as None) with its contents.
+
+    A held lock file is listed but not read: Windows refuses to read a locked byte.
+    """
+    from olivia.core.datalock import LOCK_FILENAME
+
     if not home.exists():
         return {}
     return {
-        p.relative_to(home).as_posix(): (p.read_bytes() if p.is_file() else None)
+        p.relative_to(home).as_posix(): (
+            p.read_bytes() if p.is_file() and p.name != LOCK_FILENAME else None
+        )
         for p in sorted(home.rglob("*"))
     }
 
