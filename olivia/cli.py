@@ -608,9 +608,47 @@ def _enable_line_editing() -> None:  # pragma: no cover - terminal only
     backspace, so deleting a Chinese character leaves two bytes of it in the line. The
     history it keeps stays in memory; nothing is written to disk. Windows has no
     ``readline`` and its console already edits by character.
+
+    ``readline`` takes the locale's character set when it loads: under a C or POSIX
+    locale (``LC_ALL=C`` over SSH or in a container) it reads each byte of a Chinese
+    character as a key of its own and garbles the line ("我不想活了" arrived as "f活了").
+    So the character set is switched to UTF-8 first, and without a UTF-8 locale on the
+    system ``readline`` stays off (``clean_input`` then mends what the terminal sends).
     """
+    name = _utf8_ctype()
+    if name is None:
+        return
+    if name:
+        # Python's readline sets the character-set locale from the environment on every
+        # line it reads, so the environment has to say UTF-8 as well, for the rest of the
+        # run (programs this one starts inherit it, which they read text in anyway).
+        import os
+
+        os.environ["LC_ALL"] = os.environ["LC_CTYPE"] = name
     with contextlib.suppress(ImportError):
         import readline  # noqa: F401
+
+
+_UTF8_LOCALES: Final = ("C.UTF-8", "C.utf8", "en_US.UTF-8", "UTF-8")
+"""Tried in order when the locale's character set is not UTF-8 (``UTF-8`` is macOS's)."""
+
+
+def _utf8_ctype() -> str | None:  # pragma: no cover - terminal only
+    """Make the character-set locale UTF-8: "" when it already was, the name of the UTF-8
+    locale switched to, or None when the system has none."""
+    if sys.platform == "win32":  # no readline, and the console reads Unicode
+        return None
+    import locale
+
+    if locale.nl_langinfo(locale.CODESET).replace("-", "").upper() == "UTF8":
+        return ""
+    for name in _UTF8_LOCALES:
+        try:
+            locale.setlocale(locale.LC_CTYPE, name)
+        except locale.Error:
+            continue
+        return name
+    return None
 
 
 def clean_input(text: str) -> str:

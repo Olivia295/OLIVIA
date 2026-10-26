@@ -147,3 +147,43 @@ def test_a_long_pasted_line_in_a_terminal_is_read_whole():
         os.close(fd)
     got = out.decode("utf-8", "replace").split("GOT", 1)[-1].split()[:2]
     assert got == ["400", "True"], out[-300:]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX terminals only")
+@pytest.mark.parametrize("locale_name", ["C", "POSIX"])
+def test_chinese_is_read_whole_under_a_c_locale(locale_name):
+    """``LC_ALL=C`` (SSH, containers): readline once garbled "我不想活了" into "f活了"."""
+    import pty
+
+    code = (
+        "import sys; from olivia import cli\n"
+        "line = cli._Console(sys.stdin, sys.stdout).ask('> ')\n"
+        "print('GOT', line.encode('unicode_escape').decode())"
+    )
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("LC_", "LANG"))}
+    env["LC_ALL"] = locale_name
+    pid, fd = pty.fork()
+    if pid == 0:  # pragma: no cover - the child process
+        os.chdir(ROOT)
+        os.execve(sys.executable, [sys.executable, "-c", code], env)
+    out = b""
+    try:
+        deadline = time.monotonic() + 30
+        while b"> " not in out and time.monotonic() < deadline:
+            if select.select([fd], [], [], 0.1)[0]:
+                out += os.read(fd, 4096)
+        os.write(fd, "我不想活了\r".encode())
+        while time.monotonic() < deadline:  # until the child exits and the pty closes
+            if select.select([fd], [], [], 0.1)[0]:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                out += chunk
+    finally:
+        os.waitpid(pid, 0)
+        os.close(fd)
+    got = out.decode("utf-8", "replace").split("GOT", 1)[-1].split()[0]
+    assert got == "我不想活了".encode("unicode_escape").decode(), out[-300:]
