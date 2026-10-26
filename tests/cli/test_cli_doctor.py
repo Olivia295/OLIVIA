@@ -124,7 +124,7 @@ def test_after_a_chat_every_store_opens_and_nothing_is_touched(run_cli, doctor, 
         cli.DOCTOR_PERMISSIONS_WINDOWS if sys.platform == "win32" else cli.DOCTOR_PERMISSIONS_OK
     )
     assert _line(run, "数据目录的权限") == f"{OK} {permissions}"
-    assert str(data_home) in _line(run, "数据目录：")
+    assert cli._shown_location(data_home) in _line(run, "数据目录：")
 
 
 def test_names_topics_and_health_never_appear(doctor, data_home):
