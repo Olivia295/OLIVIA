@@ -387,3 +387,48 @@ def test_olivia_command_falls_back_to_path_then_the_module(tmp_path):
         "-m",
         "olivia.cli",
     )
+
+
+# -- is it installed? (olivia doctor: read only) -----------------------------------------------
+
+
+def test_macos_installed_looks_for_the_plist_and_runs_nothing(mac):
+    assert jobs.installed(mac.host()) is False
+    _plist(mac).parent.mkdir(parents=True)
+    _plist(mac).write_bytes(b"<plist/>")
+    assert jobs.installed(mac.host()) is True
+    assert mac.calls == []
+
+
+def test_windows_installed_queries_the_task(windows):
+    assert jobs.installed(windows.host()) is True
+    assert windows.argvs == [("schtasks", "/Query", "/TN", jobs.TASK_NAME)]
+    windows.results[("schtasks", "/Query")] = RunResult(1)
+    assert jobs.installed(windows.host()) is False
+    windows.results[("schtasks", "/Query")] = RunResult(127)  # schtasks could not start
+    assert jobs.installed(windows.host()) is None
+
+
+def test_linux_installed_finds_a_unit_or_our_crontab_line(linux):
+    linux.results[("crontab", "-l")] = RunResult(0, "0 1 * * * backup\n")
+    assert jobs.installed(linux.host()) is False
+    linux.results[("crontab", "-l")] = RunResult(0, f"30 20 * * * x {jobs.CRON_MARKER}\n")
+    assert jobs.installed(linux.host()) is True
+    linux.results[("crontab", "-l")] = RunResult(2)
+    assert jobs.installed(linux.host()) is None
+    service, _ = jobs.unit_paths(linux.host())
+    service.parent.mkdir(parents=True)
+    service.write_text("x", encoding="utf-8")
+    assert jobs.installed(linux.host()) is True
+    assert all(argv == ("crontab", "-l") for argv in linux.argvs)
+
+
+def test_linux_without_crontab_and_units_is_not_installed(linux):
+    linux.found = set()
+    assert jobs.installed(linux.host()) is False
+    assert linux.calls == []
+
+
+def test_other_systems_have_nothing_installed(machine):
+    machine.system = System.OTHER
+    assert jobs.installed(machine.host()) is False

@@ -35,19 +35,27 @@ class FakeKeychain:
     """An in-memory :class:`olivia.core.crypto.keychain.KeyBackend`.
 
     Set ``broken`` to an exception (for example :class:`NoKeychainError`) to make every
-    call fail the way an unavailable keychain does.
+    call fail the way an unavailable keychain does. ``reads`` and ``writes`` record the item
+    names asked for and stored; ``probes`` counts :meth:`ready` calls, which touch no item.
     """
 
     def __init__(self) -> None:
         self.items: dict[str, str] = {}
         self.broken: KeychainUnavailableError | None = None
+        self.reads: list[str] = []
         self.writes: list[str] = []
+        self.probes = 0
 
     def _check(self) -> None:
         if self.broken is not None:
             raise self.broken
 
+    def ready(self) -> None:
+        self.probes += 1
+        self._check()
+
     def get(self, name: str) -> str | None:
+        self.reads.append(name)
         self._check()
         return self.items.get(name)
 

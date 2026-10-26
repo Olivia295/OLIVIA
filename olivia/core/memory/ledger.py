@@ -304,6 +304,19 @@ class JournalEntry:
 LedgerEntry = SummaryEntry | NoteEntry | JournalEntry
 
 
+def entry_files(base_dir: Path) -> list[Path]:
+    """The ledger's entry files in the data directory ``base_dir``, sorted; nothing is
+    opened or created."""
+    directory = base_dir / LEDGER_DIRNAME
+    if not directory.is_dir():
+        return []
+    return sorted(
+        p
+        for p in directory.iterdir()
+        if p.is_file() and p.suffix == _SUFFIX and _ID.fullmatch(p.stem)
+    )
+
+
 def summary_id(key: str) -> str:
     """The entry id for a summary key: stable, so rewriting a session replaces its entry."""
     return hashlib.sha256(f"olivia-ledger-summary:{key}".encode()).hexdigest()[:24]
@@ -394,13 +407,7 @@ class Ledger:
 
     def entry_paths(self) -> list[Path]:
         """The entry files on disk (whether or not they still open)."""
-        if not self.directory.is_dir():
-            return []
-        return sorted(
-            p
-            for p in self.directory.iterdir()
-            if p.is_file() and p.suffix == _SUFFIX and _ID.fullmatch(p.stem)
-        )
+        return entry_files(self.directory.parent)
 
     def read_markdown(self, entry_id: str) -> str:
         """The decrypted Markdown document of one entry."""

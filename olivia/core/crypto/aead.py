@@ -73,6 +73,16 @@ def seal_bytes(key: bytes, plaintext: bytes, *, store: str, label: str = "") -> 
     return _HEADER + nonce + _cipher(key).encrypt(nonce, plaintext, aad)
 
 
+def looks_sealed(blob: bytes, *, size: int | None = None) -> bool:
+    """Whether ``blob`` has the shape of a :func:`seal_bytes` blob (of ``size`` plaintext
+    bytes, when given): magic, version and length only. Nothing is decrypted, so a blob
+    altered after its header still passes; only :func:`open_bytes` can tell."""
+    overhead = len(_HEADER) + NONCE_BYTES + TAG_BYTES
+    if blob[: len(_HEADER)] != _HEADER or len(blob) < overhead:
+        return False
+    return size is None or len(blob) == overhead + size
+
+
 def open_bytes(key: bytes, blob: bytes, *, store: str, label: str = "") -> bytes:
     """Decrypt a :func:`seal_bytes` blob; any mismatch raises :class:`DecryptionError`."""
     aad = _aad(store, label)

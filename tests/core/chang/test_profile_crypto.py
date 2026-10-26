@@ -255,3 +255,41 @@ def test_legacy_migration_waits_while_the_keychain_is_locked(tmp_path, keychain)
     keychain.broken = None
     assert ProfileStore(tmp_path).load() == _p("小林")
     _assert_nowhere(tmp_path, "clinical_history", *CODES)
+
+
+# -- the shape of the file, read without the keychain (olivia doctor) --------------------------
+
+
+@pytest.mark.parametrize(
+    ("profile", "sealed"),
+    [(_p(history=()), False), (_p(), True), (_p(encrypt=True), True)],
+    ids=["plain", "fields", "whole"],
+)
+def test_profile_shape_needs_no_keychain(tmp_path, keychain, profile, sealed):
+    from olivia.core.chang.profile import profile_shape
+
+    store = ProfileStore(tmp_path, Vault(tmp_path, keychain))
+    store.save(profile)
+    reads = len(keychain.reads)
+    keychain.broken = KeychainUnavailableError("locked")
+    shape = profile_shape(store.path.read_text(encoding="utf-8"))
+    assert shape.sealed is sealed
+    assert shape.notifications is (None if profile.enable_at_rest_encryption else False)
+    assert len(keychain.reads) == reads
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        json.dumps({"sealed_profile": base64.b64encode(b"plain text").decode()}),
+        '{"sealed_profile": "AAAA", "user_name": "x"}',
+        '{"schema_version": 1}',
+    ],
+)
+def test_profile_shape_refuses_what_is_not_a_profile(text):
+    from olivia.core.chang.profile import profile_shape
+
+    with pytest.raises(ValueError):
+        profile_shape(text)

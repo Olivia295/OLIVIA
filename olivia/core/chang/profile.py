@@ -55,11 +55,12 @@ import base64
 import binascii
 import json
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
+from olivia.core.crypto import aead
 from olivia.core.crypto.errors import (
     CryptoError,
     DecryptionError,
@@ -163,6 +164,36 @@ def _b64(data: dict[str, object], key: str) -> bytes:
         return base64.b64decode(value, validate=True)
     except binascii.Error as exc:
         raise ValueError(f"{key} is not valid base64") from exc
+
+
+@dataclass(frozen=True)
+class ProfileShape:
+    """What a profile file holds, as far as can be told without the keychain."""
+
+    sealed: bool
+    """Some part is sealed, so reading it needs the ``profile`` data key."""
+    notifications: bool | None
+    """The reminders switch (B9); None when it is sealed with the whole profile."""
+
+
+def profile_shape(text: str) -> ProfileShape:
+    """Read ``text`` as a profile file without opening any sealed part (``olivia doctor``).
+
+    The clear part must be a valid profile and each sealed part an encrypted blob by its
+    header; ``ValueError`` (or ``TypeError``) otherwise. Nothing is decrypted, so a
+    sealed part that was altered after its header is only found when it is opened.
+    """
+    data = _json_object(text)
+    if _WHOLE_KEY in data:
+        if set(data) != {_WHOLE_KEY} or not aead.looks_sealed(_b64(data, _WHOLE_KEY)):
+            raise ValueError("not a sealed profile")
+        return ProfileShape(sealed=True, notifications=None)
+    sealed = _FIELDS_KEY in data
+    if sealed:
+        if _sensitive_values(data) or not aead.looks_sealed(_b64(data, _FIELDS_KEY)):
+            raise ValueError("not a profile with sealed fields")
+        del data[_FIELDS_KEY]
+    return ProfileShape(sealed=sealed, notifications=PersonaProfile.from_dict(data).notifications)
 
 
 def _snapshot_compliant(raw: bytes, form: _Form) -> bool:

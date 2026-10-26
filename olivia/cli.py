@@ -93,6 +93,14 @@
     two reminders, no user data). 2: the onboarding storage choice (ONB-06): only health
     information encrypted, or the whole profile; each way is explained and confirmed, and
     the whole profile cannot be sealed without a keychain.
+``olivia doctor``
+    A read-only, offline check of this computer's setup (``olivia/doctor.py``), one line
+    each marked ✓ / ! / ✗: versions, the data directory and its modes, whether a keychain
+    is there (no item is read), whether the first visit is done, whether each store would
+    open (judged from its files and key files, never decrypted), the packaged model's
+    verification, the built-in hotline data's signature and age (! after 90 days), the
+    signed update in use, and the reminder job. No user text, name or stored content is
+    printed; the last line says so. Works before the first visit; exit 1 on any ✗.
 ``olivia --version``
     The installed version, read from the package metadata.
 
@@ -105,8 +113,8 @@ could be done (no profile yet, an under-18 refusal record, unreadable or locked 
 unknown region, timezone or persona, or a ``forget --entry``/``--method`` or ``memory
 --edit`` number that names nothing there). Ctrl-C exits like end of input at the same point:
 0 once a chat has started (it ends the conversation like ``/exit``) and in the other
-commands, 1 during onboarding. ``resources``, ``privacy`` and ``forget --all`` work
-without a profile.
+commands, 1 during onboarding. ``resources``, ``privacy``, ``doctor`` and ``forget --all``
+work without a profile.
 
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
 answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
@@ -141,6 +149,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import functools
+import platform
 import random
 import re
 import sys
@@ -148,10 +157,11 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from importlib import metadata
+from pathlib import Path
 from typing import Any, Final, NoReturn, TextIO
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from olivia import __version__
+from olivia import __version__, doctor
 from olivia.core.chang import onboarding
 from olivia.core.chang.care import CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
@@ -177,6 +187,7 @@ from olivia.core.chang.profile_command import run_profile
 from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
+from olivia.core.crypto.keychain import Probe
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
     DataStores,
@@ -219,6 +230,7 @@ from olivia.core.session import Session, TurnResult
 from olivia.core.storage import data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 from olivia.core.yaml_load import safe_load
+from olivia.doctor import HOTLINE_MAX_AGE_DAYS, StoreState
 from olivia.notify import system as notify_system
 from olivia.notify.check import run_check
 from olivia.notify.settings import remove_reminders, run_settings
@@ -347,6 +359,108 @@ LINE_KIND_HEADINGS: Final = {
 }
 _UNKNOWN_HOURS: Final = "unknown"
 
+# ``olivia doctor`` (``olivia/doctor.py``): one marked line per check. Only states, dates,
+# counts and versions go into the slots, never anything the user typed or a store holds.
+DOCTOR_OK: Final = "✓"
+DOCTOR_WARN: Final = "!"
+DOCTOR_FAIL: Final = "✗"
+DOCTOR_HEADING: Final = "OLIVIA 自检（只读，不联网，不会改动任何文件）："
+DOCTOR_FOOTER: Final = "以上内容不含你的个人信息，可以放心转给我们。"
+DOCTOR_VERSION: Final = "OLIVIA {version} · Python {python} · {system}"
+DOCTOR_DIR: Final = "数据目录：{location}"
+DOCTOR_DIR_ABSENT: Final = "数据目录：还没有（{location}，第一次设置时会建立）"
+DOCTOR_DIR_NOT_DIR: Final = "数据目录：{location} 是一个文件，不是文件夹，程序没办法在这里保存"
+DOCTOR_PERMISSIONS_OK: Final = "数据目录的权限：只有你自己能读写"
+DOCTOR_PERMISSIONS_OFF: Final = "数据目录的权限：有 {count} 处和应有的不一样，应当只有你自己能读写"
+DOCTOR_PERMISSIONS_WINDOWS: Final = "数据目录的权限：Windows 上不做这项检查"
+DOCTOR_KEYCHAIN_READY: Final = "系统钥匙串：可以使用（只确认了它在，没有读取或改动里面的任何条目）"
+DOCTOR_KEYCHAIN_NONE: Final = (
+    "系统钥匙串：这台电脑上没有。聊天记录、健康信息和安全计划不会保存，其他照常"
+)
+DOCTOR_KEYCHAIN_UNAVAILABLE: Final = "系统钥匙串：现在打不开，可能被锁住了，或者没有响应"
+DOCTOR_KEYCHAIN_UNCHECKED: Final = (
+    "系统钥匙串：没有检测，这种钥匙串没办法在不碰里面条目的情况下确认能不能用"
+)
+DOCTOR_ONBOARDED: Final = "第一次设置：已完成"
+DOCTOR_NOT_ONBOARDED: Final = "第一次设置：还没有完成（运行 olivia chat 开始）"
+DOCTOR_ONBOARDED_UNKNOWN: Final = "第一次设置：说不准，因为设置文件打不开"
+DOCTOR_STORE_NAMES: Final = {
+    "profile": "设置文件",
+    "ledger": "聊天记录",
+    "state": "锦囊与方法偏好",
+    "care": "关心提醒",
+    "safety_plan": "安全计划",
+}
+DOCTOR_STORE_STATES: Final = {
+    StoreState.ABSENT: (DOCTOR_OK, "{name}：没有"),
+    StoreState.READY: (DOCTOR_OK, "{name}：能打开"),
+    StoreState.PARTLY: (DOCTOR_FAIL, "{name}：有一部分打不开"),
+    StoreState.BROKEN: (DOCTOR_FAIL, "{name}：打不开，文件或钥匙不完整"),
+    StoreState.LOCKED: (DOCTOR_FAIL, "{name}：现在打不开，要等系统钥匙串能用"),
+}
+DOCTOR_STORES_NOTE: Final = "加密的内容都没有解密，只检查了文件和钥匙是否齐全、完好。"
+DOCTOR_MODEL_OK: Final = "本机模型：文件齐全，校验通过"
+DOCTOR_MODEL_FAILED: Final = "本机模型：校验没有通过（{reason}），聊天时会自动只用规则做危机筛查"
+DOCTOR_HOTLINES_OK: Final = "随程序附带的热线资料：签名有效，整理于 {compiled_on}，距今 {days} 天"
+DOCTOR_HOTLINES_STALE: Final = "，已经超过 {max_days} 天，可以更新程序：pipx reinstall olivia"
+DOCTOR_HOTLINES_BROKEN: Final = (
+    "随程序附带的热线资料：签名验证没有通过，程序文件可能不完整，请重新安装"
+)
+DOCTOR_UPDATE_NONE: Final = "热线更新包：没有，用的是随程序附带的资料"
+DOCTOR_UPDATE_USED: Final = "热线更新包：在用（整理于 {compiled_on}，距今 {days} 天，签名已验证）"
+DOCTOR_UPDATE_STALE: Final = "，已经超过 {max_days} 天，可以换一份新的更新包"
+DOCTOR_UPDATE_UNUSED: Final = "热线更新包：没有启用（{reason}），用的是随程序附带的资料"
+DOCTOR_UPDATE_UNCHECKED: Final = "热线更新包：没有检查，因为随程序附带的资料没有通过验证"
+DOCTOR_REMINDERS_ON: Final = "系统提醒：已安装"
+DOCTOR_REMINDERS_OFF: Final = "系统提醒：没有安装"
+DOCTOR_REMINDERS_UNKNOWN: Final = "系统提醒：没能确认有没有安装"
+DOCTOR_REMINDERS_MISSING: Final = (
+    "系统提醒：设置里是打开的，但系统里没有找到它的定时任务。可以在 olivia settings 里关掉再打开"
+)
+DOCTOR_REMINDERS_LEFTOVER: Final = (
+    "系统提醒：设置里是关闭的，系统里却还留着它的定时任务。"
+    "在 olivia settings 里打开再关掉，就会把它删掉"
+)
+DOCTOR_KEYCHAIN: Final = {
+    Probe.READY: (DOCTOR_OK, DOCTOR_KEYCHAIN_READY),
+    Probe.NONE: (DOCTOR_WARN, DOCTOR_KEYCHAIN_NONE),
+    Probe.UNAVAILABLE: (DOCTOR_FAIL, DOCTOR_KEYCHAIN_UNAVAILABLE),
+    Probe.UNCHECKED: (DOCTOR_WARN, DOCTOR_KEYCHAIN_UNCHECKED),
+}
+DOCTOR_TEXTS: Final = (
+    DOCTOR_HEADING,
+    DOCTOR_FOOTER,
+    DOCTOR_VERSION,
+    DOCTOR_DIR,
+    DOCTOR_DIR_ABSENT,
+    DOCTOR_DIR_NOT_DIR,
+    DOCTOR_PERMISSIONS_OK,
+    DOCTOR_PERMISSIONS_OFF,
+    DOCTOR_PERMISSIONS_WINDOWS,
+    *(text for _, text in DOCTOR_KEYCHAIN.values()),
+    DOCTOR_ONBOARDED,
+    DOCTOR_NOT_ONBOARDED,
+    DOCTOR_ONBOARDED_UNKNOWN,
+    *DOCTOR_STORE_NAMES.values(),
+    *(text for _, text in DOCTOR_STORE_STATES.values()),
+    DOCTOR_STORES_NOTE,
+    DOCTOR_MODEL_OK,
+    DOCTOR_MODEL_FAILED,
+    DOCTOR_HOTLINES_OK,
+    DOCTOR_HOTLINES_STALE,
+    DOCTOR_HOTLINES_BROKEN,
+    DOCTOR_UPDATE_NONE,
+    DOCTOR_UPDATE_USED,
+    DOCTOR_UPDATE_STALE,
+    DOCTOR_UPDATE_UNUSED,
+    DOCTOR_UPDATE_UNCHECKED,
+    DOCTOR_REMINDERS_ON,
+    DOCTOR_REMINDERS_OFF,
+    DOCTOR_REMINDERS_UNKNOWN,
+    DOCTOR_REMINDERS_MISSING,
+    DOCTOR_REMINDERS_LEFTOVER,
+)
+
 USER_TEXTS: Final = (
     GOODBYE,
     CHAT_HINT,
@@ -393,6 +507,7 @@ USER_TEXTS: Final = (
     PERSONA_NOT_ONBOARDED,
     PERSONA_ADULTS_ONLY,
     *LINE_KIND_HEADINGS.values(),
+    *DOCTOR_TEXTS,
 )
 """Every sentence the CLI itself says, for the WILLOW and gate checks in the tests."""
 
@@ -1166,6 +1281,127 @@ def _privacy(console: _Console) -> int:
     return 0
 
 
+# -- doctor -----------------------------------------------------------------------------------
+
+Row = tuple[str, str]
+"""(mark, text); an empty mark is an indented note under the line before."""
+
+
+def _shown_location(path: Path) -> str:
+    """``path`` with the home directory as ``~``: the account name stays off the screen."""
+    try:
+        relative = path.relative_to(Path.home())
+    except (ValueError, RuntimeError):  # not under home, or no home directory known
+        return str(path)
+    return "~" if relative == Path() else f"~/{relative.as_posix()}"
+
+
+def _age(today: date, then: date) -> int:
+    return max(0, (today - then).days)
+
+
+def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
+    where = _shown_location(found.location)
+    if found.kind == "absent":
+        return [(DOCTOR_OK, DOCTOR_DIR_ABSENT.format(location=where))]
+    if found.kind == "other":
+        return [(DOCTOR_FAIL, DOCTOR_DIR_NOT_DIR.format(location=where))]
+    rows = [(DOCTOR_OK, DOCTOR_DIR.format(location=where))]
+    if found.mismatched is None:
+        rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_WINDOWS))
+    elif found.mismatched:
+        rows.append((DOCTOR_WARN, DOCTOR_PERMISSIONS_OFF.format(count=found.mismatched)))
+    else:
+        rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_OK))
+    return rows
+
+
+def _doctor_store_rows(report: doctor.Report) -> list[Row]:
+    profile = report.profile
+    if profile.onboarded is None:
+        rows = [(DOCTOR_WARN, DOCTOR_ONBOARDED_UNKNOWN)]
+    elif profile.onboarded:
+        rows = [(DOCTOR_OK, DOCTOR_ONBOARDED)]
+    else:
+        rows = [(DOCTOR_WARN, DOCTOR_NOT_ONBOARDED)]
+    states = {"profile": profile.state, **report.stores}
+    for name, label in DOCTOR_STORE_NAMES.items():
+        mark, template = DOCTOR_STORE_STATES[states[name]]
+        rows.append((mark, template.format(name=label)))
+    rows.append(("", DOCTOR_STORES_NOTE))
+    return rows
+
+
+def _doctor_hotline_rows(found: doctor.HotlineFacts, today: date) -> list[Row]:
+    if not found.builtin_ok or found.builtin_on is None:
+        return [(DOCTOR_FAIL, DOCTOR_HOTLINES_BROKEN), (DOCTOR_WARN, DOCTOR_UPDATE_UNCHECKED)]
+    days = _age(today, found.builtin_on)
+    text = DOCTOR_HOTLINES_OK.format(compiled_on=found.builtin_on.isoformat(), days=days)
+    # Old data only matters while it is the data in use.
+    stale = days > HOTLINE_MAX_AGE_DAYS and found.used != "override"
+    if stale:
+        text += DOCTOR_HOTLINES_STALE.format(max_days=HOTLINE_MAX_AGE_DAYS)
+    rows = [(DOCTOR_WARN if stale else DOCTOR_OK, text)]
+    if found.used == "override" and found.override_on is not None:
+        days = _age(today, found.override_on)
+        text = DOCTOR_UPDATE_USED.format(compiled_on=found.override_on.isoformat(), days=days)
+        stale = days > HOTLINE_MAX_AGE_DAYS
+        if stale:
+            text += DOCTOR_UPDATE_STALE.format(max_days=HOTLINE_MAX_AGE_DAYS)
+        rows.append((DOCTOR_WARN if stale else DOCTOR_OK, text))
+    elif found.reason is None:
+        rows.append((DOCTOR_OK, DOCTOR_UPDATE_NONE))
+    else:
+        reason = RESOURCES_UPDATE_REASONS.get(found.reason, RESOURCES_UPDATE_UNREADABLE)
+        rows.append((DOCTOR_WARN, DOCTOR_UPDATE_UNUSED.format(reason=reason)))
+    return rows
+
+
+def _doctor_reminder_row(installed: bool | None, switched_on: bool | None) -> Row:
+    if installed is None:
+        return DOCTOR_WARN, DOCTOR_REMINDERS_UNKNOWN
+    if switched_on is True and not installed:
+        return DOCTOR_WARN, DOCTOR_REMINDERS_MISSING
+    if switched_on is False and installed:
+        return DOCTOR_WARN, DOCTOR_REMINDERS_LEFTOVER
+    return DOCTOR_OK, DOCTOR_REMINDERS_ON if installed else DOCTOR_REMINDERS_OFF
+
+
+def doctor_rows(report: doctor.Report, today: date) -> list[Row]:
+    """Every line of ``olivia doctor`` for ``report``, marked ✓ / ! / ✗."""
+    system = " ".join(part for part in (platform.system(), platform.machine()) if part)
+    version = DOCTOR_VERSION.format(
+        version=package_version(), python=platform.python_version(), system=system or "-"
+    )
+    reason = report.model_reason
+    return [
+        (DOCTOR_OK, version),
+        *_doctor_dir_rows(report.data_dir),
+        DOCTOR_KEYCHAIN[report.keychain],
+        *_doctor_store_rows(report),
+        (DOCTOR_OK, DOCTOR_MODEL_OK)
+        if reason is None
+        else (DOCTOR_FAIL, DOCTOR_MODEL_FAILED.format(reason=reason)),
+        *_doctor_hotline_rows(report.hotlines, today),
+        _doctor_reminder_row(report.reminders, report.profile.notifications),
+    ]
+
+
+def _doctor(console: _Console, clock: Clock) -> int:
+    """``olivia doctor``: check this computer's setup, read-only and offline.
+
+    Works before the first visit. Exit 1 when any line is ✗, else 0 (warnings included).
+    """
+    today = clock().date()
+    report = doctor.examine(data_dir_location(), today=today, host=notify_system.current_host)
+    rows = doctor_rows(report, today)
+    console.say(DOCTOR_HEADING)
+    for mark, text in rows:
+        console.say(f"{mark} {text}" if mark else f"  {text}")
+    console.say(DOCTOR_FOOTER)
+    return 1 if any(mark == DOCTOR_FAIL for mark, _ in rows) else 0
+
+
 # -- settings and reminders -------------------------------------------------------------------
 
 
@@ -1425,6 +1661,9 @@ def build_parser() -> argparse.ArgumentParser:
         "privacy", help="看看 OLIVIA 怎么保护你的隐私：存了什么、存在哪里、怎么删除"
     )
     commands.add_parser("settings", help="查看或修改设置：系统提醒（默认关闭）、保存方式")
+    commands.add_parser(
+        "doctor", help="检查这台电脑上的运行环境（只读；结果不含个人信息，可以转给我们）"
+    )
     commands.add_parser("notify-check")  # no help: hidden; the scheduled job runs it (B9)
     return parser
 
@@ -1494,6 +1733,8 @@ def main(
             return _privacy(console)
         if args.command == "settings":
             return _settings(console, now)
+        if args.command == "doctor":
+            return _doctor(console, now)
         if args.command == "notify-check":
             return _notify_check(now)
         return _region(console, args.code, args.timezone, args.clear, now)

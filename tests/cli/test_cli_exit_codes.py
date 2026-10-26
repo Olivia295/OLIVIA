@@ -35,7 +35,13 @@ NEEDS_SETUP = [
     ["forget", "--entry", "1"],
     ["settings"],
 ]
-ALWAYS_WORK = [["resources"], ["privacy"], ["notify-check"], ["forget", "--all", "--yes"]]
+ALWAYS_WORK = [
+    ["resources"],
+    ["privacy"],
+    ["doctor"],
+    ["notify-check"],
+    ["forget", "--all", "--yes"],
+]
 
 
 def _refusal_record(home):

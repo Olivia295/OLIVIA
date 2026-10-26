@@ -360,6 +360,42 @@ def test_stats_that_printed_no_numbers_fail():
     assert audit.stats_problems(capture, audit.ALL_TYPED, text) == ["no numbers were printed"]
 
 
+def _doctor_output(*extra: str) -> str:
+    cli = audit.cli
+    lines = [
+        cli.DOCTOR_HEADING,
+        f"{cli.DOCTOR_OK} " + cli.DOCTOR_VERSION.format(version="0.1", python="3.12", system="x"),
+        f"{cli.DOCTOR_WARN} {cli.DOCTOR_NOT_ONBOARDED}",
+        f"{cli.DOCTOR_OK} 聊天记录：能打开",
+        f"  {cli.DOCTOR_STORES_NOTE}",
+        f"{cli.DOCTOR_WARN} "
+        + cli.DOCTOR_HOTLINES_OK.format(compiled_on="2026-01-01", days=100)
+        + cli.DOCTOR_HOTLINES_STALE.format(max_days=90),
+        *extra,
+        cli.DOCTOR_FOOTER,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def test_doctor_output_of_its_own_lines_passes():
+    assert audit.doctor_problems(_capture("doctor", _doctor_output()), audit.ALL_TYPED) == []
+
+
+def test_doctor_output_with_typed_text_or_another_line_fails():
+    named = _capture("doctor", _doctor_output(f"{audit.cli.DOCTOR_OK} 称呼：{audit.USER_NAME}"))
+    problems = audit.doctor_problems(named, audit.ALL_TYPED)
+    assert f"typed text: 「{audit.USER_NAME}」" in problems and "not a doctor line: 7" in problems
+    unfinished = _capture("doctor", audit.cli.DOCTOR_HEADING + "\n")
+    assert "the footer is not the last line" in audit.doctor_problems(unfinished, ())
+
+
+def test_tree_changes_name_each_path():
+    before = {"a": b"1", "b": None, "c": b"x"}
+    after = {"a": b"2", "b": None, "d": b""}
+    assert audit.tree_changes(before, after) == ["added: d", "removed: c", "changed: a"]
+    assert audit.tree_changes(before, dict(before)) == []
+
+
 # -- the whole audit --------------------------------------------------------------------------
 
 

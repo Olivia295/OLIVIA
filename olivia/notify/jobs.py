@@ -29,7 +29,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from olivia.notify.system import Host, RunResult, System
+from olivia.notify.system import NOT_RUN, Host, RunResult, System
 
 HOUR: Final = 20
 MINUTE: Final = 30
@@ -284,6 +284,29 @@ def _install_cron(host: Host, argv: tuple[str, ...]) -> bool:
         return False
     kept = [line for line in lines if not _is_ours(line)]
     return _write_crontab(host, [*kept, cron_line(argv)]).ok
+
+
+def installed(host: Host) -> bool | None:
+    """Whether the job is installed (``olivia doctor``); None when that cannot be told.
+
+    Read only: macOS looks for the plist (nothing is run), Windows asks ``schtasks
+    /Query``, Linux looks for the unit files and then reads ``crontab -l``.
+    """
+    if host.system is System.MACOS:
+        return plist_path(host).is_file()
+    if host.system is System.WINDOWS:
+        result = host.run(["schtasks", "/Query", "/TN", TASK_NAME], None)
+        if result.returncode == NOT_RUN:
+            return None
+        return result.ok
+    if host.system is not System.LINUX:
+        return False
+    if any(path.is_file() for path in unit_paths(host)):
+        return True
+    if host.which("crontab") is None:
+        return False
+    lines = _crontab_lines(host)
+    return None if lines is None else any(_is_ours(line) for line in lines)
 
 
 def uninstall(host: Host) -> bool:
