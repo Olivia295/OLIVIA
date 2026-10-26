@@ -38,6 +38,16 @@ Session-language fixes (F5b):
   ``S_crisis.after_confirmed`` and asks no safety question; the card is unchanged.
 * The same referral card on consecutive turns is shown with a short intro and every
   destination, without the closing paragraph (:meth:`LanguageEngine.render_referral`).
+
+Images that fit the topic (trial report 2026-10-26, items 11 and 13; draft, G-0):
+
+* Once a topic of ``metaphors.yaml`` ``avoid.topics`` came up in the session (a turn's
+  spectrum, an active situation, the referral card of a red flag this engine showed, or
+  a cue word in the user's message),
+  no image holding one of its words is drawn for the rest of the session: no drink after
+  substance use, no pair and no "it comes back" image after grief or a breakup
+  (:meth:`LanguageEngine.image_tiers`). Words no image may hold at all (a letter, a
+  farewell, drinking as relief) are checked when the data loads.
 """
 
 from __future__ import annotations
@@ -183,6 +193,10 @@ class LanguageEngine:
         # Images the composed replies used (F5b): each at most once while others are left.
         self._used_images: set[str] = set()
         self._last_image: str | None = None
+        # Image topics that came up this session, and the red flags whose referral card
+        # this engine showed (they turn a topic on too).
+        self._image_topics: set[str] = set()
+        self._referred: set[str] = set()
 
     @property
     def data(self) -> LanguageData:
@@ -228,15 +242,72 @@ class LanguageEngine:
         spectrum_id: str | None,
         yearning_id: str | None,
         situations: Set[str] = frozenset(),
+        user_text: str = "",
     ) -> str:
-        """An image for the persona.
+        """An image for the persona, from :meth:`image_tiers`."""
+        tiers = self.image_tiers(spectrum_id, yearning_id, situations, user_text)
+        # The draw is the one it always was (same tier, same rng call); only an image a
+        # reply already used is passed over, for the next unused one in tier order (F5b).
+        drawn = self._rng.choice(tiers[0])
+        if drawn not in self._used_images:
+            return drawn
+        start = tiers[0].index(drawn)
+        first = [tiers[0][(start + k) % len(tiers[0])] for k in range(len(tiers[0]))]
+        ordered = [*first, *(image for tier in tiers[1:] for image in tier)]
+        unused = next((image for image in ordered if image not in self._used_images), None)
+        if unused is not None:
+            return unused
+        return next((image for image in first if image != self._last_image), drawn)
+
+    def image_tiers(
+        self,
+        spectrum_id: str | None,
+        yearning_id: str | None,
+        situations: Set[str] = frozenset(),
+        user_text: str = "",
+    ) -> list[Sequence[str]]:
+        """The image lists this turn draws from, in order; never empty, nor any list in it.
 
         A persona with its own images (``by_persona``: everyday images for GENTLE_HOLDING
         and RATIONAL_PEER, F3) draws from the spectrum's list, else its fallback. The
         others get a nature image: the active situations' dossier imagery, else the
         spectrum x yearning cell, else a fallback image (precedence:
         ``language/dossiers.py``).
+
+        Every list leaves out the images holding a word of a topic that came up this
+        session (``avoid.topics``): the turn's spectrum or situations, a red flag whose
+        referral card was shown, or a cue in ``user_text`` ("没忍住喝了两杯", "我们分手了")
+        turn the topic on for the rest of the session. A list left empty is skipped; the
+        loader keeps every fallback list non-empty.
         """
+        metaphors = self._data.metaphors
+        text = normalize(user_text)
+        for name, topic in metaphors.topics.items():
+            if (
+                spectrum_id in topic.spectra
+                or topic.situations & situations
+                or topic.flags & self._referred
+                or any(cue in text for cue in topic.cues)
+            ):
+                self._image_topics.add(name)
+        raw = self._raw_image_tiers(spectrum_id, yearning_id, situations)
+        if not self._image_topics:
+            return raw
+        avoided = [w for name in sorted(self._image_topics) for w in metaphors.topics[name].words]
+        tiers: list[Sequence[str]] = [
+            kept
+            for tier in raw
+            if (kept := tuple(i for i in tier if not any(w in i for w in avoided)))
+        ]
+        assert tiers, "the loader keeps every fallback list non-empty"
+        return tiers
+
+    def _raw_image_tiers(
+        self,
+        spectrum_id: str | None,
+        yearning_id: str | None,
+        situations: Set[str],
+    ) -> list[Sequence[str]]:
         own = self._data.metaphors.by_persona.get(self._data.templates.persona)
         tiers: list[Sequence[str]]
         if own is not None:
@@ -255,18 +326,7 @@ class LanguageEngine:
                 canonical = self._tax.canonical_label("yearning", yearning_id)
                 tiers.append(grid[spectrum_id][canonical])
             tiers.append(self._data.metaphors.fallback)
-        # The draw is the one it always was (same tier, same rng call); only an image a
-        # reply already used is passed over, for the next unused one in tier order (F5b).
-        drawn = self._rng.choice(tiers[0])
-        if drawn not in self._used_images:
-            return drawn
-        start = tiers[0].index(drawn)
-        first = [tiers[0][(start + k) % len(tiers[0])] for k in range(len(tiers[0]))]
-        ordered = [*first, *(image for tier in tiers[1:] for image in tier)]
-        unused = next((image for image in ordered if image not in self._used_images), None)
-        if unused is not None:
-            return unused
-        return next((image for image in first if image != self._last_image), drawn)
+        return tiers
 
     def note_image(self, text: str, image: str) -> None:
         """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""
@@ -340,7 +400,7 @@ class LanguageEngine:
             agent_name=agent_name,
             emotion=self.feeling_word(emotion_id, user_text),
             mirror=self.safe_mirror(user_text, utterance) if user_text.strip() else "",
-            metaphor=self.metaphor_phrase(spectrum_id, yearning_id, situations),
+            metaphor=self.metaphor_phrase(spectrum_id, yearning_id, situations, user_text),
             need=self.need_phrase(yearning_id) if yearning_id is not None else "",
             card_title=card_title,
         )
@@ -658,6 +718,7 @@ class LanguageEngine:
         closing paragraph.
         """
         active = set(flags)
+        self._referred |= active
         render = self._data.render
         if country == "CN":
             destinations = render.referral_destinations

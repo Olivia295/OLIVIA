@@ -60,7 +60,10 @@ def test_hk_mo_tw_have_their_own_wording(country):
 
 def test_the_withdrawal_warning_is_kept_everywhere():
     for country in ("CN", "HK", "US"):
-        assert "不要自己突然停用" in _engine().render_referral(["SIT-10-04"], country)
+        # Trial report 2026-10-26 item 13: "请不要自己突然停用" read as "don't quit"; every
+        # region's destination now says the doctor helps with stopping.
+        text = _engine().render_referral(["SIT-10-04"], country)
+        assert "想停或减少时，医生可以陪你一步步来" in text and "医生指导下" in text
 
 
 @pytest.mark.parametrize(
