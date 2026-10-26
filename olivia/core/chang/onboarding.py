@@ -8,7 +8,8 @@ Order: disclaimer (explicit acceptance) -> 18+ gate (a "no" is confirmed once, s
 mis-click can be undone before the permanent refusal is recorded) -> at-rest encryption
 switch (ONB-06, default off: only health information is encrypted, ruling 28) -> both
 names -> persona (the four of ONB-03, ``GENTLE_HOLDING`` by default; plan D-1) -> taboo
-topics -> region -> timezone (Enter for "other" takes this computer's zone) -> optional
+topics -> region -> timezone (Enter or a skip word for "other" takes this computer's
+zone) -> optional
 clinical-history consent (last, ruling 23; its prompt shows the standalone
 ``sensitive_notice`` before the consent sentence, PIPL Art. 28-30, B8) -> after consent,
 the clinical history (plain Chinese labels, codes kept internal) and the D2 checklist of
@@ -18,6 +19,10 @@ gate comes before anything personal is asked, so nothing is ever collected from 
 (ruling 22). Nothing touches disk until the end: an adult's answers are saved once, as
 a complete profile; a declared minor leaves a refusal record (no user data) so a later
 launch shows the refusal again instead of restarting; a declined disclaimer saves nothing.
+
+A reply that is not understood gets a one-line hint and the question alone
+(``reprompts``), with the options again, not the whole prompt: the disclaimer or the
+health notice is never printed twice (dogfood P1).
 
 Without a usable OS keychain nothing sensitive can be encrypted, so the encryption
 switch and the health questions (consent, clinical history, checklist) are skipped, no
@@ -160,6 +165,7 @@ _HINT_KEYS: Final = (
     "persona_choice",
     "taboo_limits",
     "timezone_invalid",
+    "timezone_free_invalid",
     "consent_unrecognized",
     "clinical_unknown",
 )
@@ -278,6 +284,9 @@ class OnboardingText:
     """The standalone notice shown before the consent sentence (PIPL Art. 28-30, B8):
     what is recorded, why, where it stays, what declining changes and how to withdraw."""
     prompts: Mapping[str, str]
+    reprompts: Mapping[str, str]
+    """The question alone, keyed like ``prompts``: what follows a hint after a reply was
+    not understood, instead of the whole prompt again (dogfood P1)."""
     choices: Mapping[str, tuple[Choice, Choice]]
     """``disclaimer`` and ``age_gate`` as ``(accept, decline)``; ``age_confirm`` as
     ``(confirm_minor, mistaken)``; ``encryption`` as ``(keep_off, encrypt_all)``, the
@@ -315,6 +324,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         raise OnboardingTextError(f"{_TEXT_FILE}: must be a mapping with version 1")
 
     prompts = _str_map(doc, "prompts", _PROMPT_KEYS)
+    reprompts = _str_map(doc, "reprompts", _PROMPT_KEYS)
     labels = _str_map(doc, "persona_labels", tuple(p.value for p in PERSONA_CHOICES))
     persona_aliases_raw = _section(doc, "persona_aliases")
     persona_aliases = {
@@ -367,6 +377,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         raise OnboardingTextError(f"{_TEXT_FILE}: sensitive_notice takes no slots")
     for where, texts in (
         ("prompts", prompts),
+        ("reprompts", reprompts),
         ("hints", hints),
         ("outcomes", outcomes),
         ("health_command", health),
@@ -380,6 +391,7 @@ def load_onboarding_text(directory: Path | None = None) -> OnboardingText:
         consent_sentence=_nonempty_str(doc.get("consent_sentence"), "consent_sentence"),
         sensitive_notice=notice,
         prompts=MappingProxyType(prompts),
+        reprompts=MappingProxyType(reprompts),
         choices=MappingProxyType(choices),
         persona_labels=MappingProxyType({p: labels[p.value] for p in PERSONA_CHOICES}),
         persona_aliases=MappingProxyType(persona_aliases),
@@ -604,10 +616,23 @@ class OnboardingFlow:
         return self._step
 
     def prompt(self) -> Prompt:
+        """The question for the current step. After a reply that was not understood, the
+        hint and the question alone (``reprompts``), never the whole explanation again
+        (dogfood P1); the options are listed either way."""
         self._ensure_running()
         body, options = self._question()
-        text = f"{self._hint}\n\n{body}" if self._hint else body
-        return Prompt(self._step, text, options)
+        if self._hint:
+            question = self._render(
+                self._text.reprompts[self._prompt_key()], system_timezone=system_timezone()
+            )
+            return Prompt(self._step, f"{self._hint}\n\n{question}", options)
+        return Prompt(self._step, body, options)
+
+    def _prompt_key(self) -> str:
+        """The ``prompts`` / ``reprompts`` key for the current step."""
+        if self._step is Step.TIMEZONE:
+            return "timezone_free" if self._country == UNKNOWN_COUNTRY else "timezone_choice"
+        return self._step.value
 
     def answer(self, text: str) -> Prompt | Completed | Refused:
         self._ensure_running()
@@ -761,14 +786,17 @@ class OnboardingFlow:
         reply = _fold(text)
         choices = TIMEZONE_CHOICES[self._country]
         zone: str | None
-        if self._country == UNKNOWN_COUNTRY and reply == "":
+        free = self._country == UNKNOWN_COUNTRY
+        if free and (reply == "" or is_skip(self._text, text)):  # dogfood P2: 「跳过」 too
             zone = system_timezone()
         elif reply.isdigit() and 1 <= int(reply) <= len(choices):
             zone = choices[int(reply) - 1]
         else:
             zone = canonical_timezone(text)
         if zone is None:
-            self._hint = self._text.hints["timezone_invalid"]
+            # Without a numbered list on screen, the hint does not ask for a number (P2).
+            key = "timezone_free_invalid" if free else "timezone_invalid"
+            self._hint = self._render(self._text.hints[key], system_timezone=system_timezone())
             return
         self._timezone = zone
         self._after_location()

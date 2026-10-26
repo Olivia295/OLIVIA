@@ -34,6 +34,7 @@ from olivia.core.memory.forget import DataStores, load_forget_text
 from olivia.core.memory.ledger import (
     LEDGER_DIRNAME,
     LEDGER_STORE,
+    NOTE_MAX_CHARS,
     JournalEntry,
     Ledger,
     MethodRecord,
@@ -41,7 +42,7 @@ from olivia.core.memory.ledger import (
     SessionSummary,
 )
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, CarriedState, KitEntry, StateStore
-from olivia.core.methods.bandit import Feedback
+from olivia.core.methods.bandit import Feedback, ThompsonSampler
 from olivia.core.models import CrisisLevel, HelpStage
 from olivia.core.taxonomy import load_taxonomy
 
@@ -239,8 +240,8 @@ def _assert_profile_readable(home: Path) -> None:
     ("flag", "menu", "done", "stores"),
     [
         ("--ledger", "2", "done_ledger", (LEDGER_STORE, CARE_STORE)),
-        ("--kit", "3", "done_kit", (STATE_STORE,)),
-        ("--safety-plan", "4", "done_safety_plan", (SAFETY_PLAN_STORE,)),
+        ("--kit", "4", "done_kit", (STATE_STORE,)),
+        ("--safety-plan", "5", "done_safety_plan", (SAFETY_PLAN_STORE,)),
     ],
 )
 @pytest.mark.parametrize("via_menu", [False, True])
@@ -335,11 +336,40 @@ def test_one_entry_from_the_menu(run_cli, data_home):
     assert _entries(data_home) == (2, 0)
 
 
-def test_an_entry_number_that_does_not_exist(run_cli, data_home):
+@pytest.mark.parametrize("number", ["4", "99", "0"])
+def test_an_entry_number_that_does_not_exist_is_a_wrong_value(run_cli, data_home, number):
+    """Dogfood P4: a value the command cannot place is exit 2 (README "退出码")."""
     _populate(data_home)
-    run = run_cli(["forget", "--entry", "4", "--yes"])
-    assert run.code == 1 and run.lines == [F["no_entry"].replace("{n}", "4")]
+    run = run_cli(["forget", "--entry", number, "--yes"])
+    assert run.code == 2 and run.lines == [F["no_entry"].replace("{n}", number)]
     assert _entries(data_home) == (3, 0)
+
+
+def test_a_number_typed_at_the_prompt_that_does_not_exist_is_exit_1(run_cli, data_home):
+    """Typed at the prompt, not on the command line: nothing done, exit 1."""
+    _populate(data_home)
+    run = run_cli(["forget"], ["1", "9"])
+    assert run.code == 1 and run.lines[-1] == F["no_entry"].replace("{n}", "9")
+    assert _entries(data_home) == (3, 0)
+
+
+@pytest.mark.parametrize("word", ["确认", "确定", " 确定 "])
+def test_forgetting_one_entry_shows_it_first_and_takes_either_word(run_cli, data_home, word):
+    """Dogfood P4: the entry is shown as ``olivia memory`` shows it before the question,
+    and 「确定」 confirms as well as 「确认」."""
+    _populate(data_home)
+    run = run_cli(["forget", "--entry", "2"], [word])
+    assert run.code == 0
+    note_day = (NOW - timedelta(days=1)).date().isoformat()
+    about = run.lines.index(F["about_entry"].replace("{n}", "2"))
+    assert run.lines[about + 1 : about + 3] == [
+        "2. " + M["note"].replace("{date}", note_day),
+        f"   {NOTE}",
+    ]
+    assert run.lines[about + 3] == F["confirm"]
+    assert run.lines[-1] == F["done_entry"].replace("{n}", "2")
+    entries = Ledger(data_home, Vault(data_home)).entries()
+    assert len(entries) == 2 and not any(isinstance(e, NoteEntry) for e in entries)
 
 
 # -- olivia forget --all ----------------------------------------------------------------------
@@ -398,7 +428,7 @@ def test_after_all_the_next_chat_starts_onboarding(run_cli, data_home, tmp_path)
 
 def test_all_from_the_menu(run_cli, data_home, keychain):
     _populate(data_home)
-    run = run_cli(["forget"], ["5", YES])
+    run = run_cli(["forget"], ["6", YES])
     assert run.code == 0 and run.lines[-1] == F["done_all"]
     assert files_under(data_home) == [] and keychain.items == {}
 
@@ -458,11 +488,13 @@ def test_all_beside_a_refusal_record_removes_the_rest(run_cli, data_home, keycha
     [
         (["forget", "--all"], ["好的"]),  # anything but the word
         (["forget", "--all"], []),  # end of input at the confirmation
-        (["forget", "--ledger"], ["确定"]),
+        (["forget", "--ledger"], ["好"]),
+        (["forget", "--entry", "2"], ["确认一下"]),
         (["forget", "--entry", "1"], []),
         (["forget"], []),  # end of input at the menu
         (["forget"], [""]),  # just Enter
-        (["forget"], ["5"]),  # picked, then end of input
+        (["forget"], ["6"]),  # picked, then end of input
+        (["forget"], ["3", ""]),  # no method picked
         (["forget"], ["1", ""]),  # no entry picked
     ],
 )
@@ -515,3 +547,173 @@ def test_flags_are_mutually_exclusive(run_cli):
     with pytest.raises(SystemExit) as raised:
         run_cli(["forget", "--all", "--kit"])
     assert raised.value.code == 2
+
+
+# -- the taboo topics in olivia memory (dogfood P9) -------------------------------------------
+
+
+def test_memory_names_the_taboo_topics_by_count_only(run_cli, data_home):
+    save_profile(data_home, taboo_topics=("前任", "体重"))
+    run = run_cli(["memory"])
+    assert run.code == 0
+    assert "- " + M["taboo"].replace("{count}", "2") in run.lines
+    assert "前任" not in run.out and "体重" not in run.out
+
+
+# -- method preferences, one at a time (PRD RSK-06) ------------------------------------------
+
+GROUNDING, PMR = "30:grounding", "29:pmr_release"
+
+
+def _learned(home: Path) -> None:
+    """A helpful 5-4-3-2-1 in two spectra and a recent "not for me" for the muscle
+    relaxation, learned the way a chat learns them, and one card in the kit."""
+    sampler = ThompsonSampler(load_taxonomy())
+    sampler.update(GROUNDING, "05", Feedback.HELPFUL, NOW - timedelta(days=3))
+    sampler.update(GROUNDING, "02", Feedback.HELPFUL, NOW - timedelta(days=3))
+    sampler.update(PMR, "05", Feedback.UNHELPFUL, NOW - timedelta(days=1))
+    state = CarriedState(sampler.to_dict(), (KitEntry(PMR, NOW),))
+    assert StateStore(home, ProfileStore(home).vault).save(state)
+
+
+def _titles() -> dict[str, str]:
+    return cli._card_titles(load_taxonomy())
+
+
+def _preference_line(n: int, action_id: str, status: str) -> str:
+    item = M["preference_item"].replace("{n}", str(n)).replace("{title}", _titles()[action_id])
+    return "   " + item.replace("{status}", M[status])
+
+
+def _ordered() -> list[str]:
+    return sorted([GROUNDING, PMR], key=lambda aid: (_titles()[aid], aid))
+
+
+def test_memory_lists_each_method_with_a_plain_status_and_no_numbers(run_cli, data_home):
+    save_profile(data_home)
+    _learned(data_home)
+    run = run_cli(["memory"])
+    assert run.code == 0
+    status = {GROUNDING: "preference_helpful", PMR: "preference_unhelpful_recently"}
+    at = run.lines.index(f"- {M['preferences']}")
+    expected = [_preference_line(n, aid, status[aid]) for n, aid in enumerate(_ordered(), 1)]
+    assert run.lines[at + 1 : at + 3] == expected
+    for raw in ("alpha", "beta", ".0", GROUNDING, PMR):
+        assert raw not in run.out, raw
+
+
+def test_a_not_for_me_reads_as_recovered_once_it_has_decayed(run_cli, data_home):
+    save_profile(data_home)
+    _learned(data_home)
+    later = NOW + timedelta(days=60)
+    run = run_cli(["memory"], now=later)
+    n = _ordered().index(PMR) + 1
+    assert _preference_line(n, PMR, "preference_recovered") in run.lines
+
+
+@pytest.mark.parametrize("via_menu", [False, True])
+def test_one_method_is_reset_in_every_spectrum_and_crypto_shredded(
+    run_cli, data_home, tmp_path, via_menu
+):
+    save_profile(data_home, **HEALTH)
+    _learned(data_home)
+    aside = tmp_path / "aside"
+    _copy(data_home, [STATE_FILENAME, _key(STATE_STORE)], aside)
+    n = str(_ordered().index(GROUNDING) + 1)
+    argv, lines = (["forget"], ["3", n, "确定"]) if via_menu else (["forget", "--method", n], [YES])
+    run = run_cli(argv, lines)
+    title = _titles()[GROUNDING]
+    assert run.code == 0, run.out
+    assert F["about_method"].replace("{title}", title) in run.lines
+    assert run.lines[-1] == F["done_method"].replace("{title}", title)
+
+    state = StateStore(data_home, Vault(data_home)).load()
+    assert state is not None and [e.action_id for e in state.kit] == [PMR]  # the kit stays
+    spectra = state.bandit["spectra"]
+    assert isinstance(spectra, dict)
+    assert all(GROUNDING not in arms for arms in spectra.values())
+    assert PMR in spectra["05"]  # the other method stays
+    _assert_profile_readable(data_home)
+
+    # The old file and its old key file, copied back, never open again.
+    _restore(data_home, aside)
+    assert StateStore(data_home, Vault(data_home)).load() is None
+
+
+@pytest.mark.parametrize("number", ["3", "0"])
+def test_a_method_number_that_does_not_exist_is_a_wrong_value(run_cli, data_home, number):
+    save_profile(data_home)
+    _learned(data_home)
+    before = (data_home / STATE_FILENAME).read_bytes()
+    run = run_cli(["forget", "--method", number, "--yes"])
+    assert run.code == 2 and run.lines == [F["no_method"].replace("{n}", number)]
+    assert (data_home / STATE_FILENAME).read_bytes() == before
+
+
+def test_no_method_preferences_to_reset(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["forget", "--method", "1"])
+    assert run.code == 0 and run.lines == [F["nothing_method"]]
+
+
+# -- editing a note (PRD feature 5) -----------------------------------------------------------
+
+NEW_NOTE = "下周四面试，改到了下午三点"
+
+
+def test_editing_a_note_replaces_it_and_crypto_shreds_the_old_words(run_cli, data_home, tmp_path):
+    _populate(data_home)
+    (note,) = Ledger(data_home, Vault(data_home)).notes()
+    note_file = f"{LEDGER_DIRNAME}/{note.entry_id}.olv"
+    aside = tmp_path / "aside"
+    _copy(data_home, [note_file, _key(LEDGER_STORE)], aside)
+
+    run = run_cli(["memory", "--edit", "2"], [NEW_NOTE, "确定"])
+    assert run.code == 0, run.out
+    assert M["edit_current"].replace("{n}", "2") in run.lines and f"   {NOTE}" in run.lines
+    assert run.lines[-1] == M["edit_done"].replace("{n}", "2")
+    (edited,) = Ledger(data_home, Vault(data_home)).notes()
+    assert (edited.entry_id, edited.created_at, edited.text) == (
+        note.entry_id,
+        note.created_at,
+        NEW_NOTE,
+    )
+    assert _entries(data_home) == (3, 0)  # the other entries are kept
+    _assert_state_readable(data_home)
+    _assert_plan_readable(data_home)
+
+    # The old ciphertext, even with the old key file, never opens again.
+    _restore(data_home, aside)
+    assert all(n.text != NOTE for n in Ledger(data_home, Vault(data_home)).notes())
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [[""], [], [NOTE], [NEW_NOTE, "不改了"], [NEW_NOTE]],
+    ids=["enter", "end", "same", "no-word", "end-at-confirm"],
+)
+def test_editing_changes_nothing_without_new_words_and_the_word(run_cli, data_home, lines):
+    _populate(data_home)
+    before = {p: p.read_bytes() for p in files_under(data_home)}
+    run = run_cli(["memory", "--edit", "2"], lines)
+    assert run.code == 0
+    assert run.lines[-1] in (M["edit_unchanged"], F["cancelled"])
+    assert {p: p.read_bytes() for p in files_under(data_home)} == before
+
+
+def test_a_too_long_edit_is_said_and_can_be_written_again(run_cli, data_home):
+    _populate(data_home)
+    run = run_cli(["memory", "--edit", "2"], ["长" * (NOTE_MAX_CHARS + 1), NEW_NOTE, YES])
+    assert run.code == 0
+    assert M["edit_too_long"].replace("{count}", str(NOTE_MAX_CHARS)) in run.lines
+    (edited,) = Ledger(data_home, Vault(data_home)).notes()
+    assert edited.text == NEW_NOTE
+
+
+@pytest.mark.parametrize(("number", "wording"), [("1", M["edit_not_note"]), ("9", F["no_entry"])])
+def test_only_a_note_that_exists_can_be_edited(run_cli, data_home, number, wording):
+    _populate(data_home)
+    before = {p: p.read_bytes() for p in files_under(data_home)}
+    run = run_cli(["memory", "--edit", number], [NEW_NOTE, YES])
+    assert run.code == 2 and run.lines == [wording.replace("{n}", number)]
+    assert {p: p.read_bytes() for p in files_under(data_home)} == before

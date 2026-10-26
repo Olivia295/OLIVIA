@@ -14,8 +14,10 @@ goes through ``chat --rules --inspect`` (onboarding with the health consent and 
 item, an opening self-rating, a message, a card and its feedback, a note "记住：……", a
 crisis turn), ``health``, ``safety-plan``, ``journal``, ``stats``, ``memory``, ``privacy``, a second
 ``chat --inspect`` (care greeting, model path: the default since F7, and a question about
-the note, "周四要见的那个人是谁来着", F15), ``health`` twice more (a clinical-history code in
-and a checklist item out, then ``0``: delete everything), then ``forget --all``.
+the note, "周四要见的那个人是谁来着", F15), ``memory --edit`` (the note rewritten, PRD
+feature 5), ``forget --method`` (one method's preference reset, RSK-06), ``health`` twice
+more (a clinical-history code in and a checklist item out, then ``0``: delete
+everything), then ``forget --all``.
 
 The real OS keychain is never reached: ``PYTHON_KEYRING_BACKEND`` names keyring's failing
 backend before ``keyring`` is imported, ``keyring.get_keyring`` is replaced by a function
@@ -78,6 +80,13 @@ health-cleared-shredded [mode]
     deleting health information is a crypto-shred, and a damaged main file can never
     bring it back. Not vacuous: the items are read from the sealed profile beforehand,
     and the same search must find them there just before the deletion.
+edit-and-reset-erase [mode]
+    After ``memory --edit`` the note reads back with its new words only, and after
+    ``forget --method`` the preference is gone; with the old note file, the old
+    ``state.bin`` and their old key files copied back (into a copy of ``OLIVIA_HOME``
+    elsewhere), neither the old words nor the old preferences open: both were
+    crypto-shredded, not just overwritten. The new words are also part of the typed text
+    every check above searches for.
 forget-all-clean [mode]
     After ``forget --all --yes`` no file is left under ``OLIVIA_HOME`` and the keychain
     holds no item.
@@ -99,6 +108,7 @@ import io  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import random  # noqa: E402
+import shutil  # noqa: E402
 import socket  # noqa: E402
 import sys  # noqa: E402
 import tempfile  # noqa: E402
@@ -132,8 +142,9 @@ from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
 from olivia.core.crypto.errors import CryptoError  # noqa: E402
 from olivia.core.crypto.keychain import KeyBackend  # noqa: E402
 from olivia.core.crypto.vault import KEYS_DIRNAME, Vault  # noqa: E402
-from olivia.core.memory.ledger import LEDGER_DIRNAME  # noqa: E402
-from olivia.core.memory.state import STATE_FILENAME  # noqa: E402
+from olivia.core.memory.forget import load_forget_text  # noqa: E402
+from olivia.core.memory.ledger import LEDGER_DIRNAME, LEDGER_STORE, Ledger  # noqa: E402
+from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, StateStore  # noqa: E402
 from olivia.core.memory.text import load_memory_text  # noqa: E402
 from olivia.core.session import Session, TurnResult  # noqa: E402
 from olivia.core.taxonomy import load_taxonomy  # noqa: E402
@@ -184,6 +195,7 @@ AGENT_NAME: Final = "阿屿"
 TABOO: Final = ("老家的房子", "相亲")
 MESSAGES: Final = ("这几天加班到深夜，脑袋一直嗡嗡作响", "给我一个方法")
 NOTE: Final = "周四下午要去见搬家公司的人"
+EDITED_NOTE: Final = "改到周五上午见搬家师傅老秦"
 CRISIS: Final = "我写了一封遗书"
 SECOND_MESSAGE: Final = "今晚还是睡不着，翻来覆去地想白天的事"
 RECALL_QUESTION: Final = "周四要见的那个人是谁来着"
@@ -203,6 +215,7 @@ ALL_TYPED: Final = (
     *PROFILE_TYPED,
     *MESSAGES,
     NOTE,
+    EDITED_NOTE,
     CRISIS,
     SECOND_MESSAGE,
     RECALL_QUESTION,
@@ -749,6 +762,7 @@ class Run:
     keychain_seen: list[tuple[str, str]] = field(default_factory=list)
     left_after_forget: list[str] = field(default_factory=list)
     keychain_after: dict[str, str] = field(default_factory=dict)
+    erase_problems: list[str] = field(default_factory=list)
     network: list[str] = field(default_factory=list)
     user_dir_calls: int = 0
     outside_home: list[str] = field(default_factory=list)
@@ -848,6 +862,52 @@ def _clear_health(run: Run, home: Path, backend: MemoryKeychain) -> None:
     run.health_items = sorted(items)
 
 
+def _old_copies_open(home: Path, old: Mapping[str, bytes]) -> list[str]:
+    """Put the files in ``old`` (relative paths) back into a copy of ``home`` made outside
+    the audit's temporary root, and say what of the old data still opens there."""
+    problems = []
+    with tempfile.TemporaryDirectory(prefix="olivia-privacy-audit-old-") as aside:
+        copy = Path(aside) / "home"
+        shutil.copytree(home, copy)
+        for rel, data in old.items():
+            target = copy / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        if any(n.text == NOTE for n in Ledger(copy, Vault(copy)).notes()):
+            problems.append("the old note opens again with its old files")
+        if StateStore(copy, Vault(copy)).load() is not None:
+            problems.append("the old preferences open again with their old files")
+    return problems
+
+
+def _edit_and_reset(home: Path, run: Run, backend: MemoryKeychain) -> None:
+    """``memory --edit`` on the note, then ``forget --method 1``; see the module docstring."""
+    note_files = sorted((home / LEDGER_DIRNAME).glob("*.olv"))
+    old_paths = [
+        *note_files,
+        home / STATE_FILENAME,
+        home / KEYS_DIRNAME / f"{LEDGER_STORE}.key",
+        home / KEYS_DIRNAME / f"{STATE_STORE}.key",
+    ]
+    old = {p.relative_to(home).as_posix(): p.read_bytes() for p in old_paths if p.is_file()}
+    entries = Ledger(home, Vault(home)).entries()
+    number = next((i for i, e in enumerate(entries, 1) if getattr(e, "text", None) == NOTE), 0)
+    problems = [] if number else ["no note to edit"]
+    edit = _invoke(["memory", "--edit", str(number)], [EDITED_NOTE, "确认"])
+    run.captures.append(edit)
+    run.record(home, backend.items)
+    reset = _invoke(["forget", "--method", "1"], ["确定"])
+    run.captures.append(reset)
+    run.record(home, backend.items)
+    if [n.text for n in Ledger(home, Vault(home)).notes()] != [EDITED_NOTE]:
+        problems.append("the edited note does not read back with its new words")
+    done = load_forget_text().forget["done_method"].split("{title}")[-1]
+    if done not in reset.console:
+        problems.append("no method preference was reset")
+    problems += _old_copies_open(home, old)
+    run.erase_problems = problems
+
+
 def run_scripted(whole: bool) -> Run:
     """One scripted run in a fresh temporary ``OLIVIA_HOME``; see the module docstring."""
     run = Run(whole)
@@ -874,6 +934,7 @@ def run_scripted(whole: bool) -> Run:
             for argv, lines in script(whole):
                 run.captures.append(_invoke(argv, lines))
                 run.record(home, backend.items)
+            _edit_and_reset(home, run, backend)
             _clear_health(run, home, backend)
             run.captures.append(_invoke(["forget", "--all", "--yes"], []))
             run.left_after_forget = sorted(
@@ -961,6 +1022,13 @@ def run_checks(run: Run) -> list[Result]:
             f"health-cleared-shredded [{mode}]",
             erasure,
             f"{len(run.health_items)} health item(s) recorded, none opens after 0",
+        )
+    )
+    results.append(
+        _result(
+            f"edit-and-reset-erase [{mode}]",
+            run.erase_problems,
+            "old note and old preferences do not open with their old files",
         )
     )
     forget = [f"file left: {rel}" for rel in run.left_after_forget]

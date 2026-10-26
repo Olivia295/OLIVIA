@@ -23,6 +23,7 @@ from olivia.core.chang.safety_plan import (
     clean_phone,
     crisis_block,
     load_safety_plan_text,
+    split_contact,
 )
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
 from olivia.core.crypto.vault import Vault
@@ -84,6 +85,24 @@ def test_phone_cleaning(raw, cleaned):
 
 
 # -- wording ----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("表姐 13800000000", ("表姐", "13800000000")),  # dogfood I10
+        ("表姐13800000000", ("表姐", "13800000000")),
+        ("阿青：138-0000-0000", ("阿青", "138-0000-0000")),
+        ("阿青, +86 138 0000 0000", ("阿青", "+86 138 0000 0000")),
+        ("小王2号 13900000000", ("小王2号", "13900000000")),
+        ("阿青 (010) 1234-5678", ("阿青", "(010) 1234-5678")),
+        ("１３８００００００００", ("", "13800000000")),  # a phone number alone
+        ("小王2号", ("小王2号", "")),  # too few digits for a phone
+        ("  表  姐  ", ("表 姐", "")),
+    ],
+)
+def test_split_contact(raw, expected):
+    assert split_contact(raw) == expected
 
 
 def test_first_run_notice_says_where_it_stays_and_how_to_delete_it():

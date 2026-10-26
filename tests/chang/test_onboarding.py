@@ -636,8 +636,11 @@ def test_consent_comes_after_a_standalone_notice(tmp_path):
     assert isinstance(consent, Prompt) and consent.step is Step.CLINICAL_CONSENT
     assert notice in consent.text
     assert consent.text.index(notice) < consent.text.index(TEXT.consent_sentence)
-    again = flow.answer("好")  # the hint keeps the notice on screen
-    assert isinstance(again, Prompt) and notice in again.text
+    # A reply that is not the sentence: the hint and the sentence again, not the whole
+    # notice (dogfood P1); it was shown just above, before the first ask.
+    again = flow.answer("好")
+    assert isinstance(again, Prompt) and again.step is Step.CLINICAL_CONSENT
+    assert notice not in again.text and TEXT.consent_sentence in again.text
 
 
 def test_notice_wording_is_marked_for_legal_review():
@@ -861,3 +864,93 @@ def test_text_loader_rejects_missing_and_unknown_slots(tmp_path):
     shutil.rmtree(tmp_path)
     with pytest.raises(OnboardingTextError):
         load_onboarding_text(tmp_path)
+
+
+# -- a wrong answer repeats only the question (dogfood P1, P2) ---------------------------------
+
+
+def _reach(flow: OnboardingFlow, step: Step) -> Prompt:
+    """Answer with the defaults until ``step`` is asked."""
+    defaults = {
+        Step.DISCLAIMER: "1",
+        Step.AGE_GATE: "1",
+        Step.REGION: "1",
+        Step.CLINICAL_CONSENT: TEXT.consent_sentence,
+        Step.CLINICAL_HISTORY: "",
+    }
+    prompt = flow.prompt()
+    while flow.step is not step:
+        result = flow.answer(defaults.get(flow.step, ""))
+        assert isinstance(result, Prompt)
+        prompt = result
+    return prompt
+
+
+@pytest.mark.parametrize(
+    ("step", "wrong", "hint"),
+    [
+        (Step.DISCLAIMER, "嗯", "unrecognized"),
+        (Step.AGE_GATE, "也许", "unrecognized"),
+        (Step.ENCRYPTION, "随便", "unrecognized"),
+        (Step.USER_NAME, "名" * 13, None),
+        (Step.PERSONA, "开心果", "persona_choice"),
+        (Step.REGION, "火星", "unrecognized"),
+        (Step.CLINICAL_CONSENT, "好", "consent_unrecognized"),
+        (Step.CLINICAL_HISTORY, "99", None),
+        (Step.CONTRAINDICATIONS, "99", None),
+    ],
+)
+def test_a_wrong_answer_repeats_only_the_question(tmp_path, step, wrong, hint):
+    flow = _flow(tmp_path)
+    first = _reach(flow, step)
+    again = flow.answer(wrong)
+    assert isinstance(again, Prompt) and again.step is step
+    if hint is not None:
+        assert again.text.startswith(TEXT.hints[hint])
+    reprompt = onb.fill_slots(
+        TEXT.reprompts[step.value], user_name="朋友", consent_sentence=TEXT.consent_sentence
+    )
+    assert again.text.endswith(reprompt)
+    assert again.options == first.options  # the choices are still there to pick from
+    # The long paragraphs are not printed again (probe.txt: the health notice, every time).
+    assert TEXT.sensitive_notice not in again.text
+    assert first.text.split("\n\n")[0] not in again.text
+
+
+def test_the_consent_retry_still_shows_the_sentence_to_type(tmp_path):
+    flow = _flow(tmp_path)
+    _reach(flow, Step.CLINICAL_CONSENT)
+    again = flow.answer("好")
+    assert TEXT.consent_sentence in again.text
+    assert isinstance(flow.answer(TEXT.consent_sentence), Prompt)
+    assert flow.step is Step.CLINICAL_HISTORY
+
+
+@pytest.mark.parametrize("reply", ["跳过", "不想说", ""])
+def test_other_region_can_skip_the_timezone(tmp_path, monkeypatch, reply):
+    """Dogfood P2: 「跳过」 was refused with a hint about numbers that were not shown."""
+    monkeypatch.setattr(onb, "system_timezone", lambda: "Asia/Tokyo")
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    prompt = flow.answer("9")
+    assert "跳过" in prompt.text
+    result = _walk(flow, [reply, ""])
+    assert isinstance(result, Completed)
+    assert result.profile.region == UserRegion(country_code="ZZ", timezone="Asia/Tokyo")
+
+
+def test_other_region_timezone_hint_matches_what_is_on_screen(tmp_path, monkeypatch):
+    monkeypatch.setattr(onb, "system_timezone", lambda: "Asia/Tokyo")
+    flow = _flow(tmp_path)
+    _to_region(flow)
+    flow.answer("9")
+    again = flow.answer("Mars/Olympus")
+    assert again.step is Step.TIMEZONE and again.options == ()
+    hint = onb.fill_slots(TEXT.hints["timezone_free_invalid"], system_timezone="Asia/Tokyo")
+    assert again.text.startswith(hint)
+    assert "序号" not in again.text  # there are no numbers to pick here
+    # Where numbers are shown, the hint may name them.
+    us = _flow(tmp_path / "us")
+    _to_region(us)
+    us.answer("5")
+    assert us.answer("Mars/Olympus").text.startswith(TEXT.hints["timezone_invalid"])

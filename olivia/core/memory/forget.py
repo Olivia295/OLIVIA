@@ -1,17 +1,25 @@
-"""Seeing and forgetting what OLIVIA remembers (next-phase step B5; PRD JTBD 4, MIYI-05).
+"""Seeing, editing and forgetting what OLIVIA remembers (next-phase step B5; PRD JTBD 4,
+MIYI-05, feature 5, RSK-06).
 
 ``olivia memory`` (:func:`run_memory`) shows, on screen only, what this device holds: the
 ledger entries oldest first and numbered, each as its templated summary (a session, or a
 B6 journal record: offered, seen or declined, helpful or not) or, for a note, the
 user's words verbatim (``Ledger.body``; dates and times in the profile's current timezone,
-PRD Q-8), then the other data by name only (the
-profile, whether health information is filled in, whether a safety plan exists, how
-many cards the kit holds, whether method preferences were learned, whether a care
-marker waits). Health details and the plan itself are never printed here: they have
-their own commands. Entries that do not open are counted, never shown. Nothing is
-written and nothing is exported.
+PRD Q-8), then the other data by name only (the profile, how many taboo topics it holds,
+whether health information is filled in, whether a safety plan exists, how many cards the
+kit holds, whether a care marker waits). The method preferences are listed one method at
+a time, by the card title the user saw, each with one plain sentence and never a number
+(``memory/preferences.py``, RSK-06); their numbers are the ones ``forget --method`` takes.
+Health details, the topics and the plan itself are never printed here: they have their
+own commands. Entries that do not open are counted, never shown. Nothing is written and
+nothing is exported.
 
-``olivia forget`` (:func:`run_forget`) removes one of five things, picked from a numbered
+``olivia memory --edit N`` (:func:`run_edit`) changes the words of note ``N``: the current
+words, then the new ones, then the typed confirmation; ``Ledger.edit_note`` re-keys the
+ledger like a single-entry forget, so the old words are crypto-shredded. A summary or
+journal record is the program's own templated record and cannot be edited.
+
+``olivia forget`` (:func:`run_forget`) removes one of six things, picked from a numbered
 menu or by a flag (:class:`Target`):
 
 1. one ledger entry, by the number ``olivia memory`` shows: ``Ledger.forget_entry``
@@ -19,27 +27,33 @@ menu or by a flag (:class:`Target`):
    staging store, the old key is shredded), so the entry's old ciphertext never opens
    again; entries that no longer open are dropped and counted;
 2. every chat record: the ledger (``Ledger.shred``) and the care marker (``CareStore.shred``);
-3. the kit and the method preferences (``StateStore.shred``);
-4. the safety plan (``SafetyPlanStore.shred``);
-5. everything (:func:`forget_all`): ``Vault.shred_all`` destroys every wrapped data key
+3. one method's preference, by the number ``olivia memory`` lists it under: its posterior
+   is removed in every spectrum and the state re-sealed under a fresh key
+   (``StateStore.rekey``), the kit and the other methods kept;
+4. the kit and the method preferences (``StateStore.shred``);
+5. the safety plan (``SafetyPlanStore.shred``);
+6. everything (:func:`forget_all`): ``Vault.shred_all`` destroys every wrapped data key
    and the master key in the OS keychain first, then every file this package writes is
    removed (:data:`DATA_FILES`, :data:`DATA_DIRS`, stray temporary files), the profile
    and its snapshots included, so the next ``olivia chat`` starts onboarding afresh;
    first, the ``on_forget_all`` hooks run (the CLI passes the B9 one, which removes the
    reminder job and its "last notified" file).
 
-Options 1-4 crypto-shred: the store's data key is destroyed and the master key rotated
+Options 1-5 crypto-shred: the store's data key is destroyed and the master key rotated
 (``Vault.shred``), so a copy of the old ciphertext, or of the old key file, never opens
 again. They need the keychain to answer, so while it is locked nothing is changed. A
 store added later must register its files in :data:`DATA_FILES` or :data:`DATA_DIRS`
 (the CLI test that runs a whole chat and then ``forget --all`` checks that nothing is
 left).
 
-Every deletion asks for the typed confirmation word unless ``assume_yes``; end of input
-cancels. An age-gate refusal record (a declared minor, ruling 22) holds no personal data
-and is kept, so forgetting never reopens onboarding there; ``--all`` removes anything
-else and says in one line that this record stays and why. All wording is in
-``olivia/data/templates/forget.yaml`` (G-0 draft). Nothing here logs.
+Every deletion (and an edit) first shows what it removes and asks for the typed
+confirmation word, 「确认」 or 「确定」, unless ``assume_yes``; anything else or the end of
+input cancels and says so. A number given on the command line (``--entry``, ``--method``,
+``--edit``) that names nothing is a wrong value, exit 2 (README "退出码"); one typed at a
+prompt is exit 1. An age-gate refusal record (a declared minor, ruling 22) holds no
+personal data and is kept, so forgetting never reopens onboarding there; ``--all``
+removes anything else and says in one line that this record stays and why. All wording
+is in ``olivia/data/templates/forget.yaml`` (G-0 draft). Nothing here logs.
 """
 
 from __future__ import annotations
@@ -48,8 +62,8 @@ import contextlib
 import re
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
-from datetime import tzinfo
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, tzinfo
 from enum import Enum, StrEnum
 from functools import cache
 from importlib import resources
@@ -78,14 +92,22 @@ from olivia.core.crypto.vault import KEYS_DIRNAME, Vault
 from olivia.core.memory.ledger import (
     LEDGER_DIRNAME,
     LEDGER_STORE,
+    NOTE_MAX_CHARS,
     Ledger,
     LedgerEntry,
     LedgerUnavailableError,
     NoteEntry,
 )
-from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, StateStore
+from olivia.core.memory.preferences import (
+    MethodPreference,
+    PreferenceStatus,
+    method_preferences,
+    without_method,
+)
+from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, CarriedState, StateStore
 from olivia.core.models import PersonaProfile
 from olivia.core.storage import app_data_dir, remove_file
+from olivia.core.taxonomy import Taxonomy, load_taxonomy
 from olivia.core.yaml_load import safe_load
 
 DATA_FILES: Final = (
@@ -102,7 +124,7 @@ DATA_DIRS: Final = (LEDGER_DIRNAME, KEYS_DIRNAME, ".snapshots")
 
 _TEXT_FILE: Final = "forget.yaml"
 _SLOT_RE: Final = re.compile(r"\{([^{}]*)\}")
-_ALLOWED_SLOTS: Final = frozenset({"n", "count", "date"})
+_ALLOWED_SLOTS: Final = frozenset({"n", "count", "date", "title", "status"})
 _MEMORY_KEYS: Final = (
     "heading",
     "empty",
@@ -112,12 +134,24 @@ _MEMORY_KEYS: Final = (
     "profile",
     "health",
     "safety_plan",
+    "taboo",
     "kit",
     "preferences",
+    "preference_item",
+    "preference_unhelpful_recently",
+    "preference_helpful",
+    "preference_recovered",
     "state_unreadable",
     "care",
     "nothing_else",
     "hint",
+    "edit_current",
+    "edit_prompt",
+    "edit_too_long",
+    "edit_not_note",
+    "edit_about",
+    "edit_done",
+    "edit_unchanged",
     "no_keychain",
     "locked",
     "adults_only",
@@ -126,10 +160,16 @@ _FORGET_KEYS: Final = (
     "menu",
     "entry",
     "ledger",
+    "method",
     "kit",
     "safety_plan",
     "all",
     "pick_entry",
+    "pick_method",
+    "no_method",
+    "nothing_method",
+    "about_method",
+    "done_method",
     "unknown_choice",
     "no_entry",
     "about_entry",
@@ -139,6 +179,7 @@ _FORGET_KEYS: Final = (
     "about_all",
     "confirm",
     "confirm_word",
+    "confirm_also",
     "cancelled",
     "done_entry",
     "done_entry_dropped",
@@ -168,6 +209,7 @@ class Target(StrEnum):
 
     ENTRY = "entry"
     LEDGER = "ledger"
+    METHOD = "method"
     KIT = "kit"
     SAFETY_PLAN = "safety_plan"
     ALL = "all"
@@ -232,8 +274,9 @@ def _load_text(base: Traversable | Path) -> ForgetText:
         raise ForgetTextError(f"{_TEXT_FILE}: sections must be version, memory and forget")
     memory = _section(doc, "memory", _MEMORY_KEYS)
     forget = _section(doc, "forget", _FORGET_KEYS)
-    if forget["confirm_word"] not in forget["confirm"]:
-        raise ForgetTextError(f"{_TEXT_FILE}: forget.confirm must name the confirm_word")
+    for word in ("confirm_word", "confirm_also"):
+        if forget[word] not in forget["confirm"]:
+            raise ForgetTextError(f"{_TEXT_FILE}: forget.confirm must name the {word}")
     return ForgetText(memory, forget)
 
 
@@ -261,6 +304,13 @@ class DataStores:
     on_forget_all: tuple[Callable[[], object], ...] = ()
     """Run by ``forget --all`` before the files go: what lives outside the data
     directory (the B9 reminder job). Each handles its own failures."""
+    method_titles: Mapping[str, str] = field(default_factory=dict)
+    """Action id -> the card title the user saw, for the method preferences (RSK-06)."""
+    taxonomy: Taxonomy | None = None
+    """For the method preferences' priors; None loads the packaged taxonomy when needed."""
+
+    def tax(self) -> Taxonomy:
+        return load_taxonomy() if self.taxonomy is None else self.taxonomy
 
     @classmethod
     def open(
@@ -270,6 +320,7 @@ class DataStores:
         method_titles: Mapping[str, str] | None = None,
         on_forget_all: tuple[Callable[[], object], ...] = (),
         zone: tzinfo | None = None,
+        taxonomy: Taxonomy | None = None,
     ) -> DataStores:
         """``zone``: the timezone the ledger shows times in (the profile's)."""
         base = app_data_dir() if base_dir is None else base_dir
@@ -284,6 +335,8 @@ class DataStores:
             care=CareStore(base, vault),
             plan=SafetyPlanStore(base, vault),
             on_forget_all=on_forget_all,
+            method_titles={} if method_titles is None else dict(method_titles),
+            taxonomy=taxonomy,
         )
 
 
@@ -325,40 +378,73 @@ def _entry_lines(ledger: Ledger, number: int, entry: LedgerEntry, text: ForgetTe
     return [f"{number}. {heading}", *(f"   {line}" for line in rest)]
 
 
-def _has_preferences(bandit: Mapping[str, object]) -> bool:
-    spectra = bandit.get("spectra")
-    if not isinstance(spectra, Mapping):
-        return False
-    return any(isinstance(arms, Mapping) and arms for arms in spectra.values())
+def _preferences(
+    stores: DataStores, now: datetime
+) -> tuple[CarriedState | None, tuple[MethodPreference, ...]]:
+    """The kit store's state and its method preferences (RSK-06); none when it does
+    not open now."""
+    state = stores.state.load()
+    if state is None:
+        return None, ()
+    return state, method_preferences(stores.tax(), state.bandit, now, stores.method_titles)
+
+
+_STATUS_KEYS: Final = {
+    PreferenceStatus.UNHELPFUL_RECENTLY: "preference_unhelpful_recently",
+    PreferenceStatus.HELPFUL: "preference_helpful",
+    PreferenceStatus.RECOVERED: "preference_recovered",
+}
+
+
+def _preference_lines(preferences: tuple[MethodPreference, ...], text: ForgetText) -> list[str]:
+    """One numbered line per method: its title and a plain sentence, never numbers."""
+    m = text.memory
+    return [
+        "   " + _fill(m["preference_item"], n=n, title=p.title, status=m[_STATUS_KEYS[p.status]])
+        for n, p in enumerate(preferences, start=1)
+    ]
 
 
 def _other_lines(
-    stores: DataStores, profile: PersonaProfile | None, profile_exists: bool, text: ForgetText
+    stores: DataStores,
+    profile: PersonaProfile | None,
+    profile_exists: bool,
+    text: ForgetText,
+    now: datetime,
 ) -> list[str]:
+    """The other data by name, one ``- `` line each; the method preferences are listed
+    under theirs."""
     m = text.memory
     found: list[str] = []
     if profile_exists:
-        found.append(m["profile"])
+        found.append(f"- {m['profile']}")
+    if profile is not None and profile.taboo_topics:  # dogfood P9: a count, not the topics
+        found.append("- " + _fill(m["taboo"], count=len(profile.taboo_topics)))
     if profile is not None and (profile.clinical_history or profile.contraindications):
-        found.append(m["health"])
+        found.append(f"- {m['health']}")
     if stores.plan.exists():
-        found.append(m["safety_plan"])
-    state = stores.state.load()
+        found.append(f"- {m['safety_plan']}")
+    state, preferences = _preferences(stores, now)
     if state is not None:
         if state.kit:
-            found.append(_fill(m["kit"], count=len(state.kit)))
-        if _has_preferences(state.bandit):
-            found.append(m["preferences"])
+            found.append("- " + _fill(m["kit"], count=len(state.kit)))
+        if preferences:
+            found.append(f"- {m['preferences']}")
+            found.extend(_preference_lines(preferences, text))
     elif stores.state.path.is_file():
-        found.append(m["state_unreadable"])
+        found.append(f"- {m['state_unreadable']}")
     if stores.care.path.is_file():
-        found.append(m["care"])
+        found.append(f"- {m['care']}")
     return found
 
 
-def run_memory(say: Say, stores: DataStores, text: ForgetText | None = None) -> int:
-    """``olivia memory``: print what is stored here; returns the exit status."""
+def run_memory(
+    say: Say, stores: DataStores, text: ForgetText | None = None, *, now: datetime | None = None
+) -> int:
+    """``olivia memory``: print what is stored here; returns the exit status. ``now``
+    (default: the current time) decides whether a "not for me" still counts as recent."""
     t = load_forget_text() if text is None else text
+    moment = datetime.now(UTC) if now is None else now
     m = t.memory
     profile_exists, profile = _profile_quietly(stores)
     if profile is not None and profile.is_age_gate_refusal:
@@ -392,11 +478,11 @@ def run_memory(say: Say, stores: DataStores, text: ForgetText | None = None) -> 
     if unreadable:
         say(_fill(m["unreadable"], count=unreadable))
         say("")
-    others = _other_lines(stores, profile, profile_exists, t)
+    others = _other_lines(stores, profile, profile_exists, t, moment)
     if others:
         say(m["others"])
         for line in others:
-            say(f"- {line}")
+            say(line)
     else:
         say(m["nothing_else"])
     if entries or unreadable or others:
@@ -500,14 +586,19 @@ def _fold(answer: str) -> str:
 
 
 class _Command:
-    def __init__(self, ask: Ask, say: Say, stores: DataStores, text: ForgetText) -> None:
+    def __init__(
+        self, ask: Ask, say: Say, stores: DataStores, text: ForgetText, now: datetime
+    ) -> None:
         self.ask = ask
         self.say = say
         self.stores = stores
         self.f = text.forget
         self.text = text
+        self.now = now
 
-    def run(self, target: Target | None, entry: int | None, assume_yes: bool) -> int:
+    def run(
+        self, target: Target | None, entry: int | None, method: int | None, assume_yes: bool
+    ) -> int:
         _, profile = _profile_quietly(self.stores)
         if profile is not None and profile.is_age_gate_refusal:
             if target is Target.ALL:
@@ -516,6 +607,8 @@ class _Command:
             return 0
         if entry is not None:
             target = Target.ENTRY
+        elif method is not None:
+            target = Target.METHOD
         if target is None:
             picked = self._menu()
             if isinstance(picked, int):
@@ -528,6 +621,8 @@ class _Command:
             return 1
         if target is Target.ENTRY:
             return self._entry(entry, assume_yes)
+        if target is Target.METHOD:
+            return self._method(method, assume_yes)
         if not _has_any(self.stores, target):
             self.say(self.f[f"nothing_{target.value}"])
             return 0
@@ -557,7 +652,26 @@ class _Command:
         self.say(self.f["unknown_choice"])
         return 1
 
+    def _pick(self, lines: list[str], prompt: str) -> int | None:
+        """Show ``lines`` and ask for a number. Returns the number; None when Enter or
+        the end of input cancelled; -1 when the reply was not a number. Both are said."""
+        for line in lines:
+            self.say(line)
+        self.say("")
+        self.say(prompt)
+        answer = self.ask()
+        choice = _fold(answer) if answer is not None else ""
+        if not choice:
+            self.say(self.f["cancelled"])
+            return None
+        if not choice.isdigit():
+            self.say(self.f["unknown_choice"])
+            return -1
+        return int(choice)
+
     def _entry(self, number: int | None, assume_yes: bool) -> int:
+        """One ledger entry. A number given on the command line that names no entry is a
+        wrong value (exit 2, README "退出码"); one typed at the prompt is exit 1."""
         try:
             entries = self.stores.ledger.entries()
         except LedgerUnavailableError as exc:
@@ -568,34 +682,65 @@ class _Command:
         if not entries:
             self.say(self.f["nothing_entry"])
             return 0
+        bad_number = 2 if number is not None else 1
         if number is None:
-            for i, entry in enumerate(entries, start=1):
-                for line in _entry_lines(self.stores.ledger, i, entry, self.text):
-                    self.say(line)
-            self.say("")
-            self.say(self.f["pick_entry"])
-            answer = self.ask()
-            choice = _fold(answer) if answer is not None else ""
-            if not choice:
-                self.say(self.f["cancelled"])
+            lines = [
+                line
+                for i, entry in enumerate(entries, start=1)
+                for line in _entry_lines(self.stores.ledger, i, entry, self.text)
+            ]
+            number = self._pick(lines, self.f["pick_entry"])
+            if number is None:
                 return 0
-            if not choice.isdigit():
-                self.say(self.f["unknown_choice"])
+            if number < 0:
                 return 1
-            number = int(choice)
         if not 1 <= number <= len(entries):
             self.say(_fill(self.f["no_entry"], n=number))
-            return 1
-        if not self._confirmed(_fill(self.f["about_entry"], n=number), assume_yes):
+            return bad_number
+        chosen = entries[number - 1]
+        # Dogfood P4: say which entry, exactly as ``olivia memory`` shows it.
+        preview = _entry_lines(self.stores.ledger, number, chosen, self.text)
+        about = _fill(self.f["about_entry"], n=number)
+        if not self._confirmed(about, assume_yes, preview):
             return 0
         try:
-            dropped = self.stores.ledger.forget_entry(entries[number - 1].entry_id)
+            dropped = self.stores.ledger.forget_entry(chosen.entry_id)
         except LedgerUnavailableError:
             self.say(self.f["locked"])
             return 1
         self.say(_fill(self.f["done_entry"], n=number))
         if dropped:
             self.say(_fill(self.f["done_entry_dropped"], count=dropped))
+        return 0
+
+    def _method(self, number: int | None, assume_yes: bool) -> int:
+        """One method's preference (RSK-06): its posterior in every spectrum is removed
+        and the kit store re-sealed under a fresh key; the kit and the other methods stay.
+        Numbers as ``olivia memory`` lists them; exit codes as :meth:`_entry`."""
+        state, preferences = _preferences(self.stores, self.now)
+        if state is None or not preferences:
+            self.say(self.f["nothing_method"])
+            return 0
+        bad_number = 2 if number is not None else 1
+        if number is None:
+            number = self._pick(_preference_lines(preferences, self.text), self.f["pick_method"])
+            if number is None:
+                return 0
+            if number < 0:
+                return 1
+        if not 1 <= number <= len(preferences):
+            self.say(_fill(self.f["no_method"], n=number))
+            return bad_number
+        chosen = preferences[number - 1]
+        if not self._confirmed(_fill(self.f["about_method"], title=chosen.title), assume_yes):
+            return 0
+        bandit = without_method(self.stores.tax(), state.bandit, chosen.action_id)
+        try:
+            self.stores.state.rekey(CarriedState(bandit, state.kit))
+        except KeychainUnavailableError:
+            self.say(self.f["locked"])
+            return 1
+        self.say(_fill(self.f["done_method"], title=chosen.title))
         return 0
 
     def _all(self, assume_yes: bool) -> int:
@@ -631,16 +776,24 @@ class _Command:
         self.say(self.f["kept_minor"])
         return code
 
-    def _confirmed(self, about: str, assume_yes: bool) -> bool:
+    def _confirmed(self, about: str, assume_yes: bool, preview: list[str] | None = None) -> bool:
         if assume_yes:
             return True
         self.say(about)
-        self.say(self.f["confirm"])
-        answer = self.ask()
-        if answer is not None and _fold(answer) == self.f["confirm_word"]:
-            return True
-        self.say(self.f["cancelled"])
-        return False
+        for line in preview or ():
+            self.say(line)
+        return _typed_confirmation(self.ask, self.say, self.f)
+
+
+def _typed_confirmation(ask: Ask, say: Say, f: Mapping[str, str]) -> bool:
+    """Ask for the confirmation word: 「确认」 or 「确定」 (dogfood P4); anything else,
+    or the end of input, cancels and says so."""
+    say(f["confirm"])
+    answer = ask()
+    if answer is not None and _fold(answer) in {f["confirm_word"], f["confirm_also"]}:
+        return True
+    say(f["cancelled"])
+    return False
 
 
 def run_forget(
@@ -650,12 +803,93 @@ def run_forget(
     *,
     target: Target | None = None,
     entry: int | None = None,
+    method: int | None = None,
     assume_yes: bool = False,
     text: ForgetText | None = None,
+    now: datetime | None = None,
 ) -> int:
     """``olivia forget``: the menu (``target`` None) or one target; the exit status.
 
-    ``entry`` is a number as ``olivia memory`` shows it and implies :attr:`Target.ENTRY`.
+    ``entry`` is a number as ``olivia memory`` shows it and implies :attr:`Target.ENTRY`;
+    ``method`` likewise for the method preferences and :attr:`Target.METHOD`.
     """
     t = load_forget_text() if text is None else text
-    return _Command(ask, say, stores, t).run(target, entry, assume_yes)
+    moment = datetime.now(UTC) if now is None else now
+    return _Command(ask, say, stores, t, moment).run(target, entry, method, assume_yes)
+
+
+# -- editing a note ---------------------------------------------------------------------------
+
+
+def run_edit(
+    ask: Ask,
+    say: Say,
+    stores: DataStores,
+    number: int,
+    *,
+    text: ForgetText | None = None,
+) -> int:
+    """``olivia memory --edit N`` (PRD feature 5, "查看、编辑与加密擦除权"): replace the
+    words of note ``N`` (the number ``olivia memory`` shows) with a new line.
+
+    Only a note can be edited: a session summary or journal record is written by the
+    program from ids, not the user's words, and says so (exit 2, like a number that names
+    no entry). The new text needs the typed confirmation; then ``Ledger.edit_note``
+    re-keys the ledger, so the old words are crypto-shredded like a forgotten entry.
+    Enter, the same text or the end of input changes nothing (exit 0).
+    """
+    t = load_forget_text() if text is None else text
+    m, f = t.memory, t.forget
+    keychain = _keychain(stores.vault)
+    if keychain is not _Keychain.OK:
+        say(m["no_keychain"] if keychain is _Keychain.NONE else m["locked"])
+        return 1
+    try:
+        entries = stores.ledger.entries()
+    except LedgerUnavailableError:
+        say(m["locked"])
+        return 1
+    if not entries:
+        say(f["nothing_entry"])
+        return 0
+    if not 1 <= number <= len(entries):
+        say(_fill(f["no_entry"], n=number))
+        return 2
+    entry = entries[number - 1]
+    if not isinstance(entry, NoteEntry):
+        say(_fill(m["edit_not_note"], n=number))
+        return 2
+    say(_fill(m["edit_current"], n=number))
+    for line in entry.text.splitlines() or [""]:
+        say(f"   {line}")
+    say("")
+    new_text = _ask_note(ask, say, m)
+    if new_text is None or new_text == entry.text:
+        say(m["edit_unchanged"])
+        return 0
+    say(_fill(m["edit_about"], n=number))
+    if not _typed_confirmation(ask, say, f):
+        return 0
+    try:
+        dropped = stores.ledger.edit_note(entry.entry_id, new_text)
+    except LedgerUnavailableError:
+        say(m["locked"])
+        return 1
+    say(_fill(m["edit_done"], n=number))
+    if dropped:
+        say(_fill(f["done_entry_dropped"], count=dropped))
+    return 0
+
+
+def _ask_note(ask: Ask, say: Say, m: Mapping[str, str]) -> str | None:
+    """The new words for a note, trimmed; None for Enter or the end of input. Too long
+    is said, never cut: the user writes it again or presses Enter to keep the note."""
+    say(_fill(m["edit_prompt"], count=NOTE_MAX_CHARS))
+    while True:
+        answer = ask()
+        reply = "" if answer is None else answer.strip()
+        if not reply:
+            return None
+        if len(reply) <= NOTE_MAX_CHARS:
+            return reply
+        say(_fill(m["edit_too_long"], count=NOTE_MAX_CHARS))

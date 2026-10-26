@@ -67,6 +67,10 @@ _LABEL: Final = "plan"
 _VERSION: Final = 1
 _TEXT_FILE: Final = "safety_plan.yaml"
 _PHONE_RE: Final = re.compile(r"[0-9+\-() ]+")
+# A name followed by a phone number on one line ("表姐 13800000000", "阿青：138-0000-0000"):
+# the name ends in a non-digit, then optional separators, then the number.
+_CONTACT_RE: Final = re.compile(r"(?P<name>.*?\D)[\s:,、]*(?P<phone>[+(]?\d[0-9\-() ]*\d)")
+_NAME_TRIM: Final = " :,、"
 _SLOT_RE: Final = re.compile(r"\{([^{}]*)\}")
 _ALLOWED_SLOTS: Final = frozenset({"n", "total", "title", "name", "max_chars", "max_entries"})
 
@@ -89,9 +93,14 @@ _COMMAND_KEYS: Final = (
     "entry_help",
     "rewrite_help",
     "current_heading",
+    "current_empty",
     "entry_too_long",
+    "entry_not_saved",
     "section_full",
     "person_name",
+    "name_too_long",
+    "name_for_phone",
+    "person_with_phone",
     "person_phone",
     "phone_invalid",
     "show_heading",
@@ -418,6 +427,28 @@ def clean_phone(raw: str) -> str | None:
     return phone
 
 
+def split_contact(raw: str) -> tuple[str, str]:
+    """``(name, phone)`` from one reply in section 4; ``phone`` is ``""`` when the reply
+    holds none, ``name`` is ``""`` when it is a phone number alone.
+
+    People often write both on one line ("表姐 13800000000"); the number is taken off
+    the end only when :func:`clean_phone` accepts it, so a name with a digit in it
+    ("小王2号") stays whole. Without a number the reply is returned as typed, with its
+    whitespace squashed; with one, both parts are NFKC-folded.
+    """
+    folded = _fold(raw)
+    alone = clean_phone(folded)
+    if alone is not None:
+        return "", alone
+    match = _CONTACT_RE.fullmatch(folded)
+    if match is not None:
+        name = " ".join(match["name"].strip(_NAME_TRIM).split())
+        phone = clean_phone(match["phone"])
+        if name and phone is not None:
+            return name, phone
+    return " ".join(raw.split()), ""
+
+
 class _Command:
     def __init__(self, ask: Ask, say: Say, store: SafetyPlanStore, text: SafetyPlanText) -> None:
         self._ask_raw = ask
@@ -544,8 +575,13 @@ class _Command:
         if current is not None:
             kept = current.people if section is Section.PEOPLE else current.lines(section)
             shown = current.lines(section)
-            self._say("\n".join([cmd["current_heading"], *(f"· {x}" for x in shown)]))
-            self._say(_fill(cmd["rewrite_help"], max_entries=MAX_ENTRIES))
+            if shown:
+                self._say("\n".join([cmd["current_heading"], *(f"· {x}" for x in shown)]))
+                self._say(_fill(cmd["rewrite_help"], max_entries=MAX_ENTRIES))
+            else:  # dogfood P7: never "现在写的是：" with nothing after it
+                self._say(cmd["current_empty"])
+                if section is not Section.PEOPLE:
+                    self._say(_fill(cmd["entry_help"], max_entries=MAX_ENTRIES))
         elif section is not Section.PEOPLE:
             self._say(_fill(cmd["entry_help"], max_entries=MAX_ENTRIES))
         if section is Section.PEOPLE:
@@ -562,8 +598,13 @@ class _Command:
                 return ()
             if not reply:
                 return tuple(entries)
-            if len(reply) > MAX_ENTRY_CHARS:
+            while len(reply) > MAX_ENTRY_CHARS:
+                # Said, never silent: the entry is not kept until a shorter one is written,
+                # and Enter here drops only this entry, not the rest of the section.
                 self._say(_fill(self._cmd["entry_too_long"], max_chars=MAX_ENTRY_CHARS))
+                reply = " ".join(self._ask().split())
+            if not reply:
+                self._say(self._cmd["entry_not_saved"])
                 continue
             entries.append(reply)
         self._say(_fill(self._cmd["section_full"], max_entries=MAX_ENTRIES))
@@ -581,12 +622,40 @@ class _Command:
                 return ()
             if not name:
                 return tuple(people)
-            if len(name) > MAX_NAME_CHARS:
-                self._say(_fill(cmd["entry_too_long"], max_chars=MAX_NAME_CHARS))
-                continue
-            people.append(Contact(name, self._phone(name)))
+            contact = self._contact(name)
+            if contact is None:
+                self._say(cmd["entry_not_saved"])
+            else:
+                people.append(contact)
         self._say(_fill(cmd["section_full"], max_entries=MAX_ENTRIES))
         return tuple(people)
+
+    def _contact(self, reply: str) -> Contact | None:
+        """One person from the reply to "名字或称呼" (dogfood I10).
+
+        A phone number on the same line is kept and not asked for again; a number alone
+        asks for the name; a name over :data:`MAX_NAME_CHARS` asks for a shorter one and
+        keeps the number. None only when the user then presses Enter (the caller says
+        that this person was not saved).
+        """
+        cmd = self._cmd
+        phone = ""
+        while True:
+            name, found = split_contact(reply)
+            phone = found or phone
+            if name and len(name) <= MAX_NAME_CHARS:
+                break
+            if name:
+                self._say(_fill(cmd["name_too_long"], max_chars=MAX_NAME_CHARS))
+            else:
+                self._say(cmd["name_for_phone"])
+            reply = " ".join(self._ask().split())
+            if not reply:
+                return None
+        if phone:
+            self._say(_fill(cmd["person_with_phone"], name=name))
+            return Contact(name, phone)
+        return Contact(name, self._phone(name))
 
     def _phone(self, name: str) -> str:
         while True:

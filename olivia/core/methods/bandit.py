@@ -143,6 +143,10 @@ class ThompsonSampler:
         _require_aware(now, "now")
         return self._effective(spectrum, self._tax.canonical_action_id(action_id), now)
 
+    def prior(self, action_id: str) -> tuple[float, float]:
+        """Return the ``(alpha, beta)`` prior of the action's evidence level."""
+        return self._prior(self._tax.canonical_action_id(action_id))
+
     def to_dict(self) -> dict[str, object]:
         """JSON-safe state; ``ThompsonSampler(tax, sampler.to_dict())`` restores it."""
         spectra: dict[str, object] = {}

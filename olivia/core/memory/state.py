@@ -28,7 +28,9 @@ overwritten, and so is a file that cannot be opened because the keychain is lock
 now. Without any keychain nothing is written (:class:`StateRecorder` stops trying) and
 nothing is said: the ledger already tells the user once that memory is unavailable.
 
-:meth:`StateStore.shred` is the hook for ``olivia forget`` (B5). Nothing here logs.
+:meth:`StateStore.shred` is the hook for ``olivia forget`` (B5); :meth:`StateStore.rekey`
+rewrites the state under a fresh key after one method's preference is reset
+(``olivia forget --method``, RSK-06). Nothing here logs.
 """
 
 from __future__ import annotations
@@ -177,11 +179,34 @@ class StateStore:
         atomic_write_bytes(self.path, blob, snapshot=False)
         return True
 
+    def rekey(self, state: CarriedState) -> bool:
+        """Crypto-shred every state written so far, then seal ``state`` under a fresh key
+        (``olivia forget --method``, RSK-06): a copy of the old file, or of the old key
+        file, never opens again. False when nothing new was written (the old state is
+        gone either way); a state with neither posteriors nor kit is only shredded.
+
+        Raises :class:`KeychainUnavailableError` (nothing changed) while the keychain does
+        not answer, and :class:`NoKeychainError` without one.
+        """
+        self.vault.check()
+        self.shred()
+        self._keep = False
+        if not state.kit and not _has_arms(state.bandit):
+            return True
+        return self.save(state)
+
     def shred(self) -> None:
         """Make every state ever written unreadable (``olivia forget``, B5)."""
         remove_file(self.path)
         if self.vault.has_data_key(STATE_STORE):
             self.vault.shred(STATE_STORE)
+
+
+def _has_arms(bandit: Mapping[str, object]) -> bool:
+    spectra = bandit.get("spectra")
+    return isinstance(spectra, Mapping) and any(
+        isinstance(arms, Mapping) and arms for arms in spectra.values()
+    )
 
 
 class StateRecorder:

@@ -209,3 +209,48 @@ def test_shred_also_removes_an_interrupted_rekey(tmp_path):
     for name, data in staged.items():
         (tmp_path / LEDGER_DIRNAME / ".rekey" / name).write_bytes(data)
     assert _texts(tmp_path) == []
+
+
+# -- editing a note (olivia memory --edit, PRD feature 5) -------------------------------------
+
+
+def test_an_edited_note_keeps_its_place_and_its_old_words_never_open_again(tmp_path, keychain):
+    ledger, ids = _setup(tmp_path)
+    old_entry = _entry(tmp_path, ids[1]).read_bytes()
+    old_key = (tmp_path / KEYS_DIRNAME / f"{LEDGER_STORE}.key").read_bytes()
+    assert ledger.edit_note(ids[1], "改过的第二条") == 0
+    assert _texts(tmp_path) == ["第一条", "改过的第二条", "第三条"]
+    (edited,) = (e for e in Ledger(tmp_path, Vault(tmp_path)).notes() if e.entry_id == ids[1])
+    assert edited.created_at == START + timedelta(minutes=1)
+    # The old ciphertext and the old key file, put back, do not open.
+    _entry(tmp_path, ids[1]).write_bytes(old_entry)
+    (tmp_path / KEYS_DIRNAME / f"{LEDGER_STORE}.key").write_bytes(old_key)
+    assert "第二条" not in _texts(tmp_path)
+    assert _staging_gone(tmp_path)
+
+
+@pytest.mark.parametrize("text", ["", "   ", "长" * (ledger_module.NOTE_MAX_CHARS + 1)])
+def test_an_edit_needs_some_words_within_the_limit(tmp_path, keychain, text):
+    ledger, ids = _setup(tmp_path)
+    with pytest.raises(ValueError):
+        ledger.edit_note(ids[0], text)
+    assert _texts(tmp_path) == list(TEXTS)
+
+
+def test_only_a_note_can_be_edited(tmp_path, keychain):
+    ledger, _ = _setup(tmp_path)
+    journal = ledger.record_journal(START, shown=False)
+    with pytest.raises(ValueError):
+        ledger.edit_note(journal, "不是笔记")
+    with pytest.raises(ValueError):
+        ledger.edit_note("ab" * 12, "不存在")
+    assert _texts(tmp_path) == list(TEXTS)
+
+
+def test_a_locked_keychain_leaves_the_note_as_it_was(tmp_path, keychain):
+    _, ids = _setup(tmp_path)
+    keychain.broken = KeychainUnavailableError("locked")
+    with pytest.raises(LedgerUnavailableError):
+        Ledger(tmp_path, Vault(tmp_path)).edit_note(ids[0], "改不了")
+    keychain.broken = None
+    assert _texts(tmp_path) == list(TEXTS)
