@@ -121,3 +121,35 @@ def test_crisis_on_return_is_handled_as_always(run_cli, data_home, days):
     # The return visit's crisis leaves a fresh marker for the next one.
     third = run_cli(["chat", "--rules"], [], now=NOW + timedelta(days=days + 1))
     assert len(_greeting_lines(third.out)) == 1
+
+
+# -- owner decision 2026-10-26, I9 and S5 ---------------------------------------------------------
+
+# B1 (transcript p4-s2): the packaged student rates this L2 with a score below 0.6 while
+# the rules find nothing, so model mode asks once instead of entering the crisis flow.
+MODEL_ONLY = "就这样吧，我去开会了"
+
+
+def test_a_model_only_question_answered_no_leaves_no_marker(run_cli, data_home):
+    save_profile(data_home)
+    first = run_cli(["chat"], [MODEL_ONLY, "不是", "/exit"])
+    assert [r.inspect["safety_check"] for r in first.results] == ["asked", "denied"]
+    assert first.results[0].reply_kind is ReplyKind.SAFETY_CHECK
+    assert not any(r.in_crisis for r in first.results)
+    assert not (data_home / CARE_FILENAME).exists()
+    # I9: the next visit does not open by asking about safety.
+    second = run_cli(["chat"], ["今天上班好累"], now=NOW + timedelta(days=1))
+    assert _greeting_lines(second.out) == []
+
+
+def test_a_model_only_question_left_unanswered_counts_as_the_crisis_flow(run_cli, data_home):
+    save_profile(data_home)
+    first = run_cli(["chat"], [MODEL_ONLY, "/exit"])
+    assert first.results[-1].reply_kind is ReplyKind.SAFETY_CHECK
+    # The farewell leaves the region's numbers.
+    goodbye = first.out[first.out.rindex("Olivia：") :]
+    assert "12356" in goodbye
+    assert (data_home / CARE_FILENAME).is_file()
+    second = run_cli(["chat", "--rules"], ["今天上班好累"], now=NOW + timedelta(days=1))
+    greeting = _greeting_lines(second.out)
+    assert len(greeting) == 1 and greeting[0] in CRISIS_GREETINGS

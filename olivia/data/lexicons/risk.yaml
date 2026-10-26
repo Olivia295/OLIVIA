@@ -1228,3 +1228,30 @@ reported_speech:
   # Any 我也 at all: the user may be joining in without a cue word (我也撑不住了).
   vetoes: ["我也", "我同样", "我自己也", "何尝不是", "跟她一样", "和她一样", "跟他一样", "和他一样",
            "像她一样", "像他一样", "一起", "我们都", "我们俩", "我俩", "咱们", "metoo"]
+# In a crisis the user says they will contact someone (S5, 2026-10-26; draft, G-0): "我可以给
+# 表姐打个电话", "好，我等下打给她". The crisis reply then opens with one line that affirms the
+# decision (render.yaml crisis.reach_out); the card stays and the crisis does not end, so
+# this changes no level and no exit. Read by lexicon.ReachOutRules on the normalized text: a
+# `phrases` hit counts unless a `negators` word stands earlier in its clause (我不想给她打
+# 电话, 没人可以联系), a `blocked_after` word follows it (联系不上), the message ends as a
+# question, or a `vetoes` phrase (farewell, entrusting, means, death) lies anywhere in it.
+# The session also requires that the rules found no risk cue at all in the message.
+reach_out:
+  phrases: ["打个电话", "打电话", "打给", "打过去", "打视频", "打语音", "拨给", "发消息", "发个消息",
+            "发信息", "发微信", "联系", "找她", "找他", "找人", "找朋友", "找家人", "去找", "叫她过来",
+            "叫他过来", "让她过来", "让他过来", "让她陪", "让他陪", "去她家", "去他家"]
+  negators: ["不", "没", "别", "无法", "难以"]
+  blocked_after: ["不上", "不到", "不了", "不通", "不着", "没人"]
+  vetoes: ["再见", "告别", "道别", "永别", "最后", "遗书", "遗言", "遗嘱", "后事", "交代", "托付", "留给",
+           "送给", "送人", "照顾好", "用不上", "用不着", "下辈子", "死", "自杀", "轻生", "跳", "药", "绳",
+           "刀", "炭", "楼顶", "天台", "铁轨", "报复"]
+# A crisis level only the injected model gives (the student in the product) while the rules
+# found no risk cue at all (CrisisAssessment.rule_clear): owner decisions 2026-10-26. The
+# first one asks the direct question once instead of entering the crisis flow; the second
+# (2026-10-26, chosen on the dev set interim_fresh.csv only) keeps the crisis flow when the
+# student is sure: its 4-class head says L3, or its crisis score is at or above
+# `direct_from_score`. Only a score below it with a class below L3 asks first. Read by
+# lexicon.ModelAskRules; without this section every model-only alarm enters the crisis
+# flow (fail-safe). 0 < direct_from_score <= 1.
+model_ask:
+  direct_from_score: 0.6

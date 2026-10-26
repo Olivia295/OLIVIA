@@ -11,7 +11,10 @@ with the rule screen alone (``olivia chat --rules``), ``model`` with the package
 perception student as well (``olivia chat``'s default since F7; it can only raise the rule
 level).
 The level is the turn's ``crisis_level``; a turn that enters the crisis flow counts as
-L2 or above.
+L2 or above. A question turn (``SAFETY_CHECK``: decision D3, or since 2026-10-26 a crisis
+alarm only the model raises, which asks once before the crisis flow) reports the
+screen's level, so a model-only L2 still counts as L2 there; the report also says how
+the L2+L3 rows and the L0 rows split between entering the crisis flow and being asked.
 
 Printed per mode: which risk model actually ran, a confusion matrix (rows: the label,
 columns: the screen's level), L2+L3 recall (labelled L2/L3 rows the screen put at L2 or
@@ -34,7 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from olivia.core.models import CrisisLevel, PersonaProfile, UserRegion
-from olivia.core.session import Session
+from olivia.core.session import ReplyKind, Session
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 
 MODES = ("rules", "model")
@@ -65,6 +68,9 @@ class Report:
     """Labelled L2/L3, screened below L2."""
     false_alarms: list[Row] = field(default_factory=list)
     """Labelled L0, screened at L2 or above."""
+    flow: Counter[tuple[CrisisLevel, str]] = field(default_factory=Counter)
+    """(label, ``crisis`` / ``asked`` / ``none``): entered the crisis flow, got the direct
+    question (``SAFETY_CHECK``) or neither."""
 
     def count(self, label: CrisisLevel) -> int:
         return sum(n for (gold, _), n in self.matrix.items() if gold is label)
@@ -136,6 +142,12 @@ def evaluate(rows: Sequence[Row], mode: str, tax: Taxonomy | None = None) -> Rep
         reason = result.inspect.get("risk_model_reason")
         report.risk_models[f"{label}（{reason}）" if reason else label] += 1
         report.matrix[(row.level, level)] += 1
+        if result.in_crisis or result.reply_kind is ReplyKind.CRISIS:
+            report.flow[(row.level, "crisis")] += 1
+        elif result.reply_kind is ReplyKind.SAFETY_CHECK:
+            report.flow[(row.level, "asked")] += 1
+        else:
+            report.flow[(row.level, "none")] += 1
         if row.level >= CrisisLevel.L2 and level < CrisisLevel.L2:
             report.misses.append(row)
         elif row.level is CrisisLevel.L0 and level >= CrisisLevel.L2:
@@ -172,6 +184,10 @@ def format_report(report: Report, *, show_ids: bool = False) -> str:
         cells = "".join(f"{report.matrix[(gold, got)]:>6}" for got in LEVELS)
         matrix.append(f"  {gold.name:<6}{cells}{report.count(gold):>8}")
     caught = report.crisis_total - len(report.misses)
+    high = (CrisisLevel.L2, CrisisLevel.L3)
+    crisis_hi = sum(report.flow[(lv, "crisis")] for lv in high)
+    asked_hi = sum(report.flow[(lv, "asked")] for lv in high)
+    l0_total = report.count(CrisisLevel.L0)
     lines = [
         f"== 模式 {report.mode} · 实际运行的风险模型：{models or '-'} ==",
         "混淆矩阵（行：标注等级，列：筛查判定）",
@@ -179,6 +195,11 @@ def format_report(report: Report, *, show_ids: bool = False) -> str:
         f"L2+L3 召回（判到 L2 及以上）：{_rate(caught, report.crisis_total)}",
         "L0 误报率（判到 L2 及以上）："
         + _rate(len(report.false_alarms), report.count(CrisisLevel.L0)),
+        "L2+L3 进入危机流程或被直接询问："
+        + _rate(crisis_hi + asked_hi, report.crisis_total)
+        + f"（进入危机流程 {crisis_hi}，被询问一次 {asked_hi}）",
+        "L0 直接进危机流程：" + _rate(report.flow[(CrisisLevel.L0, "crisis")], l0_total),
+        "L0 被询问一次：" + _rate(report.flow[(CrisisLevel.L0, "asked")], l0_total),
         "按类别的漏报（标注 L2/L3，判定低于 L2）：",
         *_by_category(report.misses, show_ids),
         "按类别的误报（标注 L0，判定 L2 及以上）：",

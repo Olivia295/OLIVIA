@@ -165,3 +165,13 @@ def test_ctrl_c_exits_like_end_of_input(run_cli, data_home, argv, lines, onboard
         assert interrupted.lines[-1] == cli.GOODBYE
     if not onboarded:
         assert not (data_home / PROFILE_FILENAME).exists()
+
+
+def test_ctrl_c_in_a_crisis_says_the_crisis_goodbye(run_cli, data_home):
+    """S5: Ctrl-C inside the crisis flow ends like /exit there, numbers on screen."""
+    save_profile(data_home)
+    interrupted = run_cli(["chat", "--rules"], stdin=_CtrlC("我不想活了\n"))
+    assert interrupted.code == 0 and interrupted.results[-1].in_crisis
+    assert cli.GOODBYE not in interrupted.out
+    goodbye = interrupted.out[interrupted.out.rindex("Olivia：") :]
+    assert "12356" in goodbye

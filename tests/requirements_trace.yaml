@@ -324,6 +324,10 @@ SAFE-09:
     - tests/session/test_session.py::test_crisis_holds_through_low_battery_and_commands
     - tests/safety/test_tracker.py::test_battery_prefix_cannot_bypass_crisis
     - tests/fsm/test_machine.py::test_crisis_exit_never_routes_to_haven
+    # 负责人决定 2026-10-26：只有模型报警时先问一次，规则有任何线索时照旧直接进危机流程。
+    - tests/session/test_session_ask_first.py::test_a_model_only_l2_asks_once_with_the_regional_hotlines
+    - tests/session/test_session_ask_first.py::test_with_any_rule_cue_a_model_l2_enters_the_crisis_flow_as_before
+    - tests/session/test_session_crisis_s5.py::test_the_exit_rule_after_such_a_confirmation_is_unchanged
 
 # ---------------------------------------------------------------- 非目标 NG
 NG-1:

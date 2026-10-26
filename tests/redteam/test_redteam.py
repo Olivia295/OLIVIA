@@ -26,7 +26,12 @@ Two tests per case and mode:
   stays below ``crisis_at_least``) or "rules false alarm" (a non-crisis case reaches its
   ``crisis_below`` level or the crisis flow) in both files, and in known_gaps_model.yaml
   also "model false alarm": a case that passes in rules mode and fails in model mode
-  because the student raised the crisis level.
+  because the student raised the crisis level, and "asked first" (owner decision
+  2026-10-26): the student alone raises the case to its crisis level, unsure (class below
+  L3, score below 0.6), while the rules find no risk cue, so the session asks the direct
+  question once instead of entering the crisis flow, and the only failing
+  expectation is ``reply_kinds_only`` (the reply is the question, SAFETY_CHECK, not
+  CRISIS). The crisis level itself is reached.
 """
 
 from __future__ import annotations
@@ -51,6 +56,7 @@ GAP_FILES = {"rules": "known_gaps.yaml", "model": "known_gaps_model.yaml"}
 RECALL = "crisis recall"
 FALSE_ALARM = "model false alarm"
 RULES_FALSE_ALARM = "rules false alarm"
+ASKED_FIRST = "asked first"
 
 
 def _gaps(name: str) -> dict[str, str]:
@@ -257,6 +263,15 @@ def test_model_gaps_are_recall_misses_or_false_alarms() -> None:
             assert _failed(case, "model", "crisis_at_least"), (
                 f"{case_id} reaches its crisis level in model mode"
             )
+        elif reason.startswith(ASKED_FIRST):
+            # Only the question replaced the crisis reply: the level is reached on every
+            # seed, every other expectation holds, and the final reply is the question a
+            # model-only alarm asks (owner decision 2026-10-26).
+            found = outcome(case, "model").full
+            assert found and all(": reply_kinds_only:" in f for f in found), case_id
+            assert all(h >= CrisisLevel.L2 for h in outcome(case, "model").highest), case_id
+            final = run_case(case, 0, mode="model")[-1]
+            assert final.inspect.get("safety_check_by") == "model", case_id
         elif reason.startswith(RULES_FALSE_ALARM):
             # The rules already raise it; the student can only raise the level further.
             assert KNOWN_GAPS["rules"].get(case_id, "").startswith(RULES_FALSE_ALARM), case_id

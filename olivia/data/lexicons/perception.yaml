@@ -1387,6 +1387,17 @@ leave_taking_whole:
   - 今天先这样
   - 今天就先这样
   - 今天就这样
+  # I7 (2026-10-26): going to sleep said as a clause of its own ("[2%] 睡了", "晚安"; the
+  # trailing 了 is a particle and is dropped before the comparison). Inside a longer clause
+  # they tell something else (孩子终于睡了, 昨天睡了六个小时).
+  - 晚安
+  - 睡
+  - 我睡
+  - 去睡
+  - 睡觉
+  - 我睡觉
+  - 去睡觉
+  - 睡觉去
 
 # Words that may open a whole-clause goodbye ("好的，拜拜" is two clauses; "好的拜拜" is one).
 leave_taking_lead_ins:

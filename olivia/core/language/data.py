@@ -378,6 +378,12 @@ class RenderText:
     """Once per crisis, after an "我没事"-like message that is not a confirmation: how to
     say that one is safe (F5b)."""
     emergency_purposes: Mapping[EmergencyPurpose, str]
+    crisis_reach_out: tuple[str, ...] = ()
+    """S5 (draft, G-0): the line before a crisis reply when the user says they will contact
+    someone ("我可以给表姐打个电话"). No slots, no numbers."""
+    crisis_farewell: tuple[str, ...] = ()
+    """S5 (draft, G-0): the goodbye of a session that ends in the crisis flow, before the
+    region's numbers. No slots, no numbers."""
 
 
 @dataclass(frozen=True)
@@ -731,9 +737,18 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "minimal",
             "confirm_hint",
             "emergency_purposes",
+            "reach_out",
+            "farewell",
         },
         f"{where} crisis",
     )
+    crisis_lists = {
+        k: _unique(_strs(crisis[k], f"{where} crisis.{k}"), f"{where} crisis.{k}")
+        for k in ("reach_out", "farewell")
+    }
+    for k, lines in crisis_lists.items():
+        if any(slots_of(line) or any(ch.isdigit() for ch in line) for line in lines):
+            raise LanguageDataError(f"{where} crisis.{k}: no slots and no digits")
     heading = _map(crisis["emergency_heading"], f"{where} crisis.emergency_heading")
     _keys(heading, {"L2", "L3"}, f"{where} crisis.emergency_heading")
     purposes = _map(crisis["emergency_purposes"], f"{where} crisis.emergency_purposes")
@@ -783,6 +798,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         crisis_unknown_region_l3=texts["unknown_region_l3"],
         crisis_minimal=texts["minimal"],
         crisis_confirm_hint=texts["confirm_hint"],
+        crisis_reach_out=crisis_lists["reach_out"],
+        crisis_farewell=crisis_lists["farewell"],
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
         ),

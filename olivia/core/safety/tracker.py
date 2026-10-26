@@ -27,6 +27,11 @@ A farewell, last words, affairs arranged or a resolve (a D3 cue marked ``raise_w
 in risk.yaml) outside a crisis escalates to L2 at once, instead of asking, when the session
 already showed risk: an earlier L1 turn of the current run or an earlier crisis
 (2026-10-26).
+S5 (2026-10-26): besides the ``safety_confirm`` phrases and the whole-message short yes, one
+clause of a longer message that says the user is safe ("我现在在家，是安全的", "是的，我现在
+安全，已经给我姐打了电话") confirms, but only when the screen found no rule risk cue in the
+message (``CrisisAssessment.rule_clear``) and no F10 denial veto or contrast and no
+confirm veto occurs in it; the exit rule after a confirmation is unchanged.
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -68,6 +73,14 @@ _DIRECT_ANSWER: Final = re.compile(
     r"(?:嗯+|恩+)?(?:(?:是|对)的?)?(?:我?(?:是|很|挺)?安全(?:的|了|啦)?)?(?:哦|呀|啊)?"
 )
 _DIRECT_ANSWER_WORDS: Final[tuple[str, ...]] = ("是", "对", "安全")
+# S5 (2026-10-26): one clause of a longer message that says the user is safe ("我现在在家，
+# 是安全的", "是的，我现在安全，已经给我姐打了电话"), read after the fillers are dropped. It
+# is the short answer's grammar, optionally after "在家", and must say 安全; the message
+# must carry no rule risk cue, no F10 denial veto or contrast and no confirm veto.
+_CLAUSE_SPLIT: Final = re.compile(r"[,.!?;:、。！？，；：~…\s]+")
+_SAFE_CLAUSE: Final = re.compile(
+    r"(?:嗯+|恩+)?(?:(?:是|对)的?)?我?(?:在家里?)?(?:是|很|挺)?安全(?:的|了|啦)?(?:哦|呀|啊|呢)?"
+)
 _DIRECT_ANSWER_ENGLISH: Final[frozenset[str]] = frozenset(
     {"yes", "yeah", "yep", "i'msafe", "iamsafe", "imsafe", "yesi'msafe", "yesiamsafe"}
 )
@@ -133,6 +146,10 @@ class CrisisTracker:
         self._raise_ids = frozenset(
             entry.id for entry in lexicons.compositions.entries if entry.raise_with_risk
         )
+        # The F10 denial conditions guard the clause reading (S5): any veto or contrast of
+        # the ``denial`` section anywhere in the message voids it.
+        guards = (*lexicons.denial.vetoes, *lexicons.denial.contrasts)
+        self._clause_guard = PhraseMatcher({p: p for p in guards}) if guards else None
 
         self._run = 0
         self._last_l1_valence: float | None = None
@@ -197,7 +214,7 @@ class CrisisTracker:
             # L1 turns never lift later ones into a spurious escalation.
             self._reset_trend()
         elif self._in_crisis:
-            just_exited = self._observe_safe_candidate(level, text)
+            just_exited = self._observe_safe_candidate(level, text, assessment)
 
         return self._status(level, escalated, just_entered, just_exited)
 
@@ -211,7 +228,7 @@ class CrisisTracker:
             and rule is not None
             and rule < CrisisLevel.L2 <= assessment.level
             and MODEL_FAILURE not in assessment.cue_ids
-            and self._is_explicit_confirmation(normalize(text))
+            and self._is_explicit_confirmation(normalize(text), assessment)
         ):
             return rule
         return None
@@ -251,13 +268,15 @@ class CrisisTracker:
         self._run = 0
         self._last_l1_valence = None
 
-    def _observe_safe_candidate(self, level: CrisisLevel, text: str) -> bool:
+    def _observe_safe_candidate(
+        self, level: CrisisLevel, text: str, assessment: CrisisAssessment
+    ) -> bool:
         """Handle a turn at effective level <= L1 while in crisis; True when it exits."""
         entry = self._entry_level
         if entry is None:  # unreachable: in_crisis always has an entry level
             return False
         if not self._confirmed:
-            if self._is_explicit_confirmation(normalize(text)):
+            if self._is_explicit_confirmation(normalize(text), assessment):
                 self._confirmed = True
             return False
         # Only L0 counts as safe; an L1 turn pauses the count without resetting it.
@@ -273,8 +292,9 @@ class CrisisTracker:
         self._reset_trend()
         return True
 
-    def _is_explicit_confirmation(self, normalized: str) -> bool:
-        """A safety_confirm phrase, or a short yes to the crisis reply's safety question.
+    def _is_explicit_confirmation(self, normalized: str, assessment: CrisisAssessment) -> bool:
+        """A safety_confirm phrase, a short yes to the crisis reply's safety question, or a
+        clause that says so in a longer message (S5, :meth:`_safe_clause`).
 
         Every crisis reply asks whether the user is safe now until a confirmation counts
         (after it, the opening no longer asks, F5b), so while a confirmation is awaited the
@@ -291,7 +311,22 @@ class CrisisTracker:
         hits = self._confirm_matcher.find_all(compact)
         if any(not compact[: hit.start].endswith(_NEGATING_PREFIXES) for hit in hits):
             return True
-        return _is_direct_answer(compact)
+        if _is_direct_answer(compact):
+            return True
+        return self._safe_clause(normalized, compact, assessment)
+
+    def _safe_clause(self, normalized: str, compact: str, assessment: CrisisAssessment) -> bool:
+        """One clause says the user is safe ("我现在在家，是安全的"; S5, 2026-10-26).
+
+        Only when the screen found no rule risk cue in the message
+        (``CrisisAssessment.rule_clear``) and no F10 denial veto or contrast occurs in it,
+        so "我是安全的，可是药还在" or "我现在安全，就是今晚不想睡" never counts."""
+        if not assessment.rule_clear:
+            return False
+        if self._clause_guard is not None and self._clause_guard.find_all(normalized):
+            return False
+        clauses = (c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact))
+        return any(c and _SAFE_CLAUSE.fullmatch(c) is not None for c in clauses)
 
     def _status(
         self, level: CrisisLevel, escalated: bool, just_entered: bool, just_exited: bool

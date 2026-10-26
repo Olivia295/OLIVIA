@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any, Final, Literal, get_args
 import yaml
 
 from olivia.core.models import CrisisLevel
+from olivia.core.safety.matcher import PhraseMatcher
 from olivia.core.safety.normalize import fold_words, normalize
 from olivia.core.taxonomy import Taxonomy
 from olivia.core.yaml_load import safe_load
@@ -48,6 +50,12 @@ _REPORTED_LISTS: Final = (
     "fillers",
     "vetoes",
 )
+_REACH_SECTION: Final = "reach_out"
+_MODEL_ASK_SECTION: Final = "model_ask"
+_REACH_LISTS: Final = ("phrases", "negators", "blocked_after", "vetoes")
+# Clause ends on normalized text (NFKC already folds ，！？；： to , ! ? ; :).
+_REACH_CLAUSE_ENDS: Final = ",.!?;:、。~…"
+_REACH_QUESTION_ENDS: Final = ("吗", "么", "?", "呢")
 _PERCEPTION_FILE: Final = "perception.yaml"
 # perception.yaml's note recall sections (F15), the one source of these phrases.
 _RECALL_QUESTION_SECTIONS: Final = ("note_recall", "note_recall_questions")
@@ -293,6 +301,69 @@ class ReportedSpeechRules:
 
 
 @dataclass(frozen=True)
+class ReachOutRules:
+    """The ``reach_out`` section (S5, 2026-10-26): in a crisis the user says they will
+    contact someone ("我可以给表姐打个电话", "好，我等下打给她"), so the reply affirms it first.
+
+    A ``phrases`` hit counts unless a ``negators`` word stands earlier in its clause
+    ("我不想给她打电话", "没人可以联系"), a ``blocked_after`` word follows it ("联系不上"),
+    the message ends as a question, or a ``vetoes`` phrase (farewell, entrusting, means,
+    death) lies anywhere in it. Folded with :func:`~olivia.core.safety.normalize.normalize`.
+    It never changes a level or the crisis exit; the session also requires that the rules
+    found no risk cue in the message. Empty when the section is absent: never affirmed.
+    """
+
+    phrases: tuple[str, ...] = ()
+    negators: tuple[str, ...] = ()
+    blocked_after: tuple[str, ...] = ()
+    vetoes: tuple[str, ...] = ()
+
+    @cached_property
+    def _phrase_matcher(self) -> PhraseMatcher:
+        return PhraseMatcher({p: p for p in self.phrases})
+
+    @cached_property
+    def _veto_matcher(self) -> PhraseMatcher:
+        return PhraseMatcher({p: p for p in self.vetoes})
+
+    def says(self, normalized: str) -> bool:
+        """Whether the normalized message says the user will reach out to someone."""
+        if not self.phrases or normalized.rstrip("。.!！~…").endswith(_REACH_QUESTION_ENDS):
+            return False
+        if self.vetoes and self._veto_matcher.find_all(normalized):
+            return False
+        for hit in self._phrase_matcher.find_all(normalized):
+            head = normalized[: hit.start]
+            cut = max(head.rfind(mark) for mark in _REACH_CLAUSE_ENDS)
+            clause = head[cut + 1 :]
+            if any(word in clause for word in self.negators):
+                continue
+            if normalized[hit.end :].startswith(self.blocked_after):
+                continue
+            return True
+        return False
+
+
+@dataclass(frozen=True)
+class ModelAskRules:
+    """The ``model_ask`` section (owner decisions 2026-10-26): which crisis alarms that only
+    an injected model gives, with no rule risk cue, ask the direct question first.
+
+    The student keeps the crisis flow when its class is L3 or its crisis score is at least
+    ``direct_from_score`` (0.6, chosen on the dev set ``interim_fresh.csv`` only); only a
+    lower score with a class below L3 asks first. ``None`` (the section is absent): never
+    ask, every model-only alarm enters the crisis flow (fail-safe).
+    """
+
+    direct_from_score: float | None = None
+
+    def asks_first(self, model_class: CrisisLevel, score: float) -> bool:
+        """Whether a model-only alarm with this class and score asks before the crisis."""
+        limit = self.direct_from_score
+        return limit is not None and model_class < CrisisLevel.L3 and score < limit
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -314,6 +385,8 @@ class SafetyLexicons:
     denial: DenialRules = DenialRules()
     recall_cap: RecallCapRules = RecallCapRules()
     reported_speech: ReportedSpeechRules = ReportedSpeechRules()
+    reach_out: ReachOutRules = ReachOutRules()
+    model_ask: ModelAskRules = ModelAskRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -337,6 +410,8 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     denial = _parse_denial(risk_doc)
     recall_cap = _parse_recall_cap(base, risk_doc)
     reported = _parse_reported_speech(risk_doc)
+    reach_out = _parse_reach_out(risk_doc)
+    model_ask = _parse_model_ask(risk_doc)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -349,6 +424,8 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         denial=denial,
         recall_cap=recall_cap,
         reported_speech=reported,
+        reach_out=reach_out,
+        model_ask=model_ask,
     )
 
 
@@ -448,6 +525,8 @@ def _parse_risk(
         _DENIAL_SECTION,
         _RECALL_SECTION,
         _REPORTED_SECTION,
+        _REACH_SECTION,
+        _MODEL_ASK_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -785,6 +864,50 @@ def _parse_denial(doc: Mapping[str, Any]) -> DenialRules:
                     f"{where}: phrase {phrase!r} contains {name} {inside}, so it never applies"
                 )
     return DenialRules(**lists)
+
+
+def _parse_model_ask(doc: Mapping[str, Any]) -> ModelAskRules:
+    """Parse the optional ``model_ask`` section: one score in (0, 1]."""
+    if _MODEL_ASK_SECTION not in doc:
+        return ModelAskRules()
+    where = f"{_RISK_FILE} {_MODEL_ASK_SECTION}"
+    node = doc[_MODEL_ASK_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {"direct_from_score"}, where)
+    value = node.get("direct_from_score")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(value)
+        or not 0.0 < value <= 1.0
+    ):
+        raise LexiconError(f"{where}: direct_from_score must be a number in (0, 1]")
+    return ModelAskRules(float(value))
+
+
+def _parse_reach_out(doc: Mapping[str, Any]) -> ReachOutRules:
+    """Parse the optional ``reach_out`` section (S5). Its phrases go to a matcher of their
+    own, so they may repeat a phrase of any other section."""
+    if _REACH_SECTION not in doc:
+        return ReachOutRules()
+    where = f"{_RISK_FILE} {_REACH_SECTION}"
+    node = doc[_REACH_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, set(_REACH_LISTS), where)
+    lists: dict[str, tuple[str, ...]] = {}
+    for name in _REACH_LISTS:
+        phrases = _normalized_list(node.get(name), f"{where} {name}")
+        repeated = sorted({p for p in phrases if phrases.count(p) > 1})
+        if repeated:
+            raise LexiconError(f"{where} {name}: phrases {repeated} are repeated")
+        lists[name] = phrases
+    for phrase in lists["phrases"]:
+        inside = [word for word in (*lists["negators"], *lists["vetoes"]) if word in phrase]
+        if inside:
+            raise LexiconError(f"{where}: phrase {phrase!r} contains {inside}, so it never counts")
+    return ReachOutRules(**lists)
 
 
 def _parse_recall_cap(base: Traversable | Path, doc: Mapping[str, Any]) -> RecallCapRules:

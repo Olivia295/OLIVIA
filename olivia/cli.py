@@ -14,7 +14,11 @@
     the default now, so it is hidden from the help), and giving it with ``--rules`` is a
     command-line error (exit 2). ``Session.open`` keeps ``student=False`` as its default:
     the product default is the CLI's.
-    ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line. The
+    ``/exit``, end of input or Ctrl-C end the conversation with one goodbye line; inside
+    the crisis flow, or with a safety question still unanswered, the goodbye is the
+    session's crisis farewell instead (S5: one gentle line, the region's numbers and the
+    safety plan's people, no mood rating), and an unanswered question also leaves the
+    care marker, as the crisis flow would. The
     feedback commands (``/done``, ``/not-now``, ``/unhelpful``) are ordinary input here,
     as are natural-language replies to a card ("今天先不做了"): the session's perception
     reads them.
@@ -121,8 +125,9 @@ answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory
 decision D1: one templated summary per session plus the notes the user asked to have
 remembered, always encrypted) and, once there is something to encrypt, the wrapped data
 keys under ``keys/`` (``core/crypto``). Health information is always encrypted, the whole
-profile when the user chose that (ONB-06). After a crisis (or a no to the direct question
-about intent) ``chat`` also writes the care marker (``chang/care.py``): a time and a level,
+profile when the user chose that (ONB-06). After a crisis (or a no to the D3 question
+about intent; not a no to the question a model-only alarm asked, I9) ``chat`` also writes
+the care marker (``chang/care.py``): a time and a level,
 always encrypted, never written without a keychain. The next ``chat`` within seven days
 opens with a gentle check-in and removes it (PRD §9, step A3). ``chat`` also keeps the
 bandit's posteriors and the kit between sessions (``memory/state.py``, step B3: action ids,
@@ -698,7 +703,11 @@ def inspect_panel(result: TurnResult) -> list[str]:
         f"│ 回复 {result.reply_kind.value} · 审查拦截 {_fmt(data.get('gate'))}"
         + (f" · 资源卡 {card.region_used} {card.level.name}" if card is not None else "")
         + (f" · 意图确认 {_fmt(check)}" if check else "")
+        # 2026-10-26: the question a model-only alarm asked, not a rule cue (display only).
+        + ("（只有模型报警）" if check and data.get("safety_check_by") == "model" else "")
         + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else "")
+        + (" · 安全计划 一句提醒" if data.get("safety_plan_reminded") is True else "")
+        + (" · 联系身边人 已肯定" if data.get("reach_out") is True else "")
         + (f" · 调出笔记 {_fmt(recall)}（{_fmt(recalled)}）" if recall else ""),
     ]
     model_reason = data.get("risk_model_reason")
@@ -789,6 +798,7 @@ def _chat(
         taboo_topics=profile.taboo_topics,
         persona=profile.persona_spectrum,
     )
+    interrupted = False
     try:
         carry = checks.opening(local()) if marker is None else None
         pending = carry.line if carry is not None else None
@@ -825,11 +835,22 @@ def _chat(
             console.say()
             carry = checks.after_turn(session.state)
             pending = carry.line
-    finally:  # Ctrl-C included: main() says goodbye after this
+    except KeyboardInterrupt:  # Ctrl-C ends the chat like /exit, with the same goodbye
+        interrupted = True
+    finally:
         if not recorder.close():
             console.say(ledger.text.replies["summary_not_saved"])
         state_recorder.observe(session.carried_state())
-    console.say(GOODBYE)
+    if interrupted:
+        console.say()
+    # S5: ending in the crisis flow (or with a safety question unanswered) leaves the
+    # region's numbers and the plan's people on screen, and asks nothing.
+    farewell = session.farewell()
+    if farewell is None:
+        console.say(GOODBYE)
+        return 0
+    console.say(f"{profile.agent_name}：{farewell.text}")
+    care_recorder.observe_level(farewell.level)
     return 0
 
 
