@@ -18,8 +18,10 @@ Rows have one of five roles:
 - ``exclude``: sentences that are never trained on and never scored by the notebook, only
   used to drop near-duplicates from training (level and rule_level -1). Always every user
   turn of the G-5 red-team cases (tests/redteam/cases.yaml: the red-team runner is the
-  release gate for step C5, so its inputs must not leak into training), plus any CSV with
-  a ``text`` column given with ``--exclude-csv`` (e.g. build/eval/redteam_texts.csv).
+  release gate for step C5, so its inputs must not leak into training) and of the G-5
+  multi-turn scenarios (tests/redteam/multiturn.yaml, source ``redteam_multiturn``), plus
+  any CSV with a ``text`` column given with ``--exclude-csv`` (e.g.
+  build/eval/redteam_texts.csv).
 
 Test sentences must never be trained on, so train rows that duplicate or nearly duplicate
 a probe, dev, fresh or exclude sentence are dropped and reported.
@@ -52,6 +54,9 @@ from olivia.core.taxonomy import load_taxonomy
 ROOT = Path(__file__).resolve().parents[2]
 SAFETY_TESTS = ROOT / "tests" / "safety"
 REDTEAM_CASES = ROOT / "tests" / "redteam" / "cases.yaml"
+REDTEAM_MULTITURN = ROOT / "tests" / "redteam" / "multiturn.yaml"
+# Red-team sets whose every user turn is an exclude row, with the row's source.
+REDTEAM_SETS = ((REDTEAM_CASES, "redteam"), (REDTEAM_MULTITURN, "redteam_multiturn"))
 PROBE_SIZE = 52
 NEAR_DUPLICATE_JACCARD = 0.8
 LEVELS = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
@@ -127,11 +132,12 @@ def collect_exclusions(extra: list[Path]) -> list[dict]:
             rows.append({"id": row_id, "text": text, "level": None, "role": EXCLUDE_ROLE,
                          "source": source, "category": category})
 
-    with open(REDTEAM_CASES, encoding="utf-8") as f:
-        cases = yaml.safe_load(f)
-    for case in cases:
-        for turn_no, turn in enumerate(case["turns"], 1):
-            add(f"{case['id']}_t{turn_no}", turn, "redteam", case["category"])
+    for path, source in REDTEAM_SETS:
+        with open(path, encoding="utf-8") as f:
+            cases = yaml.safe_load(f)
+        for case in cases:
+            for turn_no, turn in enumerate(case["turns"], 1):
+                add(f"{case['id']}_t{turn_no}", turn, source, case["category"])
     for path in extra:
         with open(path, encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)

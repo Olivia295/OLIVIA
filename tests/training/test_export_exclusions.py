@@ -19,14 +19,21 @@ sys.modules["export_olivia_data"] = export
 _spec.loader.exec_module(export)
 
 
+def _turns(name: str) -> set[str]:
+    cases = yaml.safe_load((ROOT / "tests" / "redteam" / name).read_text("utf-8"))
+    return {turn for case in cases for turn in case["turns"] if turn.strip()}
+
+
 def test_every_red_team_turn_is_an_exclude_row() -> None:
-    cases = yaml.safe_load((ROOT / "tests" / "redteam" / "cases.yaml").read_text("utf-8"))
-    turns = {turn for case in cases for turn in case["turns"] if turn.strip()}
+    single, multi = _turns("cases.yaml"), _turns("multiturn.yaml")
     rows = export.collect_exclusions([])
-    assert {r["text"] for r in rows} == turns
-    assert len(rows) == len(turns)
+    assert {r["text"] for r in rows} == single | multi
+    assert len(rows) == len(single | multi)
     assert {r["role"] for r in rows} == {"exclude"}
-    assert {r["source"] for r in rows} == {"redteam"}
+    assert {r["source"] for r in rows} == {"redteam", "redteam_multiturn"}
+    # A turn in both sets is exported once, under the single-turn set.
+    multi_rows = {r["text"] for r in rows if r["source"] == "redteam_multiturn"}
+    assert multi_rows == multi - single
 
 
 def test_exclude_csv_rows_are_added_once(tmp_path: Path) -> None:
