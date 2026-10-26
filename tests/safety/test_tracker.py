@@ -427,3 +427,55 @@ def test_in_a_crisis_a_capped_denial_is_tracked_at_its_uncapped_level(run, tax, 
     # After it, the uncapped L2 is a relapse as before F10.
     s = t.observe(_denial(), "我没事")
     assert (s.level, s.awaiting_confirmation) == (L.L2, True)
+
+
+# -- S5 (2026-10-26): a clause of a longer message that says the user is safe ----------------
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "我现在在家，是安全的",  # the 2026-10-26 transcript p6-s2
+        "是的，我现在安全，已经给我姐打了电话",  # transcript mt011 shape
+        "我现在安全",
+        "我在家，我很安全",
+        "嗯，我在家里，挺安全的",
+        "我在家里很安全，谢谢你",
+    ],
+)
+def test_a_clause_that_says_safe_confirms(run, reply):
+    run("我想死")
+    s = run(reply)
+    assert s.in_crisis and not s.awaiting_confirmation and s.safe_turns_remaining == 2
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "我现在在家，是安全的，可是药还在",  # a contrast and a means veto (F10)
+        "我现在安全，但今晚不一定",  # contrast, time
+        "我现在是安全的，不过明天就不知道了",
+        "我在家，是安全的，就是还想死",  # a Stage 2 phrase: a rule risk cue
+        "我在家，是安全的，活着好累",  # the rules' L1
+        "我现在在家，安全吗",  # a question
+        "我在楼顶，是安全的",  # a place veto
+        "暂时是安全的",  # a hedge
+        "我妹妹在家，她是安全的",  # someone else is safe
+        "我家里人是安全的",
+        "我在家，现在还安全",
+        "我在家，不太安全",
+    ],
+)
+def test_a_safe_clause_with_a_veto_contrast_or_risk_does_not_confirm(run, reply):
+    run("我想死")
+    s = run(reply)
+    assert s.in_crisis and s.awaiting_confirmation
+
+
+def test_the_clause_reading_needs_the_screens_all_clear(tax, lex):
+    """A hand-built assessment never says the rules found nothing (``rule_clear``)."""
+    tracker = _in_crisis(tax, lex)
+    s = tracker.observe(_a(L.L0, 0.0), "我现在在家，是安全的")
+    assert s.awaiting_confirmation
+    # The phrase and short-answer readings do not depend on it.
+    assert not tracker.observe(_a(L.L0, 0.0), "我现在是安全的").awaiting_confirmation

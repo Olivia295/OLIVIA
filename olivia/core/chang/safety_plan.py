@@ -226,6 +226,12 @@ class SafetyPlanText:
     command: Mapping[str, str]
     crisis_intro: str
     suggestion: str
+    crisis_reminder: str = ""
+    """S5: the one line a crisis reply carries after the plan was shown in full once."""
+    crisis_reminder_people: str = ""
+    """The same with the names of section 4 (slot ``{name}``)."""
+    farewell_people: str = ""
+    """The heading of section 4's people in a crisis farewell."""
 
     def all_texts(self) -> tuple[str, ...]:
         """Every sentence in the file, for the WILLOW and gate checks in the tests."""
@@ -235,6 +241,9 @@ class SafetyPlanText:
             *self.command.values(),
             self.crisis_intro,
             self.suggestion,
+            self.crisis_reminder,
+            self.crisis_reminder_people,
+            self.farewell_people,
         )
 
 
@@ -290,9 +299,20 @@ def _load_text(base: Traversable | Path) -> SafetyPlanText:
     crisis = _mapping(root.get("crisis"), "crisis")
     intro = _string(crisis.get("intro"), "crisis.intro")
     suggestion = _string(root.get("suggestion"), "suggestion")
-    if _SLOT_RE.search(intro) or _SLOT_RE.search(suggestion):
-        raise SafetyPlanTextError(f"{_TEXT_FILE}: crisis.intro and suggestion take no slots")
-    return SafetyPlanText(titles, prompts, command, intro, suggestion)
+    reminder = _string(crisis.get("reminder"), "crisis.reminder")
+    reminder_people = _string(crisis.get("reminder_people"), "crisis.reminder_people")
+    people_heading = _string(crisis.get("farewell_people"), "crisis.farewell_people")
+    unslotted = (intro, suggestion, reminder, people_heading)
+    if any(_SLOT_RE.search(text) for text in unslotted):
+        raise SafetyPlanTextError(
+            f"{_TEXT_FILE}: crisis.intro, crisis.reminder, crisis.farewell_people and "
+            "suggestion take no slots"
+        )
+    if set(_SLOT_RE.findall(reminder_people)) != {"name"}:
+        raise SafetyPlanTextError(f"{_TEXT_FILE}: crisis.reminder_people needs exactly {{name}}")
+    return SafetyPlanText(
+        titles, prompts, command, intro, suggestion, reminder, reminder_people, people_heading
+    )
 
 
 def _fill(template: str, **values: object) -> str:
@@ -322,6 +342,32 @@ def crisis_block(plan: SafetyPlan | None, text: SafetyPlanText | None = None) ->
     if not parts:
         return ""
     return "\n".join([wording.crisis_intro, *parts])
+
+
+def crisis_reminder(plan: SafetyPlan | None, text: SafetyPlanText | None = None) -> str:
+    """The one line a crisis reply carries once the plan was shown in full (S5).
+
+    With people in section 4 it names them (names only, never a number): "你的安全计划里有
+    表姐、小周……"; with only sections 2 or 3 filled it points back at the plan in general.
+    ``""`` when :func:`crisis_block` would be empty too.
+    """
+    if not crisis_block(plan, text) or plan is None:
+        return ""
+    wording = load_safety_plan_text() if text is None else text
+    if plan.people:
+        names = "、".join(contact.name for contact in plan.people)
+        return _fill(wording.crisis_reminder_people, name=names)
+    return wording.crisis_reminder
+
+
+def farewell_people(plan: SafetyPlan | None, text: SafetyPlanText | None = None) -> str:
+    """Section 4's people (name and phone) under ``crisis.farewell_people``, for a crisis
+    farewell (S5); ``""`` without any."""
+    if plan is None or not plan.people:
+        return ""
+    wording = load_safety_plan_text() if text is None else text
+    lines = plan.lines(Section.PEOPLE)
+    return "\n".join([wording.farewell_people, *(f"· {line}" for line in lines)])
 
 
 # -- storage ----------------------------------------------------------------------------------

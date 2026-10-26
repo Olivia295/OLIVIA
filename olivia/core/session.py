@@ -103,7 +103,10 @@ and the turn's screen at most L1 (an L1 only an injected model gives, F10: "嗯�
 这里吧" at a model score of 0.22 is still a goodbye), outside a crisis, not the D3
 question or its answer, not a command or a note, and not in S_crisis, S_closing or
 S_ready (those keep their own replies), so "活着好累，我去睡了" (a rule L1) gets the L1
-reply. A card waiting for feedback reads the same phrase as not_now instead (F5a).
+reply. A card waiting for feedback reads the same phrase as not_now instead (F5a). I7
+(2026-10-26): "晚安" and "睡了" said as a clause of their own take leave too (also in
+S_haven, "[2%] 睡了"), and a goodbye or after-close line is never the text of the reply
+just before it.
 
 Failures (SDD §10.1): the crisis screen runs first and its own failures are its own
 (model failures already fail toward L2). Anything that raises after it gives a degraded
@@ -252,14 +255,43 @@ runs, so the crisis flow follows. A turn that screens L2/L3 itself never waits f
 question. ``inspect["safety_check"]`` is ``asked``, ``affirmed``, ``denied``, ``unclear``
 or None.
 
+Model-only alarms ask first (owner decision 2026-10-26): outside a crisis, when a turn's
+screen is L2/L3 only because of the injected model (the student in the product) and the
+rules found no risk cue at all (``CrisisAssessment.rule_clear``: rule level L0 and no
+Stage 1/Stage 2/hyperbole/negation phrase, pair anchor, composition or ask cue; see
+``safety.crisis.rules_found_nothing``), and the model did not fail, the turn does not
+enter the crisis flow when the student is unsure (owner decision 2026-10-26, second:
+``risk.yaml`` ``model_ask``, its class below L3 and its crisis score below 0.6, chosen on
+the dev set only): it asks the same D3 question with the region's L2 lines. A sure
+student (class L3 or score >= 0.6) enters the crisis flow as before. The turn
+reports the screen's level (``crisis_level`` L2, not in crisis) and
+``inspect["safety_check_by"]`` ``model``. The next turn is read as for D3, except that a
+no must also pass the F10 denial conditions
+(``SafetyScreen.clear_denial``); yes, unclear, off topic, no answer, a new cue or the
+model's own L2 enter the crisis flow (``MODEL_CHECK_CUE``), and a no sets no gentle-care
+flag (I9: being asked and saying no leaves no care marker). At most one such question per
+session: any later model-only alarm (also after a sure one) goes straight to the crisis
+flow. With any rule cue,
+inside a crisis, or in rules mode nothing changes.
+
+Ending in the crisis flow (S5): ``farewell`` gives the goodbye for ``/exit`` or the end of
+input inside a crisis, or with either question unanswered (no answer counts as the crisis
+flow): one ``crisis.farewell`` line, the region's numbers as on the crisis card and the
+safety plan's people (section 4) with their numbers; it asks nothing. In a crisis, a turn
+that says the user will contact someone ("我可以给表姐打个电话", ``risk.yaml``
+``reach_out``, with no rule risk cue) leads with one ``crisis.reach_out`` line
+(``inspect["reach_out"]``); the card and the crisis stay.
+
 Care greeting (PRD §9, step A3): ``care_greeting`` renders the opening check-in for a
 session that follows a crisis (or a no to the D3 question) in an earlier one; the CLI
 decides when (``chang/care.py``). ``inspect["care_greeting"]`` and ``snapshot`` say
 whether this session opened with it.
 
 Safety plan (next-phase B10, decision D8; ``chang/safety_plan.py``): ``Session.open`` takes
-the user's saved plan, and every crisis reply then carries its sections 2-4 as one block
-(``crisis_block``): after the opening sentence and before the hotline card at L2, after
+the user's saved plan, and the first crisis reply of each crisis then carries its sections
+2-4 as one block (``crisis_block``); the later replies of that crisis carry one line that
+names the plan's people instead (``crisis_reminder``, S5; ``inspect["safety_plan_reminded"]``),
+in the same place: after the opening sentence and before the hotline card at L2, after
 the card at L3 (and whenever the card carries emergency numbers), so emergency numbers
 come before any other number. Section 5 (keeping dangerous things away) is never shown.
 The block skips WILLOW; the whole reply passes the gate with the plan's numbers allowed,
@@ -356,7 +388,13 @@ from typing import Final
 from uuid import uuid4
 
 from olivia.core.chang.privacy import load_privacy_text
-from olivia.core.chang.safety_plan import SafetyPlan, crisis_block, load_safety_plan_text
+from olivia.core.chang.safety_plan import (
+    SafetyPlan,
+    crisis_block,
+    crisis_reminder,
+    farewell_people,
+    load_safety_plan_text,
+)
 from olivia.core.chang.wellbeing import Reminder, Wellbeing
 from olivia.core.fsm.machine import Reason, Transition, TurnInput, step
 from olivia.core.language.data import ContentKind, LanguageData, load_language_data, slots_of
@@ -422,7 +460,7 @@ from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import ResourceStore, parse_store
-from olivia.core.safety.crisis import CrisisAssessment, RiskModel, SafetyScreen
+from olivia.core.safety.crisis import MODEL_FAILURE, CrisisAssessment, RiskModel, SafetyScreen
 from olivia.core.safety.intent_check import IntentAnswer, read_intent_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
 from olivia.core.safety.normalize import normalize
@@ -461,6 +499,11 @@ _OWN_REPLY_STAGES: Final = frozenset({HelpStage.S_CRISIS, HelpStage.S_CLOSING, H
 _PROLONGED_GRIEF: Final = "SIT-06-04"
 # Cue id added to an answer turn the session reads as L2 after the D3 question.
 SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
+# Cue id added to an answer turn the session reads as L2 after the question a model-only
+# alarm asked (owner decision 2026-10-26).
+MODEL_CHECK_CUE: Final = "MODEL_CHECK_L2"
+MODEL_CHECK: Final = "model"
+"""``inspect["safety_check_by"]`` on the turn a model-only alarm asks and on its answer."""
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
 """``inspect["reason"]`` when new content after the closing ritual reopens S_explore."""
 DEGRADED: Final = "DEGRADED"
@@ -526,6 +569,15 @@ class TurnResult:
     """Red-flag codes whose referral card is in this reply."""
     inspect: dict[str, object]
     """The ``--inspect`` panel data (ruling 27): ids, levels and numbers, never user text."""
+
+
+@dataclass(frozen=True)
+class Farewell:
+    """The goodbye of a conversation that ends in the crisis flow (``Session.farewell``)."""
+
+    text: str
+    level: CrisisLevel
+    """L2 or L3: what the cross-session care marker records (``chang/care.py``)."""
 
 
 @dataclass(frozen=True)
@@ -599,6 +651,7 @@ class _Rendered:
     pending: _Pending | None = None
     info_id: str | None = None
     plan_shown: bool = False
+    plan_reminded: bool = False
 
 
 @dataclass(frozen=True)
@@ -672,6 +725,11 @@ class Session:
         self._clarifying = False
         # The last turn asked the D3 question, so the next turn is its answer.
         self._asking = False
+        # Owner decisions 2026-10-26: the session's first model-only alarm may ask the
+        # question (``_model_asked`` is set by any model-only alarm); ``_asking_model``
+        # marks the pending question as that one.
+        self._model_asked = False
+        self._asking_model = False
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
         self._gentle_care = False
         # This session opened with the A3 check-in greeting (``care_greeting``).
@@ -696,7 +754,14 @@ class Session:
         )
         self._mirror_turn: int | None = None
         # The user's own safety plan (B10): shown in crisis replies only, never written.
+        # S5 (2026-10-26): in full once per crisis, then one reminder line; the people of
+        # section 4 also go into a crisis farewell.
         self._plan_block = crisis_block(safety_plan)
+        self._plan_reminder = crisis_reminder(safety_plan)
+        self._plan_people = farewell_people(safety_plan)
+        self._plan_shown_in_crisis = False
+        # The last reply sent, so a goodbye never repeats it word for word (I7).
+        self._last_reply: str | None = None
         self._suggest_plan = suggest_safety_plan
         self._plan_suggested = False
         # The risk model scored L3 in this crisis but its L3 is not plan evidence, so the
@@ -826,8 +891,19 @@ class Session:
             return self._degraded(assessment, now, asking=asking, error=type(exc).__name__)
 
     def _turn(self, text: str, now: datetime, assessment: CrisisAssessment) -> TurnResult:
-        assessment, answer = self._answer_safety_check(text, assessment)
+        model_answer = self._asking_model
+        self._asking_model = False
+        assessment, answer = self._answer_safety_check(text, assessment, model=model_answer)
         model_level, model_score = self._risk.take_turn()
+        # What the screen said, for ``inspect`` and the reported level of a question turn.
+        screened = assessment
+        model_ask = self._model_only_alarm(assessment, answer, model_level, model_score)
+        if model_ask:
+            # Owner decisions 2026-10-26: the rules found nothing and the student is unsure,
+            # so ask once first. The turn goes on as an L1 only the model gives (no crisis,
+            # no L1 run).
+            self._asking_model = True
+            assessment = replace(assessment, level=CrisisLevel.L1)
         perception, signals = self._shared.stub.perceive(text, assessment)
         perception = self._shared.introspector.apply(text, perception)
         before = self._last_status
@@ -852,12 +928,13 @@ class Session:
             self._urgent = True
         if not status.in_crisis or status.just_entered:
             self._confirm_hinted = False
+            self._plan_shown_in_crisis = False
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
         flags = self._red_flags.observe(text)
         self._text_flags |= self._shared.detector.detect(text)
         self._context = self._contra.observe(signals, perception, status, flags)
-        ask = answer is None and assessment.asks_intent and not status.in_crisis
+        ask = model_ask or (answer is None and assessment.asks_intent and not status.in_crisis)
         # The request on an ask turn is not a request for an exercise, and the answer to the
         # question is not an answer to any other question.
         if ask:
@@ -1085,6 +1162,7 @@ class Session:
         self._need_named = False
         # Only the plain composed reply of the current stage carries a wellbeing prompt.
         ordinary = False
+        reached_out = False
         if stage is HelpStage.S_CRISIS:
             # After a confirmation the crisis waits to end: no second safety question.
             waiting = status.in_crisis and not status.awaiting_confirmation
@@ -1102,6 +1180,11 @@ class Session:
             if confirmed:
                 # The user just said they are safe: say we heard it, then the card.
                 self._add_line(rendered, templates.safety_confirmed, stage, first=True)
+            elif status.in_crisis and self._reaches_out(text, assessment):
+                # S5: the user will contact someone; affirm it first, the card stays.
+                reach = self._engine.data.render.crisis_reach_out
+                self._add_line(rendered, reach, stage, first=True)
+                reached_out = True
         elif ask:
             rendered = self._safety_check(stage, now)
         elif no_pending:
@@ -1290,13 +1373,25 @@ class Session:
         ):
             self._pending = None
 
+        # A question turn reports the screen's own level: a model-only alarm asked first is
+        # still an L2 alarm (owner decision 2026-10-26), only not the crisis flow yet.
+        level = max(status.level, screened.level) if ask else status.level
+        self._last_reply = rendered.reply
+        extra: dict[str, object] = {}
+        if model_ask or model_answer:
+            extra["safety_check_by"] = MODEL_CHECK
+        if rendered.plan_reminded:
+            extra["safety_plan_reminded"] = True
+        if reached_out:
+            extra["reach_out"] = True
         inspect: dict[str, object] = {
             "turn": transition.state.global_turn_count,
-            "level": status.level.name,
-            "assessed_level": assessment.level.name,
-            **_uncapped(assessment),
+            "level": level.name,
+            "assessed_level": screened.level.name,
+            **_uncapped(screened),
+            **extra,
             "in_crisis": status.in_crisis,
-            "cue_ids": list(assessment.cue_ids),
+            "cue_ids": list(screened.cue_ids),
             "stage": stage.value,
             "previous_stage": transition.previous.value,
             "reason": reason,
@@ -1346,7 +1441,7 @@ class Session:
             reply=rendered.reply,
             reply_kind=rendered.kind,
             stage=stage,
-            crisis_level=status.level,
+            crisis_level=level,
             in_crisis=status.in_crisis,
             resource_card=rendered.card,
             action_id=rendered.action_id,
@@ -1418,6 +1513,31 @@ class Session:
         self._care_greeting = True
         return rendered.reply
 
+    def farewell(self) -> Farewell | None:
+        """The goodbye when the conversation ends (``/exit``, end of input) in the crisis
+        flow, or with a safety question still unanswered (S5, 2026-10-26).
+
+        An unanswered question counts as the crisis flow (SDD §8.2: no answer is read as
+        L2), whether the D3 question or the one a model-only alarm asked. The goodbye is
+        one gentle line, the region's numbers as on the crisis card (emergency numbers
+        first after a capped model L3) and, when the safety plan lists people, their names and
+        numbers. It asks nothing (no mood rating). ``None`` otherwise: the caller says its
+        ordinary goodbye. ``Farewell.level`` is the crisis level the care marker records.
+        """
+        status = self._last_status
+        in_crisis = status is not None and status.in_crisis
+        if not in_crisis and not self._asking:
+            return None
+        level = CrisisLevel.L2
+        if status is not None and in_crisis:
+            level = max(level, status.level, status.entry_level or CrisisLevel.L0)
+        card, urgent = self._crisis_card(level, self._now())
+        self._gate_notes = []
+        self._engine.last_gate = None
+        text = self._engine.render_crisis_farewell(card, people=self._plan_people, urgent=urgent)
+        care = CrisisLevel.L3 if card.level >= CrisisLevel.L3 else CrisisLevel.L2
+        return Farewell(text, care)
+
     # -- stages ---------------------------------------------------------------------------
 
     def _crisis_card(self, level: CrisisLevel, now: datetime) -> tuple[ResourceCard, bool]:
@@ -1457,11 +1577,13 @@ class Session:
         the same either way."""
         level = max(CrisisLevel.L2, status.level, status.entry_level or CrisisLevel.L0)
         card, urgent = self._crisis_card(level, now)
+        # S5: the plan in full once per crisis, then one line that points back at it.
+        remind = self._plan_shown_in_crisis
         self._engine.last_gate = None
         reply = self._engine.render_crisis(
             card,
             self._plain_slots(),
-            plan_block=self._plan_block,
+            plan_block=self._plan_reminder if remind else self._plan_block,
             urgent=urgent,
             confirmed=confirmed,
             hint=hint,
@@ -1471,11 +1593,24 @@ class Session:
             # The plan block was dropped; the hotline card is shown without it.
             self._gate_notes.extend(reason.split(":", 1)[0] for reason in planned.reasons)
         self._note_gate()
-        shown = planned is not None and planned.ok
-        return _Rendered(reply, ReplyKind.CRISIS, card=card, plan_shown=shown)
+        ok = planned is not None and planned.ok
+        shown = ok and not remind
+        if shown:
+            self._plan_shown_in_crisis = True
+        return _Rendered(
+            reply, ReplyKind.CRISIS, card=card, plan_shown=shown, plan_reminded=ok and remind
+        )
+
+    def _reaches_out(self, text: str, assessment: CrisisAssessment) -> bool:
+        """The crisis turn says the user will contact someone ("我可以给表姐打个电话"; S5):
+        a ``reach_out`` phrase with no rule risk cue in the message (``rule_clear``)."""
+        return assessment.rule_clear and self._shared.lexicons.reach_out.says(normalize(text))
 
     def _safety_check(self, stage: HelpStage, now: datetime) -> _Rendered:
-        """The D3 question with the region's L2 resource lines (never the minors' lines)."""
+        """The D3 question with the region's L2 resource lines (never the minors' lines).
+
+        A model-only alarm asks it too (owner decisions 2026-10-26), only when the
+        student's class is below L3, so its card is never framed as urgent."""
         card = resolve(
             self._shared.store,
             self._profile.region,
@@ -1489,32 +1624,78 @@ class Session:
         self._note_gate()
         return _Rendered(reply, ReplyKind.SAFETY_CHECK, card=card)
 
-    def _answer_safety_check(
-        self, text: str, assessment: CrisisAssessment
-    ) -> tuple[CrisisAssessment, IntentAnswer | None]:
-        """Read this turn as the answer to the D3 question asked on the turn before.
+    def _model_only_alarm(
+        self,
+        assessment: CrisisAssessment,
+        answer: IntentAnswer | None,
+        model_level: str | None,
+        model_score: float | None,
+    ) -> bool:
+        """Whether this turn asks first instead of entering the crisis flow.
 
-        Anything but a clear no is read as L2 (the screen's own L2/L3 is kept as it is);
-        a no sets the gentle-care flag. Whether a no carries a new crisis cue is the rule
-        screen's call: an injected model's score band alone (L1) does not void it, while
-        its L2 still enters crisis through ``assessment``. Returns the assessment
-        unchanged and None when no question was asked.
+        Owner decisions 2026-10-26. The turn is a model-only alarm when, outside a crisis
+        (as of the turn before) and not the answer to a question, the screen is at L2 or
+        above while the rules found no risk cue at all (``CrisisAssessment.rule_clear``,
+        see ``safety.crisis.rules_found_nothing``) and the model did not fail. It asks
+        first only when the student is unsure (``risk.yaml`` ``model_ask``: its class is
+        below L3 and its crisis score below ``direct_from_score``, 0.6, chosen on the dev
+        set only) and it is the session's first model-only alarm: any later one, and a
+        sure one, enter the crisis flow as before.
+        """
+        before = self._last_status
+        alarm = (
+            not (before is not None and before.in_crisis)
+            and answer is None
+            and self._risk.model is not None
+            and assessment.level >= CrisisLevel.L2
+            and assessment.rule_clear
+            and MODEL_FAILURE not in assessment.cue_ids
+            and model_level in CrisisLevel.__members__
+            and model_score is not None
+        )
+        if not alarm or model_level is None or model_score is None:
+            return False
+        first = not self._model_asked
+        self._model_asked = True
+        rules = self._shared.lexicons.model_ask
+        return first and rules.asks_first(CrisisLevel[model_level], model_score)
+
+    def _answer_safety_check(
+        self, text: str, assessment: CrisisAssessment, *, model: bool = False
+    ) -> tuple[CrisisAssessment, IntentAnswer | None]:
+        """Read this turn as the answer to the question asked on the turn before.
+
+        Anything but a clear no is read as L2 (the screen's own L2/L3 is kept as it is).
+        Whether a no carries a new crisis cue is the rule screen's call: an injected
+        model's score band alone (L1) does not void it, while its L2 still enters crisis
+        through ``assessment``. Returns the assessment unchanged and None when no question
+        was asked.
+
+        For the D3 question a no sets the gentle-care flag. For the question a model-only
+        alarm asked (``model``, owner decision 2026-10-26) the no must also pass the F10
+        denial conditions (``SafetyScreen.clear_denial``: no veto, no contrast, no negated
+        denial, no rule cue outside a denial), and it sets no gentle-care flag, so the next
+        session does not open by asking about safety (I9).
         """
         if not self._asking:
             return assessment, None
         shared = self._shared.screen
         rules = assessment if self._screen is shared else shared.assess(text)
         answer = read_intent_answer(self._shared.lexicons.intent_answers, text, rules)
+        if model and answer is IntentAnswer.DENIED and not shared.clear_denial(text):
+            answer = IntentAnswer.UNCLEAR
         if answer is IntentAnswer.DENIED:
-            self._gentle_care = True
+            if not model:
+                self._gentle_care = True
             return assessment, answer
         if assessment.level >= CrisisLevel.L2:
-            return assessment, answer
+            return replace(assessment, rule_clear=False), answer
         l2 = replace(
             assessment,
             level=CrisisLevel.L2,
             score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L2")),
-            cue_ids=(*assessment.cue_ids, SAFETY_CHECK_CUE),
+            cue_ids=(*assessment.cue_ids, MODEL_CHECK_CUE if model else SAFETY_CHECK_CUE),
+            rule_clear=False,
         )
         return l2, answer
 
@@ -2020,8 +2201,9 @@ class Session:
         self, variants: tuple[str, ...], stage: HelpStage, *, window: bool = False
     ) -> _Rendered:
         """A closing ritual (``window``: one that fits the stage's word window) or an
-        after-close line, never the text of the last one sent."""
-        avoid = self._last_closing
+        after-close line, never the text of the last one sent nor of the last reply (I7:
+        a goodbye never repeats the turn before it word for word)."""
+        avoid = frozenset(t for t in (self._last_closing, self._last_reply) if t is not None)
         rendered = self._with_taboo_filter(
             lambda: self._plain_line(variants, stage, avoid=avoid, window=window), stage
         )
@@ -2046,20 +2228,20 @@ class Session:
         variants: tuple[str, ...],
         stage: HelpStage,
         *,
-        avoid: str | None = None,
+        avoid: frozenset[str] = frozenset(),
         window: bool = False,
     ) -> tuple[str, str] | None:
         """One variant with only the name slots filled, after WILLOW and the output gate.
 
-        ``avoid`` leaves out a variant that renders to that text and ``window`` keeps to
-        the variants that fit the stage's word window, unless that leaves none."""
+        ``avoid`` leaves out the variants that render to one of those texts and ``window``
+        keeps to the variants that fit the stage's word window, unless that leaves none."""
         values = self._plain_slots().values()
         willow = self._engine.data.willow
         usable = [v for v in variants if all(values[s] for s in slots_of(v))]
         rendered = {
             v: apply_willow(_fill_names(v, values), ContentKind.NORMAL, willow) for v in usable
         }
-        pool = [v for v in usable if rendered[v] != avoid] or usable
+        pool = [v for v in usable if rendered[v] not in avoid] or usable
         if window:
             pool = [v for v in pool if self._engine.window_penalty(stage, rendered[v]) == 0] or pool
         # The engine skips a line the replies just before already said (F3).

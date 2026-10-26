@@ -19,6 +19,7 @@ from olivia.core.chang.safety_plan import (
     SafetyPlan,
     Section,
     crisis_block,
+    crisis_reminder,
     load_safety_plan_text,
 )
 from olivia.core.language.data import load_language_data
@@ -117,13 +118,42 @@ def test_l3_opening_then_emergency_card_then_plan(region):
     assert result.reply.index("138-0000-0000") > first_emergency
 
 
-def test_the_plan_stays_for_every_turn_of_the_crisis():
+def test_the_plan_is_shown_once_per_crisis_then_one_reminder_line():
+    """S5 (2026-10-26): the full plan once per crisis; later crisis replies carry one line
+    that names the plan's people (no numbers), and every card stays whole."""
     session = _open(safety_plan=PLAN)
-    turns = [session.turn(t) for t in (L3_SENTENCE, "嗯", "我现在安全了")]
-    for result in turns:
+    first, *later = [session.turn(t) for t in (L3_SENTENCE, "嗯", "我现在安全了")]
+    assert first.inspect["safety_plan_shown"] is True and crisis_block(PLAN) in first.reply
+    reminder = crisis_reminder(PLAN)
+    assert "阿青" in reminder and "小周" in reminder and "138" not in reminder
+    for result in [first, *later]:
         assert result.stage is HelpStage.S_CRISIS
-        assert result.inspect["safety_plan_shown"] is True
         _assert_card_intact(result)
+    for result in later:
+        assert result.inspect["safety_plan_shown"] is False
+        assert result.inspect["safety_plan_reminded"] is True
+        assert TEXT.crisis_intro not in result.reply and "138-0000-0000" not in result.reply
+        assert result.reply.count(reminder) == 1
+
+
+def test_a_new_crisis_shows_the_plan_in_full_again():
+    session = _open(safety_plan=PLAN)
+    session.turn(L2_SENTENCE)
+    assert session.turn("嗯").inspect.get("safety_plan_reminded") is True
+    for text in ("我现在安全了", "今天天气还行", "去楼下买了杯奶茶"):
+        session.turn(text)
+    assert session.snapshot()["in_crisis"] is False
+    again = session.turn(L2_SENTENCE)
+    assert again.inspect["safety_plan_shown"] is True and crisis_block(PLAN) in again.reply
+
+
+def test_the_reminder_without_people_points_back_at_the_plan():
+    plan = SafetyPlan(coping=("听一首喜欢的歌",))
+    session = _open(safety_plan=plan)
+    session.turn(L2_SENTENCE)
+    later = session.turn("嗯")
+    assert crisis_reminder(plan) == TEXT.crisis_reminder
+    assert TEXT.crisis_reminder in later.reply and "听一首喜欢的歌" not in later.reply
 
 
 def test_section_five_and_warning_signs_never_reach_a_crisis_reply():

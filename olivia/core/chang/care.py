@@ -178,7 +178,14 @@ class CareRecorder:
         self._disabled = False
 
     def observe(self, result: TurnResult, snapshot: Mapping[str, object]) -> None:
-        kind = care_kind(result, snapshot)
+        self._write(care_kind(result, snapshot))
+
+    def observe_level(self, level: CrisisLevel) -> None:
+        """A session that ends in the crisis flow, or with a safety question unanswered
+        (``Session.farewell``, S5): no answer counts as the crisis flow at ``level``."""
+        self._write(CareKind.L3 if level >= CrisisLevel.L3 else CareKind.L2)
+
+    def _write(self, kind: CareKind | None) -> None:
         if kind is None or self._disabled:
             return
         if self._written is not None and _stronger(self._written, kind) is self._written:

@@ -53,6 +53,12 @@ Someone else's reported words (2026-10-26, ``safety/reported.py``): when every S
 phrase of a message is a third person's speech the user reports ("她跟我说她不想活了") and
 no pair or composition cue fires, the rule model voids those phrases. Only the rules: an
 injected model's level is not capped.
+
+``rule_clear`` (owner decision 2026-10-26) says the rules found no risk cue at all
+(:func:`rules_found_nothing`): the session then asks once before a crisis level that
+only the injected model gives, and the tracker may read a safety clause in a longer
+message (S5). ``clear_denial`` is the stricter no to that question: the D3 no must also
+pass the F10 denial conditions.
 """
 
 from __future__ import annotations
@@ -123,6 +129,46 @@ class CrisisAssessment:
     """The turn's level without the denial cap (F10), set only when that cap lowered it:
     outside a crisis a first-person denial or all-clear that only an injected model rates
     L2/L3 counts as L1, and in a crisis the tracker reads this level instead."""
+    rule_clear: bool = False
+    """The rules found no risk cue at all in the message (owner decision 2026-10-26; see
+    :func:`rules_found_nothing`). ``False`` unless the screen checked: an assessment built
+    by hand never counts as clear, so nothing relaxes for it."""
+
+
+def rules_found_nothing(
+    rule_level: CrisisLevel,
+    matches: Sequence[Match],
+    cues: Mapping[str, RiskCue],
+    pair_anchor_keys: frozenset[str],
+    compositions: Sequence[CompositionHit],
+    asks_intent: bool,
+) -> bool:
+    """The definition of "no rule risk cue" (规则风险线索为零, owner decision 2026-10-26).
+
+    A message is clear of rule risk cues only when all of these hold on its normalized
+    text:
+
+    * the rule model's level is L0 (so no Stage 2 phrase or pair counted, no L1 run);
+    * no phrase of ``stage1``, ``stage2``, ``hyperbole`` or ``negation`` occurs at all,
+      masked or not ("想死的心都有了", "我不想死" are cues here: the rules saw a death word);
+    * no anchor phrase of a ``stage2_pairs`` or ``stage2_ask`` cue occurs (自杀, 轻生, 想走了,
+      结束这一切, 别劝我 ...), even without its request word and even inside an exception;
+    * no composition matched, at any level (L3 plan evidence, L2, L1 or ASK: euphemism,
+      farewell, burden, self-injury; an ASK one marked ``raise_with_risk`` too), whether
+      or not it counted for the level;
+    * no ``ASK_INTENT`` cue fired (``asks_intent``).
+
+    Someone else's reported words (``safety/reported.py``) count as cues as well: the rule
+    model voids such a Stage 2 phrase to L0, but the phrase still occurs, so the rules did
+    see a death phrase and a model alarm on it is not "the rules found nothing".
+
+    Stage 1 never reaches this test (it answers L3 first). Pair request words alone (方法,
+    步骤) and the denial, recall and safety-confirmation phrases are not risk cues. A
+    model failure is not the screen's business here: the session treats it as an alarm.
+    """
+    if rule_level is not CrisisLevel.L0 or asks_intent or compositions:
+        return False
+    return not any(m.key in cues or m.key in pair_anchor_keys for m in matches)
 
 
 def arbitrate(
@@ -160,6 +206,10 @@ class _CueIndex:
         self.matcher = PhraseMatcher(phrases)
         self.cues: dict[str, RiskCue] = cues
         self.pairs: tuple[PairCue, ...] = pairs
+        # Every pair anchor (自杀, 想走了 ...): a rule risk cue even without its request word.
+        self.pair_anchor_keys: frozenset[str] = frozenset(
+            _PAIR_KEY + phrase for pair in pairs for phrase in pair.anchors
+        )
         self.composer = Composer(lexicons.compositions)
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
@@ -230,6 +280,21 @@ class _DenialIndex:
             return False
         first_end = min(h.end for h in hits)
         if any(c.start >= first_end for c in self._contrasts.find_all(normalized)):
+            return False
+        cover = _MaskCover(hits)
+        stage2 = [m for m in matches if m.key in cues and cues[m.key].section == "stage2"]
+        return all(cover.contains(m) for m in stage2)
+
+    def clears(
+        self, normalized: str, matches: Sequence[Match], cues: Mapping[str, RiskCue]
+    ) -> bool:
+        """The F10 conditions on a no, with no denial phrase required (2026-10-26): no
+        negator right before a denial, no veto and no contrast anywhere, and every Stage 2
+        phrase inside a denial ("不是，我不想死" passes, "不是，可是今晚……" does not)."""
+        hits = self._phrases.find_all(normalized) if self._phrases is not None else []
+        if any(normalized[: h.start].endswith(self._negators) for h in hits):
+            return False
+        if self._vetoes.find_all(normalized) or self._contrasts.find_all(normalized):
             return False
         cover = _MaskCover(hits)
         stage2 = [m for m in matches if m.key in cues and cues[m.key].section == "stage2"]
@@ -501,6 +566,14 @@ class SafetyScreen:
             )
         # The model's band is already in its level; the rule score's band is its level.
         level = arbitrate(self._tax, prediction.level, rule_prediction.score, has_plan_evidence)
+        clear = rules_found_nothing(
+            rule_prediction.level,
+            matches,
+            cues,
+            self._index.pair_anchor_keys,
+            composed,
+            asks_intent,
+        )
         return CrisisAssessment(
             level,
             prediction.score,
@@ -510,7 +583,26 @@ class SafetyScreen:
             asks_intent,
             rule_prediction.level,
             None if uncapped is None or uncapped is level else uncapped,
+            clear,
         )
+
+    def clear_denial(self, text: str) -> bool:
+        """Whether a no to the question a model-only alarm asked passes the F10 denial
+        conditions (owner decision 2026-10-26, the stricter of D3's no and F10's denial):
+        no Stage 1 phrase, pair anchor or composition, no veto or contrast anywhere, no
+        negated denial, and every Stage 2 phrase inside a denial phrase. The rules only;
+        the D3 reading of the no itself is ``intent_check.read_intent_answer``."""
+        normalized = normalize(text)
+        matches = self._index.scan(normalized)
+        cues = self._index.cues
+        if self._index.compose(normalized):
+            return False
+        for match in matches:
+            if match.key in self._index.pair_anchor_keys:
+                return False
+            if match.key in cues and cues[match.key].section == "stage1":
+                return False
+        return self._index.denial.clears(normalized, matches, cues)
 
     def _predict_safely(self, model: RiskModel, text: str) -> RiskPrediction:
         """The injected model's prediction, or the L2 failure prediction when it breaks."""

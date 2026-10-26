@@ -808,6 +808,48 @@ class LanguageEngine:
             return result.text
         return self._minimal_card(numbers)
 
+    def render_crisis_farewell(
+        self, card: ResourceCard, *, people: str = "", urgent: bool = False
+    ) -> str:
+        """The goodbye of a session that ends in the crisis flow (S5, draft, G-0).
+
+        One ``crisis.farewell`` line, the card's numbers as on the crisis card (emergency
+        first, ``urgent`` framed as in :meth:`render_crisis`), then ``people``: the safety
+        plan's section 4 with their numbers (B10), which skips WILLOW. The whole text
+        passes the gate as CRISIS content with the card's and the people's numbers
+        allowed; if it is blocked the people are dropped, and if that is blocked too the
+        minimal card with every number is the goodbye.
+        """
+        if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
+            raise ValueError("render_crisis_farewell needs a CRISIS-mode card at L2 or L3")
+        lines = self._data.render.crisis_farewell
+        if not lines:
+            raise ValueError("render data has no crisis farewell line")
+        line = self._rng.choice(lines)
+        numbers = _numbers(card)
+        body = apply_willow(
+            "\n\n".join([line, *self._resource_blocks(card, urgent=urgent)]),
+            ContentKind.CRISIS,
+            self._data.willow,
+        )
+        if people.strip():
+            withpeople = self._gate.check(
+                f"{body}\n\n{people}",
+                kind=ContentKind.CRISIS,
+                stage=HelpStage.S_CRISIS,
+                allowed_numbers=[*numbers, *phone_like_runs(people)],
+            )
+            if withpeople.ok:
+                self.last_gate = withpeople
+                return withpeople.text
+        result = self._gate.check(
+            body, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
+        )
+        self.last_gate = result
+        if result.ok:
+            return result.text
+        return self._minimal_card(numbers)
+
     def _resource_blocks(self, card: ResourceCard, *, urgent: bool = False) -> list[str]:
         """The card's numbers: emergency first, then lines, stale entries marked.
 

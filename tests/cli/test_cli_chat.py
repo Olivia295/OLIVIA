@@ -55,8 +55,12 @@ def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
     # The card is printed exactly as the session rendered it: same numbers, same order.
     assert f"Olivia：{crisis.reply}" in run.out
     assert run.out.index("110") < run.out.index("120") < run.out.index("12356")
-    assert run.lines[-1] == cli.GOODBYE
-    assert run.out.count(cli.GOODBYE) == 1
+    # S5: /exit in the crisis flow says goodbye with the region's numbers again and asks
+    # nothing, instead of the ordinary goodbye line.
+    assert cli.GOODBYE not in run.out
+    goodbye = run.out[run.out.rindex("Olivia：") :]
+    assert goodbye.index("110") < goodbye.index("120") < goodbye.index("12356")
+    assert "Olivia：" + crisis.reply not in goodbye
     # The crisis leaves the encrypted care marker for the next visit (step A3).
     top_level = [p.name for p in files_under(data_home) if p.parent == data_home]
     assert top_level == [CARE_FILENAME, PROFILE_FILENAME]
@@ -451,3 +455,37 @@ def test_bad_arguments_exit_with_usage(argv):
     with pytest.raises(SystemExit) as exc:
         cli.main(argv, stdout=io.StringIO())
     assert exc.value.code == 2
+
+
+# -- S5: ending the chat inside the crisis flow ---------------------------------------------------
+
+
+def _goodbye(out: str) -> str:
+    return out[out.rindex("Olivia：") :]
+
+
+def test_exit_in_a_crisis_leaves_the_numbers_and_the_plans_people(run_cli, data_home):
+    from olivia.core.chang.safety_plan import Contact, SafetyPlan, SafetyPlanStore
+
+    save_profile(data_home)
+    SafetyPlanStore(data_home).save(SafetyPlan(people=(Contact("表姐", "138-0000-0000"),)))
+    run = run_cli(["chat", "--rules"], ["我不想活了", "/exit"])
+    assert run.code == 0 and run.results[-1].in_crisis
+    goodbye = _goodbye(run.out)
+    assert goodbye.index("12356") < goodbye.index("表姐：138-0000-0000")
+    assert cli.GOODBYE not in run.out
+    assert "0 到 10" not in goodbye  # no mood rating
+
+
+def test_end_of_input_in_a_crisis_says_the_same_goodbye(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--rules"], ["我不想活了"])
+    assert run.code == 0 and cli.GOODBYE not in run.out
+    assert "12356" in _goodbye(run.out)
+    assert "Olivia：" + run.results[-1].reply not in _goodbye(run.out)
+
+
+def test_ordinary_exit_keeps_the_ordinary_goodbye(run_cli, data_home):
+    save_profile(data_home)
+    run = run_cli(["chat", "--rules"], ["今天上班好累", "/exit"])
+    assert run.lines[-1] == cli.GOODBYE and "12356" not in run.out
