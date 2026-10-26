@@ -11,8 +11,8 @@ window (head 128 + tail 256 characters) and scanned once. Within each lexicon se
 hit fully inside a longer hit of the same section is dropped, then a hit directly
 preceded by a negation prefix is void, unless the prefix ends a non-negating word
 (``negation.exceptions``: 特别, 告别 ...), completes an A-not-A question (是不是, 有没有,
-会不会, or any one-character 不 / 没 between a character and a hit that starts with the
-same character: 能不能教我, 有没有什么办法) or follows another negation (不是不). This
+会不会, 想不想, or any one-character 不 / 没 between a character and a hit that starts
+with the same character: 能不能教我, 有没有什么办法) or follows another negation (不是不). This
 mirrors the red-flag detector's check.
 
 Rules, per field:
@@ -151,7 +151,7 @@ _VALIDATION_EMOTIONS: Final = frozenset({"shame", "hopelessness", "grief", "lone
 _REFLECTION_EMOTION: Final = "confusion"
 _ELEVATED_BAND: Final = "elevated"
 # (head, negation) pairs that form an A-not-A question rather than a denial.
-_A_NOT_A: Final = (("是", "不是"), ("有", "没有"), ("会", "不会"))
+_A_NOT_A: Final = (("是", "不是"), ("有", "没有"), ("会", "不会"), ("想", "不想"))
 _BATTERY_PREFIX: Final = re.compile(r"\[([0-9]{1,3})%\]")
 _COMMANDS: Final[Mapping[str, Command]] = MappingProxyType({c.value: c for c in Command})
 

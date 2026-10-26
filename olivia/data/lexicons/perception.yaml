@@ -8,7 +8,7 @@
 # Phrases are matched as substrings. Within one section, a hit fully inside a longer hit
 # of the same section is dropped ("开心不起来" wins over "开心"). Any hit directly preceded
 # by a `negation.prefixes` entry is void unless that prefix is the second half of an
-# A-not-A question (是不是 / 有没有 / 会不会) or itself follows another negation.
+# A-not-A question (是不是 / 有没有 / 会不会 / 想不想) or itself follows another negation.
 #
 # Labels follow docs/eval/perception-annotation-guide.md. This file must not borrow
 # wording from olivia/data/lexicons/risk.yaml: crisis detection is the safety screen's
@@ -1604,6 +1604,12 @@ negation:
     - 不用
     - 不需要
     - 不要
+    # Not wanting to (2026-10-26): "我不想换一个方法" asks for no method; 想不想 is
+    # an A-not-A question.
+    - 不想
+    - 不太想
+    - 不想再
+    - 不想要
   exceptions:
     - 特别
     - 分别

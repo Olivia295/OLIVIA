@@ -6,7 +6,8 @@ section ``compositions``) instead joins two phrase lists, an intent verb and an 
 ending one's life for example, across a short gap without clause punctuation. The checks
 that keep it from firing on everyday text are generic: exceptions around a part, blocker
 words in the gap, a negator in the gap or just before the first part, a third person as
-the subject, a required context nearby, voiding words in the same clause and, for an
+the subject, a required context nearby, voiding words in the same clause (or nearby, with
+``unless_across``) and, for an
 entry with ``trailing``, anything but a sentence particle after it in its clause. Each is
 described on :class:`~olivia.core.safety.lexicon.Composition`.
 
@@ -335,8 +336,12 @@ class Composer:
         ):
             return False
         if entry.unless:
-            a = max(clause, first.start - entry.unless_window)
-            b = min(facts.clause_end[second.end], second.end + entry.unless_window)
+            a = first.start - entry.unless_window
+            b = second.end + entry.unless_window
+            if entry.unless_across:
+                a, b = max(0, a), min(len(facts.text), b)
+            else:
+                a, b = max(clause, a), min(facts.clause_end[second.end], b)
             if own.unless.any_inside(a, b):
                 return False
         if entry.trailing is not None:

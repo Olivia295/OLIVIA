@@ -23,6 +23,10 @@ The screen's denial cap (F10: a first-person denial or all-clear that only an in
 model rates L2/L3 counts as L1) is for a turn outside a crisis: in a crisis the tracker
 reads the turn's uncapped level (``CrisisAssessment.uncapped_level``), so in a crisis
 such a turn is tracked exactly as without the cap.
+A farewell, last words, affairs arranged or a resolve (a D3 cue marked ``raise_with_risk``
+in risk.yaml) outside a crisis escalates to L2 at once, instead of asking, when the session
+already showed risk: an earlier L1 turn of the current run or an earlier crisis
+(2026-10-26).
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -126,6 +130,9 @@ class CrisisTracker:
         self._veto_matcher = PhraseMatcher(
             {phrase: cue.id for cue in lexicons.cues("confirm_veto") for phrase in cue.patterns}
         )
+        self._raise_ids = frozenset(
+            entry.id for entry in lexicons.compositions.entries if entry.raise_with_risk
+        )
 
         self._run = 0
         self._last_l1_valence: float | None = None
@@ -135,6 +142,7 @@ class CrisisTracker:
         self._entry_level: CrisisLevel | None = None
         self._confirmed = False
         self._safe_turns = 0
+        self._had_crisis = False
 
     @property
     def consecutive_l1_count(self) -> int:
@@ -167,13 +175,16 @@ class CrisisTracker:
         self._update_trend(trend, usable)
 
         level = assessed
-        escalated = trend is CrisisLevel.L1 and self._run >= self._streak
+        escalated = trend is CrisisLevel.L1 and (
+            self._run >= self._streak or self._asks_again(assessment)
+        )
         if escalated:
             level = CrisisLevel.L2
 
         just_entered = False
         just_exited = False
         if level >= CrisisLevel.L2:
+            self._had_crisis = True
             if not self._in_crisis:
                 self._in_crisis = True
                 self._entry_level = level
@@ -204,6 +215,19 @@ class CrisisTracker:
         ):
             return rule
         return None
+
+    def _asks_again(self, assessment: CrisisAssessment) -> bool:
+        """A farewell, last words, affairs arranged or a resolve (a D3 cue marked
+        ``raise_with_risk``) outside a crisis in a session that already showed risk: an
+        earlier L1 turn of the current run (this turn is already counted, so the run is at
+        least 2) or an earlier crisis. It escalates to L2 like a full L1 run instead of
+        asking (2026-10-26)."""
+        return (
+            not self._in_crisis
+            and assessment.asks_intent
+            and not self._raise_ids.isdisjoint(assessment.cue_ids)
+            and (self._run >= 2 or self._had_crisis)
+        )
 
     def _update_trend(self, assessed: CrisisLevel, valence: float | None) -> None:
         if assessed is CrisisLevel.L1:

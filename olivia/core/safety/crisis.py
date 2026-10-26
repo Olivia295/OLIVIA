@@ -44,7 +44,15 @@ ones are D3 cues, never masked, like the ask pairs.
 ``asks_intent`` (decision D3) is set when a rule ``ASK_INTENT`` cue fires: an L1 pair or
 composition cue for a euphemistic request for a way to end a life, current self-injury,
 a farewell, or a sense of being a burden. The screen only reports it; the session
-decides to ask.
+decides to ask. An ask composition marked ``raise_with_risk`` (a farewell, the last words,
+affairs arranged, a resolve) next to a risk cue of the user's own in the same message (a
+Stage 2 phrase outside its span, a method pair, an L1 / L2 composition) makes the rule
+level L2 (2026-10-26); the tracker does the same after earlier risk in the session.
+
+Someone else's reported words (2026-10-26, ``safety/reported.py``): when every Stage 2
+phrase of a message is a third person's speech the user reports ("她跟我说她不想活了") and
+no pair or composition cue fires, the rule model voids those phrases. Only the rules: an
+injected model's level is not capped.
 """
 
 from __future__ import annotations
@@ -60,6 +68,7 @@ from typing import Final, Literal, Protocol
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.compose import Composer, CompositionHit
 from olivia.core.safety.lexicon import (
+    Composition,
     DenialRules,
     PairCue,
     RecallCapRules,
@@ -69,6 +78,7 @@ from olivia.core.safety.lexicon import (
 )
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import normalize
+from olivia.core.safety.reported import ReportedSpeech
 from olivia.core.taxonomy import Taxonomy
 
 _MATCHED_SECTIONS: Final[tuple[RiskSection, ...]] = ("stage1", "stage2", "hyperbole", "negation")
@@ -153,6 +163,7 @@ class _CueIndex:
         self.composer = Composer(lexicons.compositions)
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
+        self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
@@ -278,17 +289,25 @@ class RuleRiskModel:
         self._index = _index if _index is not None else _CueIndex(lexicons)
         self._score_hyperbole = tax.threshold("risk.lexicon_scores.HYPERBOLE")
         self._score_l0 = tax.threshold("risk.lexicon_scores.L0")
+        self._score_l2 = tax.threshold("risk.lexicon_scores.L2")
 
     def predict(self, text: str) -> RiskPrediction:
         normalized = normalize(text)
-        return self.predict_matches(self._index.scan(normalized), self._index.compose(normalized))
+        return self.predict_matches(
+            self._index.scan(normalized), self._index.compose(normalized), normalized
+        )
 
     def predict_matches(
-        self, matches: Sequence[Match], compositions: Sequence[CompositionHit] = ()
+        self,
+        matches: Sequence[Match],
+        compositions: Sequence[CompositionHit] = (),
+        normalized: str = "",
     ) -> RiskPrediction:
         """Score a prior scan of the normalized text (spans are only valid there).
 
-        L3 compositions are Stage 1 evidence and play no part here."""
+        L3 compositions are Stage 1 evidence and play no part here. With the
+        ``normalized`` text, Stage 2 phrases that are all someone else's reported words
+        are void when no pair or composition cue fires (``safety/reported.py``)."""
         cues = self._index.cues
         masks: list[Match] = []
         stage2: list[Match] = []
@@ -309,6 +328,16 @@ class RuleRiskModel:
         # Pair cues ignore the negation and hyperbole masks (only their own exceptions apply),
         # and so do ask compositions; L1 and L2 compositions are masked like stage2 phrases.
         pairs = self._index.fired_pairs(matches)
+        if (
+            valid
+            and normalized
+            and not pairs
+            and not compositions
+            and len(self._index.reported.reported(normalized, valid)) == len(valid)
+        ):
+            # Every risk phrase is someone else's reported words and the user adds no cue
+            # of their own: the rules leave the user out of the crisis flow.
+            valid = []
         phrase_level = max(
             [cues[m.key].level or CrisisLevel.L0 for m in valid] + [p.level for p in pairs],
             default=CrisisLevel.L0,
@@ -332,6 +361,12 @@ class RuleRiskModel:
                 + [p.score for p in pairs]
                 + [c.score for c in composed]
             )
+            raised = [h for h in compositions if h.entry.raise_with_risk]
+            if raised and self._has_own_risk(valid, pairs, composed, raised):
+                # A farewell, the last words, affairs arranged or a resolve (a D3 cue marked
+                # raise_with_risk) next to a risk cue of the user's own in the same message
+                # is no longer a question (2026-10-26): L2.
+                score = max(score, self._score_l2)
             level = self._tax.crisis_level_for_score(score)
             ids = _unique_ids(
                 [*(m.key for m in valid), *(p.id for p in pairs), *(c.id for c in composed)]
@@ -340,6 +375,24 @@ class RuleRiskModel:
         if hyperbole_ids:
             return RiskPrediction(CrisisLevel.L0, self._score_hyperbole, _unique_ids(hyperbole_ids))
         return RiskPrediction(CrisisLevel.L0, self._score_l0, ())
+
+    def _has_own_risk(
+        self,
+        valid: Sequence[Match],
+        pairs: Sequence[PairCue],
+        composed: Sequence[Composition],
+        raised: Sequence[CompositionHit],
+    ) -> bool:
+        """Some rule cue other than a D3 cue: a Stage 2 phrase outside the raised cues'
+        spans, a method request pair or an L1 / L2 composition. Another D3 cue (an ask
+        pair or composition) is the same question, not a risk of its own."""
+        spans = [Match(h.entry.id, h.start, h.end) for h in raised]
+        ask_ids = self._index.ask_ids
+        return (
+            any(not any(m.start < s.end and s.start < m.end for s in spans) for m in valid)
+            or any(p.id not in ask_ids for p in pairs)
+            or any(not c.ask for c in composed)
+        )
 
 
 class SafetyScreen:
@@ -383,7 +436,7 @@ class SafetyScreen:
             return CrisisAssessment(
                 CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
             )
-        rule_prediction = self._rule_model.predict_matches(matches, composed)
+        rule_prediction = self._rule_model.predict_matches(matches, composed, normalized)
         prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False

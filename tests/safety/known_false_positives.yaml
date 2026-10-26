@@ -7,19 +7,19 @@
 # ones they get right are in tuned_probe.yaml): the honest measure of recall on unseen text.
 #
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
-#   L0 -> L2: 11
+#   L0 -> L2: 10
 #   L0 -> L3: 2
 #   L1 -> L0: 2
 #   L2 -> L0: 8
 #   L2 -> L1: 3
-#   L3 -> L0: 67
-#   L3 -> L1: 5
-#   L3 -> L2: 10
-#   by ideal: L0 13, L1 2, L2 11, L3 82
-#   by current: L0 77, L1 8, L2 21, L3 2
-#   below ideal (missed or under-rated): 95
-#   above ideal (false alarms): 13
-#   total: 108
+#   L3 -> L0: 63
+#   L3 -> L1: 6
+#   L3 -> L2: 9
+#   by ideal: L0 12, L1 2, L2 11, L3 78
+#   by current: L0 73, L1 9, L2 19, L3 2
+#   below ideal (missed or under-rated): 91
+#   above ideal (false alarms): 12
+#   total: 103
 #
 # Fix F1 (2026-10-24, compositional cues): 12 entries reached their ideal level and moved
 # out (kl_nm02/04/06/07/12/15/16 to cases.yaml as f1_*, kl_fr17/33/35/36/37 to
@@ -34,6 +34,15 @@
 # Fix F16a (2026-10-25, hoarded pills): kl_m02, kl_m31, kl_m37 and kl_m41 rose from L0 to L2
 # (L2_MEANS_HOARDED); their ideal stays L3, which needs a self-harm anchor they do not have.
 #
+# Safety lexicon gaps (2026-10-26): a rope or charcoal made ready (S1_MEANS_READY) and a
+# hoard of pills to be taken all at once (S1_PILLS_HOARDED_ALL) are L3 with no death word,
+# so kl_m05, kl_m38, kl_m38_rw and kl_m37 reached L3 and moved to cases.yaml (g26_ + the
+# old id). fp12 (烦得想死) reached L0 through HYP_ANNOYED_TO_DEATH (owner request; this
+# reverses the earlier "no mask" ruling for irritation, heat, cold, hunger and the like,
+# never for pain, misery or exhaustion) and was dropped: its text is now a bare mask phrase,
+# so cases.yaml carries g26_h01 instead. kl_af11 rose from L0 to L1 + the D3 question
+# (ASK_INTENT_AFFAIRS_ARRANGED).
+#
 # {id, text, ideal, current, why}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
 - {id: fp04, ideal: L0, current: L2, text: "我可不想死在工位上", why: "不想死在 is kept for place talk (不想死在家里)"}
@@ -43,12 +52,10 @@
 - {id: fp08, ideal: L0, current: L2, text: "你活腻了吧敢这么跟我说话", why: "活腻了 used as a threat at someone else"}
 - {id: fp09, ideal: L0, current: L2, text: "看到海就想跳下去游泳", why: "想跳下去 without a death word"}
 - {id: fp11, ideal: L0, current: L2, text: "这个月加班加到想死", why: "X到想死 hyperbole; a mask would also hide real ideation (controller ruling: no mask)"}
-- {id: fp12, ideal: L0, current: L2, text: "烦得想死", why: "X得想死 hyperbole; a mask would hide '我烦得想死 是真的想死那种' (controller ruling: no mask)"}
 - {id: fp13, ideal: L0, current: L2, text: "i want to diet before summer", why: "a wanttodiet mask would also hide 'i want to die tbh / then / to…' (user ruling: no mask)"}
 - {id: fp14, ideal: L0, current: L2, text: "i want to diet", why: "same as fp13"}
 - {id: fn01, ideal: L2, current: L0, text: "以前没想过去死 可是现在天天想", why: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}
 - {id: kl_m02, ideal: L3, current: L2, text: "这半年每次开药都偷偷留几片 现在攒了快一百片了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m02); fix F16a: L2_MEANS_HOARDED (药 + 攒了, no death word) rates it L2"}
-- {id: kl_m05, ideal: L3, current: L0, text: "绳子我已经买好了 藏在衣柜里", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m05)"}
 - {id: kl_m06, ideal: L3, current: L0, text: "刀片准备好了，就在枕头底下", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m06)"}
 - {id: kl_m07, ideal: L3, current: L0, text: "我把刀磨好了放在床边 你懂我意思", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m07)"}
 - {id: kl_m10, ideal: L3, current: L0, text: "从老家带了一瓶农药过来 一直藏着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m10)"}
@@ -67,8 +74,6 @@
 - {id: kl_m33, ideal: L3, current: L0, text: "尼龙绳买好了 承重我也查过了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m33)"}
 - {id: kl_m34, ideal: L3, current: L0, text: "刀就在手边，我一直握着它", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m34)"}
 - {id: kl_m35, ideal: L3, current: L0, text: "新的美工刀片已经准备好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m35)"}
-- {id: kl_m37, ideal: L3, current: L2, text: "我把止痛药都囤起来了 准备一次吃完", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m37); fix F16a: L2_MEANS_HOARDED rates it L2"}
-- {id: kl_m38, ideal: L3, current: L0, text: "车库里已经准备好了炭和打火机", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml m38; it moved here as kl_m38_rw in fix round 5)"}
 - {id: kl_m41, ideal: L3, current: L2, text: "pills都囤好了 安眠药一共四盒", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m41); fix F16a: L2_MEANS_HOARDED rates it L2"}
 - {id: kl_m42, ideal: L3, current: L0, text: "家里的药全被我收起来了 够吃一次的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m42)"}
 - {id: kl_m43, ideal: L3, current: L0, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43)"}
@@ -94,7 +99,7 @@
 - {id: kl_af05, ideal: L3, current: L0, text: "绳子已经套在脖子上了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af05)"}
 - {id: kl_af09, ideal: L3, current: L1, text: "这是我发给你的最后一条消息了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml af09; it moved here as kl_af09_rw in fix round 5); fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_af10, ideal: L3, current: L0, text: "以后帮我照顾好我的猫 拜托了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af10)"}
-- {id: kl_af11, ideal: L3, current: L0, text: "后事我都安排好了，存款留给我妈", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af11)"}
+- {id: kl_af11, ideal: L3, current: L1, text: "后事我都安排好了，存款留给我妈", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af11); 2026-10-26: L1 + D3 question via ASK_INTENT_AFFAIRS_ARRANGED (no death word, so not Stage 1)"}
 - {id: kl_af15, ideal: L3, current: L0, text: "血一直在流 止都止不住", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af15)"}
 - {id: kl_af17, ideal: L3, current: L1, text: "银行卡密码都留给我弟了 反正以后也用不上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af17); fix F1: L1 + D3 question via ASK_INTENT_THINGS_LEFT (no death context, so not Stage 1)"}
 - {id: kl_af18, ideal: L3, current: L0, text: "药已经吃下去了，现在就等着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml af18)"}
@@ -109,7 +114,6 @@
 - {id: kl_s09_t3, ideal: L3, current: L0, text: "她又不来了 绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: sessions.yaml s09 turn 3)"}
 - {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer probe ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
 - {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer probe ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
-- {id: kl_m38_rw, ideal: L3, current: L0, text: "车库里已经准备好了炭 车窗也用胶带封好了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 车窗也用胶带封, removed in fix round 5 because it fired on everyday text (cases.yaml b117); no other cue matches"}
 - {id: kl_tp15_rw, ideal: L3, current: L0, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
 - {id: kl_af09_rw, ideal: L3, current: L1, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_af24_rw, ideal: L3, current: L0, text: "刚在手腕上划了好几刀 这次割得很深", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 手腕上划了, removed in fix round 5 because it fired on everyday text (cases.yaml b116); no other cue matches"}
