@@ -351,8 +351,9 @@ class _Console:
     def ask(self, prompt: str) -> str | None:
         """One input line without its newline; None at end of input."""
         if self.stdin is sys.stdin and self.stdin.isatty():  # pragma: no cover - terminal only
+            _enable_line_editing()
             try:
-                return input(prompt)
+                return clean_input(input(prompt))
             except EOFError:
                 return None
         self.stdout.write(prompt)
@@ -362,7 +363,33 @@ class _Console:
         self.stdout.write("\n")
         if not line:
             return None
-        return line.rstrip("\r\n")
+        return clean_input(line.rstrip("\r\n"))
+
+
+@functools.cache
+def _enable_line_editing() -> None:  # pragma: no cover - terminal only
+    """Let ``input`` edit by character, not by byte.
+
+    Without it a terminal's own line editing (macOS by default) erases one byte per
+    backspace, so deleting a Chinese character leaves two bytes of it in the line. The
+    history it keeps stays in memory; nothing is written to disk. Windows has no
+    ``readline`` and its console already edits by character.
+    """
+    with contextlib.suppress(ImportError):
+        import readline  # noqa: F401
+
+
+def clean_input(text: str) -> str:
+    """``text`` without the bytes of a half-deleted or invalid character.
+
+    Undecodable input bytes arrive as lone surrogates (``surrogateescape``); they would
+    reach the crisis screen as noise and cannot be encoded for the encrypted stores.
+    """
+    try:
+        raw = text.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:  # a lone surrogate that no decoder produced
+        raw = text.encode("utf-8", "replace")
+    return raw.decode("utf-8", "ignore")
 
 
 def _system_clock() -> datetime:
@@ -1243,12 +1270,17 @@ def _use_utf8_stdio() -> None:
     """Read and write UTF-8 on the real streams.
 
     Piped streams otherwise use the locale encoding (cp1252 on many Windows setups),
-    which cannot carry Chinese text; a console window is unaffected.
+    which cannot carry Chinese text; a console window is unaffected. Input that is not
+    valid UTF-8 is read through ``surrogateescape`` (``clean_input`` drops it) rather
+    than stopping the program.
     """
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             reconfigure(encoding="utf-8")
+    reconfigure = getattr(sys.stdin, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(errors="surrogateescape")
 
 
 def main(
