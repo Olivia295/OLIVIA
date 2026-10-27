@@ -70,6 +70,8 @@ pipx uninstall olivia    # 卸载程序
 | `olivia chat --rules` | 危机筛查只用规则，不参考本机模型。以前的 `olivia chat --model` 仍然可以用，效果和直接 `olivia chat` 一样；两个不能同时给 |
 | `olivia --help` | 查看全部命令 |
 
+输入里夹带的终端控制序列（改窗口标题、超链接、颜色代码等）不会被记下或念回。已知限制：在用 libedit 的 Python 上（macOS 自带的和 Homebrew 的 Python），直接在终端里敲进去的颜色代码可能留下最后一个字母（例如“m”）；改窗口标题、超链接这类序列的内容仍会整段去掉。GNU readline 和管道输入没有这个限制。
+
 ### 退出码
 
 每个命令结束时的退出码遵循同一个约定，方便脚本判断：

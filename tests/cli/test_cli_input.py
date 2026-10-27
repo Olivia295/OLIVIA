@@ -249,21 +249,27 @@ def test_a_region_typed_with_controls_is_echoed_without_them(run_cli):
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX terminals only")
 def test_a_terminal_sequence_typed_in_a_terminal_leaves_no_text_behind():
     """QA r3: readline ate ESC ] and BEL as keys, so "0;pwned" stayed in the line; the
-    sequences now reach ``strip_controls`` whole. Arrow keys still move the cursor."""
+    sequences now reach ``strip_controls`` whole, under GNU readline and libedit (macOS's
+    Pythons) alike. Arrow keys and backspace still edit the line. A colour code (CSI) typed
+    raw is removed whole only under GNU readline: libedit cannot bind ESC [ without losing
+    the arrow keys, so there its final letter may stay (``cli._LIBEDIT_BINDINGS``)."""
     import pty
 
+    typed = [
+        "帮我记住：\u202e周五\x1b]0;pwned\x07要去看牙医",
+        "标题\x1b]2;abc\x1b\\之后",
+        "记住\x1b]8;;https://a.example/\x1b\\链接\x1b]8;;\x1b\\这件事",
+        "abc\x1b[D\x1b[DX",
+        "你好\x7f\x7f吗",
+        "我\x1b[31m很\x1b[0m难受",
+    ]
     code = (
-        "import sys; from olivia import cli\n"
+        "import sys, readline; from olivia import cli\n"
+        "print('BACKEND', 'libedit' if cli.readline_is_libedit(readline) else 'gnu', flush=True)\n"
         "c = cli._Console(sys.stdin, sys.stdout)\n"
-        "for _ in range(4):\n"
+        f"for _ in range({len(typed)}):\n"
         "    print('GOT', c.ask('> ').encode('unicode_escape').decode(), flush=True)"
     )
-    typed = [
-        "帮我记住：\u202e周五\x1b]0;pwned\x07要去看牙医\x1b[0m",
-        "标题\x1b]2;abc\x1b\\之后",
-        "我\x1b[31m很\x1b[0m难受",
-        "abc\x1b[D\x1b[DX",
-    ]
     pid, fd = pty.fork()
     if pid == 0:  # pragma: no cover - the child process
         os.chdir(ROOT)
@@ -272,8 +278,8 @@ def test_a_terminal_sequence_typed_in_a_terminal_leaves_no_text_behind():
     out = b""
     try:
         deadline = time.monotonic() + 30
-        for line in typed:
-            while out.count(b"> ") < typed.index(line) + 1 and time.monotonic() < deadline:
+        for number, line in enumerate(typed, start=1):
+            while out.count(b"> ") < number and time.monotonic() < deadline:
                 if select.select([fd], [], [], 0.1)[0]:
                     out += os.read(fd, 4096)
             os.write(fd, line.encode() + b"\r")
@@ -289,8 +295,11 @@ def test_a_terminal_sequence_typed_in_a_terminal_leaves_no_text_behind():
     finally:
         os.waitpid(pid, 0)
         os.close(fd)
-    got = [
-        part.split()[0].encode().decode("unicode_escape")
-        for part in out.decode("utf-8", "replace").split("GOT ")[1:]
-    ]
-    assert got == ["帮我记住：周五要去看牙医", "标题之后", "我很难受", "aXbc"]
+    text = out.decode("utf-8", "replace")
+    backend = text.split("BACKEND ", 1)[1].split()[0]
+    got = [part.split()[0].encode().decode("unicode_escape") for part in text.split("GOT ")[1:]]
+    assert got[:5] == ["帮我记住：周五要去看牙医", "标题之后", "记住链接这件事", "aXbc", "吗"]
+    if backend == "gnu":
+        assert got[5] == "我很难受"
+    else:  # the known libedit limit: no more than a colour code's final letter stays
+        assert got[5].replace("m", "") == "我很难受"

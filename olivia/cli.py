@@ -867,14 +867,32 @@ _SEQUENCE_BINDINGS: Final = (
     r'"\e\\": "\C-v\e\\"',
     r'"\C-g": "\C-v\C-g"',
 )
+_LIBEDIT_BINDINGS: Final = (
+    # The same for libedit (macOS's system and Homebrew Pythons), in its ``bind`` syntax:
+    # ESC ] and the string terminator ESC \ are typed through ed-quoted-insert (^V), BEL is
+    # inserted as itself. CSI (ESC [) is not bound: libedit cannot bind a sequence that
+    # is also the start of the arrow keys' ones, so a colour code typed (not pasted) in a
+    # terminal may leave its final letter ("m") behind there; its digits and the rest of
+    # the line are kept, and an OSC sequence's text never stays.
+    r"bind -s '^[]' '^V^[]'",
+    r"bind -s '^[\\' '^V^[\\'",
+    "bind ^G ed-insert",
+)
+
+
+def readline_is_libedit(readline: Any) -> bool:
+    """Whether Python's ``readline`` is libedit (``backend`` from 3.13, the docstring
+    before)."""
+    if getattr(readline, "backend", None) == "editline":
+        return True
+    return "libedit" in (readline.__doc__ or "")
 
 
 def _keep_terminal_sequences(readline: Any) -> None:  # pragma: no cover - terminal only
-    """GNU readline bindings for :data:`_SEQUENCE_BINDINGS`; libedit (another binding
-    syntax) is left as it is."""
-    if "libedit" in (readline.__doc__ or ""):
-        return
-    for binding in _SEQUENCE_BINDINGS:
+    """:data:`_SEQUENCE_BINDINGS` under GNU readline, :data:`_LIBEDIT_BINDINGS` under
+    libedit (another binding syntax)."""
+    bindings = _LIBEDIT_BINDINGS if readline_is_libedit(readline) else _SEQUENCE_BINDINGS
+    for binding in bindings:
         readline.parse_and_bind(binding)
 
 
