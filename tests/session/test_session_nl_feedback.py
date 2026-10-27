@@ -20,6 +20,7 @@ TAX = load_taxonomy()
 NOW = datetime(2026, 10, 22, 23, 30, tzinfo=UTC)
 NAME = "小林"
 TEMPLATES = load_language_data(TAX).templates
+RENDER = load_language_data(TAX).render
 REQUEST = "给我一个方法"
 STABILIZE = "被领导催进度，心慌得要命"
 
@@ -203,7 +204,10 @@ def test_other_reply_to_the_clarification_is_handled_as_today() -> None:
     session.turn("唉")
     result = session.turn("今天下雨了")
     assert result.inspect["feedback"] is None
-    assert result.reply in _filled(TEMPLATES.after_card)
+    # Round 3 (2026-10-27, re-test r4): new words are answered first, then the prompt.
+    heard, prompt = result.reply.split("\n\n")
+    assert heard in RENDER.heard and prompt in _filled(TEMPLATES.after_card)
+    assert result.inspect["heard"] is True
     assert session.snapshot()["pending_action"] == shown
 
 

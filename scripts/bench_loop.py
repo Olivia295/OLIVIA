@@ -208,7 +208,7 @@ def _targets() -> list[tuple[Any, str, str]]:
         (SafetyScreen, "assess", "safety"),
         (CrisisTracker, "observe", "safety"),
         (SessionRedFlags, "observe", "safety"),
-        (session_module, "read_intent_answer", "safety"),
+        (session_module, "read_answer", "safety"),
         (session_module, "resolve", "safety"),
         (session_module, "step", "fsm"),
         (SessionContraindications, "observe", "solver"),

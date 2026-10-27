@@ -155,6 +155,9 @@ class ReportedRisk:
     """The rules themselves find risk in the reported words (L1 or above, or a D3 cue).
     The model's level on a short reported clause out of context is no evidence alone:
     "过一阵子就好了" (someone's comfort) is not someone else's risk (re-test 2026-10-27)."""
+    anchor: bool = False
+    """A death word the rules know only as a pair anchor (自杀, "end my life") lies in the
+    reported words (round 3): with a time or a means it is someone else's plan."""
 
 
 def rules_found_nothing(
@@ -528,16 +531,17 @@ class SafetyScreen:
         crisis flow for someone else's words, and gets resources to pass on). An injected
         model runs once per reported span, so the caller discards its last prediction."""
         normalized = normalize(text)
-        spans = self._index.reported.contents(normalized)
+        cues = self._index.cues
+        anchors = self._index.pair_anchor_keys
+        matches = self._index.scan(normalized)
+        risky = [m for m in matches if m.key in cues or m.key in anchors]
+        spans = self._index.reported.contents(normalized, cues=risky, raw=text)
         if not spans:
             return None
 
         def inside(start: int, end: int) -> bool:
-            return any(s <= start and end <= e for s, e in spans)
+            return any(s.start <= start and end <= s.end for s in spans)
 
-        cues = self._index.cues
-        anchors = self._index.pair_anchor_keys
-        matches = self._index.scan(normalized)
         # A fired pair (a method or a painless way asked for, SDD §8.2 R-MS and D3) is never
         # someone else's business alone: asking for a way, for oneself or for "her", keeps
         # the user's own level and question.
@@ -549,21 +553,29 @@ class SafetyScreen:
         level = CrisisLevel.L0
         plan = False
         rule_risk = False
-        for start, end in spans:
-            assessment, model = self._assess(normalized[start:end])
+        anchor = False
+        for span in spans:
+            # The words are rated as the user's own: a pronoun inside them ("她说……，她想
+            # 死") is no second report to void.
+            assessment, model = self._assess(span.screen, void_reported=False)
             level = max(level, assessment.level)
             rules = assessment.rule_level or CrisisLevel.L0
             rule_risk = rule_risk or rules >= CrisisLevel.L1 or assessment.asks_intent
+            anchor = anchor or any(m.key in anchors for m in self._index.scan(span.screen))
             plan = (
                 plan
                 or assessment.level is CrisisLevel.L3
                 or (model is not None and model.level is CrisisLevel.L3)
             )
-        return ReportedRisk(level, plan, user_clear, rule_risk)
+        return ReportedRisk(level, plan, user_clear, rule_risk, anchor)
 
-    def _assess(self, text: str) -> tuple[CrisisAssessment, RiskPrediction | None]:
+    def _assess(
+        self, text: str, *, void_reported: bool = True
+    ) -> tuple[CrisisAssessment, RiskPrediction | None]:
         """The assessment and the injected model's in-contract prediction (None without a
-        model, when Stage 1 answered first or when the model failed)."""
+        model, when Stage 1 answered first or when the model failed). Without
+        ``void_reported`` the rule model keeps reported phrases (``reported_risk`` rates
+        someone else's words as if the user had said them)."""
         normalized = normalize(text)
         matches = self._index.scan(normalized)
         cues = self._index.cues
@@ -579,7 +591,9 @@ class SafetyScreen:
                 CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
             )
             return stage1_assessment, None
-        rule_prediction = self._rule_model.predict_matches(matches, composed, normalized)
+        rule_prediction = self._rule_model.predict_matches(
+            matches, composed, normalized if void_reported else ""
+        )
         prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False

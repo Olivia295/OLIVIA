@@ -147,6 +147,37 @@ class TurnSignals:
     only when the user reports someone else's risk (问题单第 6 条)."""
     keep_secret: bool = False
     """The other person asked the user to keep it secret ("她不让我告诉别人")."""
+    imminent_time: bool = False
+    """A time word of ``imminent_times``, not negated (round 3, 2026-10-27)."""
+    imminent_means: bool = False
+    """A means word of ``imminent_means``, not negated (round 3)."""
+    imminent_context: bool = False
+    """A place or everyday means ("江边", "pills"), not negated (round 3): with risk the
+    rules find in someone else's reported words, their card leads with emergency numbers."""
+    third_party_unreachable: bool = False
+    """The user cannot reach the other person ("我联系不上他"; round 3): read only a few
+    turns after the card for someone else's risk."""
+    hotline_fee: bool = False
+    """A follow-up about a hotline's cost (round 3, 2026-10-27)."""
+    hotline_hours: bool = False
+    """About when it answers (round 3)."""
+    hotline_language: bool = False
+    """About the languages it takes (round 3)."""
+    hotline_real: bool = False
+    """About whether the number is real (round 3)."""
+    hotline_more: bool = False
+    """Asking for more numbers (round 3)."""
+    hotline_words: bool = False
+    """A phone line or a call is named ("这个号码"; round 3)."""
+    hotline_place: str | None = None
+    """The region code of a place the user says they are in ("我在日本" -> ``ZZ``, "香港这边"
+    -> ``HK``; round 3), the first one named; None when no place is named."""
+    help_seeking: bool = False
+    """The user means to see a doctor or counsellor ("挂什么科"; round 3): in the crisis
+    flow the reply first says where one can go."""
+    third_party_question: bool = False
+    """The user asks what to do for the other person ("我该怎么办"; round 3): read only a
+    few turns after the card for someone else's risk."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:
