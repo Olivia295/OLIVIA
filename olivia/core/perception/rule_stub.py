@@ -186,6 +186,12 @@ _CARDIAC: Final = "cardiac_symptom"
 _PRIVACY: Final = "privacy_question"
 _PRIVACY_SUBJECT: Final = "privacy_subject"
 _HOTLINE: Final = "hotline_pushback"
+_ANONYMOUS: Final = "hotline_anonymous"
+_ABROAD: Final = "hotline_abroad"
+_STRAIN: Final = "strain"
+_IMMINENT_TIME: Final = "imminent_time"
+_IMMINENT_MEANS: Final = "imminent_means"
+_SECRET: Final = "keep_secret"
 # "我不知道该怎么说" tells how hard it is; it asks nothing (dogfood I1).
 _NOT_KNOWING: Final = ("不知道", "不晓得", "不清楚", "不明白")
 # What makes a message ask about a named practice (dogfood I2): "冷水敷脸呢", "行不行".
@@ -310,7 +316,15 @@ class RuleStub:
         add(_PRIVACY, _PRIVACY, lexicon.privacy_questions)
         add(_PRIVACY_SUBJECT, _PRIVACY_SUBJECT, lexicon.privacy_subjects)
         add(_HOTLINE, _HOTLINE, lexicon.hotline_pushback)
+        add(_ANONYMOUS, _ANONYMOUS, lexicon.hotline_anonymous)
+        add(_ABROAD, _ABROAD, lexicon.hotline_abroad)
+        add(_STRAIN, _STRAIN, lexicon.strain_cues)
+        add(_IMMINENT_TIME, _IMMINENT_TIME, lexicon.imminent_times)
+        add(_IMMINENT_MEANS, _IMMINENT_MEANS, lexicon.imminent_means)
+        add(_SECRET, _SECRET, lexicon.keep_secret_cues)
         self._request_patterns = lexicon.direct_request_patterns
+        self._hotline_patterns = lexicon.hotline_request_patterns
+        self._minor_patterns = lexicon.minor_disclosure_patterns
         self._advice_patterns = lexicon.advice_patterns
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
@@ -469,8 +483,23 @@ class RuleStub:
             privacy_question=bool(hits.get(_PRIVACY)) and bool(hits.get(_PRIVACY_SUBJECT)),
             advice_request=not direct and self._advice(body),
             hotline_pushback=bool(hits.get(_HOTLINE)),
+            hotline_request=not hits.get(_HOTLINE) and self._live(body, self._hotline_patterns),
+            hotline_anonymous=bool(hits.get(_ANONYMOUS)),
+            hotline_abroad=bool(hits.get(_ABROAD)),
+            minor_disclosure=any(p.search(body) for p in self._minor_patterns),
+            strain=bool(hits.get(_STRAIN)),
+            imminent=bool(hits.get(_IMMINENT_TIME)) and bool(hits.get(_IMMINENT_MEANS)),
+            keep_secret=bool(hits.get(_SECRET)),
         )
         return context, turn
+
+    def _live(self, body: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
+        """A match of one of ``patterns`` that is not negated ("不需要热线")."""
+        return any(
+            not self._negated(body, match.start())
+            for pattern in patterns
+            for match in pattern.finditer(body)
+        )
 
     def _advice(self, body: str) -> bool:
         """An ``advice_patterns`` match that is not "我不知道该怎么说" and not about someone

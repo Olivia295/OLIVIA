@@ -128,6 +128,25 @@ class TurnSignals:
     hotline_pushback: bool = False
     """The message asks not to be sent hotlines ("别老给我发热线电话"; dogfood I1): outside
     a crisis the reply says it heard that, and when hotlines do show."""
+    hotline_request: bool = False
+    """The message asks for a hotline or help number ("能给我一个心理援助热线的号码吗";
+    问题单第 7 条, 2026-10-26): outside a crisis and the D3 question the reply is the
+    region's resource card. Never with ``hotline_pushback``."""
+    hotline_anonymous: bool = False
+    """The message asks or worries about giving one's real name ("不用实名的")."""
+    hotline_abroad: bool = False
+    """The message is about calling from abroad ("在国外能打国内的吗")."""
+    minor_disclosure: bool = False
+    """The user says they are under 18 ("我才初二", "其实我14岁"; 问题单第 5 条): the
+    session offers only resources and a goodbye from then on. Never someone else's age."""
+    strain: bool = False
+    """Strain that is no crisis cue ("撑不了多久了"; 问题单第 11 条): read only for a user
+    with a crisis history, for one line of care and one hotline line."""
+    imminent: bool = False
+    """A time word and a means or place word, neither negated ("周末" and "楼顶"): read
+    only when the user reports someone else's risk (问题单第 6 条)."""
+    keep_secret: bool = False
+    """The other person asked the user to keep it secret ("她不让我告诉别人")."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:

@@ -54,6 +54,12 @@ phrase of a message is a third person's speech the user reports ("她跟我说�
 no pair or composition cue fires, the rule model voids those phrases. Only the rules: an
 injected model's level is not capped.
 
+``reported_risk`` (问题单第 6 条, 2026-10-26) reads those reported words on their own: it
+screens each span of someone else's words (``ReportedSpeech.contents``) as if the user had
+said it, and says whether every rule cue of the message lies inside them. It never changes
+``assess``; the session uses it to answer with resources to pass on instead of the crisis
+flow.
+
 ``rule_clear`` (owner decision 2026-10-26) says the rules found no risk cue at all
 (:func:`rules_found_nothing`): the session then asks once before a crisis level that
 only the injected model gives, and the tracker may read a safety clause in a longer
@@ -133,6 +139,22 @@ class CrisisAssessment:
     """The rules found no risk cue at all in the message (owner decision 2026-10-26; see
     :func:`rules_found_nothing`). ``False`` unless the screen checked: an assessment built
     by hand never counts as clear, so nothing relaxes for it."""
+
+
+@dataclass(frozen=True)
+class ReportedRisk:
+    """Someone else's reported words in a message (``SafetyScreen.reported_risk``)."""
+
+    level: CrisisLevel
+    """The reported words' own level, screened as if the user had said them."""
+    plan: bool
+    """They carry plan evidence (Stage 1), or the injected model's own class is L3."""
+    user_clear: bool
+    """Every rule cue of the message lies inside the reported words."""
+    rule_risk: bool = False
+    """The rules themselves find risk in the reported words (L1 or above, or a D3 cue).
+    The model's level on a short reported clause out of context is no evidence alone:
+    "过一阵子就好了" (someone's comfort) is not someone else's risk (re-test 2026-10-27)."""
 
 
 def rules_found_nothing(
@@ -487,6 +509,61 @@ class SafetyScreen:
         )
 
     def assess(self, text: str) -> CrisisAssessment:
+        return self._assess(text)[0]
+
+    def reported_risk(self, text: str) -> ReportedRisk | None:
+        """Someone else's reported words and their own level (问题单第 6 条, 2026-10-26).
+
+        ``None`` unless the message reports a third person's words (``safety/reported.py``
+        ``ReportedSpeech.contents``: a speaker and a speech verb, no self word in the words
+        and no veto such as 我也 in the message). The reported words are screened as if
+        the user had said them, with this screen's model too, so ``level`` is the risk they
+        carry; ``plan`` says they carry plan evidence (a Stage 1 cue) or that the injected
+        model's own class for them is L3. ``user_clear`` says every rule cue of the message
+        (a Stage 1, Stage 2, hyperbole or negation phrase, a pair anchor, a composition)
+        lies inside the reported words and no pair cue (a method or a painless way asked
+        for) fired anywhere, so the rules heard nothing of the user's own.
+
+        The screen only reports this; the session decides (the user is not put into the
+        crisis flow for someone else's words, and gets resources to pass on). An injected
+        model runs once per reported span, so the caller discards its last prediction."""
+        normalized = normalize(text)
+        spans = self._index.reported.contents(normalized)
+        if not spans:
+            return None
+
+        def inside(start: int, end: int) -> bool:
+            return any(s <= start and end <= e for s, e in spans)
+
+        cues = self._index.cues
+        anchors = self._index.pair_anchor_keys
+        matches = self._index.scan(normalized)
+        # A fired pair (a method or a painless way asked for, SDD §8.2 R-MS and D3) is never
+        # someone else's business alone: asking for a way, for oneself or for "her", keeps
+        # the user's own level and question.
+        user_clear = (
+            not self._index.fired_pairs(matches)
+            and all(inside(m.start, m.end) for m in matches if m.key in cues or m.key in anchors)
+            and all(inside(h.start, h.end) for h in self._index.compose(normalized))
+        )
+        level = CrisisLevel.L0
+        plan = False
+        rule_risk = False
+        for start, end in spans:
+            assessment, model = self._assess(normalized[start:end])
+            level = max(level, assessment.level)
+            rules = assessment.rule_level or CrisisLevel.L0
+            rule_risk = rule_risk or rules >= CrisisLevel.L1 or assessment.asks_intent
+            plan = (
+                plan
+                or assessment.level is CrisisLevel.L3
+                or (model is not None and model.level is CrisisLevel.L3)
+            )
+        return ReportedRisk(level, plan, user_clear, rule_risk)
+
+    def _assess(self, text: str) -> tuple[CrisisAssessment, RiskPrediction | None]:
+        """The assessment and the injected model's in-contract prediction (None without a
+        model, when Stage 1 answered first or when the model failed)."""
         normalized = normalize(text)
         matches = self._index.scan(normalized)
         cues = self._index.cues
@@ -498,16 +575,20 @@ class SafetyScreen:
         if stage1 or plans:
             score = max([_cue_score(cues[m.key]) for m in stage1] + [c.score for c in plans])
             ids = _unique_ids([*(m.key for m in stage1), *(c.id for c in plans)])
-            return CrisisAssessment(
+            stage1_assessment = CrisisAssessment(
                 CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
             )
+            return stage1_assessment, None
         rule_prediction = self._rule_model.predict_matches(matches, composed, normalized)
         prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
         has_plan_evidence = False
         uncapped: CrisisLevel | None = None
+        observed: RiskPrediction | None = None
         if self._model is not None:
             model_prediction = self._predict_safely(self._model, text)
+            if model_prediction is not self._model_failure:
+                observed = model_prediction
             failed = model_prediction is self._model_failure
             # The model's level and its score's band, the higher of the two.
             model_level = max(
@@ -574,7 +655,7 @@ class SafetyScreen:
             composed,
             asks_intent,
         )
-        return CrisisAssessment(
+        assessment = CrisisAssessment(
             level,
             prediction.score,
             "STAGE2",
@@ -585,6 +666,7 @@ class SafetyScreen:
             None if uncapped is None or uncapped is level else uncapped,
             clear,
         )
+        return assessment, observed
 
     def clear_denial(self, text: str) -> bool:
         """Whether a no to the question a model-only alarm asked passes the F10 denial

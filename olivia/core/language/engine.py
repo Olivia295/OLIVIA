@@ -911,10 +911,82 @@ class LanguageEngine:
             return result.text
         return self._minimal_card(numbers)
 
-    def _resource_blocks(self, card: ResourceCard, *, urgent: bool = False) -> list[str]:
+    def render_resource_reply(
+        self,
+        card: ResourceCard,
+        lead: Sequence[str],
+        *,
+        stage: HelpStage,
+        tail: Sequence[str] = (),
+        emergency_heading: str | None = None,
+        lines_heading: str | None = None,
+    ) -> str:
+        """A reply that is a few lines and the card's numbers (2026-10-26, draft, G-0): the
+        resources a user asks for, the card for someone else's reported risk, or the
+        resources after a user says they are under 18.
+
+        ``lead`` paragraphs, the card's numbers (as on a crisis card: emergency first,
+        stale entries marked; ``emergency_heading`` and ``lines_heading`` replace the
+        headings, and the line asking the user to call someone close is left out, since
+        the reply may not be about the user), then ``tail`` paragraphs. The lines pass the
+        NORMAL filters and the numbers the CRISIS ones; the whole reply passes the gate as
+        NORMAL content in ``stage`` with the card's numbers allowed. A block falls back to
+        the minimal card, never to a reply without numbers.
+        """
+        willow = self._data.willow
+        head = [apply_willow(line, ContentKind.NORMAL, willow) for line in lead if line]
+        end = [apply_willow(line, ContentKind.NORMAL, willow) for line in tail if line]
+        blocks = self._resource_blocks(
+            card,
+            emergency_heading=emergency_heading,
+            lines_heading=lines_heading,
+            contact_people=False,
+        )
+        resources = apply_willow("\n\n".join(blocks), ContentKind.CRISIS, willow)
+        numbers = _numbers(card)
+        result = self._gate.check(
+            "\n\n".join([*head, resources, *end]),
+            kind=ContentKind.NORMAL,
+            stage=stage,
+            allowed_numbers=numbers,
+        )
+        self.last_gate = result
+        if result.ok:
+            return result.text
+        return self._minimal_card(numbers)
+
+    def render_hotline_line(self, card: ResourceCard, stage: HelpStage) -> str | None:
+        """One line of the card's hotlines (``crisis.care_hotline``, then each line's name
+        and number; the emergency numbers when the card has no line), for a reply that
+        is not a crisis reply (问题单第 11 条, draft, G-0). None when the gate blocks it."""
+        r = self._data.render
+        if card.lines:
+            items = [f"{ln.name_zh} {ln.number}" for ln in card.lines]
+        else:
+            items = [f"{em.number}（{r.emergency_purposes[em.purpose]}）" for em in card.emergency]
+        if not items or not r.care_hotline:
+            return None
+        text = f"{r.care_hotline}{'；'.join(items)}"
+        result = self._gate.check(
+            text, kind=ContentKind.NORMAL, stage=stage, allowed_numbers=_numbers(card)
+        )
+        self.last_gate = result
+        return result.text if result.ok else None
+
+    def _resource_blocks(
+        self,
+        card: ResourceCard,
+        *,
+        urgent: bool = False,
+        emergency_heading: str | None = None,
+        lines_heading: str | None = None,
+        contact_people: bool = True,
+    ) -> list[str]:
         """The card's numbers: emergency first, then lines, stale entries marked.
 
         ``urgent`` frames the emergency numbers as an L3 card does (:meth:`render_crisis`).
+        ``emergency_heading`` / ``lines_heading`` replace the headings; without
+        ``contact_people`` an L3 framing leaves out the line asking to call someone close.
         """
         r = self._data.render
         stale = set(card.stale_entries)
@@ -922,17 +994,18 @@ class LanguageEngine:
         blocks: list[str] = []
         if card.emergency:
             framing = CrisisLevel.L3 if urgent else card.level
-            lines = [r.crisis_emergency_heading[framing]]
+            lines = [emergency_heading or r.crisis_emergency_heading[framing]]
             for em in card.emergency:
                 purpose = r.emergency_purposes[em.purpose]
                 lines.append(f"· {em.number}（{purpose}）{mark if em.id in stale else ''}")
             if framing is CrisisLevel.L3:
-                lines.append(r.crisis_contact_people)
+                if contact_people:
+                    lines.append(r.crisis_contact_people)
                 if card.region_used == _UNKNOWN_REGION:
                     lines.append(r.crisis_unknown_region_l3)
             blocks.append("\n".join(lines))
         if card.lines:
-            lines = [r.crisis_lines_heading]
+            lines = [lines_heading or r.crisis_lines_heading]
             for ln in card.lines:
                 lines.append(f"· {ln.name_zh}：{ln.number}{mark if ln.id in stale else ''}")
                 if ln.hours != _UNKNOWN_HOURS and ln.kind is not LineKind.DIRECTORY_URL:

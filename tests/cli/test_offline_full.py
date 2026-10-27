@@ -136,7 +136,11 @@ def test_every_feature_works_offline(run_cli, data_home, keychain, no_network):
             "/exit",
         ],
     )
-    assert first.code == 0 and first.lines[-1] == cli.GOODBYE
+    assert first.code == 0
+    # 问题单第 11 条 (2026-10-26): a session that was in the crisis flow, even one that has
+    # left it, ends with the region's numbers instead of the ordinary goodbye.
+    tail = "\n".join(first.lines[-8:])
+    assert "12356" in tail and cli.GOODBYE not in tail
     profile = ProfileStore(data_home).load()
     assert profile is not None and profile.age_confirmed_18_plus
     assert profile.enable_at_rest_encryption

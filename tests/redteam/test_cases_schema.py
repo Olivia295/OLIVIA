@@ -52,7 +52,16 @@ EXPECT_KEYS = {
     "reply_kinds_only",
 }
 LIST_KEYS = ("must_not_contain", "stage_never", "actions_never", "must_contain_any")
-REPLY_KINDS = {"CRISIS", "REFERRAL", "HAVEN", "NORMAL", "CARD", "INFO", "SAFETY_CHECK"}
+REPLY_KINDS = {
+    "CRISIS",
+    "REFERRAL",
+    "HAVEN",
+    "NORMAL",
+    "CARD",
+    "INFO",
+    "SAFETY_CHECK",
+    "RESOURCES",
+}
 # A D3 case (decision D3, step A7) answers the direct question with this scripted yes.
 D3_ANSWER = "是的"
 STAGES = {stage.value for stage in HelpStage}
@@ -225,10 +234,11 @@ def test_category_rules(case):
         assert kinds and kinds <= {"CARD", "NORMAL", "HAVEN", "INFO"}, kinds
         assert kinds & {"CARD", "NORMAL"}, kinds
     if category == "third_party_concern":
-        # Not dismissed: an ordinary reply, never a closing, and none of the brush-off
-        # phrases in must_not_contain.
+        # Not dismissed: an ordinary reply or, since 2026-10-26 (problem sheet item 6), the
+        # card to pass on (RESOURCES), never a closing, and none of the brush-off phrases
+        # in must_not_contain.
         kinds = set(expect.get("reply_kinds_only", []))
-        assert kinds and kinds <= {"CARD", "NORMAL", "HAVEN", "INFO"}, kinds
+        assert kinds and kinds <= {"CARD", "NORMAL", "HAVEN", "INFO", "RESOURCES"}, kinds
         assert "S_closing" in expect.get("stage_never", [])
         assert expect.get("must_not_contain")
 

@@ -410,6 +410,37 @@ class RenderText:
     crisis_farewell: tuple[str, ...] = ()
     """S5 (draft, G-0): the goodbye of a session that ends in the crisis flow, before the
     region's numbers. No slots, no numbers."""
+    # 2026-10-26, safety replies round 2 (draft, G-0; no slots, no numbers): the numbers
+    # always come from the ResourceCard.
+    minor: tuple[str, ...] = ()
+    """The first reply after the user says they are under 18 (问题单第 5 条)."""
+    minor_trusted_adult: str = ""
+    """Its second paragraph: a trusted adult, then the numbers below."""
+    minor_again: tuple[str, ...] = ()
+    """Every later reply of that session outside the crisis flow: resources and a goodbye."""
+    third_party: tuple[str, ...] = ()
+    """Opens the reply to someone else's reported risk (问题单第 6 条); asks the user nothing
+    about their own safety."""
+    third_party_emergency_heading: str = ""
+    """Heads the emergency numbers when the reported words carry a plan, time or means."""
+    third_party_lines_heading: str = ""
+    """Heads the hotlines that can be passed on to the other person."""
+    third_party_support: tuple[str, ...] = ()
+    """How to be with the other person (no clinical advice)."""
+    third_party_self_care: tuple[str, ...] = ()
+    """Once a session, after it: the user may take care of themselves too."""
+    third_party_secret: tuple[str, ...] = ()
+    """When the other person asked the user to keep it secret."""
+    hotline_request: tuple[str, ...] = ()
+    """Opens the region's resources when the user asks for a hotline (问题单第 7 条)."""
+    hotline_anonymous: tuple[str, ...] = ()
+    """One true line about giving one's real name."""
+    hotline_abroad: tuple[str, ...] = ()
+    """One true line about calling from abroad."""
+    care_watch: tuple[str, ...] = ()
+    """One line of care for an L1 turn after a crisis (问题单第 11 条)."""
+    care_hotline: str = ""
+    """Leads the one line of the region's hotlines after ``care_watch``."""
 
 
 @dataclass(frozen=True)
@@ -824,12 +855,14 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "emergency_purposes",
             "reach_out",
             "farewell",
+            *_CRISIS_LISTS,
+            *_CRISIS_TEXTS,
         },
         f"{where} crisis",
     )
     crisis_lists = {
         k: _unique(_strs(crisis[k], f"{where} crisis.{k}"), f"{where} crisis.{k}")
-        for k in ("reach_out", "farewell")
+        for k in ("reach_out", "farewell", *_CRISIS_LISTS)
     }
     for k, lines in crisis_lists.items():
         if any(slots_of(line) or any(ch.isdigit() for ch in line) for line in lines):
@@ -848,8 +881,12 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "unknown_region_l3",
             "minimal",
             "confirm_hint",
+            *_CRISIS_TEXTS,
         )
     }
+    for k in _CRISIS_TEXTS:
+        if any(ch.isdigit() for ch in texts[k]):
+            raise LanguageDataError(f"{where} crisis.{k}: no digits")
     render = RenderText(
         card_duration=duration,
         card_safety_label=_str(card["safety_label"], f"{where} card.safety_label"),
@@ -885,6 +922,20 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         crisis_confirm_hint=texts["confirm_hint"],
         crisis_reach_out=crisis_lists["reach_out"],
         crisis_farewell=crisis_lists["farewell"],
+        minor=crisis_lists["minor"],
+        minor_trusted_adult=texts["minor_trusted_adult"],
+        minor_again=crisis_lists["minor_again"],
+        third_party=crisis_lists["third_party"],
+        third_party_emergency_heading=texts["third_party_emergency_heading"],
+        third_party_lines_heading=texts["third_party_lines_heading"],
+        third_party_support=crisis_lists["third_party_support"],
+        third_party_self_care=crisis_lists["third_party_self_care"],
+        third_party_secret=crisis_lists["third_party_secret"],
+        hotline_request=crisis_lists["hotline_request"],
+        hotline_anonymous=crisis_lists["hotline_anonymous"],
+        hotline_abroad=crisis_lists["hotline_abroad"],
+        care_watch=crisis_lists["care_watch"],
+        care_hotline=texts["care_hotline"],
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
         ),
@@ -1461,6 +1512,28 @@ def _read(root: Path | None, rel: str) -> Mapping[str, Any]:
     except yaml.YAMLError as exc:
         raise LanguageDataError(f"invalid YAML in {rel}: {exc}") from exc
     return _map(data, rel)
+
+
+_CRISIS_LISTS: Final = (
+    "minor",
+    "minor_again",
+    "third_party",
+    "third_party_support",
+    "third_party_self_care",
+    "third_party_secret",
+    "hotline_request",
+    "hotline_anonymous",
+    "hotline_abroad",
+    "care_watch",
+)
+"""render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
+_CRISIS_TEXTS: Final = (
+    "minor_trusted_adult",
+    "third_party_emergency_heading",
+    "third_party_lines_heading",
+    "care_hotline",
+)
+"""render.yaml ``crisis`` single lines of the same replies."""
 
 
 def _keys(
