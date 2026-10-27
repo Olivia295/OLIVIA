@@ -269,8 +269,8 @@ def test_a_no_with_interjections_to_the_model_question_stays_out(student, text):
 
 
 def test_a_negated_intent_answers_the_d3_question():
-    text = "我绝对没有想结束生命，只是项目做不下去"
-    assert RULES.assess(text).level is CrisisLevel.L2  # L2_END_LIFE, under the negation
+    text = "我没有想轻生，只是项目做不下去"
+    assert RULES.assess(text).level is CrisisLevel.L2  # L2_SUICIDE_TERMS, under the negation
     reading = read_answer(LEX.intent_answers, text, RULES.assess(text), RULES.assess)
     assert reading.answer is IntentAnswer.DENIED and reading.negated
     session = _open()
@@ -625,3 +625,13 @@ def test_help_in_the_crisis_flow_keeps_the_card():
 @pytest.mark.parametrize("text", ["help me", "我需要帮助", "/helpful"])
 def test_help_words_are_no_command(text):
     assert _open().turn(text).reply != RENDER.chat_help
+
+
+def test_a_negated_end_of_life_is_masked_by_the_rules_themselves():
+    """Since the round-3 rules (#131) "没有想结束生命" is a negation mask: L0 outright."""
+    text = "我绝对没有想结束生命，只是项目做不下去"
+    assert RULES.assess(text).level is CrisisLevel.L0
+    session = _open()
+    assert session.turn(ASK_CUE).reply_kind is ReplyKind.SAFETY_CHECK
+    result = session.turn(text)
+    assert not result.in_crisis
