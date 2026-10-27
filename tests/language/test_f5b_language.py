@@ -24,13 +24,14 @@ from olivia.core.resources.store import ResourceStore, load_store
 from olivia.core.taxonomy import Taxonomy
 
 DATA = Path(__file__).resolve().parents[2] / "olivia" / "data"
+SUBSTANCE = "lexicons/substance.yaml"  # read by the language loader too (round 3)
 SAFETY_QUESTIONS = ("安全吗", "是安全的吗")
 
 
 def _copy(tmp_path: Path) -> Path:
     for path in DATA.rglob("*.yaml"):
         rel = path.relative_to(DATA)
-        if rel.parts[0] in {"language", "templates", "cards"}:
+        if rel.parts[0] in {"language", "templates", "cards"} or rel.as_posix() == SUBSTANCE:
             target = tmp_path / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, target)

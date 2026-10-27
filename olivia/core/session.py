@@ -775,7 +775,7 @@ class Session:
         self._shelved_at: dict[str, datetime] = {e.action_id: e.shelved_at for e in kit}
         # The profile's persona picks the reply templates and word windows (ONB-03, D-1).
         language = shared.language.for_persona(profile.persona_spectrum)
-        self._engine = LanguageEngine(tax, rng=rng, data=language)
+        self._engine = LanguageEngine(tax, rng=rng, data=language, lexicons=shared.lexicons)
         self._state = SessionState(session_id=uuid4())
         self._last_status: CrisisStatus | None = None
         self._pending: _Pending | None = None
@@ -1034,6 +1034,8 @@ class Session:
         # call, as for the D3 answer: a model's score band alone does not make "是的" L1.
         shared_screen = self._shared.screen
         rules = assessment if self._screen is shared_screen else shared_screen.assess(text)
+        # Round 3 (B2a): from L1 up, by any reading, the reply never says the words back.
+        self._engine.note_risk(max(screened.level, assessment.level, rules.level))
         calm = (
             not status.in_crisis
             and rules.level < CrisisLevel.L1
