@@ -45,6 +45,9 @@ SAME_IN_TRADITIONAL = frozenset(
     # Round 2 (2026-10-26): heights, farewells, slang, the 别 non-negators and their
     # everyday exceptions.
     "令剁副合品哈埋培墅夏宿寄局恩截扔扛拉持探推播曝沉注流淹特球申白粉肥辣辨逑醉震音"
+    # Round 3 (2026-10-27): plan, farewell and passive-ideation frames, slang (噶, 嚟) and
+    # their everyday exceptions (蟑螂, 蚊子, 魔兽世界 ...).
+    "元典各商噶嚟孝季寒建彩忘扮投按支敬暑架植泡渴湖漫牌甜祝租童美而胞舞苟蚊螂蟑迷集零首魔鼠桌梯椅沙器官捐稿"
 )
 
 

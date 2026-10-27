@@ -100,9 +100,18 @@ _COMP_ENTRY_KEYS: Final = frozenset(
         "unless_across",
         "persons",
         "raise_with_risk",
+        "also",
+        "clause_negation",
         *_COMP_PHRASE_KEYS,
     }
 )
+_COMP_ALSO_KEYS: Final = frozenset({"phrases", "window", "negatable"})
+# An inline composition list may name a shared list with this prefix ("@time"); the named
+# list's phrases are spliced in, so one entry can join several lists (time or plan).
+_LIST_REF: Final = "@"
+# The `also` windows reach across clauses: a plan word, a time and a place said in three
+# short clauses ("我想好了，这周末，去楼顶…") or in English words run together.
+_MAX_ALSO_WINDOW: Final = 40
 _COMP_LEVELS: Final = ("L1", "L2", "L3", "ASK")
 _COMP_ORDERS: Final = ("head_first", "either")
 _STAGE1_ID_PREFIX: Final = "S1_"
@@ -149,6 +158,19 @@ class PairCue:
 
 
 @dataclass(frozen=True)
+class ContextGroup:
+    """One more context a composition needs (round 3, 2026-10-27): some ``phrases``
+    occurrence within ``window`` characters of the match, across clauses (anywhere in the
+    message when ``window`` is None). Unless ``negatable`` is set, an occurrence with a
+    negator right before it in its clause (不打算, 没决定) does not count: a plan denied is no
+    plan."""
+
+    phrases: tuple[str, ...]
+    window: int | None = None
+    negatable: bool = False
+
+
+@dataclass(frozen=True)
 class Composition:
     """A cue built from two phrase lists joined across a short gap (fix F1).
 
@@ -164,7 +186,10 @@ class Composition:
     also end its clause: only ``trailing`` phrases (sentence particles such as 了, 吧) may
     stand between it and the next clause punctuation or the end of the message; with
     ``leading``, the match must start its clause the same way: only ``leading`` phrases
-    (fillers such as 真的, honestly) may stand between the clause start and it. ``ask``
+    (fillers such as 真的, honestly) may stand between the clause start and it. Each of the
+    ``also`` groups must be met too (a :class:`ContextGroup`: a plan word, a time, a place
+    nearby, across clauses), so a frame of three or four parts can be said in any order
+    and over several short clauses. ``ask``
     marks a D3 cue (L1); a level of L3 is Stage 1 plan evidence. ``raise_with_risk`` (ask
     cues only: a farewell, the last words, affairs arranged, a resolve) makes the cue L2
     instead of a question when the same message holds a risk cue of the user's own, or
@@ -197,6 +222,10 @@ class Composition:
     these phrases may stand between the clause start and it (a short code such as zs or
     kms counts only as a clause of its own, never inside other text)."""
     raise_with_risk: bool = False
+    also: tuple[ContextGroup, ...] = ()
+    clause_negation: bool = False
+    """A negator anywhere in the clause before the match voids it, not only one within
+    ``lookback`` (我不打算这周末去楼顶跳下去: the plan is denied, so its time is no plan)."""
 
 
 @dataclass(frozen=True)
@@ -680,10 +709,7 @@ def _parse_compositions(
     raw_lists = node.get("lists", {})
     if not isinstance(raw_lists, dict):
         raise LexiconError(f"{where}: 'lists' must be a mapping")
-    lists = {
-        str(name): _normalized_list(value, f"{where} lists.{name}")
-        for name, value in raw_lists.items()
-    }
+    lists = _resolve_lists(raw_lists, where)
     entries = tuple(
         _parse_composition(tax, item, lists, seen_ids)
         for item in _entry_list(node, "entries", where)
@@ -704,6 +730,30 @@ def _parse_compositions(
     )
 
 
+def _resolve_lists(raw_lists: Mapping[Any, Any], where: str) -> dict[str, tuple[str, ...]]:
+    """The named lists, each ``@name`` item spliced in whatever the order of definition; a
+    list that reaches itself through its references is rejected."""
+    lists: dict[str, tuple[str, ...]] = {}
+    raw = {str(name): value for name, value in raw_lists.items()}
+
+    def resolve(name: str, stack: tuple[str, ...]) -> tuple[str, ...]:
+        if name in lists:
+            return lists[name]
+        if name in stack:
+            raise LexiconError(f"{where} lists.{name}: refers to itself ({' -> '.join(stack)})")
+        value = raw[name]
+        if isinstance(value, list):
+            for ref in value:
+                if isinstance(ref, str) and ref.startswith(_LIST_REF) and ref[1:] in raw:
+                    resolve(ref[1:], (*stack, name))
+        lists[name] = _expanded_list(value, lists, f"{where} lists.{name}")
+        return lists[name]
+
+    for name in raw:
+        resolve(name, ())
+    return lists
+
+
 def _bounded_int(raw: Any, low: int, high: int, where: str) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int) or not low <= raw <= high:
         raise LexiconError(f"{where}: must be an integer in [{low}, {high}], got {raw!r}")
@@ -716,12 +766,32 @@ def _composition_list(
     """An entry's phrase list: a name from ``lists`` or an inline list; () when absent."""
     if key not in item:
         return ()
-    raw = item[key]
+    return _list_or_name(item[key], lists, f"{where} {key}")
+
+
+def _list_or_name(raw: Any, lists: Mapping[str, tuple[str, ...]], where: str) -> tuple[str, ...]:
+    """A list name, or an inline list whose ``@name`` items splice in named lists."""
     if isinstance(raw, str):
         if raw not in lists:
-            raise LexiconError(f"{where}: '{key}' names an unknown list {raw!r}")
+            raise LexiconError(f"{where}: names an unknown list {raw!r}")
         return lists[raw]
-    return _normalized_list(raw, f"{where} {key}")
+    return _expanded_list(raw, lists, where)
+
+
+def _expanded_list(raw: Any, lists: Mapping[str, tuple[str, ...]], where: str) -> tuple[str, ...]:
+    """An inline phrase list, normalized, with each ``@name`` item replaced by the named
+    list's phrases; a phrase that comes twice is kept once."""
+    if not isinstance(raw, list) or not raw:
+        raise LexiconError(f"{where}: 'patterns' must be a non-empty list")
+    plain = [p for p in raw if not (isinstance(p, str) and p.startswith(_LIST_REF))]
+    out: list[str] = list(_normalized_list(plain, where)) if plain else []
+    for ref in raw:
+        if isinstance(ref, str) and ref.startswith(_LIST_REF):
+            name = ref[len(_LIST_REF) :]
+            if name not in lists:
+                raise LexiconError(f"{where}: {ref!r} names an unknown list")
+            out.extend(lists[name])
+    return tuple(dict.fromkeys(out))
 
 
 def _parse_composition(
@@ -789,6 +859,10 @@ def _parse_composition(
         raise LexiconError(f"{where}: 'raise_with_risk' must be true or false")
     if raise_with_risk and not ask:
         raise LexiconError(f"{where}: 'raise_with_risk' is only for ASK entries")
+    also = _parse_also(item.get("also", []), lists, where)
+    clause_negation = item.get("clause_negation", False)
+    if not isinstance(clause_negation, bool):
+        raise LexiconError(f"{where}: 'clause_negation' must be true or false")
     return Composition(
         id=cue_id,
         level=level,
@@ -809,7 +883,34 @@ def _parse_composition(
         trailing=phrases["trailing"] if "trailing" in item else None,
         leading=phrases["leading"] if "leading" in item else None,
         raise_with_risk=raise_with_risk,
+        also=also,
+        clause_negation=clause_negation,
     )
+
+
+def _parse_also(
+    raw: Any, lists: Mapping[str, tuple[str, ...]], where: str
+) -> tuple[ContextGroup, ...]:
+    """An entry's ``also`` groups: each ``{phrases, window?, negatable?}``."""
+    if not isinstance(raw, list):
+        raise LexiconError(f"{where}: 'also' must be a list of mappings")
+    groups: list[ContextGroup] = []
+    for index, group in enumerate(raw):
+        at = f"{where} also[{index}]"
+        if not isinstance(group, dict):
+            raise LexiconError(f"{at}: must be a mapping")
+        _check_keys(group, set(_COMP_ALSO_KEYS), at)
+        if "phrases" not in group:
+            raise LexiconError(f"{at}: 'phrases' is required")
+        phrases = _list_or_name(group["phrases"], lists, f"{at} phrases")
+        window = None
+        if "window" in group:
+            window = _bounded_int(group["window"], 0, _MAX_ALSO_WINDOW, f"{at} window")
+        negatable = group.get("negatable", False)
+        if not isinstance(negatable, bool):
+            raise LexiconError(f"{at}: 'negatable' must be true or false")
+        groups.append(ContextGroup(phrases, window, negatable))
+    return tuple(groups)
 
 
 def _parse_answers(doc: Mapping[str, Any], *, required: bool) -> IntentAnswers:
