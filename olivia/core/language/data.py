@@ -119,6 +119,10 @@ NOTICES: Final = (
     "cardiac_care",
 )
 _NOTICE_MAX: Final = 80
+# utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
+SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink")
+# Those lines give no amount (no dose, as the #125 withdrawal warning).
+_DOSE_WORDS: Final = ("毫升", "毫克", "两白酒", "一两", "半斤", "一斤", "瓶以内", "杯以内", "剂量")
 # A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.
 _NOT_TIPS_WORDS: Final = ("练习", "步骤", "做法", "分钟", "跟练")
 # An ``after_close`` line with one of these points at the evening ("愿你今晚…", "早点休息",
@@ -490,6 +494,45 @@ class Utterances:
     notices: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     """``NOTICES`` -> persona-neutral plain lines the session puts before (``cardiac_care``:
     after) a reply (dogfood I1, I2; 草稿：待 G-0)."""
+    guarded_acks: tuple[str, ...] = ()
+    """The mirror slot on a turn whose words are not said back (round 3, B2a): an L1+ turn
+    or a message with a risk word (``guard.RiskWords``). Never a word of the user's."""
+    affirmations: tuple[str, ...] = ()
+    """Markers of a template line that says a feeling or need makes sense ("有来由",
+    "再自然不过"): such a variant is left out on those turns and on drinking turns."""
+    extra_risk_words: tuple[str, ...] = ()
+    """Slang the crisis screen does not read yet ("自鲨"), for the mirror guard only."""
+    craving_acks: tuple[str, ...] = ()
+    """The mirror slot for a sentence relishing drinking ("一杯下去整个人都舒坦了")."""
+    substance_lines: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    """``SUBSTANCE_LINES`` -> the plain line put before the reply (withdrawal reminder, the
+    answer to "is a small drink all right?")."""
+
+
+@dataclass(frozen=True)
+class SubstanceCues:
+    """``lexicons/substance.yaml`` (round 3, B2a; draft, G-0), folded for matching. How the
+    lists combine is in that file's header and in ``language/guard.py``."""
+
+    substances: tuple[str, ...] = ()
+    image_topic: str = ""
+    """The ``metaphors.yaml`` ``avoid.topics`` entry whose coming up makes drinking the
+    session's context too (its spectrum, situation, referral card or cues)."""
+    negators: tuple[str, ...] = ()
+    negation_window: int = 0
+    signs: tuple[str, ...] = ()
+    severe: tuple[str, ...] = ()
+    questions: tuple[str, ...] = ()
+    drinking: tuple[str, ...] = ()
+    object_window: int = 0
+    not_alcohol: tuple[str, ...] = ()
+    asking: tuple[str, ...] = ()
+    postpone: tuple[str, ...] = ()
+    later: tuple[str, ...] = ()
+    put_off: tuple[str, ...] = ()
+    quitting: tuple[str, ...] = ()
+    desire: tuple[str, ...] = ()
+    pleasure: tuple[str, ...] = ()
 
 
 def _no_feelings() -> Feelings:
@@ -526,6 +569,8 @@ class LanguageData:
     lens_requires: Mapping[str, tuple[str, ...]] = field(default_factory=_empty)
     """Grade B lens id -> words one of which the conversation must have had for that lens
     to be offered unasked (dogfood I4: couples therapy only with a partner; draft, G-0)."""
+    substance: SubstanceCues = field(default_factory=SubstanceCues)
+    """Drinking cues (``lexicons/substance.yaml``, round 3); empty: none are read."""
 
     def for_persona(self, persona: PersonaSpectrum) -> LanguageData:
         """The same data speaking with ``persona``'s templates (PRD ONB-03, plan D-1)."""
@@ -562,9 +607,18 @@ def load_language_data(
             raise LanguageDataError(
                 f"{PERSONA_TEMPLATE_FILES[p]}: followups.safety_check must match gentle_holding"
             )
+    utterances = _parse_utterances(_read(root, "language/utterances.yaml"))
+    for p, tpl in personas.items():
+        _check_unaffirmed(tpl, utterances.affirmations, PERSONA_TEMPLATE_FILES[p])
+    metaphors = _parse_metaphors(_read(root, "language/metaphors.yaml"), tax)
+    substance = _parse_substance(_read(root, "lexicons/substance.yaml"))
+    if substance.image_topic not in metaphors.topics:
+        raise LanguageDataError(
+            f"substance.yaml image_topic: {substance.image_topic!r} is no metaphors.yaml topic"
+        )
     return LanguageData(
         willow=willow,
-        metaphors=_parse_metaphors(_read(root, "language/metaphors.yaml"), tax),
+        metaphors=metaphors,
         needs=_parse_needs(_read(root, "language/needs.yaml"), tax),
         render=_parse_render(_read(root, "language/render.yaml"), tax),
         templates=personas[persona],
@@ -574,9 +628,10 @@ def load_language_data(
         personas=MappingProxyType(personas),
         situation_lenses=_parse_situation_lenses(info_doc, info, tax),
         feelings=_parse_feelings(_read(root, "language/feelings.yaml"), tax),
-        utterances=_parse_utterances(_read(root, "language/utterances.yaml")),
+        utterances=utterances,
         exercise_info=_parse_exercise_info(info_doc, tax),
         lens_requires=_parse_lens_requires(info_doc, info),
+        substance=substance,
     )
 
 
@@ -1434,7 +1489,12 @@ def _parse_feelings(data: Mapping[str, Any], tax: Taxonomy) -> Feelings:
 
 def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
     where = "utterances.yaml"
-    _keys(data, {"version", "acks", "boundaries", "reassurance", "notices"}, where)
+    _keys(
+        data,
+        {"version", "acks", "boundaries", "reassurance", "notices"},
+        where,
+        optional={"guarded", "substance"},
+    )
     _version(data, where)
     kinds = {u.value for u in Utterance if u is not Utterance.STATEMENT}
     acks_raw = _map(data["acks"], f"{where} acks")
@@ -1491,8 +1551,149 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
                     f" {_NOTICE_MAX} characters: {line!r}"
                 )
         notices[name] = lines
+    guarded_acks, affirmations, extra = _parse_guarded(data.get("guarded"), where)
+    craving, said_lines = _parse_substance_lines(data.get("substance"), where)
     return Utterances(
-        MappingProxyType(acks), MappingProxyType(bounds), reassurance, MappingProxyType(notices)
+        MappingProxyType(acks),
+        MappingProxyType(bounds),
+        reassurance,
+        MappingProxyType(notices),
+        guarded_acks=guarded_acks,
+        affirmations=affirmations,
+        extra_risk_words=extra,
+        craving_acks=craving,
+        substance_lines=MappingProxyType(said_lines),
+    )
+
+
+def _mirror_lines(node: Any, here: str) -> tuple[str, ...]:
+    """Lines for the mirror slot: each starts with 你, holds no 我 or slot, at most
+    MAX_MIRROR characters (the ``acks`` contract)."""
+    lines = _unique(_strs(node, here), here)
+    for line in lines:
+        if not line.startswith("你") or "我" in line or len(line) > MAX_MIRROR or slots_of(line):
+            raise LanguageDataError(
+                f"{here}: a mirror line starts with 你, holds no 我 or slot and has at most"
+                f" {MAX_MIRROR} characters: {line!r}"
+            )
+    return lines
+
+
+def _parse_guarded(
+    node: Any, where: str
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """``guarded`` (round 3, B2a; draft, G-0): ``acks``, ``affirmations`` and
+    ``extra_risk_words``; absent: nothing is guarded beyond the plain mirror rules."""
+    if node is None:
+        return (), (), ()
+    here = f"{where} guarded"
+    item = _map(node, here)
+    _keys(item, {"acks", "affirmations", "extra_risk_words"}, here)
+    acks = _mirror_lines(item["acks"], f"{here}.acks")
+    affirmations = _unique(_strs(item["affirmations"], f"{here}.affirmations"), here)
+    for ack in acks:
+        if any(a in ack for a in affirmations):
+            raise LanguageDataError(f"{here}.acks: {ack!r} holds an affirmation")
+    extra = _unique(
+        _strs(item["extra_risk_words"], f"{here}.extra_risk_words", allow_empty=True), here
+    )
+    return acks, affirmations, extra
+
+
+def _parse_substance_lines(node: Any, where: str) -> tuple[tuple[str, ...], dict[str, str]]:
+    """``substance`` (round 3, B2a; draft, G-0): ``craving`` mirror lines and the plain
+    ``SUBSTANCE_LINES``: no slot, digit or dose word, one paragraph of at most 80
+    characters; the withdrawal lines send the user to a doctor."""
+    if node is None:
+        return (), {}
+    here = f"{where} substance"
+    item = _map(node, here)
+    _keys(item, {"craving", *SUBSTANCE_LINES}, here)
+    craving = _mirror_lines(item["craving"], f"{here}.craving")
+    lines: dict[str, str] = {}
+    for name in SUBSTANCE_LINES:
+        line = _str(item[name], f"{here}.{name}")
+        if (
+            slots_of(line)
+            or any(ch.isdigit() for ch in line)
+            or any(w in line for w in _DOSE_WORDS)
+            or "\n" in line
+            or len(line) > _NOTICE_MAX
+        ):
+            raise LanguageDataError(
+                f"{here}.{name}: a plain line with no slot, number or dose, at most"
+                f" {_NOTICE_MAX} characters: {line!r}"
+            )
+        if name.startswith("withdrawal") and "医" not in line:
+            raise LanguageDataError(f"{here}.{name}: the withdrawal line sends to a doctor")
+        lines[name] = line
+    return craving, lines
+
+
+def _check_unaffirmed(tpl: Templates, affirmations: tuple[str, ...], where: str) -> None:
+    """Every S_explore / S_clarify part keeps a variant without an affirmation, named and
+    unnamed, so a guarded turn (round 3) can always be composed."""
+    if not affirmations:
+        return
+    for stage in (HelpStage.S_EXPLORE, HelpStage.S_CLARIFY):
+        for part in tpl.parts.get(stage, ()):
+            for pool in (part.variants, part.unnamed):
+                if pool and all(any(a in v for a in affirmations) for v in pool):
+                    raise LanguageDataError(
+                        f"{where}: {stage} {part.name} has no variant without an affirmation"
+                    )
+
+
+def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
+    """``lexicons/substance.yaml`` (round 3, B2a): every list folded and non-empty."""
+    where = "substance.yaml"
+    lists = (
+        "substances",
+        "negators",
+        "drinking",
+        "not_alcohol",
+        "asking",
+        "postpone",
+        "later",
+        "put_off",
+        "quitting",
+        "desire",
+        "pleasure",
+    )
+    _keys(
+        data,
+        {"version", "withdrawal", "negation_window", "object_window", "image_topic", *lists},
+        where,
+    )
+    _version(data, where)
+
+    def folded(node: Any, here: str) -> tuple[str, ...]:
+        words = _unique(tuple(normalize(w) for w in _strs(node, here)), here)
+        if any(not w for w in words):
+            raise LanguageDataError(f"{here}: an empty phrase")
+        return words
+
+    raw = _map(data["withdrawal"], f"{where} withdrawal")
+    _keys(raw, {"signs", "severe", "questions"}, f"{where} withdrawal")
+    v = {name: folded(data[name], f"{where} {name}") for name in lists}
+    return SubstanceCues(
+        substances=v["substances"],
+        image_topic=_str(data["image_topic"], f"{where} image_topic"),
+        negators=v["negators"],
+        negation_window=_int(data["negation_window"], f"{where} negation_window"),
+        signs=folded(raw["signs"], f"{where} withdrawal.signs"),
+        severe=folded(raw["severe"], f"{where} withdrawal.severe"),
+        questions=folded(raw["questions"], f"{where} withdrawal.questions"),
+        drinking=v["drinking"],
+        object_window=_int(data["object_window"], f"{where} object_window"),
+        not_alcohol=v["not_alcohol"],
+        asking=v["asking"],
+        postpone=v["postpone"],
+        later=v["later"],
+        put_off=v["put_off"],
+        quitting=v["quitting"],
+        desire=v["desire"],
+        pleasure=v["pleasure"],
     )
 
 

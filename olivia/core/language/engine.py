@@ -48,6 +48,20 @@ Images that fit the topic (trial report 2026-10-26, items 11 and 13; draft, G-0)
   substance use, no pair and no "it comes back" image after grief or a breakup
   (:meth:`LanguageEngine.image_tiers`). Words no image may hold at all (a letter, a
   farewell, drinking as relief) are checked when the data loads.
+
+Words not said back (round 3, B2a; draft, G-0; ``language/guard.py``):
+
+* On a turn the session rates L1 or higher (:meth:`LanguageEngine.note_risk`), or whose
+  message holds a risk word of the crisis lexicon, the ``{mirror}`` slot is a
+  ``guarded.acks`` line that quotes nothing, no template variant holding a
+  ``guarded.affirmations`` marker ("你的感受是有来由的", "这份需要再自然不过") is used and
+  no need is named (:attr:`Slots.guarded`).
+* Drinking (``lexicons/substance.yaml``): a sentence relishing a drink is reflected as a
+  strong craving (``substance.craving``), never quoted; on that turn, a withdrawal-sign
+  turn and a "is a little drink all right?" turn no affirmation is used either, and
+  :meth:`LanguageEngine.boundary_line` leads the reply with the withdrawal reminder or the
+  plain answer to the question (``substance`` lines). Drinking stays the session's context
+  once it came up.
 """
 
 from __future__ import annotations
@@ -74,11 +88,13 @@ from olivia.core.language.data import (
 from olivia.core.language.dossiers import situation_images
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
+from olivia.core.language.guard import MirrorGuard, SubstanceReading, read_substance
 from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance, mirror, utterance_kind
 from olivia.core.language.spacing import fill as spaced_fill
 from olivia.core.models import ActionSkeleton, ActionType, CrisisLevel, HelpStage, SafetyGrade
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.store import LineKind
+from olivia.core.safety.lexicon import SafetyLexicons
 from olivia.core.safety.normalize import normalize
 from olivia.core.taxonomy import Taxonomy
 
@@ -124,9 +140,12 @@ class Slots:
     metaphor: str = ""
     need: str = ""
     card_title: str = ""
+    guarded: bool = False
+    """The turn's words are not said back (round 3): no template variant holding a
+    ``guarded.affirmations`` marker is used. Not a template slot."""
 
     def values(self) -> dict[str, str]:
-        return {f.name: getattr(self, f.name) for f in fields(self)}
+        return {f.name: getattr(self, f.name) for f in fields(self) if f.name != "guarded"}
 
 
 def count_all(text: str) -> int:
@@ -174,12 +193,25 @@ def after_work_hours(now: datetime, timezone: str | None) -> bool:
 
 class LanguageEngine:
     def __init__(
-        self, tax: Taxonomy, *, rng: random.Random, data: LanguageData | None = None
+        self,
+        tax: Taxonomy,
+        *,
+        rng: random.Random,
+        data: LanguageData | None = None,
+        lexicons: SafetyLexicons | None = None,
     ) -> None:
+        """``lexicons``: the crisis lexicon whose risk words a mirror never quotes (round
+        3); without it only ``guarded.extra_risk_words`` and :meth:`note_risk` guard."""
         self._tax = tax
         self._rng = rng
         self._data = data if data is not None else load_language_data(tax)
         self._gate = OutputGate(tax, self._data)
+        self._guard = MirrorGuard(lexicons, self._data.utterances.extra_risk_words)
+        # The level the session gave this turn (note_risk), and whether drinking came up
+        # this session (round 3).
+        self._turn_level = CrisisLevel.L0
+        self._drinking = False
+        self._words_read: tuple[str, bool] | None = None
         self.last_gate: GateResult | None = None
         # The verdict on the last crisis reply with the user's safety plan in it (B10);
         # None when no plan block was offered.
@@ -281,15 +313,7 @@ class LanguageEngine:
         loader keeps every fallback list non-empty.
         """
         metaphors = self._data.metaphors
-        text = normalize(user_text)
-        for name, topic in metaphors.topics.items():
-            if (
-                spectrum_id in topic.spectra
-                or topic.situations & situations
-                or topic.flags & self._referred
-                or any(cue in text for cue in topic.cues)
-            ):
-                self._image_topics.add(name)
+        self._note_topics(spectrum_id, situations, user_text)
         raw = self._raw_image_tiers(spectrum_id, yearning_id, situations)
         if not self._image_topics:
             return raw
@@ -301,6 +325,18 @@ class LanguageEngine:
         ]
         assert tiers, "the loader keeps every fallback list non-empty"
         return tiers
+
+    def _note_topics(self, spectrum_id: str | None, situations: Set[str], user_text: str) -> None:
+        """Turn on the ``avoid.topics`` this turn brings up, for the rest of the session."""
+        text = normalize(user_text)
+        for name, topic in self._data.metaphors.topics.items():
+            if (
+                spectrum_id in topic.spectra
+                or topic.situations & situations
+                or topic.flags & self._referred
+                or any(cue in text for cue in topic.cues)
+            ):
+                self._image_topics.add(name)
 
     def _raw_image_tiers(
         self,
@@ -328,13 +364,42 @@ class LanguageEngine:
             tiers.append(self._data.metaphors.fallback)
         return tiers
 
+    def note_risk(self, level: CrisisLevel) -> None:
+        """The crisis level of the turn about to be answered (the session calls it once a
+        turn): from L1 up the user's words are not said back (round 3)."""
+        self._turn_level = level
+
+    def guarded(self, user_text: str) -> bool:
+        """None of the user's words this turn are said back: an L1+ turn, or a message
+        with a risk phrase or a risk word (``guard.MirrorGuard``)."""
+        if self._turn_level >= CrisisLevel.L1:
+            return True
+        # A turn reads the same message more than once (a recomposed reply): read it once.
+        if self._words_read is None or self._words_read[0] != user_text:
+            said = self._guard.risky(user_text) or self._guard.flagged(user_text)
+            self._words_read = (user_text, said)
+        return self._words_read[1]
+
+    def substance(self, user_text: str) -> SubstanceReading:
+        """What ``user_text`` says about drinking (``lexicons/substance.yaml``). Drinking is
+        the session's context once a message mentioned it or its image topic came up
+        (``image_topic``: the substance spectrum, its situation, its referral card or a
+        cue such as "喝了"), and stays so."""
+        cues = self._data.substance
+        context = self._drinking or cues.image_topic in self._image_topics
+        reading = read_substance(cues, user_text, context=context)
+        self._drinking = context or reading.mentioned
+        return reading
+
     def note_image(self, text: str, image: str) -> None:
         """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""
         if image and image in text:
             self._used_images.add(image)
             self._last_image = image
 
-    def safe_mirror(self, user_text: str, kind: Utterance | None = None) -> str:
+    def safe_mirror(
+        self, user_text: str, kind: Utterance | None = None, *, instead: Sequence[str] = ()
+    ) -> str:
         """:func:`mirror` for a statement, an acknowledgement for anything else, replaced
         by a neutral line if it would trip the gate.
 
@@ -342,10 +407,14 @@ class LanguageEngine:
         Chinese is not mirrored (F3): its kind's ``utterances.yaml`` acknowledgement is
         used, picked from the text itself so it draws no random number. ``kind`` overrides
         the kind read from the text (the session's ``Utterance.HAVEN_EXIT``, F10).
+        ``instead`` (round 3: ``guarded.acks``, ``substance.craving``) replaces the mirror
+        and every acknowledgement, picked the same way.
         """
         kind = utterance_kind(user_text) if kind is None else kind
         acks = self._data.utterances.acks.get(kind.value, ())
-        if kind is not Utterance.STATEMENT and acks:
+        if instead:
+            raw = instead[sum(map(ord, user_text)) % len(instead)]
+        elif kind is not Utterance.STATEMENT and acks:
             raw = acks[sum(map(ord, user_text)) % len(acks)]
         else:
             raw = mirror(user_text)
@@ -367,6 +436,9 @@ class LanguageEngine:
         or a pharmacist; "am I X?" says no diagnosis can be given here and where to get an
         assessment (``utterances.yaml`` ``boundaries``, F3). The session puts it before
         the reply it would give anyway.
+
+        Round 3: drinking cues (``lexicons/substance.yaml``) add ``utterances.yaml``
+        ``substance`` lines: ``ask_to_drink``, then ``withdrawal`` or ``withdrawal_severe``.
         """
         text = normalize(user_text)
         lines = [
@@ -375,6 +447,16 @@ class LanguageEngine:
             if any(c in text for c in b.cues)
             and (not b.needs_any or any(n in text for n in b.needs_any))
         ]
+        # Round 3 (draft, G-0): the plain answer to "is a little drink all right?", then
+        # the withdrawal reminder (the severe one for a severe sign).
+        reading = self.substance(user_text)
+        said = self._data.utterances.substance_lines
+        wanted = (
+            ("ask_to_drink", reading.asks_to_drink),
+            ("withdrawal_severe", reading.severe),
+            ("withdrawal", reading.withdrawal and not reading.severe),
+        )
+        lines += [said[name] for name, on in wanted if on and name in said]
         if not lines:
             return ""
         line = apply_willow("".join(lines), ContentKind.NORMAL, self._data.willow)
@@ -395,14 +477,39 @@ class LanguageEngine:
         situations: Set[str] = frozenset(),
         utterance: Utterance | None = None,
     ) -> Slots:
+        """The slots for one composed reply. Round 3: a guarded turn (:meth:`guarded`)
+        mirrors with a ``guarded.acks`` line and names no need. A sentence relishing a
+        drink mirrors with a ``substance.craving`` line and names no feeling from the
+        user's own words, and a question whether a little drink is all right is not
+        mirrored. None of these, nor a withdrawal sign, takes an affirmation."""
+        risky = self.guarded(user_text)
+        self._note_topics(spectrum_id, situations, user_text)
+        drinking = self.substance(user_text)
+        said = self._data.utterances
+        instead: Sequence[str] = ()
+        if risky:
+            instead = said.guarded_acks
+        elif drinking.craving:
+            instead = said.craving_acks
+        elif drinking.asks_to_drink:
+            # "我就想喝一小杯，应该没事吧": the wish to drink is not said back either.
+            instead = said.acks.get(Utterance.QUESTION.value, ())
+        # Drawn in the order they always were (the same random numbers).
+        emotion = self.feeling_word(emotion_id, "" if drinking.craving else user_text)
+        mirrored = (
+            self.safe_mirror(user_text, utterance, instead=instead) if user_text.strip() else ""
+        )
+        metaphor = self.metaphor_phrase(spectrum_id, yearning_id, situations, user_text)
+        need = self.need_phrase(yearning_id) if yearning_id is not None else ""
         return Slots(
             user_name=user_name,
             agent_name=agent_name,
-            emotion=self.feeling_word(emotion_id, user_text),
-            mirror=self.safe_mirror(user_text, utterance) if user_text.strip() else "",
-            metaphor=self.metaphor_phrase(spectrum_id, yearning_id, situations, user_text),
-            need=self.need_phrase(yearning_id) if yearning_id is not None else "",
+            emotion=emotion,
+            mirror=mirrored,
+            metaphor=metaphor,
+            need="" if risky else need,
             card_title=card_title,
+            guarded=risky or drinking.any,
         )
 
     def pick_line(self, variants: Sequence[str], values: Mapping[str, str] | None = None) -> str:
@@ -484,6 +591,13 @@ class LanguageEngine:
             dropped = set().union(*(slots_of(v) for v in usable[1])) - slots_of("".join(usable[0]))
             closing = [v for v in usable[2] if not slots_of(v) & dropped] or usable[2]
             usable = [usable[0], closing]
+        if slots.guarded:
+            # Round 3: no "your feeling makes sense" line on a guarded or drinking turn; the
+            # loader keeps an unaffirmed S_explore / S_clarify variant in every part.
+            marks = self._data.utterances.affirmations
+            usable = [
+                [v for v in pool if not any(m in v for m in marks)] or pool for pool in usable
+            ]
         if any(not pool for pool in usable):
             raise ValueError(f"{stage}: no template variant can be filled from these slots")
         combos = list(itertools.product(*usable))

@@ -36,6 +36,7 @@ from olivia.core.session import Session
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
 
 DATA = Path(__file__).resolve().parents[2] / "olivia" / "data"
+SUBSTANCE = "lexicons/substance.yaml"  # read by the language loader too (round 3)
 TAX = load_taxonomy()
 NOW = datetime(2026, 10, 22, 15, 30, tzinfo=UTC)
 IMAGE_PERSONAS = (
@@ -245,7 +246,7 @@ def test_reported_relapse_breakup_and_l1_turns(persona: PersonaSpectrum) -> None
 def _copy(tmp_path: Path) -> Path:
     for path in DATA.rglob("*.yaml"):
         rel = path.relative_to(DATA)
-        if rel.parts[0] in {"language", "templates", "cards"}:
+        if rel.parts[0] in {"language", "templates", "cards"} or rel.as_posix() == SUBSTANCE:
             target = tmp_path / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, target)

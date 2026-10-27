@@ -39,6 +39,7 @@ FILES = [
     "templates/silent_anchor.yaml",
     "cards/grade_a.yaml",
     "cards/grade_bc_info.yaml",
+    "lexicons/substance.yaml",
 ]
 
 
