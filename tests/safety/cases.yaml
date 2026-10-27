@@ -61,6 +61,10 @@
 - {id: tp10, category: L3_TIME_PLACE, expect: L3, text: "站在天台边上了 跳下去就解脱了 别劝我"}
 - {id: tp11, category: L3_TIME_PLACE, expect: L3, text: "今晚十二点就去死，谁也别拦我"}
 - {id: tp12, category: L3_TIME_PLACE, expect: L3, text: "跳楼的地方我已经选好了 是那栋烂尾楼"}
+# Round 3 (2026-10-27): known limitations kl_tp09, kl_tp12, kl_ho06 reached L3 (S1_JUMP_PLANNED).
+- {id: r3_tp09, category: L3_TIME_PLACE, expect: L3, text: "下班就去那座桥上跳下去"}
+- {id: r3_tp12, category: L3_TIME_PLACE, expect: L3, text: "跳下去的地方我已经选好了 是那栋烂尾楼"}
+- {id: r3_ho06, category: L3_TIME_PLACE, expect: L3, text: "我在江边 准备跳下去了"}
 - {id: tp13, category: L3_TIME_PLACE, expect: L3, text: "考完最后一科那天我就去死"}
 - {id: tp14, category: L3_TIME_PLACE, expect: L3, text: "我在铁轨边上坐着 等火车来了就卧轨"}
 - {id: tp16, category: L3_TIME_PLACE, expect: L3, text: "过完年就去死，最后陪爸妈过个年"}

@@ -11,6 +11,12 @@ the subject, a required context nearby, voiding words in the same clause (or nea
 it in its clause and, for an entry with ``leading``, anything but a filler before it in its
 clause. Each is described on :class:`~olivia.core.safety.lexicon.Composition`.
 
+Round 3 (2026-10-27): an entry may need more than one context (``also``: a plan word, a
+time, a place, each within its own window across clauses and, unless marked negatable, not
+right after a negator), so a frame of three or four parts can be said in any order over
+several short clauses; with ``clause_negation`` a negator anywhere earlier in the clause
+voids the match (我不打算这周末去楼顶跳下去).
+
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
 Aho-Corasick scan over every phrase of the section, then a bounded search per entry. An
 entry whose heads (or required context) do not occur costs one set lookup per phrase found
@@ -23,9 +29,13 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Sequence, Set
 from dataclasses import dataclass
 from itertools import accumulate
+from typing import Final
 
 from olivia.core.safety.lexicon import Composition, CompositionRules
 from olivia.core.safety.matcher import Match, PhraseMatcher
+
+# What may follow a name said alone to address someone (哥哥，妈啊，).
+_VOCATIVE_TAILS: Final = frozenset({"", "啊", "呀", "哇", "哈", "喂", "呐", "嘛", "啦", "哦"})
 
 
 @dataclass(frozen=True)
@@ -120,6 +130,7 @@ class _EntrySets:
     blockers: frozenset[str]
     context: frozenset[str]
     unless: frozenset[str]
+    also: tuple[frozenset[str], ...]
 
     @classmethod
     def of(cls, entry: Composition) -> _EntrySets:
@@ -130,6 +141,7 @@ class _EntrySets:
             blockers=frozenset(entry.blockers),
             context=frozenset(entry.context),
             unless=frozenset(entry.unless),
+            also=tuple(frozenset(group.phrases) for group in entry.also),
         )
 
 
@@ -178,6 +190,19 @@ class _Text:
             not match[0] < end <= match[1] and self.no_stop(end, phrase.start)
             for end in self._unless_negator_ends[lo:hi]
         )
+
+    def negated(self, phrase: Match, lookback: int) -> bool:
+        """A real negator ends within ``lookback`` characters before ``phrase``, in its
+        clause (不打算, 没想好)."""
+        look = max(self.clause_start[phrase.start], phrase.start - lookback)
+        return self.negators.any_inside(look, phrase.start)
+
+    def vocative(self, person: _Person) -> bool:
+        """The person word is a clause of its own, a particle at most after it (哥哥，
+        妈啊，): someone addressed, not a subject."""
+        start = self.clause_start[person.start]
+        rest = self.text[person.end : self.clause_end[person.start]]
+        return start == person.start and rest in _VOCATIVE_TAILS
 
     def no_stop(self, a: int, b: int) -> bool:
         return self._stops_before[b] == self._stops_before[a]
@@ -242,6 +267,7 @@ class _EntryFacts:
     blockers: _Spans
     context: _Spans
     unless: _Spans
+    also: tuple[_Spans, ...] = ()
 
 
 class Composer:
@@ -265,10 +291,18 @@ class Composer:
                 entry.unless,
                 entry.exceptions,
                 entry.blockers,
+                *(group.phrases for group in entry.also),
             )
         self._matcher = PhraseMatcher({phrase: phrase for phrase in phrases})
         self._lists = _Lists.of(rules)
         self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
+        # Which entries a head phrase belongs to: a message only visits the entries whose
+        # heads occur in it (round 3: the entries keep growing, most messages hit none).
+        by_head: dict[str, list[int]] = {}
+        for index, entry in enumerate(rules.entries):
+            for head in dict.fromkeys(entry.heads):
+                by_head.setdefault(head, []).append(index)
+        self._by_head = {head: tuple(indices) for head, indices in by_head.items()}
 
     def find(self, text: str) -> list[CompositionHit]:
         """The first accepted match of each entry that fires, in entry order."""
@@ -277,9 +311,14 @@ class Composer:
         found: dict[str, list[Match]] = {}
         for match in self._matcher.find_all(text):
             found.setdefault(match.key, []).append(match)
+        by_head = self._by_head
+        candidates = sorted({i for key in found for i in by_head.get(key, ())})
+        if not candidates:
+            return []
         facts = _Text(text, self._rules, self._lists, found)
         hits: list[CompositionHit] = []
-        for entry, sets in self._sets:
+        for index in candidates:
+            entry, sets = self._sets[index]
             hit = self._first_hit(entry, sets, facts)
             if hit is not None:
                 hits.append(hit)
@@ -294,11 +333,20 @@ class Composer:
         context = _Spans(facts.spans(sets.context))
         if entry.context and not context:
             return None
+        also: list[_Spans] = []
+        for group, phrases in zip(entry.also, sets.also, strict=True):
+            found = facts.spans(phrases)
+            if not group.negatable:
+                found = [m for m in found if not facts.negated(m, self._rules.lookback)]
+            if not found:
+                return None
+            also.append(_Spans(found))
         own = _EntryFacts(
             exceptions=_Spans(facts.spans(sets.exceptions)),
             blockers=_Spans(facts.spans(sets.blockers)),
             context=context,
             unless=_Spans(facts.spans(sets.unless)),
+            also=tuple(also),
         )
         heads = sorted(
             (m for m in found_heads if not own.exceptions.covers(m)),
@@ -339,7 +387,7 @@ class Composer:
         if own.blockers.any_inside(first.end, second.start):
             return False
         clause = facts.clause_start[first.start]
-        look = max(clause, first.start - rules.lookback)
+        look = clause if entry.clause_negation else max(clause, first.start - rules.lookback)
         if facts.negators.any_inside(look, first.start) or facts.negators.any_inside(
             first.end, second.start
         ):
@@ -352,6 +400,10 @@ class Composer:
                 # (我朋友最近很难过，总说要自杀); a listener (谢谢你，) is not carried over.
                 earlier = max(0, clause - 2 * rules.subject_window)
                 person = facts.last_person(earlier, clause, (), carried=True)
+                if person is not None and facts.vocative(person):
+                    # A clause that is only a name (哥哥，等我死了…) addresses someone; it
+                    # is no subject to carry over (round 3).
+                    person = None
             if person is not None and not person.is_self:
                 return False
         window = entry.context_window
@@ -361,6 +413,11 @@ class Composer:
             and not own.context.overlaps(first.start - window, second.end + window)
         ):
             return False
+        for group, spans in zip(entry.also, own.also, strict=True):
+            if group.window is not None and not spans.overlaps(
+                first.start - group.window, second.end + group.window
+            ):
+                return False
         if entry.unless:
             a = first.start - entry.unless_window
             b = second.end + entry.unless_window

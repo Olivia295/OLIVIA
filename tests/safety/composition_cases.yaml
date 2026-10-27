@@ -140,7 +140,9 @@ positives:
 - {id: cp111, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我把银行卡密码都告诉妹妹了，以后用不上了"}
 - {id: cp112, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我已经和所有人告别了"}
 - {id: cp113, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "存款都留给我妈了，以后也用不上"}
-- {id: cp114, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我想跟这个世界告别"}
+# cp114 rose from L1 + ask to L2 in round 3 (2026-10-27): a goodbye to the world itself is
+# L2_WORLD_FAREWELL.
+- {id: cp114, kind: farewell_ask, level: L2, stage: STAGE2, ask: false, text: "我想跟这个世界告别"}
 - {id: cp115, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "我的猫就托付给你了"}
 - {id: cp116, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "这应该是最后一条消息了"}
 - {id: cp117, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "东西都送人了，以后用不上了"}

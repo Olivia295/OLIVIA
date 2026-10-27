@@ -332,6 +332,9 @@ def test_leading_is_read_from_the_lexicon() -> None:
         "ASK_INTENT_CODED",
         "ASK_INTENT_ONCE_FOR_ALL",
         "ASK_INTENT_GREAT_GRANDMA_ALONE",
+        # Round 3 (2026-10-27): the end after a plan and a place, the act said first.
+        "L2_PLACE_THEN_END",
+        "S1_ACT_THEN_PLAN",
     }
 
 

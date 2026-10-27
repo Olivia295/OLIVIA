@@ -359,6 +359,16 @@ def test_trailing_is_read_from_the_lexicon():
         "ASK_INTENT_ONCE_FOR_ALL",
         "ASK_INTENT_NOT_LIVE_HOMOPHONE",
         "ASK_INTENT_GREAT_GRANDMA_ALONE",
+        # Round 3 (2026-10-27): a wish to pass away, going up to a height, gone soon,
+        # don't wait for me.
+        "L2_WISH_PASS_AWAY",
+        "ASK_INTENT_PASS_AWAY_HERE",
+        "ASK_INTENT_GO_HEIGHT",
+        "ASK_INTENT_SOON_GONE",
+        "ASK_INTENT_SOON_GONE_ANYWAY",
+        "ASK_INTENT_DONT_WAIT",
+        "L2_PLACE_THEN_END",
+        "S1_ACT_THEN_PLAN",
     }
     later = [e for e in LEX.compositions.entries if e.id in round2]
     assert len(later) == len(round2) and all(e.trailing for e in later)
