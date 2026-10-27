@@ -148,11 +148,16 @@ def load_hotlines_bytes(override_dir: Path | None, *, today: date) -> LoadedBund
     def fallback(reason: str) -> LoadedBundle:
         return LoadedBundle(data=builtin, source="builtin", reason=reason)
 
-    if override_dir is None or not (override_dir / DATA_NAME).is_file():
+    if override_dir is None:
         return fallback(REASON_NO_OVERRIDE)
     sig_path = override_dir / SIG_NAME
-    if not sig_path.is_file():
-        return fallback(REASON_SIG_MISSING)
+    try:  # a data directory without permissions cannot even be looked into (QA r3)
+        if not (override_dir / DATA_NAME).is_file():
+            return fallback(REASON_NO_OVERRIDE)
+        if not sig_path.is_file():
+            return fallback(REASON_SIG_MISSING)
+    except OSError:
+        return fallback(REASON_UNREADABLE)
     try:
         data = (override_dir / DATA_NAME).read_bytes()
         signature = sig_path.read_bytes()

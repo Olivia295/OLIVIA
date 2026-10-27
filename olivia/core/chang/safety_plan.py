@@ -18,6 +18,16 @@ In a crisis reply the session shows sections 2, 3 and 4 only, as one block intro
 ``crisis.intro`` (:func:`crisis_block`); section 5 is never shown there. The CLI loads the
 plan and hands it to ``Session.open``; the session never writes it.
 
+Crisis sentences typed here (QA r3, 2026-10-27): with a ``screen`` (the CLI's setup
+screen), every reply is screened first, and each one at L2 or above brings the numbers and
+the choice to go on or to leave (:class:`Screened`), however many there are in one run.
+Sections 1 and 5 keep such a sentence after "go on": warning signs and the means to put
+away are written in those words. Sections 2, 3 and 4 never keep one, since a crisis reply
+reads them back to the user ("能让我分心的人或地方：· 我打算去楼顶待着，然后就结束"): the
+user is told why and asked to write it another way or to press Enter to skip. Leaving there
+keeps what was written before that reply. :func:`without_crisis_entries` drops such entries
+from a plan saved before this check.
+
 Discoverability: when no plan exists and none was suggested on this device before, the
 first S_closing reply of a session ends with one ``suggestion`` line; the CLI then writes
 an empty marker file (``safety_plan_suggested``, no user data) so it is said once per
@@ -86,6 +96,8 @@ class Section(StrEnum):
 SECTIONS: Final = tuple(Section)
 CRISIS_SECTIONS: Final = (Section.COPING, Section.DISTRACTION, Section.PEOPLE)
 """What a crisis reply shows; ``ENVIRONMENT`` (means) and the warning signs never."""
+KEPT_CRISIS_SECTIONS: Final = (Section.WARNING_SIGNS, Section.ENVIRONMENT)
+"""Where a crisis sentence is kept after the numbers (it is what these sections ask for)."""
 
 _COMMAND_KEYS: Final = (
     "intro",
@@ -123,6 +135,11 @@ _COMMAND_KEYS: Final = (
     "unreadable",
     "not_onboarded",
     "adults_only",
+    "crisis_kept",
+    "crisis_not_kept",
+    "crisis_retry",
+    "crisis_left",
+    "crisis_left_saved",
 )
 
 
@@ -376,6 +393,23 @@ def farewell_people(plan: SafetyPlan | None, text: SafetyPlanText | None = None)
     return "\n".join([wording.farewell_people, *(f"· {line}" for line in lines)])
 
 
+def without_crisis_entries(
+    plan: SafetyPlan | None, alarms: Callable[[str], bool]
+) -> SafetyPlan | None:
+    """``plan`` without the entries of sections 2-4 that ``alarms`` (a crisis sentence),
+    so a crisis reply never reads one back; a contact goes by its name. Sections 1 and 5
+    are kept whole (a crisis reply never shows them). For plans saved before the command
+    screened these sections; nothing is written."""
+    if plan is None:
+        return None
+    return replace(
+        plan,
+        coping=tuple(x for x in plan.coping if not alarms(x)),
+        distraction=tuple(x for x in plan.distraction if not alarms(x)),
+        people=tuple(c for c in plan.people if not alarms(c.name)),
+    )
+
+
 # -- storage ----------------------------------------------------------------------------------
 
 
@@ -464,8 +498,32 @@ Ask = Callable[[], str | None]
 Say = Callable[[str], None]
 
 
+class Screened(StrEnum):
+    """What the crisis screen made of one reply (the CLI shows the numbers and asks)."""
+
+    CLEAR = "clear"
+    """Not a crisis sentence."""
+    GO_ON = "go_on"
+    """A crisis sentence: the numbers were shown and the user chose to go on."""
+    LEAVE = "leave"
+    """A crisis sentence: the numbers were shown and the user chose to leave (or the
+    input ended at that choice)."""
+
+
+Screen = Callable[[str], Screened]
+
+
 class _EndOfInput(Exception):
     """The input ended mid-exchange."""
+
+
+class _Left(Exception):
+    """The user chose to leave after a crisis sentence; ``partial`` holds what the
+    section being written had before it."""
+
+    def __init__(self, partial: tuple[object, ...] = ()) -> None:
+        super().__init__("left")
+        self.partial = partial
 
 
 def _fold(text: str) -> str:
@@ -505,12 +563,23 @@ def split_contact(raw: str) -> tuple[str, str]:
 
 
 class _Command:
-    def __init__(self, ask: Ask, say: Say, store: SafetyPlanStore, text: SafetyPlanText) -> None:
+    def __init__(
+        self,
+        ask: Ask,
+        say: Say,
+        store: SafetyPlanStore,
+        text: SafetyPlanText,
+        screen: Screen | None = None,
+    ) -> None:
         self._ask_raw = ask
-        self._say = say
+        self._say_raw = say
         self._store = store
         self._text = text
         self._cmd = text.command
+        self._screen = screen
+        self._since_ask: list[str] = []
+        """What was said since the last reply: the question, to ask again."""
+        self._saved_any = False
 
     def run(self) -> int:
         cmd = self._cmd
@@ -536,6 +605,9 @@ class _Command:
         except _EndOfInput:
             self._say(cmd["left"])
             return 0
+        except _Left:
+            self._say(cmd["crisis_left_saved"] if self._saved_any else cmd["crisis_left"])
+            return 0
         except KeychainUnavailableError:
             self._say(cmd["locked"])
             return 1
@@ -547,7 +619,17 @@ class _Command:
         self._say("")
         plan = SafetyPlan()
         for section in SECTIONS:
-            plan = _with_section(plan, section, self._section(section, None))
+            try:
+                values = self._section(section, None)
+            except _Left as left:
+                # What was written before the crisis sentence is kept: sections 2-4 are
+                # what a crisis reply shows, and they may be needed soon.
+                plan = _with_section(plan, section, left.partial)
+                if not plan.is_empty:
+                    self._store.save(plan)
+                    self._saved_any = True
+                raise
+            plan = _with_section(plan, section, values)
             self._say("")
         if plan.is_empty:
             self._say(self._cmd["nothing_saved"])
@@ -592,6 +674,7 @@ class _Command:
                 self._say(cmd["pick_unknown"])
                 continue
             section = SECTIONS[int(choice) - 1]
+            # Leaving mid-section keeps that section as it was (an edit replaces it whole).
             values = self._section(section, plan)
             self._say("")
             updated = _with_section(plan, section, values)
@@ -599,7 +682,7 @@ class _Command:
                 plan = updated
                 # Saved section by section, so an interrupted edit keeps what was written.
                 self._store.save(plan)
-                changed = True
+                self._saved_any = changed = True
         if not changed:
             self._say(cmd["unchanged"])
         elif plan.is_empty:
@@ -643,13 +726,22 @@ class _Command:
         elif section is not Section.PEOPLE:
             self._say(_fill(cmd["entry_help"], max_entries=MAX_ENTRIES))
         if section is Section.PEOPLE:
-            return self._people(kept, editing=current is not None)
-        return self._entries(kept, editing=current is not None)
-
-    def _entries(self, kept: tuple[object, ...], *, editing: bool) -> tuple[object, ...]:
+            people: list[Contact] = []
+            try:
+                return self._people(kept, people, editing=current is not None)
+            except _Left:
+                raise _Left(tuple(people)) from None
         entries: list[str] = []
+        try:
+            return self._entries(section, kept, entries, editing=current is not None)
+        except _Left:
+            raise _Left(tuple(entries)) from None
+
+    def _entries(
+        self, section: Section, kept: tuple[object, ...], entries: list[str], *, editing: bool
+    ) -> tuple[object, ...]:
         while len(entries) < MAX_ENTRIES:
-            reply = " ".join(self._ask().split())
+            reply = " ".join(self._ask(section).split())
             if not entries and editing and not reply:
                 return kept
             if not entries and _fold(reply) == CLEAR_SECTION:
@@ -660,7 +752,7 @@ class _Command:
                 # Said, never silent: the entry is not kept until a shorter one is written,
                 # and Enter here drops only this entry, not the rest of the section.
                 self._say(_fill(self._cmd["entry_too_long"], max_chars=MAX_ENTRY_CHARS))
-                reply = " ".join(self._ask().split())
+                reply = " ".join(self._ask(section).split())
             if not reply:
                 self._say(self._cmd["entry_not_saved"])
                 continue
@@ -668,12 +760,13 @@ class _Command:
         self._say(_fill(self._cmd["section_full"], max_entries=MAX_ENTRIES))
         return tuple(entries)
 
-    def _people(self, kept: tuple[object, ...], *, editing: bool) -> tuple[object, ...]:
+    def _people(
+        self, kept: tuple[object, ...], people: list[Contact], *, editing: bool
+    ) -> tuple[object, ...]:
         cmd = self._cmd
-        people: list[Contact] = []
         while len(people) < MAX_ENTRIES:
             self._say(_fill(cmd["person_name"], n=len(people) + 1))
-            name = " ".join(self._ask().split())
+            name = " ".join(self._ask(Section.PEOPLE).split())
             if not people and editing and not name:
                 return kept
             if not people and _fold(name) == CLEAR_SECTION:
@@ -707,7 +800,7 @@ class _Command:
                 self._say(_fill(cmd["name_too_long"], max_chars=MAX_NAME_CHARS))
             else:
                 self._say(cmd["name_for_phone"])
-            reply = " ".join(self._ask().split())
+            reply = " ".join(self._ask(Section.PEOPLE).split())
             if not reply:
                 return None
         if phone:
@@ -718,7 +811,7 @@ class _Command:
     def _phone(self, name: str) -> str:
         while True:
             self._say(_fill(self._cmd["person_phone"], name=name))
-            reply = self._ask().strip()
+            reply = self._ask(Section.PEOPLE).strip()
             if not reply:
                 return ""
             phone = clean_phone(reply)
@@ -737,19 +830,52 @@ class _Command:
             blocks.append("\n".join([f"{number}. {self._text.titles[section]}", *body]))
         self._say("\n".join(blocks))
 
-    def _ask(self) -> str:
-        reply = self._ask_raw()
-        if reply is None:
-            raise _EndOfInput
-        return reply
+    def _say(self, text: str) -> None:
+        self._since_ask.append(text)
+        self._say_raw(text)
+
+    def _ask(self, section: Section | None = None) -> str:
+        """One reply, screened first when there is a screen. ``section`` is the section the
+        reply is for (None for a menu choice): a crisis sentence is kept in sections 1 and
+        5 after "go on"; anywhere else it is dropped and the question asked again."""
+        while True:
+            question, self._since_ask = self._since_ask, []
+            reply = self._ask_raw()
+            if reply is None:
+                raise _EndOfInput
+            verdict = Screened.CLEAR if self._screen is None else self._screen(reply)
+            if verdict is Screened.CLEAR:
+                return reply
+            if verdict is Screened.LEAVE:
+                raise _Left
+            cmd = self._cmd
+            if section in KEPT_CRISIS_SECTIONS:
+                self._say_raw(_fill(cmd["crisis_kept"], title=self._text.titles[section]))
+                self._say_raw("")
+                return reply
+            if section is None:
+                self._say_raw(cmd["crisis_retry"])
+            else:
+                self._say_raw(_fill(cmd["crisis_not_kept"], title=self._text.titles[section]))
+            self._say_raw("")
+            while question and not question[0]:
+                question.pop(0)
+            for line in question:
+                self._say(line)
 
 
 def run_command(
-    ask: Ask, say: Say, store: SafetyPlanStore, text: SafetyPlanText | None = None
+    ask: Ask,
+    say: Say,
+    store: SafetyPlanStore,
+    text: SafetyPlanText | None = None,
+    *,
+    screen: Screen | None = None,
 ) -> int:
     """``olivia safety-plan`` for an adult profile: fill a new plan, or show the saved one
     and offer to edit a section or clear it. ``ask`` returns one reply line (None at end
-    of input); ``say`` prints one block. Returns the exit status (1: no keychain, or the
-    saved plan cannot be opened now)."""
+    of input); ``say`` prints one block; ``screen`` (the CLI's crisis screen: it shows the
+    numbers and asks whether to go on) sees every reply first (module docstring). Returns
+    the exit status (1: no keychain, or the saved plan cannot be opened now)."""
     wording = load_safety_plan_text() if text is None else text
-    return _Command(ask, say, store, wording).run()
+    return _Command(ask, say, store, wording, screen).run()

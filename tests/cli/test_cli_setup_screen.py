@@ -15,14 +15,23 @@ from olivia import cli
 from olivia.core.chang import setup_screen
 from olivia.core.chang.onboarding import load_onboarding_text
 from olivia.core.chang.profile import ProfileStore
-from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text
-from olivia.core.chang.setup_screen import SetupScreen
+from olivia.core.chang.safety_plan import (
+    Contact,
+    SafetyPlan,
+    SafetyPlanStore,
+    Section,
+    load_safety_plan_text,
+)
+from olivia.core.chang.setup_screen import SetupScreen, topic_words_only
 from olivia.core.language.data import ContentKind, load_language_data
 from olivia.core.language.filters import apply_willow
+from olivia.core.resources.fallback import emergency_lines
 from olivia.core.taxonomy import load_taxonomy
 
 TAX = load_taxonomy()
 TEXT = load_onboarding_text()
+SP_TEXT = load_safety_plan_text()
+SP_CMD = SP_TEXT.command
 GO_ON, LEAVE = "1", "2"
 
 
@@ -41,10 +50,15 @@ def _saved():
 
 
 def test_a_crisis_sentence_on_the_disclaimer_shows_the_global_numbers(run_cli, data_home):
+    """Before the region step: every supported region's emergency numbers, the list the
+    fixed help shows (QA r3), not the ZZ card's lone 112."""
     run = run_cli(["chat", "--rules"], ["我想死了不想活了", LEAVE])
     assert run.code == 1 and not run.results
-    _numbers_then_choice(run.out, "112")
-    assert "求助资源 · 其他地区（ZZ）" in run.out
+    _numbers_then_choice(run.out, "110")
+    assert "\n".join(emergency_lines()) in run.out
+    for number in ("110", "120", "999", "911", "000", "112"):
+        assert number in run.out
+    assert "求助资源 · 其他地区（ZZ）" not in run.out
     assert TEXT.hints["unrecognized"] not in run.out  # no longer "我没太看懂"
     assert run.lines[-1] == cli.SETUP_LEFT
     assert cli.GOODBYE not in run.out
@@ -69,6 +83,28 @@ def test_a_crisis_sentence_as_a_taboo_topic_is_not_saved(run_cli, data_home):
     assert run.code == 0
     assert _saved().taboo_topics == ("考试",)
     _numbers_then_choice(run.out, "112")
+
+
+def test_topic_words_are_saved_as_taboo_topics(run_cli, data_home):
+    """QA r3: someone bereaved by suicide could not set "自杀、死亡、前任" (the student
+    screens the bare word at L2). The words are saved; the numbers still come, under a
+    gentle line, and nothing is asked."""
+    lines = ["1", "1", "", "小林", "", "", "自杀、死亡、前任", "1", "跳过", "/exit"]
+    run = run_cli(["chat"], lines)
+    assert run.code == 0
+    assert _saved().taboo_topics == ("自杀", "死亡", "前任")
+    assert cli.SETUP_CHOICE not in run.out and cli.SETUP_CRISIS not in run.out
+    assert run.out.index(cli.SETUP_TOPICS) < run.out.index("110")
+
+
+@pytest.mark.parametrize("reply", ["我想死", "我不想活了", "自杀，我今晚就去"])
+def test_a_sentence_about_oneself_is_still_no_topic(run_cli, data_home, reply):
+    lines = ["1", "1", "", "小林", "", "", reply, GO_ON, "考试", "1", "跳过", "/exit"]
+    run = run_cli(["chat"], lines)
+    assert run.code == 0
+    assert _saved().taboo_topics == ("考试",)
+    _numbers_then_choice(run.out, "110")
+    assert cli.SETUP_TOPICS not in run.out
 
 
 def test_after_the_region_the_regions_numbers_are_shown(run_cli, data_home):
@@ -129,6 +165,15 @@ def test_profile_never_takes_a_crisis_sentence_as_a_name(run_cli, data_home):
     assert run.out.count("你希望我怎么称呼你") == 2  # asked again
 
 
+def test_profile_takes_topic_words(run_cli, data_home):
+    save_profile(data_home, taboo_topics=("考试",))
+    run = run_cli(["profile"], ["3", "自杀、死亡、前任"])
+    assert run.code == 0
+    assert _saved().taboo_topics == ("自杀", "死亡", "前任")
+    assert run.out.index(cli.SETUP_TOPICS) < run.out.index("12356")
+    assert cli.SETUP_CHOICE not in run.out
+
+
 def test_profile_topics_leave_without_saving(run_cli, data_home):
     save_profile(data_home, taboo_topics=("考试",))
     run = run_cli(["profile"], ["3", "不想活了", LEAVE])
@@ -152,27 +197,117 @@ def test_health_does_not_read_an_unknown_reply_back(run_cli, data_home):
     assert TEXT.hints["clinical_unknown"] in run.out
 
 
-def test_the_safety_plan_keeps_a_warning_sign_after_the_numbers(run_cli, data_home):
-    """The plan's sections are where such words belong: the numbers come once, nothing
-    is asked, and the entry is kept."""
-    save_profile(data_home)
-    lines = ["我想死的念头又来了", "开始想死的时候", "", "", "", "", "把那盒安眠药交给室友保管", ""]
-    run = run_cli(["safety-plan"], lines)
-    assert run.code == 0
-    assert run.out.index(cli.SETUP_CRISIS) < run.out.index("12356") < run.out.index(cli.SETUP_KEPT)
-    assert run.out.count(cli.SETUP_CRISIS) == 1 and cli.SETUP_CHOICE not in run.out
+def _plan():
     plan = SafetyPlanStore().load()
     assert plan is not None
+    return plan
+
+
+def test_the_safety_plan_keeps_a_warning_sign_after_the_numbers(run_cli, data_home):
+    """Sections 1 and 5 are where such words belong: after the numbers and "继续" the
+    entry is kept -- each time (QA r3: the second one used to come without numbers)."""
+    save_profile(data_home)
+    lines = ["我想死的念头又来了", GO_ON, "开始想死的时候", GO_ON, "", "", "", ""]
+    lines += ["把那盒安眠药交给室友保管", GO_ON, "我打算把攒的药都吞了", GO_ON, ""]
+    run = run_cli(["safety-plan"], lines)
+    assert run.code == 0
+    assert run.out.count(cli.SETUP_CRISIS) == run.out.count(cli.SETUP_CHOICE) == 4
+    kept = SP_CMD["crisis_kept"].replace("{title}", SP_TEXT.titles[Section.WARNING_SIGNS])
+    assert run.out.index(cli.SETUP_CRISIS) < run.out.index("12356") < run.out.index(kept)
+    plan = _plan()
     assert plan.warning_signs == ("我想死的念头又来了", "开始想死的时候")
-    assert plan.environment == ("把那盒安眠药交给室友保管",)
+    assert plan.environment == ("把那盒安眠药交给室友保管", "我打算把攒的药都吞了")
+
+
+# The r3 report's sentences (cmd/sp2, sp3, sp4), each in the section it was typed in.
+R3_PLAN_LINES = [
+    "",  # 1: skipped
+    "什么都不管用，我已经定好日子要走了",
+    GO_ON,
+    "听一首喜欢的歌",
+    "",
+    "我打算去楼顶待着，然后就结束",
+    GO_ON,
+    "楼下的小公园",
+    "",
+    "弟弟，过几天我就不在了",
+    GO_ON,
+    "弟弟",
+    "",
+    "",
+    "把药交给妈妈保管",
+    "我打算把攒的药都吞了",
+    GO_ON,
+    "",
+]
+
+
+def test_sections_two_to_four_never_keep_a_crisis_sentence(run_cli, data_home):
+    """QA r3: these sections are read back in a crisis reply, so a crisis sentence is
+    not kept there; why is said, and the question comes again. Every such sentence brings
+    the numbers, the fourth (section 5) included, and section 5 keeps its own."""
+    save_profile(data_home)
+    run = run_cli(["safety-plan"], R3_PLAN_LINES)
+    assert run.code == 0
+    assert run.out.count(cli.SETUP_CRISIS) == run.out.count(cli.SETUP_CHOICE) == 4
+    assert run.out.count("12356") >= 4
+    for section in (Section.COPING, Section.DISTRACTION, Section.PEOPLE):
+        assert SP_CMD["crisis_not_kept"].replace("{title}", SP_TEXT.titles[section]) in run.out
+    plan = _plan()
+    assert plan.coping == ("听一首喜欢的歌",)
+    assert plan.distraction == ("楼下的小公园",)
+    assert [c.name for c in plan.people] == ["弟弟"]
+    assert plan.environment == ("把药交给妈妈保管", "我打算把攒的药都吞了")
+    assert "定好日子" not in run.out.split(SP_CMD["show_heading"])[-1]
+
+
+def test_a_crisis_sentence_at_a_menu_is_not_a_choice(run_cli, data_home):
+    save_profile(data_home)
+    SafetyPlanStore().save(SafetyPlan(coping=("洗个热水澡",)))
+    run = run_cli(["safety-plan"], ["我真的不想活了", GO_ON, ""])
+    assert run.code == 0
+    assert SP_CMD["crisis_retry"] in run.out and cli.SETUP_CRISIS in run.out
+    assert run.out.count(SP_CMD["menu"]) == 2  # asked again
+    assert _plan().coping == ("洗个热水澡",)
 
 
 def test_leaving_the_safety_plan_after_the_numbers_saves_nothing(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["safety-plan"], ["我想死的念头又来了"])
     assert run.code == 0 and cli.SETUP_CRISIS in run.out
-    assert run.lines[-1] == load_safety_plan_text().command["left"]
+    assert run.lines[-1] == SP_CMD["crisis_left"]
     assert SafetyPlanStore().load() is None
+
+
+def test_leaving_keeps_what_was_written_before(run_cli, data_home):
+    """The coping list already written is what a crisis reply would show; leaving after a
+    crisis sentence in section 3 keeps it (and section 3's first entry), not that sentence."""
+    save_profile(data_home)
+    lines = ["", "洗个热水澡", "", "楼下的小公园", "我打算去楼顶待着，然后就结束", LEAVE]
+    run = run_cli(["safety-plan"], lines)
+    assert run.code == 0
+    assert run.lines[-1] == SP_CMD["crisis_left_saved"]
+    plan = _plan()
+    assert plan.coping == ("洗个热水澡",) and plan.distraction == ("楼下的小公园",)
+
+
+def test_chat_never_reads_back_a_crisis_entry_saved_before(run_cli, data_home):
+    """A plan written before this check may hold such an entry in sections 2-4; the chat
+    leaves it out of its crisis reply and keeps the rest."""
+    save_profile(data_home)
+    SafetyPlanStore().save(
+        SafetyPlan(
+            coping=("洗个热水澡",),
+            distraction=("我打算去楼顶待着，然后就结束",),
+            people=(Contact("阿青", "138-0000-0000"),),
+        )
+    )
+    run = run_cli(["chat", "--rules"], ["", "我写了一封遗书", "/exit", ""])
+    crisis = [r for r in run.results if r.inspect.get("safety_plan_shown")]
+    assert crisis
+    assert "洗个热水澡" in crisis[0].reply and "阿青" in crisis[0].reply
+    assert "楼顶" not in run.out
+    assert _plan().distraction == ("我打算去楼顶待着，然后就结束",)  # nothing written
 
 
 # -- the screen itself -------------------------------------------------------------------------
@@ -237,8 +372,49 @@ def test_the_setup_wording_passes_willow():
         cli.SETUP_RETRY,
         cli.SETUP_LEFT,
         cli.SETUP_CHOICE,
-        cli.SETUP_KEPT,
+        cli.SETUP_TOPICS,
+        *(SP_CMD[key] for key in SP_CMD if key.startswith("crisis_")),
     ):
         assert apply_willow(text, ContentKind.NORMAL, willow) == text
         assert "！" not in text and "!" not in text
     assert setup_screen.ALARM_LEVEL.name == "L2"
+
+
+# -- topic words (QA r3) -----------------------------------------------------------------------
+
+# Debug sets: the r3 report's own reply and sentences written for this round (not the
+# held-out set, which is run once at the end).
+TOPIC_WORDS = (
+    "自杀、死亡、前任",
+    "自杀",
+    "死亡",
+    "跳楼、车祸",
+    "爸爸的去世",
+    "自残，割伤",
+    "suicide",
+    "遗书 葬礼",
+)
+SENTENCES = (
+    "我想死",
+    "不想活了",
+    "想死",
+    "活着没意思",
+    "我在想怎么跟家人道别再去死",
+    "今晚就去死",
+    "自杀，我今晚就去",
+    "去死吧",
+    "想自杀",
+    "I want to die",
+    "我自己割的",
+    "明天跳楼",
+    "死了算了",
+    "一了百了吧",
+    "自杀了",
+)
+
+
+def test_topic_words_only_tells_topics_from_sentences():
+    assert [t for t in TOPIC_WORDS if not topic_words_only(t)] == []
+    assert [t for t in SENTENCES if topic_words_only(t)] == []
+    assert not topic_words_only("")
+    assert not topic_words_only("、".join(f"话题{n}" for n in range(30)))  # over the limits

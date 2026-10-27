@@ -7,6 +7,8 @@ at a time, with the onboarding checks (:func:`~olivia.core.chang.onboarding.name
 same hint as onboarding and the question again. An empty reply changes nothing. New
 topics replace the old list; ``0``, ``清空`` or a skip word ("没有", "无" ...) clears it.
 The persona and the region have their own commands, named once under the menu.
+``ask_topics`` reads the reply to the topic question (the CLI's screen treats a list of
+topic words such as "自杀、死亡、前任" there as topics, QA r3); ``ask`` by default.
 
 The caller loads the profile (and stops for a missing one or an age-gate refusal record,
 with ``not_onboarded`` / ``adults_only``); the change is saved through ``save``, which
@@ -63,6 +65,7 @@ def run_profile(
     save: Save,
     now: datetime,
     text: OnboardingText | None = None,
+    ask_topics: Ask | None = None,
 ) -> int:
     """The menu for an adult's ``profile``; the exit status (0 unless the save failed or
     the choice was not on the menu)."""
@@ -85,7 +88,7 @@ def run_profile(
     if choice == AGENT_NAME_ITEM:
         return _change_name(ask, say, profile, save, now, words, user=False)
     if choice == TABOO_ITEM:
-        return _change_topics(ask, say, profile, save, now, words)
+        return _change_topics(ask_topics or ask, say, profile, save, now, words)
     say(p["unknown_choice"])
     return 1
 

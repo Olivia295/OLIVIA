@@ -261,11 +261,13 @@ class ProfileStore:
     def load(self) -> PersonaProfile | None:
         self.dropped_sensitive_data = False
         self.recovered_at = None
-        remove_stray_temps(self.path)  # a killed save's copy may hold plaintext (S4)
         try:
+            remove_stray_temps(self.path)  # a killed save's copy may hold plaintext (S4)
             self._finish_rekey()
         except CryptoError as exc:
             raise _locked(exc) from exc
+        except PermissionError as exc:  # a data directory without permissions (QA r3)
+            raise ProfileUnreadableError(f"{self.path.name} cannot be read") from exc
         decoded: dict[str, tuple[PersonaProfile, _Form]] = {}
 
         def is_valid(text: str) -> bool:

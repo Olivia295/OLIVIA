@@ -261,7 +261,10 @@ outcomes:
   disclaimer_declined: |-
     没关系，谢谢你认真读完。没有你的同意，我不会保存任何内容。
 
-    哪天你改变了想法，随时可以再打开我。如果你此刻有危险，请联系当地的紧急电话。
+    哪天你改变了想法，随时可以再打开我。如果你此刻有危险，请联系当地的紧急电话：
+  # 草稿：待 G-0（QA r3，2026-10-27）：disclaimer_declined 与 under_18 说到“当地的紧急电话”时，
+  # 程序在后面列出各地的紧急号码（olivia/core/resources/fallback.py，与 hotlines.yaml 一致），
+  # 所以这两段以冒号结尾，这里不写号码。
   under_18: |-
     谢谢你愿意诚实地告诉我。这里的陪伴只为成年人设计，所以这一次我没办法陪你继续聊下去了，这并不是你做错了什么。
 
@@ -271,7 +274,7 @@ outcomes:
     Find A Helpline：https://findahelpline.com/
     Befrienders Worldwide：https://befrienders.org/find-support-now/
 
-    如果你此刻有危险，或者有伤害自己的念头，请马上拨打当地的紧急电话，或者告诉身边的大人。
+    如果你此刻有危险，或者有伤害自己的念头，请马上拨打当地的紧急电话，或者告诉身边的大人。各地的紧急电话：
 
 # olivia health：查看与修改这台电脑上加密记录的健康信息（决定 D2，步骤 A1）。
 # 列表的选项文字同首访：clinical_red_flags 的编号与名称，加上 disclosure_labels。

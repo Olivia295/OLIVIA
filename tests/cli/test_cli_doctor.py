@@ -7,6 +7,7 @@ on macOS, and print nothing the user typed: names, taboo topics, health or the p
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from datetime import datetime, timedelta
@@ -393,3 +394,159 @@ def test_a_recovery_not_yet_told_is_a_warning_and_stays_untold(run_cli, doctor, 
     told = run_cli(["persona"])
     assert any(line.startswith("设置文件坏了") for line in told.lines)  # doctor did not take it
     assert all(cli.DOCTOR_RECOVERED not in line for line in doctor().lines)
+
+
+# -- a data directory the program cannot use (QA r3) ------------------------------------------
+
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32" or getattr(os, "geteuid", lambda: 1)() == 0,
+    reason="POSIX permissions, and root reads everything",
+)
+
+
+@pytest.fixture
+def blocked(data_home):
+    """Chmod a path under the data directory and put every mode back afterwards."""
+    changed: list[tuple[Path, int]] = []
+
+    def block(path: Path, mode: int) -> None:
+        changed.append((path, path.stat().st_mode & 0o777))
+        path.chmod(mode)
+
+    yield block
+    for path, mode in reversed(changed):
+        path.chmod(mode)
+
+
+def _set_up(run_cli) -> None:
+    assert run_cli(["chat", "--rules"], [*ONBOARD_CN, "/exit"]).code == 0
+
+
+@POSIX_ONLY
+@pytest.mark.parametrize(
+    ("where", "mode", "text"),
+    [
+        ("", 0o000, cli.DOCTOR_DIR_UNREADABLE),
+        ("", 0o300, cli.DOCTOR_DIR_UNREADABLE),
+        ("", 0o500, cli.DOCTOR_DIR_UNWRITABLE),
+        ("keys", 0o000, cli.DOCTOR_DIR_UNREADABLE),
+        ("ledger", 0o500, cli.DOCTOR_DIR_UNWRITABLE),
+    ],
+)
+def test_a_directory_without_permissions_fails_and_says_how_to_fix_it(
+    run_cli, data_home, keychain, machine, blocked, where, mode, text
+):
+    """QA r3: with the data directory at 000 doctor itself ended in "出了点问题…运行
+    olivia doctor"; read-only was only a "!"."""
+    _set_up(run_cli)
+    target = data_home / where if where else data_home
+    target.mkdir(exist_ok=True)
+    blocked(target, mode)
+    run = run_cli(["doctor"])
+    assert run.code == 1
+    assert run.lines[-1] == cli.DOCTOR_FOOTER
+    assert cli.UNEXPECTED_ERROR not in run.out and cli.DATA_DIR_UNUSABLE not in run.out
+    shown = cli._shown_location(data_home)
+    assert f"{FAIL} {text.format(location=shown)}" in run.lines
+    fix = run.lines[run.lines.index(f"{FAIL} {text.format(location=shown)}") + 1]
+    assert fix == "  " + cli.DOCTOR_FIX_POSIX.format(path=cli._shell_path(data_home))
+
+
+@POSIX_ONLY
+def test_privacy_and_a_regions_numbers_need_no_readable_data_directory(
+    run_cli, data_home, keychain, blocked
+):
+    _set_up(run_cli)
+    blocked(data_home, 0o000)
+    privacy = run_cli(["privacy"])
+    assert privacy.code == 0 and cli.UNEXPECTED_ERROR not in privacy.out
+    assert "关于你的隐私" in privacy.out
+    hk = run_cli(["resources", "HK"])
+    assert hk.code == 0 and "求助资源 · 中国香港（HK）" in hk.out and "999" in hk.out
+    saved = run_cli(["resources"])  # the saved region cannot be read: the global card, and why
+    assert "112" in saved.out and cli.PROFILE_UNREADABLE in saved.out
+    assert cli.UNEXPECTED_ERROR not in saved.out
+
+
+@POSIX_ONLY
+def test_a_command_that_fails_on_such_a_directory_names_it(run_cli, data_home, keychain, blocked):
+    _set_up(run_cli)
+    blocked(data_home, 0o500)
+    for argv in (["safety-plan"], ["chat", "--rules"]):
+        run = run_cli(argv, ["洗个热水澡"])
+        assert run.code == 1
+        assert run.lines[-1] == cli.DATA_DIR_UNUSABLE and cli.UNEXPECTED_ERROR not in run.out
+        assert run.out.index("110") < run.out.index(cli.DATA_DIR_UNUSABLE)
+
+
+def test_a_file_in_place_of_the_data_directory_says_what_to_do(run_cli, data_home, keychain):
+    data_home.parent.mkdir(parents=True, exist_ok=True)
+    data_home.write_text("not a directory", encoding="utf-8")
+    run = run_cli(["doctor"])
+    assert run.code == 1 and run.lines[-1] == cli.DOCTOR_FOOTER
+    line = _line(run, "数据目录：")
+    assert line.startswith(FAIL) and "挪走" in line
+    for name in cli.DOCTOR_STORE_NAMES:
+        assert _line(run, _store(name)).endswith("：没有")
+    assert "关于你的隐私" in run_cli(["privacy"]).out
+    assert "999" in run_cli(["resources", "HK"]).out
+
+
+def test_access_problem_reads_nothing_into_a_missing_directory(tmp_path):
+    from olivia import doctor as doctor_module
+
+    assert doctor_module.access_problem(tmp_path / "absent") is None
+    assert doctor_module.access_problem(tmp_path) is None
+
+
+# -- the packaged wording and lexicons (QA r3) ----------------------------------------------
+
+
+def test_every_packaged_file_set_loads(doctor):
+    run = doctor()
+    from olivia import doctor as doctor_module
+
+    expected = cli.DOCTOR_PACKAGED_OK.format(count=len(doctor_module.PACKAGED_DATA))
+    assert _line(run, "程序自带的文字与词表") == f"{OK} {expected}"
+
+
+def test_a_file_set_that_does_not_load_fails_and_says_reinstall(doctor, monkeypatch):
+    from olivia import doctor as doctor_module
+
+    def broken() -> object:
+        raise ValueError("unclosed {{")
+
+    entries = list(doctor_module.PACKAGED_DATA)
+    entries[1] = (entries[1][0], broken)
+    monkeypatch.setattr(doctor_module, "PACKAGED_DATA", tuple(entries))
+    run = doctor()
+    assert run.code == 1
+    line = _line(run, "程序自带的文字与词表")
+    assert line.startswith(FAIL) and entries[1][0] in line and "重新安装" in line
+
+
+@pytest.mark.parametrize(
+    ("relative", "module", "name"),
+    [
+        ("lexicons/risk.yaml", "olivia.core.safety.lexicon", "lexicons/risk.yaml"),
+        ("templates/onboarding.yaml", "olivia.core.chang.onboarding", "onboarding.yaml"),
+    ],
+)
+def test_a_damaged_packaged_file_is_named(doctor, monkeypatch, tmp_path, relative, module, name):
+    """The r3 report's damage (a YAML file cut to "[unclosed {{"), on a copy of the data."""
+    import importlib
+
+    copy = tmp_path / "pkg"
+    shutil.copytree(Path(str(resources.files("olivia"))) / "data", copy / "data")
+    (copy / "data" / relative).write_text("rules: [unclosed {{\n  - :::\n", encoding="utf-8")
+
+    class Files:
+        @staticmethod
+        def files(_package: str) -> Path:
+            return copy
+
+    monkeypatch.setattr(importlib.import_module(module), "resources", Files)
+    run = doctor()
+    assert run.code == 1
+    line = _line(run, "程序自带的文字与词表")
+    assert line.startswith(FAIL) and name in line and "重新安装" in line

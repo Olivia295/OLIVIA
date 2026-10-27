@@ -244,3 +244,53 @@ def test_a_region_typed_with_controls_is_echoed_without_them(run_cli):
     assert done.code == 2
     assert "「火星」" in done.out
     assert "\x1b" not in done.out and "\u202e" not in done.out
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX terminals only")
+def test_a_terminal_sequence_typed_in_a_terminal_leaves_no_text_behind():
+    """QA r3: readline ate ESC ] and BEL as keys, so "0;pwned" stayed in the line; the
+    sequences now reach ``strip_controls`` whole. Arrow keys still move the cursor."""
+    import pty
+
+    code = (
+        "import sys; from olivia import cli\n"
+        "c = cli._Console(sys.stdin, sys.stdout)\n"
+        "for _ in range(4):\n"
+        "    print('GOT', c.ask('> ').encode('unicode_escape').decode(), flush=True)"
+    )
+    typed = [
+        "帮我记住：\u202e周五\x1b]0;pwned\x07要去看牙医\x1b[0m",
+        "标题\x1b]2;abc\x1b\\之后",
+        "我\x1b[31m很\x1b[0m难受",
+        "abc\x1b[D\x1b[DX",
+    ]
+    pid, fd = pty.fork()
+    if pid == 0:  # pragma: no cover - the child process
+        os.chdir(ROOT)
+        os.environ["TERM"] = "xterm-256color"
+        os.execv(sys.executable, [sys.executable, "-c", code])
+    out = b""
+    try:
+        deadline = time.monotonic() + 30
+        for line in typed:
+            while out.count(b"> ") < typed.index(line) + 1 and time.monotonic() < deadline:
+                if select.select([fd], [], [], 0.1)[0]:
+                    out += os.read(fd, 4096)
+            os.write(fd, line.encode() + b"\r")
+        while out.count(b"GOT") < len(typed) and time.monotonic() < deadline:
+            if select.select([fd], [], [], 0.1)[0]:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                out += chunk
+    finally:
+        os.waitpid(pid, 0)
+        os.close(fd)
+    got = [
+        part.split()[0].encode().decode("unicode_escape")
+        for part in out.decode("utf-8", "replace").split("GOT ")[1:]
+    ]
+    assert got == ["帮我记住：周五要去看牙医", "标题之后", "我很难受", "aXbc"]
