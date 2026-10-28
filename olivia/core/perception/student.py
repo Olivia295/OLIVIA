@@ -343,7 +343,7 @@ def _load(base: Traversable | Path) -> StudentModel:
     version = config.get("format_version")
     if type(version) is not int or version not in (CNN_VERSION, ENSEMBLE_VERSION):
         raise StudentUnavailableError("format_version")
-    arrays = _arrays(blobs[WEIGHTS], config)
+    arrays = _arrays(blobs.pop(WEIGHTS), config)  # the file's bytes go once parsed
     if version == CNN_VERSION:
         prefixes = [""]
         kernels = _int_list(config.get("kernels"), "config_invalid")
@@ -529,7 +529,8 @@ def _arrays(data: bytes, config: Mapping[str, Any]) -> dict[str, Floats]:
     if set(raw) != set(expected):
         raise StudentUnavailableError("array_names")
     arrays: dict[str, Floats] = {}
-    for name, array in raw.items():
+    for name in names:  # each stored array dropped once converted (G-3 peak RSS)
+        array = raw.pop(name)
         if list(array.shape) != expected[name]:
             raise StudentUnavailableError(f"array_shape:{name}")
         if array.dtype not in dtypes:
