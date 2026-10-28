@@ -372,6 +372,11 @@ def test_trailing_is_read_from_the_lexicon():
         # 2026-10-28: doing it at a set time, meaninglessness as a clause of its own.
         "S1_TIME_DO_IT",
         "L1_NO_MEANING_ALONE",
+        # Round 5 (2026-10-29): leaving unseen, "do it" with no object, homophones of dying.
+        "ASK_INTENT_LEAVE_UNSEEN",
+        "ASK_INTENT_DO_IT_THEN",
+        "ASK_INTENT_DIE_HOMOPHONE",
+        "L2_WISH_DIE_EN_WORD",
     }
     later = [e for e in LEX.compositions.entries if e.id in round2]
     assert len(later) == len(round2) and all(e.trailing for e in later)

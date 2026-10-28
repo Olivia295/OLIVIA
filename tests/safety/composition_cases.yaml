@@ -148,7 +148,8 @@ positives:
 - {id: cp117, kind: farewell_ask, level: L1, stage: STAGE2, ask: true, text: "东西都送人了，以后用不上了"}
 # --- place: L2 ---
 - {id: cp120, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经站在楼顶了"}
-- {id: cp121, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经坐在天台边上了"}
+# Round 5: sitting at the edge is also a stay at a height (ASK_INTENT_STAYING_AT_EDGE).
+- {id: cp121, kind: place, level: L2, stage: STAGE2, ask: true, text: "我已经坐在天台边上了"}
 - {id: cp122, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经爬上楼顶了"}
 - {id: cp123, kind: place, level: L2, stage: STAGE2, ask: false, text: "已经翻过护栏了"}
 - {id: cp124, kind: place, level: L2, stage: STAGE2, ask: false, text: "我已经站到窗台上了"}

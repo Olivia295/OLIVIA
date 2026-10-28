@@ -733,6 +733,12 @@ compositions:
                      "调岗", "换工作", "新公司", "入职", "实习", "派对", "聚会", "毕业典礼", "婚礼",
                      "学期", "下次见", "回见", "再见面",
                      "演出", "比赛", "赛季", "节目", "直播", "旅行", "旅游", "假期"]
+    # Round 5: the same returns and occasions without the bare times (明天, 下周), for the
+    # frames whose point is a time ahead (今晚过后就不在了).
+    return_marks: ["@leaving", "下次", "改天", "回头", "再聊", "暑假", "寒假", "开学", "过年", "晚安", "回来", "回家",
+                   "火车", "飞机", "高铁", "出发", "登机", "明天见", "下周见", "暑假见", "回头见", "改天见", "到时见",
+                   "下次见", "周末见", "调岗", "换工作", "新公司", "入职", "实习", "派对", "聚会", "毕业典礼", "婚礼",
+                   "学期", "回见", "再见面", "演出", "比赛", "赛季", "节目", "直播", "旅行", "旅游", "假期"]
     # The last one, final, never again, after now.
     final_marks: ["以后", "往后", "从此", "永远", "一直", "下半辈子", "余生", "不用再", "再也", "就交给",
                   "操心"]
@@ -2319,6 +2325,321 @@ compositions:
       context: ["什么都不想", "什么也不想", "啥都不想", "啥也不想", "一切都不想", "什么都不管",
                 "什么也不管", "啥都不管"]
       context_window: 8
+    #
+    # -- Round 5 (2026-10-29, 复测 q1/q3/q4): structural frames the rules alone missed --
+    # Each frame is a category, not a sentence: a message passed on through someone else, a
+    # means obtained, a place stayed at, a time and being gone, a death made the price of a
+    # condition, a homophone of dying, and the English plan, means and time. Ambiguous
+    # frames ask (D3; L2 with a risk cue of the user's own); frames that name dying are L2.
+    #
+    # A message passed on through the listener (替我跟妈妈说声抱歉, 帮我向他说再见), with a
+    # sign nearby that the speaker is going for good. A day off, a delay or an errand voids it.
+    - id: ASK_INTENT_PASS_ON_MESSAGE
+      level: ASK
+      raise_with_risk: true
+      heads: ["替我跟", "替我向", "替我对", "替我和", "替我告诉", "替我转告", "帮我跟", "帮我向", "帮我对",
+              "帮我和", "帮我告诉", "帮我转告", "代我跟", "代我向"]
+      tails: ["对不起", "抱歉", "再见", "道别", "谢谢", "我爱", "保重", "别难过", "不要难过", "别哭", "不怪"]
+      max_gap: 10
+      also:
+        - {phrases: ["@final_marks", "先走", "走了", "要走", "不在了", "撑不住", "撑不下去", "回不来", "最后",
+                     "这辈子", "下辈子", "永别", "离开", "不能陪", "陪不了"], window: 24}
+      unless: ["@return_marks", "请假", "迟到", "来不了", "有事", "加班", "生病", "发烧", "感冒", "下线", "作业",
+               "礼物", "生日", "红包", "帮忙", "饭", "会议"]
+      unless_window: 24
+      unless_across: true
+    # Going first, said with an apology, a blessing or thanks for the years (对不起，我先走一
+    # 步了，你们好好的). Leaving a meal, work or a chat ends nothing.
+    - id: ASK_INTENT_GO_FIRST
+      level: ASK
+      raise_with_risk: true
+      heads: ["我先走了", "我先走一步", "先走一步了", "我就先走了", "我要先走了", "我得先走了", "我先离开了"]
+      context: ["对不起", "抱歉", "你们好好", "好好的", "好好活", "好好过", "保重", "照顾好", "别难过", "不要难过",
+                "别哭", "永别", "这些年", "这辈子", "谢谢你们", "谢谢大家", "下辈子", "原谅"]
+      context_window: 20
+      unless: ["@return_marks", "吃", "喝", "慢慢", "下班", "上课", "开会", "有事", "赶车", "赶地铁", "约",
+               "忙", "接", "饭", "下线", "睡了", "睡觉", "作业"]
+      unless_window: 20
+      unless_across: true
+    # Don't look for me (别找我了, 不用找我), with silence, going missing or for good nearby
+    # (哪天没回消息就别找我了, 就当没认识过我). Studying, work, a quarrel or a short while
+    # voids it.
+    - id: ASK_INTENT_DONT_LOOK_FOR_ME
+      level: ASK
+      raise_with_risk: true
+      heads: ["别找我", "不用找我", "不要找我", "别来找我", "不必找我", "别去找我", "不用来找我", "不要来找我",
+              "别再联系我", "不用联系我"]
+      context: ["@final_marks", "上线", "回消息", "没回", "不回", "联系不上", "找不到我", "失联", "不在", "没认识",
+                "没见过", "当我", "忘了我", "忘掉我", "如果", "要是", "哪天", "万一", "累了", "撑不"]
+      context_window: 20
+      unless: ["@leaving", "复习", "学习", "上班", "加班", "开会", "忙", "静音", "睡觉", "午睡", "图书馆", "闭关",
+               "考试", "比赛", "游戏", "吵架", "分手", "前任", "冷静", "生气", "一会", "一下", "几天", "今天",
+               "晚点", "回来", "回头", "明天见", "有事", "单独待"]
+      unless_window: 20
+      unless_across: true
+    # A means obtained or kept ready (绳子买回来了, 刀片藏在笔袋里, 好几瓶药都囤着): the
+    # question, L2 with a risk cue of the user's own. Cooking, camping, sport, a cold, a
+    # doctor's order or farming voids it; 药 itself is left to L2_MEANS_HOARDED (hoarding).
+    - id: ASK_INTENT_MEANS_OBTAINED
+      level: ASK
+      raise_with_risk: true
+      heads: ["绳子", "麻绳", "粗绳", "一根绳", "一条绳", "安眠药", "农药", "百草枯", "老鼠药", "敌敌畏", "刀片",
+              "汽油", "木炭", "一袋炭", "一箱炭", "炭", "整瓶药", "一大瓶药", "好几瓶药", "很多片", "好多片",
+              "止痛药", "镇静药"]
+      tails: ["买了", "买好", "买回", "网购", "下单", "到了", "到货", "准备了", "准备好", "备好", "备齐", "藏在",
+              "藏好", "藏起来", "放在枕头", "放在床头", "放在床边", "放在身边", "压在", "攒", "囤", "存了", "存着",
+              "凑", "磨好", "磨得", "系好", "系在", "挂好", "挂在", "带过来", "带回来", "弄到", "搞到", "拿到",
+              "收好", "锁在", "随时"]
+      max_gap: 10
+      order: either
+      exceptions: ["炭火", "炭烤", "烧炭取暖", "竹炭", "活性炭",
+                   "炭笔", "炭画", "汽油费", "汽油价", "加汽油"]
+      unless: ["@everyday", "@pill_everyday", "@fiction", "晾", "跳", "绑", "捆", "打包", "鞋", "风筝", "野营",
+               "船", "攀岩", "登山", "烤", "手工", "画画", "车用", "加油", "割草机", "发电机", "除草", "庄稼",
+               "种地", "果园", "菜地", "虫", "老鼠多", "灭鼠", "抓老鼠", "取暖", "烤火", "暖气", "按时吃", "医嘱", "每天吃",
+               "一天吃", "饭后", "饭前", "剃须", "刮胡", "修眉", "美工"]
+      unless_window: 20
+      unless_across: true
+    # Kept "for myself" (那把刀就是给自己留的, 给自己备下的那些): the speaker as the user of
+    # a thing made ready. Gifts, treats, food, clothes, time and money void it.
+    - id: ASK_INTENT_KEPT_FOR_MYSELF
+      level: ASK
+      raise_with_risk: true
+      heads: ["给自己留的", "给我自己留的", "留给我自己", "留给自己的", "给自己准备的", "给我自己准备的",
+              "给自己备的", "给自己备下", "给自己备好", "用在自己身上", "给自己用的", "我自己用的", "是给我用的"]
+      context: ["药", "刀", "绳", "炭", "家伙", "东西", "那些", "那个", "那玩意", "工具", "最后", "离开", "走",
+                "了断", "结束", "解脱", "用得上", "能用", "检查过"]
+      context_window: 24
+      unless: ["@ready_everyday", "礼物", "零食", "奖励", "蛋糕", "衣服", "裙子", "包", "鞋", "化妆", "护肤", "钱",
+               "存款", "时间", "假期", "午饭", "早餐", "晚饭", "便当", "书", "电脑", "手机", "充电", "雨伞",
+               "外套", "水", "咖啡", "茶", "惊喜", "纪念"]
+      unless_window: 24
+      unless_across: true
+    # A method, a place or the day chosen or looked up (想好了用什么方式, 查好了哪栋楼, 日子
+    # 选好了): planning words next to a way, a place or a day, with no outing, meal, trip,
+    # study or talk nearby.
+    - id: ASK_INTENT_WAY_CHOSEN
+      level: ASK
+      raise_with_risk: true
+      heads: ["想好", "选好", "定好", "找好", "查好", "看好", "挑好", "研究好", "打听好", "确定好", "踩过点", "踩好点"]
+      tails: ["方法", "方式", "地方", "地点", "位置", "哪栋楼", "哪座桥", "楼", "桥", "日子", "顶楼", "天台"]
+      max_gap: 8
+      order: either
+      exceptions: ["楼下", "楼盘", "楼层", "售楼", "楼主", "楼梯"]
+      unless: ["@ready_everyday", "@frame_everyday", "@fiction", "学习", "复习", "背单词", "减肥", "健身", "考研",
+               "工作", "面试", "餐厅", "饭店", "酒店", "民宿", "房子", "租", "买", "开会", "会议", "约会", "见面",
+               "接", "送", "快递", "停车", "吃", "喝", "玩", "逛", "拍", "做饭", "装修", "比赛", "项目", "上班",
+               "团建", "聚餐", "老板", "同事", "解决", "沟通", "道歉", "表白", "解释", "回复", "告诉"]
+      unless_window: 24
+      unless_across: true
+    # Staying at a height, an edge or water's edge (我在江边站了很久, 爬上天台不想下去了, 在
+    # 铁轨上躺着): the place with staying, looking down or going further, and no outing,
+    # chore, sport or view nearby. L2_AT_THE_EDGE rates "already standing on" a height.
+    - id: ASK_INTENT_STAYING_AT_EDGE
+      level: ASK
+      raise_with_risk: true
+      heads: ["楼顶", "天台", "顶楼", "屋顶", "窗台", "阳台边", "桥上", "桥边", "桥栏", "大桥", "那座桥", "栏杆",
+              "护栏", "铁轨", "轨道", "站台边", "江边", "河边", "海边", "湖边", "水边", "河堤", "江堤", "悬崖", "崖边",
+              "楼边"]
+      context: ["站了", "坐了", "待了", "呆了", "蹲了", "躺在", "躺着", "蹲在", "蹲着", "往下看", "往下望", "好久",
+                "很久", "半天", "一个小时", "几个小时", "一整晚", "一晚上", "一夜", "不想下去", "不想下来", "不下来",
+                "不想回去", "不想回家", "不回去", "不回家", "边上", "边缘", "外面", "外侧", "外边", "悬在", "伸出去",
+                "走进", "往里走", "往深处", "深处", "越走越", "靠近水", "等着", "一个人"]
+      context_window: 16
+      exceptions: ["楼顶花园", "楼顶的花园", "天台花园", "江边公园", "海边公园", "河边公园", "湖边公园"]
+      unless: ["@frame_everyday", "堵车", "咖啡", "餐厅", "办公室", "加班", "上班", "花园", "番茄", "种", "灯光",
+               "风景", "捡", "贝壳", "游客", "度假", "约会", "野餐", "等车", "等人", "等朋友", "人好多", "火车",
+               "广场舞", "施工", "维修", "修", "打扫", "被子", "衣服", "公园", "朋友", "我们", "一家人", "同学",
+               "钓", "划船", "坐船", "轮渡", "列车", "上车", "下车"]
+      unless_window: 24
+      unless_across: true
+    # A time, then being gone (今晚过后就不在了, 明天之后就没有我了, 下周一是我最后一天): a
+    # time ahead and an end of the speaker. A trip, a job, school, a chore or a habit voids it.
+    - id: ASK_INTENT_GONE_BY_TIME
+      level: ASK
+      raise_with_risk: true
+      heads: ["没有我了", "没有我这个人", "不会再有我", "不再有我", "再也见不到我", "见不到我了", "最后一天",
+              "最后一晚", "最后一夜", "最后一个晚上", "一切就结束", "一切都结束", "彻底解脱", "就解脱",
+              "不在这个世界", "离开这个世界", "再也不回", "不会再回头", "去做那件事", "把自己处理掉", "把自己解决",
+              "处理掉自己"]
+      context: ["@plan_time", "今晚", "今夜", "明天", "过后", "之后", "以后", "天亮", "睡着", "出门", "过完", "过了",
+                "那天", "等到", "等我", "之前"]
+      context_window: 16
+      unless: ["@return_marks", "@leaving", "公司", "上班", "入职", "实习", "学期", "课", "考试", "考完", "作业",
+               "论文", "项目", "熬夜", "减肥", "戒烟", "戒酒", "游戏", "打折", "优惠", "活动", "营业", "房子", "车",
+               "店", "出发", "机场", "火车", "飞机", "放假", "开学", "老家", "宿舍", "合同", "租", "在家", "装修",
+               "打扫", "收拾", "整理", "做饭", "写", "改", "拆", "修", "搬"]
+      unless_window: 24
+      unless_across: true
+    # The day or the deadline named as the speaker's own end (这周五就是我的最后一天, 月底就
+    # 是我的终点, 离开的日子定好了). A move, a job, school or a deadline for work voids it.
+    - id: ASK_INTENT_MY_LAST_DAY
+      level: ASK
+      raise_with_risk: true
+      heads: ["我的最后一天", "我的最后一晚", "我的最后一夜", "我的终点", "我的死期", "我的期限", "给自己定的期限",
+              "我离开的时候", "我离开的日子", "离开的日子", "我走的日子", "我走的那天"]
+      unless: ["@leaving", "@ready_everyday", "公司", "上班", "实习", "学校", "宿舍", "假期", "休假", "合同", "租",
+               "项目", "ddl", "截止", "交稿", "作业", "论文", "报名", "申请", "签证", "减肥", "戒烟", "戒酒"]
+      unless_window: 24
+      unless_across: true
+    # "Do it" with no object, at a time or after a plan (明早大家出门以后我就动手, 计划好了，
+    # 周日动手): the clause ends at 动手, so 动手装修 never matches; a fight voids it.
+    - id: ASK_INTENT_DO_IT_THEN
+      level: ASK
+      raise_with_risk: true
+      heads: ["动手"]
+      trailing: ["@particles"]
+      also:
+        - {phrases: ["@plan_time", "@plan_firm", "安排好", "计划好", "以后", "之后", "等"], window: 24}
+      unless: ["@fiction", "打架", "打人", "打他", "打她", "吵架", "装修", "做饭", "修", "整理", "收拾", "打扫", "搬",
+               "写", "改", "拆", "画", "手工", "动手能力"]
+      unless_window: 24
+      unless_across: true
+    # Going when no one sees (等家里人睡着我就走, 趁大家不在就离开): a moment chosen to go
+    # unseen, or going for good, and a bare going that ends its clause. Errands and outings
+    # void it.
+    - id: ASK_INTENT_LEAVE_UNSEEN
+      level: ASK
+      raise_with_risk: true
+      heads: ["我就走", "就走了", "就离开", "我就离开", "我就去"]
+      context: ["睡着", "睡下", "不在家", "没人", "趁", "偷偷", "悄悄", "不告诉", "不让他们知道", "不会回来", "永远",
+                "再也"]
+      context_window: 16
+      trailing: ["@particles"]
+      unless: ["@return_marks", "@leaving", "@frame_everyday", "上班", "上学", "买", "取", "拿", "送", "接",
+               "打游戏", "约会", "见", "吃", "喝", "网吧", "夜宵", "外卖", "快递", "加班", "跑步", "健身"]
+      unless_window: 20
+      unless_across: true
+    # Dying made the price of a condition (要是这次又失败，我就去死; 如果他走了我就不活了):
+    # the consequence names dying, whatever the condition, so L2 like a conditional threat
+    # (再加班我就去跳楼). Hyperbole sensations, swimming and stories in its clause void it.
+    - id: L2_THEN_DEATH
+      level: L2
+      clause_negation: true
+      heads: ["就去死", "就死了算了", "只能去死", "只好去死", "就不活了", "就不想活了", "就不想活下去", "就不打算活",
+              "就去自杀", "就自杀", "就自我了断", "就了断", "就一了百了", "就结束自己", "就结束这一切", "就结束我自己",
+              "就跳下去", "就去跳楼", "就跳楼", "就去跳河", "就跳河", "就去跳江", "就跳江", "就去跳海", "就跳海",
+              "就去卧轨", "就去上吊", "去死给", "死给他们看", "死给你看", "就从楼上跳", "就把药全吃", "就把药都吃",
+              "就去寻死", "就离开这个世界"]
+      exceptions: ["就跳下去游", "就跳下去捡", "就跳下去救"]
+      unless: ["@jump_everyday", "@fiction", "笑", "热", "冷", "累", "困", "饿", "渴", "撑", "晒", "冻", "辣",
+               "尴尬", "社死", "丢人", "丢脸", "可爱", "好看", "帅", "哈哈", "游泳", "泳池", "蹦极", "跳水", "开玩笑"]
+      unless_window: 12
+    # Homophones and codes of dying as a wish (想鼠了, 好想s, 去紫砂): a wish or an intent
+    # right before the code, which ends its clause or is followed by 的念头. 鼠 and s are also
+    # mice and sizes, so the question.
+    - id: ASK_INTENT_DIE_HOMOPHONE
+      level: ASK
+      raise_with_risk: true
+      heads: ["想", "要", "去", "好想", "真想", "打算", "准备", "该"]
+      tails: ["鼠", "鼠了", "鼠掉", "鼠一鼠", "s", "s了", "s掉", "似了", "紫砂"]
+      max_gap: 2
+      trailing: ["@particles", "算了", "得了", "的念头", "的想法", "的心", "这个念头"]
+      unless: ["@hyperbole_causes", "鼠标", "老鼠", "仓鼠", "松鼠", "鼠年", "属鼠", "养", "宠物", "抓", "灭", "码",
+               "号", "店", "壶", "茶", "尺码", "衣服"]
+      unless_window: 8
+    # "die" in a Chinese sentence as a wish (活着好累，想die): L2 like 想死; a game voids it.
+    - id: L2_WISH_DIE_EN_WORD
+      level: L2
+      heads: ["想", "好想", "真想", "要", "去", "想要", "只想", "就想"]
+      tails: ["die", "die了", "去die"]
+      max_gap: 2
+      trailing: ["@particles", "算了", "的念头", "的想法", "的心"]
+      unless: ["@hyperbole_causes", "游戏", "关卡", "boss", "角色", "又die", "diehard", "diet"]
+      unless_window: 12
+    # English, round 5. Pills or medication stockpiled (I've been stockpiling my meds): L2,
+    # as L2_MEANS_HOARDED.
+    - id: L2_EN_MEANS_HOARDED
+      level: L2
+      heads: ["stockpil", "hoard", "savedup", "savingup", "beensaving", "stashed", "stashing", "squirrel",
+              "enoughpills", "enoughmeds", "enoughtablets", "enoughtonot", "enoughtoend", "enoughtokill",
+              "enoughtodie"]
+      context: ["pills", "meds", "medication", "medicine", "tablets", "sleepingpills", "painkillers",
+                "prescription", "insulin", "oxy", "xanax", "dose", "doses"]
+      context_window: 24
+      unless: ["@en_negators", "@en_others", "vitamin", "snacks", "money", "cash", "points", "coupons",
+               "travel", "trip", "vacation", "pharmacy", "refill", "insurance", "shortage", "storm", "hurricane",
+               "pandemic", "flu", "cold", "allergy", "allergies", "pet", "dog", "cat"]
+      unless_window: 24
+      unless_across: true
+    # A rope, blades, a gun or pills obtained or hidden, with a sign of later use nearby (I
+    # bought a rope and I know where I'll use it): the question.
+    - id: ASK_INTENT_EN_MEANS_OBTAINED
+      level: ASK
+      raise_with_risk: true
+      heads: ["rope", "noose", "razor", "blades", "gun", "bullets", "charcoal", "poison", "pills", "meds",
+              "pesticide"]
+      tails: ["bought", "ordered", "got", "have", "hid", "hidden", "hide", "stashed", "keep", "kept", "ready",
+              "inmydrawer", "undermybed", "undermypillow", "inmycar", "forlater", "knowwhere"]
+      max_gap: 12
+      order: either
+      exceptions: ["watergun", "gluegun", "nailgun", "nerfgun", "gunshow", "rollerblades", "wiperblades",
+                   "bladesofgrass", "jumprope", "ropeswing", "skippingrope"]
+      also:
+        - {phrases: ["forlater", "where", "enough", "myself", "tonight", "tomorrow", "weekend", "ifineed",
+                     "justincase", "noone", "allofthem"], window: 40}
+      unless: ["@en_negators", "@en_others", "camping", "climbing", "hiking", "boat", "sailing", "gym", "swing",
+               "craft", "shav", "barber", "hunting", "range", "bbq", "grill", "barbecue", "garden", "pests",
+               "rats", "mice", "prescribed", "doctor", "vitamin", "headache", "cold", "flu", "trip", "travel",
+               "vacation", "fortheweek", "organizer", "pillbox"]
+      unless_window: 24
+      unless_across: true
+    # At a height or the tracks now (I'm on the roof and don't want to go back, sitting on the
+    # edge of the bridge, standing at the train tracks): the question; views, parties,
+    # waiting for someone and work void it. Only "not" of being there voids it: "don't want
+    # to go back" is part of the frame, not a denial.
+    - id: ASK_INTENT_EN_AT_EDGE
+      level: ASK
+      raise_with_risk: true
+      heads: ["ontheroof", "ontherooftop", "onthebridge", "edgeofthebridge", "edgeoftheroof", "ontheledge",
+              "onthetracks", "atthetracks", "traintracks", "railwaytracks", "railroadtracks", "nexttothetracks",
+              "edgeofthecliff", "onthecliff", "edgeofthebuilding", "outsidetherailing", "overtherailing",
+              "ontherailing", "topofthebuilding", "topoftheparkinggarage"]
+      context: ["i'm", "im", "iam", "standing", "sitting", "rightnow", "now", "been", "waiting", "lookingdown",
+                "don'twant", "dontwant", "can'tgoback", "notcomingback", "alone"]
+      context_window: 24
+      unless: ["i'mnot", "imnot", "iamnot", "never", "@en_others", "sunset", "sunrise", "view", "party", "photo", "picture", "selfie",
+               "fireworks", "stars", "friend", "date", "work", "fix", "repair", "painting", "garden", "drinks",
+               "barbecue", "bbq", "walk", "run", "jog", "traffic", "commute", "station"]
+      unless_window: 24
+      unless_across: true
+    # Ending one's life at a time, with no plan verb (tonight is the night I end my life): L2;
+    # S1_EN_PLAN_TIME is the planned form (L3).
+    - id: L2_EN_TIMED_END
+      level: L2
+      heads: ["endmylife", "endingmylife", "killmyself", "killingmyself", "takemylife", "takemyownlife"]
+      context: ["@en_time", "tonightisthenight", "isthenight", "isthedaythat", "thisweekend"]
+      context_window: 24
+      unless: ["@en_negators", "@en_others", "@en_end_everyday"]
+      unless_window: 24
+      unless_across: true
+    # The last day or night alive (this will be my last night alive): L2. A question about a
+    # last day ("if this were your last day alive") voids it.
+    - id: L2_EN_LAST_ALIVE
+      level: L2
+      heads: ["lastnightalive", "lastdayalive", "lastnightonearth", "lastdayonearth", "lastdaysalive",
+              "lastweekalive", "lastmorningalive"]
+      unless: ["@en_negators", "@en_others", "ifthis", "ifit", "ifyou", "ifit's", "whatwould", "imagine",
+               "pretend", "asif", "likeit's", "likeits", "liveeveryday", "liveeachday", "quote"]
+      unless_window: 24
+      unless_across: true
+    # Going to overdose or jump when no one is around (I'm going to overdose when everyone is
+    # asleep): a plan and an act with a time or a moment chosen: L2.
+    - id: L2_EN_PLAN_ACT_WHEN
+      level: L2
+      heads: en_plan
+      tails: ["overdose", "jump", "hangmyself", "cutmyself", "slitmywrists", "takeallthepills", "takeallmypills",
+              "takethemall", "endit"]
+      max_gap: 3
+      also:
+        - {phrases: ["@en_time", "wheneveryone", "whennoone", "whenthey", "asleep", "nooneishome", "alone",
+                     "afterthe", "pills", "meds", "bridge", "roof", "tracks"], window: 40}
+      unless: ["@en_negators", "@en_others", "@en_jump_everyday", "@en_end_everyday", "jumprope", "jumpin",
+               "jumpstart", "jumpthe", "jumpinto", "jumpon", "homework", "essay", "project", "workout",
+               "laundry", "dishes", "exam", "test", "quiz", "chores", "shopping", "presentation", "stream",
+               "video", "work"]
+      unless_window: 24
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]

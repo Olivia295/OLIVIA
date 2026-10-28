@@ -295,6 +295,7 @@ from olivia.core.resources.store import (
     ResourceStore,
     parse_store,
 )
+from olivia.core.safety.normalize import shown_text
 from olivia.core.session import Session, TurnResult
 from olivia.core.storage import app_data_dir, data_dir_location
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
@@ -775,6 +776,10 @@ USER_TEXTS: Final = (
 class _Console:
     stdin: TextIO
     stdout: TextIO
+    raw: str = ""
+    """Round 5 (复测 q4 IN-4): the last line with its direction controls kept
+    (:func:`keep_direction`), for the crisis screen to read both as typed and as shown;
+    :meth:`ask` returns it without them."""
 
     def say(self, text: str = "") -> None:
         self.stdout.write(f"{text}\n")
@@ -785,7 +790,7 @@ class _Console:
         if self.stdin is sys.stdin and self.stdin.isatty():  # pragma: no cover - terminal only
             _enable_line_editing()
             try:
-                return clean_input(input(prompt))
+                return self._cleaned(input(prompt))
             except EOFError:
                 return None
         self.stdout.write(prompt)
@@ -795,7 +800,17 @@ class _Console:
         self.stdout.write("\n")
         if not line:
             return None
-        return clean_input(line.rstrip("\r\n"))
+        return self._cleaned(line.rstrip("\r\n"))
+
+    def _cleaned(self, line: str) -> str:
+        decoded = _decode_input(line)
+        self.raw = keep_direction(decoded)
+        return strip_controls(decoded)
+
+    def for_screen(self, reply: str) -> str:
+        """``reply`` with the direction controls it was typed with, when it is the last line
+        read (:attr:`raw`); the crisis screen reads such text both ways."""
+        return self.raw if self.raw != reply and strip_controls(self.raw) == reply else reply
 
 
 class _Asker(Protocol):
@@ -846,14 +861,15 @@ class _SetupConsole:
             question, self._since_ask = self._since_ask, []
             if reply is None:
                 return reply
+            screened = self.inner.for_screen(reply)
             if topics and topic_words_only(reply):
                 # A list of topic words is decided before the screen (QA q4): it is saved,
                 # with the numbers whenever it names death or harm, or the screen alarms.
-                if sensitive_topics(reply) or self.screen.alarms(reply):
+                if sensitive_topics(reply) or self.screen.alarms(screened):
                     self._help(SETUP_TOPICS)
                     self.inner.say()
                 return reply
-            if not self.screen.alarms(reply):
+            if not self.screen.alarms(screened):
                 return reply
             if not self._go_on():
                 self.left = True
@@ -872,10 +888,22 @@ class _SetupConsole:
         An alarm only the student gives, unsure and with no rule cue (``Verdict.UNSURE``)
         asks first, as the chat does (owner decisions 2026-10-26/28; QA q4 P3): a yes to
         "are you safe now" takes the reply as CLEAR, anything else brings the numbers."""
-        verdict = self.screen.verdict(reply)
+        verdict = self.screen.verdict(self.inner.for_screen(reply))
         if verdict is Verdict.CLEAR:
             return Screened.CLEAR
         if verdict is Verdict.UNSURE and self._safe_now():
+            return Screened.CLEAR
+        if self._go_on():
+            return Screened.GO_ON
+        self.left = True
+        return Screened.LEAVE
+
+    def check_protective(self, reply: str) -> Screened:
+        """For a protective section 5 reply (``safety_plan.protective``, round 5): as
+        :meth:`check`, except that an unsure student-only alarm is taken as CLEAR without
+        asking whether the user is safe now."""
+        verdict = self.screen.verdict(self.inner.for_screen(reply))
+        if verdict is not Verdict.ALARM:
             return Screened.CLEAR
         if self._go_on():
             return Screened.GO_ON
@@ -1035,6 +1063,19 @@ _CONTROL_CHARACTERS: Final = re.compile(
 )
 
 
+_OTHER_CONTROLS: Final = re.compile(
+    # _CONTROL_CHARACTERS without the direction controls (keep_direction).
+    "[\x00-\x08\x0b-\x1f\x7f-\x9f\u200b-\u200d\u2060\ufeff]"
+)
+
+
+def keep_direction(text: str) -> str:
+    """:func:`strip_controls` that keeps the Unicode direction controls (round 5): only for
+    the crisis screen, which reads such text both as typed and as shown; never shown,
+    stored or said back."""
+    return _OTHER_CONTROLS.sub("", _TERMINAL_SEQUENCE.sub("", text))
+
+
 def strip_controls(text: str) -> str:
     """``text`` without terminal control sequences, control characters (tab and newline
     are kept), Unicode direction controls or zero-width characters.
@@ -1043,7 +1084,10 @@ def strip_controls(text: str) -> str:
     U+202E (RIGHT-TO-LEFT OVERRIDE) reverses every character printed after it. Neither
     carries anything the user meant to say, so they never reach the session or a store.
     """
-    return _CONTROL_CHARACTERS.sub("", _TERMINAL_SEQUENCE.sub("", text))
+    # Round 5 (复测 q4 IN-4): a run written to be seen reversed, its controls closed again
+    # ("我想<RLO>杀自<PDF>"), is kept as shown (我想自杀); a stray control left open is
+    # dropped and the text kept as typed (``normalize.shown_text``).
+    return _CONTROL_CHARACTERS.sub("", shown_text(_TERMINAL_SEQUENCE.sub("", text)))
 
 
 def clean_input(text: str) -> str:
@@ -1293,8 +1337,12 @@ def _chat(
     # screened them is left out if it is itself a crisis sentence (QA r3). Screened as
     # ``olivia safety-plan`` screens (the student too, even under ``--rules``: leaving an
     # entry out is the cautious side).
+    # Round 5 (复测 q4 SP-10): an entry with a place or a means in it ("去天台上一个人待
+    # 着") is left out of that block too, whatever the screen made of it.
     plan_screen = screen if student else SetupScreen(tax)
-    plan = without_crisis_entries(plan_store.load_quietly(), plan_screen.alarms)
+    plan = without_crisis_entries(
+        plan_store.load_quietly(), lambda x: plan_screen.alarms(x) or plan_screen.risky_words(x)
+    )
     try:
         session = Session.open(
             tax,
@@ -1358,7 +1406,7 @@ def _chat(
             if not line.strip():
                 continue
             try:
-                turned = session.turn(line)
+                turned = session.turn(console.for_screen(line))
             except Exception:  # SDD §10.1: even a failed screen leaves every number on screen
                 console.say(_failed_turn_reply(tax, profile, local().date()))
                 console.say()
@@ -1868,7 +1916,11 @@ def _safety_plan(console: _Console, clock: Clock) -> int:
         console, SetupScreen(_taxonomy()), lambda: _setup_hotlines(console, profile, clock)
     )
     return run_command(
-        lambda: console.ask(ANSWER_PROMPT), console.say, SafetyPlanStore(), screen=screen.check
+        lambda: console.ask(ANSWER_PROMPT),
+        console.say,
+        SafetyPlanStore(),
+        screen=screen.check,
+        protective_screen=screen.check_protective,
     )
 
 

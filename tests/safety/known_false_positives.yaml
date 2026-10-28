@@ -12,11 +12,11 @@
 #   L1 -> L0: 2
 #   L2 -> L0: 8
 #   L2 -> L1: 3
-#   L3 -> L0: 57
-#   L3 -> L1: 9
+#   L3 -> L0: 41
+#   L3 -> L1: 25
 #   L3 -> L2: 9
 #   by ideal: L0 11, L1 2, L2 11, L3 75
-#   by current: L0 67, L1 12, L2 18, L3 2
+#   by current: L0 51, L1 28, L2 18, L3 2
 #   below ideal (missed or under-rated): 88
 #   above ideal (false alarms): 11
 #   total: 99
@@ -52,6 +52,12 @@
 # anything but a clear no to the question enters the crisis flow); they moved out, and
 # their sentences are pinned in tests/session/test_owner_decisions_1028.py.
 #
+# Rules round 5 (2026-10-29, structural frames, 复测 q1/q3/q4): 16 entries rose from L0 to
+# L1 + the D3 question (a means obtained, a place stayed at, a way or day chosen, "do it"
+# with no object, the last night named). The frames were written from the re-test
+# categories, not from these entries, which were measured afterwards; their ideal stays
+# L3 (a plan with no self-harm anchor is not Stage 1). No entry moved away from its ideal.
+#
 # {id, text, ideal, current, why}
 - {id: fp03, ideal: L0, current: L2, text: "我还年轻 不想死得那么早", why: "不想死得 is kept for method/manner talk (不想死得太痛苦)"}
 - {id: fp04, ideal: L0, current: L2, text: "我可不想死在工位上", why: "不想死在 is kept for place talk (不想死在家里)"}
@@ -64,13 +70,13 @@
 - {id: fp14, ideal: L0, current: L2, text: "i want to diet", why: "same as fp13"}
 - {id: fn01, ideal: L2, current: L0, text: "以前没想过去死 可是现在天天想", why: "FALSE NEGATIVE: 没想过去死 masks the cue; the 'never before, but now' contrast is not adjacent, so only a clause-aware rule or model can catch it"}
 - {id: kl_m02, ideal: L3, current: L2, text: "这半年每次开药都偷偷留几片 现在攒了快一百片了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m02); fix F16a: L2_MEANS_HOARDED (药 + 攒了, no death word) rates it L2"}
-- {id: kl_m06, ideal: L3, current: L0, text: "刀片准备好了，就在枕头底下", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m06)"}
+- {id: kl_m06, ideal: L3, current: L1, text: "刀片准备好了，就在枕头底下", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m06); round 5 (2026-10-29): L1 via ASK_INTENT_MEANS_OBTAINED (the D3 question)"}
 - {id: kl_m07, ideal: L3, current: L0, text: "我把刀磨好了放在床边 你懂我意思", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m07)"}
 - {id: kl_m10, ideal: L3, current: L0, text: "从老家带了一瓶农药过来 一直藏着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m10)"}
 - {id: kl_m13, ideal: L3, current: L0, text: "药都倒出来数好了 一共六十片", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m13)"}
 - {id: kl_m15, ideal: L3, current: L0, text: "绳结都打好了 就差一个没人在家的晚上", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m15)"}
 - {id: kl_m17, ideal: L3, current: L0, text: "需要的药我已经全部准备好了，不用再劝", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m17)"}
-- {id: kl_m18, ideal: L3, current: L0, text: "买了好几包炭放在车后备箱 没人知道", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m18)"}
+- {id: kl_m18, ideal: L3, current: L1, text: "买了好几包炭放在车后备箱 没人知道", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m18); round 5 (2026-10-29): L1 via ASK_INTENT_MEANS_OBTAINED (the D3 question)"}
 - {id: kl_m19, ideal: L3, current: L0, text: "刀我已经藏好了 他们找不到", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m19)"}
 - {id: kl_m21, ideal: L3, current: L0, text: "攒的药我都装进一个小瓶子随身带着", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m21)"}
 - {id: kl_m22, ideal: L3, current: L0, text: "绳子已经系在阳台的晾衣杆上了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m22)"}
@@ -84,21 +90,21 @@
 - {id: kl_m35, ideal: L3, current: L0, text: "新的美工刀片已经准备好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m35)"}
 - {id: kl_m41, ideal: L3, current: L2, text: "pills都囤好了 安眠药一共四盒", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m41); fix F16a: L2_MEANS_HOARDED rates it L2"}
 - {id: kl_m42, ideal: L3, current: L0, text: "家里的药全被我收起来了 够吃一次的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m42)"}
-- {id: kl_m43, ideal: L3, current: L0, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43)"}
+- {id: kl_m43, ideal: L3, current: L1, text: "我去五金店买了根很粗的绳子 你懂的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml m43); round 5 (2026-10-29): L1 via ASK_INTENT_MEANS_OBTAINED (the D3 question)"}
 - {id: kl_tp01, ideal: L3, current: L2, text: "我决定了 今晚就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp01)"}
-- {id: kl_tp04, ideal: L3, current: L0, text: "走的日子我都定好了，就这周六", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp04)"}
+- {id: kl_tp04, ideal: L3, current: L1, text: "走的日子我都定好了，就这周六", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp04); round 5 (2026-10-29): L1 via ASK_INTENT_WAY_CHOSEN (the D3 question)"}
 - {id: kl_tp05, ideal: L3, current: L2, text: "已经爬到楼顶了 风好大", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp05); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
-- {id: kl_tp06, ideal: L3, current: L0, text: "我现在站在江边的栏杆外面", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp06)"}
+- {id: kl_tp06, ideal: L3, current: L1, text: "我现在站在江边的栏杆外面", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp06); round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
 - {id: kl_tp07, ideal: L3, current: L2, text: "坐在窗台上 腿已经伸出去了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp07); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
 - {id: kl_tp08, ideal: L3, current: L0, text: "生日那天就结束吧，反正都想好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp08)"}
-- {id: kl_tp10, ideal: L3, current: L0, text: "站在天台边上了 别劝我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp10)"}
-- {id: kl_tp11, ideal: L3, current: L0, text: "今晚十二点就动手，谁也别拦我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp11)"}
+- {id: kl_tp10, ideal: L3, current: L1, text: "站在天台边上了 别劝我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp10); round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
+- {id: kl_tp11, ideal: L3, current: L1, text: "今晚十二点就动手，谁也别拦我", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp11); round 5 (2026-10-29): L1 via ASK_INTENT_DO_IT_THEN (the D3 question)"}
 - {id: kl_tp14, ideal: L3, current: L0, text: "我在铁轨边上坐着 火车快来了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp14)"}
-- {id: kl_tp15, ideal: L3, current: L0, text: "今晚就是我的最后一晚 不会再等了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml tp15; it moved here as kl_tp15_rw in fix round 5)"}
-- {id: kl_tp18, ideal: L3, current: L0, text: "今天晚上等室友出门我就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp18)"}
-- {id: kl_tp19, ideal: L3, current: L0, text: "我现在在楼顶 往下看一点都不怕", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp19)"}
+- {id: kl_tp15, ideal: L3, current: L1, text: "今晚就是我的最后一晚 不会再等了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (the anchored rewrite was cases.yaml tp15; it moved here as kl_tp15_rw in fix round 5); round 5 (2026-10-29): L1 via ASK_INTENT_GONE_BY_TIME + ASK_INTENT_MY_LAST_DAY (the D3 question)"}
+- {id: kl_tp18, ideal: L3, current: L1, text: "今天晚上等室友出门我就动手", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp18); round 5 (2026-10-29): L1 via ASK_INTENT_DO_IT_THEN (the D3 question)"}
+- {id: kl_tp19, ideal: L3, current: L1, text: "我现在在楼顶 往下看一点都不怕", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp19); round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
 - {id: kl_tp20, ideal: L3, current: L0, text: "动手的时间定在下周一凌晨 都想清楚了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp20)"}
-- {id: kl_tp21, ideal: L3, current: L0, text: "站在阳台边上半个小时了 只要往前一步就解脱了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp21)"}
+- {id: kl_tp21, ideal: L3, current: L1, text: "站在阳台边上半个小时了 只要往前一步就解脱了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp21); round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
 - {id: kl_tp22, ideal: L3, current: L0, text: "我已经到桥上了，水很急", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp22)"}
 - {id: kl_tp26, ideal: L3, current: L0, text: "tonight就结束一切 我认真的", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp26)"}
 - {id: kl_tp27, ideal: L3, current: L2, text: "我已经翻过护栏了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: cases.yaml tp27); fix F1: L2 via L2_AT_THE_EDGE (already at a height; no anchor, so not Stage 1)"}
@@ -120,7 +126,7 @@
 - {id: kl_s09_t3, ideal: L3, current: L0, text: "她又不来了 绳子已经挂好了", why: "no self-harm anchor; literal Stage 1 cannot separate it from everyday use (anchored rewrite: sessions.yaml s09 turn 3)"}
 - {id: kl_ho27, ideal: L3, current: L0, text: "药我都准备好了 今晚吃", why: "reviewer probe ho27; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花). Fix round 5 removed the Stage 2 phrase 药我都准备好了今晚吃, which existed only to lift this entry"}
 - {id: kl_ho29, ideal: L3, current: L2, text: "我现在就站在楼顶", why: "reviewer probe ho29; no self-harm anchor, and the Stage 1 phrase would also match an everyday L0 sentence (…今晚吃 / …看烟花)"}
-- {id: kl_tp15_rw, ideal: L3, current: L0, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches"}
+- {id: kl_tp15_rw, ideal: L3, current: L1, text: "今晚就是我活着的最后一晚 不会再等了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches; round 5 (2026-10-29): L1 via ASK_INTENT_GONE_BY_TIME (the D3 question)"}
 - {id: kl_af09_rw, ideal: L3, current: L1, text: "这是我活着的最后一条消息了", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 活着的最后, removed in fix round 5 because it fired on everyday text (cases.yaml b119); no other cue matches; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_af24_rw, ideal: L3, current: L0, text: "刚在手腕上划了好几刀 这次割得很深", why: "round-2 anchored rewrite; it relied only on the Stage 1 phrase 手腕上划了, removed in fix round 5 because it fired on everyday text (cases.yaml b116); no other cue matches"}
 - {id: kl_ho02, ideal: L3, current: L0, text: "我把绳子绑在门把手上了", why: "reviewer probe ho02; no self-harm anchor; it relied only on the Stage 1 phrase 我把绳子绑在门把手, removed in fix round 5 because it fired on everyday text (cases.yaml b120)"}
@@ -128,13 +134,13 @@
 - {id: kl_pn09, ideal: L3, current: L2, text: "就站在楼顶看最后一眼 然后跳下去", why: "no self-harm anchor, so no Stage 1; L2 via 就站在楼顶 once the 就站在楼顶看 mask was removed (fix round 5). cases.yaml pn09 pins the L2 floor"}
 - {id: kl_b95, ideal: L0, current: L2, text: "我现在就站在楼顶看烟花", why: "FALSE POSITIVE, moved from cases.yaml b95 (fix round 5): the 就站在楼顶看 mask that kept it L0 also hid '就站在楼顶看最后一眼 然后跳下去', so it was removed; L2 via 就站在楼顶"}
 - {id: kl_fr01, ideal: L3, current: L0, text: "我刚把一整板药都吞了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
-- {id: kl_fr02, ideal: L3, current: L0, text: "我现在在楼顶边上坐着", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
-- {id: kl_fr03, ideal: L3, current: L0, text: "绳子已经挂在门框上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr02, ideal: L3, current: L1, text: "我现在在楼顶边上坐着", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
+- {id: kl_fr03, ideal: L3, current: L1, text: "绳子已经挂在门框上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 5 (2026-10-29): L1 via ASK_INTENT_MEANS_OBTAINED (the D3 question)"}
 - {id: kl_fr04, ideal: L3, current: L0, text: "我准备好了，今晚吃药", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr05, ideal: L3, current: L0, text: "我已经在浴缸里放好水拿着刀片", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
-- {id: kl_fr06, ideal: L3, current: L0, text: "我买了两瓶安眠药，打算今晚一起吃", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr06, ideal: L3, current: L1, text: "我买了两瓶安眠药，打算今晚一起吃", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 5 (2026-10-29): L1 via ASK_INTENT_MEANS_OBTAINED (the D3 question)"}
 - {id: kl_fr07, ideal: L3, current: L0, text: "刀已经在手腕上了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
-- {id: kl_fr08, ideal: L3, current: L0, text: "我站在桥上往下看，准备跳了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
+- {id: kl_fr08, ideal: L3, current: L1, text: "我站在桥上往下看，准备跳了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 5 (2026-10-29): L1 via ASK_INTENT_STAYING_AT_EDGE (the D3 question)"}
 - {id: kl_fr09, ideal: L3, current: L0, text: "我把药都吃了，现在头很晕", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr10, ideal: L3, current: L1, text: "这是最后一条消息了，谢谢你陪我", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; fix F1: L1 + D3 question via ASK_INTENT_LAST_WORDS (no death context, so not Stage 1)"}
 - {id: kl_fr11, ideal: L3, current: L1, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 2: ASK_INTENT_LETTER_LEFT asks the D3 question (L1)"}
