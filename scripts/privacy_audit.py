@@ -50,8 +50,7 @@ sensitive-sealed [mode]
     when present) start with ``OLVD``, key files with ``OLVK``; ``profile.json`` (and
     snapshots) never holds a sensitive field in the clear, its
     ``sealed_fields``/``sealed_profile`` decode to ``OLVD``, and with the switch on it
-    holds nothing but ``sealed_profile``. The data directory's lock, recorded while a
-    command holds it, must be empty. Any file the audit does not know fails.
+    holds nothing but ``sealed_profile``. Any file the audit does not know fails.
 master-key-off-disk [mode]
     No keychain value, and no master key in any encoding, appears in a file.
 permissions [mode]
@@ -528,7 +527,7 @@ def unsealed(files: Files, whole: bool, *, health_recorded: bool) -> list[str]:
         elif rel.startswith(f"{KEYS_DIRNAME}/") and rel.endswith(".key"):
             if not data.startswith(KEY_MAGIC):
                 problems.append(f"{rel}: not a wrapped key (no OLVK)")
-        elif rel in (SUGGESTED_FILENAME, LOCK_FILENAME):  # the lock: held mid-command
+        elif rel == SUGGESTED_FILENAME:
             if data:
                 problems.append(f"{rel}: marker is not empty")
         else:
@@ -885,7 +884,13 @@ class Run:
     def mode(self) -> str:
         return "switch-on" if self.whole else "switch-off"
 
-    def record(self, home: Path, keychain_items: Mapping[str, str]) -> None:
+    def record(
+        self, home: Path, keychain_items: Mapping[str, str], *, mid_command: bool = False
+    ) -> None:
+        """``mid_command``: recorded while a command runs and holds the data directory's
+        lock, whose (empty) file is then not read: Windows refuses to read its locked byte
+        to any other handle, the same process's included."""
+
         def add(items: list[Any], item: Any) -> None:
             if item not in items:
                 items.append(item)
@@ -894,7 +899,7 @@ class Run:
         for path in sorted(home.rglob("*")):
             rel = path.relative_to(home).as_posix()
             add(self.modes, (rel, path.is_dir(), path.stat().st_mode & 0o777))
-            if path.is_file():
+            if path.is_file() and not (mid_command and rel == LOCK_FILENAME):
                 add(self.files, (rel, path.read_bytes()))
         for item in keychain_items.items():
             add(self.keychain_seen, item)
@@ -1019,7 +1024,7 @@ def _edit_and_reset(home: Path, run: Run, backend: MemoryKeychain) -> None:
     def at_commit_point(store: StateStore, state: CarriedState) -> bool:
         """The data directory as a crash right after the commit point would leave it."""
         staged.append(store.staging.is_file())
-        run.record(home, backend.items)
+        run.record(home, backend.items, mid_command=True)
         return apply_rekey(store, state)
 
     with _patched(StateStore, "_apply_rekey", at_commit_point):

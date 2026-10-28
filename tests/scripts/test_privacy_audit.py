@@ -146,7 +146,6 @@ def test_unsealed_passes_a_sealed_directory(whole):
         ("ledger/0a.olv", b"---\nkind: note", False, "ledger/0a.olv: not sealed (no OLVD)"),
         ("state.bin", b"{}", False, "state.bin: not sealed (no OLVD)"),
         ("state.rekey", b"{}", False, "state.rekey: not sealed (no OLVD)"),
-        (".olivia.lock", b"x", False, ".olivia.lock: marker is not empty"),
         ("keys/ledger.key", b"raw-key", False, "keys/ledger.key: not a wrapped key (no OLVK)"),
         (
             "profile.json",
@@ -176,11 +175,32 @@ def test_unsealed_names_each_problem(rel, data, whole, problem):
     assert problem in audit.unsealed(files, whole, health_recorded=False)
 
 
-def test_unsealed_takes_a_sealed_staging_copy_and_the_lock_but_needs_neither():
-    """Recorded at a re-key's commit point, mid-command: both may be there, or not."""
-    files = [*_good_files(False), ("state.rekey", OLVD), (".olivia.lock", b"")]
+def test_unsealed_takes_a_sealed_staging_copy_but_does_not_need_one():
+    """Recorded at a re-key's commit point: it may be there, or not."""
+    files = [*_good_files(False), ("state.rekey", OLVD)]
     assert audit.unsealed(files, False, health_recorded=True) == []
     assert audit.unsealed(_good_files(False), False, health_recorded=True) == []
+
+
+def test_a_record_mid_command_leaves_the_held_lock_file_unread(tmp_path, monkeypatch):
+    """Windows refuses to read the locked byte of the data directory's lock file, to the
+    process holding it too (PR #134 CI): recorded mid-command, the lock is not read."""
+    (tmp_path / "state.bin").write_bytes(OLVD)
+    (tmp_path / ".olivia.lock").write_bytes(b"")
+    real = Path.read_bytes
+
+    def windows_lock(self: Path) -> bytes:
+        if self.name == ".olivia.lock":
+            raise PermissionError(13, "Permission denied")
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", windows_lock)
+    run = audit.Run(False)
+    with pytest.raises(PermissionError):
+        run.record(tmp_path, {})
+    run.record(tmp_path, {}, mid_command=True)
+    assert [rel for rel, _ in run.files] == ["state.bin"]
+    assert any(rel == ".olivia.lock" for rel, _, _ in run.modes)
 
 
 def test_unsealed_fails_when_a_store_was_never_written():
