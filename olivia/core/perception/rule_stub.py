@@ -192,6 +192,17 @@ _STRAIN: Final = "strain"
 _IMMINENT_TIME: Final = "imminent_time"
 _IMMINENT_MEANS: Final = "imminent_means"
 _SECRET: Final = "keep_secret"
+_IMMINENT_CONTEXT: Final = "imminent_context"
+_UNREACHABLE: Final = "third_party_unreachable"
+_OTHER_QUESTION: Final = "third_party_question"
+_HELP_SEEKING: Final = "help_seeking"
+_FEE: Final = "hotline_fee"
+_HOURS: Final = "hotline_hours"
+_LANGUAGE: Final = "hotline_language"
+_REAL: Final = "hotline_real"
+_MORE: Final = "hotline_more"
+_PHONE_WORDS: Final = "hotline_words"
+_PLACE: Final = "hotline_place"
 # "我不知道该怎么说" tells how hard it is; it asks nothing (dogfood I1).
 _NOT_KNOWING: Final = ("不知道", "不晓得", "不清楚", "不明白")
 # What makes a message ask about a named practice (dogfood I2): "冷水敷脸呢", "行不行".
@@ -322,6 +333,18 @@ class RuleStub:
         add(_IMMINENT_TIME, _IMMINENT_TIME, lexicon.imminent_times)
         add(_IMMINENT_MEANS, _IMMINENT_MEANS, lexicon.imminent_means)
         add(_SECRET, _SECRET, lexicon.keep_secret_cues)
+        add(_IMMINENT_CONTEXT, _IMMINENT_CONTEXT, lexicon.imminent_context)
+        add(_UNREACHABLE, _UNREACHABLE, lexicon.third_party_unreachable)
+        add(_OTHER_QUESTION, _OTHER_QUESTION, lexicon.third_party_questions)
+        add(_HELP_SEEKING, _HELP_SEEKING, lexicon.help_seeking_cues)
+        add(_FEE, _FEE, lexicon.hotline_fee)
+        add(_HOURS, _HOURS, lexicon.hotline_hours)
+        add(_LANGUAGE, _LANGUAGE, lexicon.hotline_language)
+        add(_REAL, _REAL, lexicon.hotline_real)
+        add(_MORE, _MORE, lexicon.hotline_more)
+        add(_PHONE_WORDS, _PHONE_WORDS, lexicon.hotline_words)
+        for code, phrases in lexicon.hotline_places.items():
+            add(_PLACE, code, phrases)
         self._request_patterns = lexicon.direct_request_patterns
         self._hotline_patterns = lexicon.hotline_request_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
@@ -490,6 +513,22 @@ class RuleStub:
             strain=bool(hits.get(_STRAIN)),
             imminent=bool(hits.get(_IMMINENT_TIME)) and bool(hits.get(_IMMINENT_MEANS)),
             keep_secret=bool(hits.get(_SECRET)),
+            imminent_time=bool(hits.get(_IMMINENT_TIME)),
+            imminent_means=bool(hits.get(_IMMINENT_MEANS)),
+            imminent_context=bool(hits.get(_IMMINENT_CONTEXT)),
+            third_party_unreachable=bool(hits.get(_UNREACHABLE)),
+            third_party_question=bool(hits.get(_OTHER_QUESTION)),
+            help_seeking=bool(hits.get(_HELP_SEEKING)),
+            hotline_fee=bool(hits.get(_FEE)),
+            hotline_hours=bool(hits.get(_HOURS)),
+            hotline_language=bool(hits.get(_LANGUAGE)),
+            hotline_real=bool(hits.get(_REAL)),
+            hotline_more=bool(hits.get(_MORE)),
+            hotline_words=bool(hits.get(_PHONE_WORDS)),
+            hotline_place=next(
+                (label for label, _ in sorted(hits.get(_PLACE, ()), key=lambda h: h[1].start)),
+                None,
+            ),
         )
         return context, turn
 

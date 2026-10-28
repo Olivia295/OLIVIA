@@ -1536,6 +1536,16 @@ hotline_request_patterns:
   - "(?:给我|告诉我|发我|发给我|推荐|想要|需要|要个|要一个|求个|求一个|查一下|找个|找一个|有没有|有什么|有哪些|能不能|可不可以|可以|哪里有|哪儿有|在哪|去哪)(?:找|查|打|拨)?{C}{0,14}?(?:热线|求助电话|援助电话|咨询电话|心理援助|求助号码|援助号码|hotline|helpline|crisisline)"
   - "(?:热线|求助电话|援助电话|咨询电话|求助号码|援助号码|hotline|helpline)(?:的)?(?:号码|电话)?(?:是多少|多少|是什么|有哪些|有吗|吗|呢|\\?)"
   - "(?:心理援助|心理热线|求助热线|援助热线)(?:的)?(?:号码|电话)"
+  # Round 3 (2026-10-27, re-test r2 第 4 节; 草稿：待 G-0): a request word, a word for talking or
+  # support and a word for a phone line in one clause ("有没有那种不用说名字、随便聊聊的电话",
+  # "能告诉我心理咨询的电话吗", "is there a crisis line I can text"); or the support word and the
+  # phone word followed by a question ("我想打电话找人聊聊，有号码吗"); or a request word, or a
+  # question, around 热线 / hotline itself ("香港有冇24小時嘅熱線", "can you give me a hotline
+  # number", "help line number please"). A phone word alone ("我刚给我妈打了电话") is none.
+  - "(?:有没有|有冇|有无|能不能|可不可以|可以|能否|给我|给个|告诉我|发我|发给我|推荐|想要|需要|要个|要一个|求个|求一个|找个|找一个|查一下|查查|哪里有|哪儿有|有什么|有哪些|想打|想找|请问|please|canyou|couldyou|give|need|want|isthere|arethere|any|share|send|what'sthe|whatisthe|whatnumber|which|recommend|tellme){C}{0,16}?(?:心理|情绪|倾诉|聊聊|聊天|说说话|说话|支援|支持|援助|求助|咨询|陪伴|自杀|危机|crisis|support|suicide|mentalhealth|emotional|talkto|talking|counsel){C}{0,10}?(?:电话|热线|号码|专线|hotline|helpline|line|number)"
+  - "(?:心理|情绪|倾诉|聊聊|聊天|说说话|说话|支援|支持|援助|求助|咨询|陪伴|自杀|危机|crisis|support|suicide|mentalhealth|emotional|talkto|talking|counsel)[^.!?。！？]{0,10}?(?:电话|热线|号码|专线|hotline|helpline|line|number){C}{0,6}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
+  - "(?:有没有|有冇|有无|能不能|可不可以|可以|能否|给我|给个|告诉我|发我|发给我|推荐|想要|需要|要个|要一个|求个|求一个|找个|找一个|查一下|查查|哪里有|哪儿有|有什么|有哪些|想打|想找|请问|please|canyou|couldyou|give|need|want|isthere|arethere|any|share|send|what'sthe|whatisthe|whatnumber|which|recommend|tellme){C}{0,12}?(?:热线|hotline|helpline|crisisline|supportline)"
+  - "(?:热线|hotline|helpline|crisisline|supportline){C}{0,8}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
 
 # Follow-ups about a hotline (问题单第 7 条; 草稿：待 G-0): asked with a hotline request, or
 # within two turns of a resource card, each gets one plain, true line
@@ -1560,6 +1570,123 @@ hotline_abroad:
   - 国内的号码
   - 国内的热线
 
+# More follow-ups about a hotline (round 3, 2026-10-27; 草稿：待 G-0): whether it costs money,
+# when it answers, which languages, whether the number is real, and whether there are more
+# numbers. Read with a hotline request, within two turns of a resource card when the
+# message asks something, or in the crisis flow when the message names a phone line or a
+# number; each gets one fixed, true line (render.yaml crisis.hotline_*). Folded, no spaces.
+hotline_fee:
+  - 收费
+  - 要钱
+  - 花钱
+  - 免费
+  - 多少钱
+  - 话费
+  - 费用
+  - 付费
+  - 收钱
+  - free
+  - cost
+  - charge
+  - fee
+hotline_hours:
+  - 24小时
+  - 二十四小时
+  - 几点
+  - 晚上
+  - 半夜
+  - 夜里
+  - 凌晨
+  - 深夜
+  - 有人接
+  - 什么时候
+  - 全天
+  - hours
+  - 24/7
+  - overnight
+  - atnight
+  - anytime
+hotline_language:
+  - 普通话
+  - 粤语
+  - 广东话
+  - 方言
+  - 英语
+  - 英文
+  - 中文
+  - 国语
+  - 台语
+  - mandarin
+  - cantonese
+  - english
+  - chinese
+  - language
+hotline_real:
+  - 真的吗
+  - 是真的
+  - 靠谱
+  - 真的假的
+  - 确定
+  - 假的
+  - 骗人
+  - 打得通
+  - 能打通
+  - real
+  - legit
+  - scam
+  - fake
+hotline_more:
+  - 别的号码
+  - 其他号码
+  - 别的电话
+  - 其他电话
+  - 别的热线
+  - 其他热线
+  - 还有别的
+  - 还有其他
+  - 除了
+  - 另外的号码
+  - 更多
+  - another
+  - othernumber
+  - morenumbers
+  - anyother
+# Words for a phone line or a call: with one of them, a crisis turn's follow-up above is
+# about the numbers on the card ("这个号码晚上有人接吗").
+hotline_words:
+  - 电话
+  - 号码
+  - 热线
+  - 打过去
+  - 打通
+  - 拨打
+  - 接线
+  - hotline
+  - helpline
+  - number
+  - call
+
+# Where the user says they are (round 3, 2026-10-27; 草稿：待 G-0): region code -> place
+# names. A supported region other than the profile's gets that region's card; ZZ (a place
+# without verified numbers here, "我在日本留学") gets the general card (112 where GSM allows,
+# findahelpline.com, Befrienders) and a line pointing at `olivia resources <code>`, never the
+# profile region's numbers as if they were local. Folded, no spaces.
+hotline_places:
+  CN: [中国大陆, 内地, 大陆, 国内]
+  HK: [香港, hongkong]
+  MO: [澳门, macau, macao]
+  TW: [台湾, taiwan]
+  US: [美国, usa, america]
+  CA: [加拿大, canada]
+  GB: [英国, theuk, britain, england, scotland, wales, london, 伦敦]
+  AU: [澳大利亚, 澳洲, australia, 悉尼, 墨尔本, sydney, melbourne]
+  ZZ: [日本, japan, 韩国, korea, 新加坡, singapore, 德国, germany, 法国, france, 意大利, italy,
+       西班牙, spain, 荷兰, netherlands, 新西兰, newzealand, 马来西亚, malaysia, 泰国, thailand,
+       越南, vietnam, 菲律宾, philippines, 印度, india, 俄罗斯, russia, 爱尔兰, ireland, 瑞士,
+       switzerland, 瑞典, sweden, 挪威, norway, 丹麦, denmark, 芬兰, finland, 比利时, belgium,
+       奥地利, austria, 迪拜, dubai, 阿联酋, 欧洲, europe, 东京, tokyo, 首尔, seoul, 巴黎, paris,
+       柏林, berlin]
+
 # The user says they are under 18 after the age gate (问题单第 5 条, 2026-10-26; 草稿：待 G-0):
 # "我才初二", "其实我14岁", "我是未成年人，可以用吗", "我还在上初中". Only the user's own
 # age: 我, then only the listed fillers, then an age under 18, a school year below the
@@ -1570,8 +1697,25 @@ hotline_abroad:
 # nothing about age is written anywhere.
 minor_disclosure_patterns:
   - "我(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是)*(?:1[0-7]|十[一二三四五六七]?)(?:岁|周岁)(?!的|那|时|以前|之前|左右)"
-  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长)"
-  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:一个|个)?(?:未成年|未满(?:18|十八)|没满(?:18|十八)|不满(?:18|十八)|不到(?:18|十八))"
+  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是|刚|刚刚)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
+  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:一个|个)?(?:未成年|未满(?:18|十八)|没满(?:18|十八)|不满(?:18|十八)|不到(?:18|十八))(?!的时候|时|那|以前|之前)"
+  # Round 3 (2026-10-27, re-test r2 第 2 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - the self word may be 本人 / 俺 / 咱 too, and the age may stand with 了 instead of 岁
+  #   ("我17了，下个月才满18");
+  # - a school year may take 的学生 / 学生党 / 新生 ("我是初二的学生");
+  # - not yet grown up ("我还没成年呢", "我还没满十八");
+  # - a self-description at the start of a clause, marked as one by 一枚 / 本人 / 在此
+  #   ("初三学生一枚", "高二党一枚"), never a remark about students in general;
+  # - English, folded with no spaces: I'm / I am + an age under 18 (+ years old), followed
+  #   by the end, punctuation or a joining word ("I'm 15 and my parents fight"), never a
+  #   count of something else ("I'm 15 minutes late", "15 years older").
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是|已经)*(?:1[0-7]|十[一二三四五六七]?)了(?![0-9一二三四五六七八九十个号点分次天年月]|岁)"
+  - "(?:本人|俺|咱)(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是)*(?:1[0-7]|十[一二三四五六七]?)(?:岁|周岁)(?!的|那|时|以前|之前|左右)"
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:一个|个|一名)?(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|七年级|八年级|九年级|高一|高二)的?(?:学生党|学生|新生|生|党)(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
+  - "(?:我|本人|俺|咱)(?:才|现在|其实|还|也|都)*(?:没|未|不)有?(?:成年|满(?:18|十八))(?!的时候|时|那|以前|之前)"
+  - "{S}(?:初一|初二|初三|初中|小学|高一|高二|七年级|八年级|九年级)的?(?:学生党|学生|生|党|狗)(?:一枚|一只|本人|在此)"
+  - "(?:i'm|im|iam)(?:only|just|still)?(?:1[0-7]|thirteen|fourteen|fifteen|sixteen|seventeen)(?:yearsold|yrsold|yo)?(?=$|[,.!?;:~)]|and|but|so|now|lol|haha|btw|already|&)"
+  - "(?:i'm|im|iam)(?:only|just|still)?a(?:1[0-7]|thirteen|fourteen|fifteen|sixteen|seventeen)-?years?-?old"
 
 # Strain that is not itself a crisis cue (问题单第 11 条, 2026-10-26; 草稿：待 G-0): "撑不了
 # 多久了". Read only for a user with a crisis history (a care marker or a crisis earlier in
@@ -1608,6 +1752,20 @@ imminent_times:
   - 月底
   - 放学后
   - 考完
+  # Round 3 (2026-10-27, 草稿：待 G-0): more near times, and English ones (folded, no spaces).
+  - 今夜
+  - 明晚
+  - 明早
+  - 下课后
+  - 下班后
+  - 过两天
+  - 这两天
+  - tonight
+  - tomorrow
+  - thisweekend
+  - rightnow
+  - today
+  - nextweek
 imminent_means:
   - 跳下去
   - 跳楼
@@ -1622,6 +1780,126 @@ imminent_means:
   - 上吊
   - 烧炭
   - 喝农药
+  # Round 3 (2026-10-27, 草稿：待 G-0): taking pills to go ("吃药走了"), a bottle of pills,
+  # and English means (folded, no spaces).
+  - 吃药走
+  - 吃药离开
+  - 吃药结束
+  - 一瓶药
+  - 整瓶药
+  - 把药都吃
+  - 把药全吃
+  - 开煤气
+  - overdose
+  - hangherself
+  - hanghimself
+  - hangthemselves
+
+# Places and everyday means that make someone else's reported risk urgent (round 3,
+# 2026-10-27; 草稿：待 G-0): "室友说她明天要去江边，不想活了", "she wants to kill herself and she
+# has pills". Unlike imminent_means they count only with risk the rules find in the reported
+# words themselves, so "她明天要去江边跑步" or "she takes her pills tonight" is no plan.
+imminent_context:
+  - 江边
+  - 河边
+  - 海边
+  - 湖边
+  - 桥上
+  - 大桥
+  - 楼顶
+  - 天台
+  - 顶楼
+  - 铁轨
+  - 悬崖
+  - bridge
+  - roof
+  - rooftop
+  - cliff
+  - traintracks
+  - pills
+  - jumpoff
+  - jumpfrom
+  - rope
+  - gun
+
+# After the card for someone else's risk (round 3, 2026-10-27; 草稿：待 G-0), read only within
+# a few turns of it: the user cannot reach the other person ("我联系不上他"), which is an
+# emergency, or asks what to do ("我该怎么办"). Either gets the card again with what to do
+# (render.yaml crisis.third_party_unreachable / third_party_urgent_steps /
+# third_party_support), never an ordinary mirror. Folded, no spaces.
+third_party_unreachable:
+  - 联系不上
+  - 联系不到
+  - 找不到他
+  - 找不到她
+  - 找不着
+  - 不回消息
+  - 不回我
+  - 不接电话
+  - 电话打不通
+  - 打不通
+  - 关机了
+  - 失联
+  - can'treach
+  - cantreach
+  - notanswering
+  - isn'tanswering
+  - notpickingup
+  - won'tanswer
+  - won'tpickup
+third_party_questions:
+  - 怎么办
+  - 该怎么做
+  - 怎么做
+  - 能做什么
+  - 做点什么
+  - 做些什么
+  - 怎么帮
+  - 怎样帮
+  - 帮帮他
+  - 帮帮她
+  - 要报警
+  - 该报警
+  - 报警吗
+  - 要不要告诉
+  - 该不该告诉
+  - 怎么劝
+  - 怎么跟她说
+  - 怎么跟他说
+  - whatshouldido
+  - whatcanido
+  - whatdoido
+  - howcanihelp
+  - howdoihelp
+  - shouldicall
+
+# The user means to see a doctor, a counsellor or a school or work mental health centre
+# (round 3, 2026-10-27; 草稿：待 G-0): "我明天想去学校的心理中心看看", "挂什么科". In the crisis
+# flow, with no rule risk cue, the reply opens with render.yaml crisis.help_seeking (where
+# to go, no diagnosis) before the numbers. Folded, no spaces.
+help_seeking_cues:
+  - 医院
+  - 挂号
+  - 挂个号
+  - 挂什么科
+  - 看医生
+  - 看病
+  - 心理中心
+  - 心理咨询中心
+  - 心理老师
+  - 心理咨询
+  - 咨询师
+  - 心理医生
+  - 精神科
+  - 心理科
+  - 心理门诊
+  - 辅导员
+  - 社工
+  - therapist
+  - counselor
+  - counsellor
+  - doctor
+  - psychiatrist
 
 # The other person asked the user to keep it secret ("她不让我告诉别人"; 问题单第 6 条,
 # 草稿：待 G-0): read only while the user is talking about someone else's risk, and answered

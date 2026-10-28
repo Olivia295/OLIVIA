@@ -14,12 +14,30 @@ their life, and reads the next turn with :func:`read_intent_answer`:
 Only a denial returns to the ordinary flow; the session reads affirmed and unclear alike
 as L2, so the two only differ in ``--inspect``. An English phrase counts only as whole
 words ("no" is not the start of "nobody").
+
+Round 3 (2026-10-27, re-test r2 第 1 节):
+
+* Interjections and laughter before the answer are dropped first, however many and with
+  whatever punctuation between them (哈哈, 嗯, 呃, 啊？, 诶, 害, 想啥呢, 当然, lol, haha,
+  hmm): "嗯不是，没那回事" is a no (it read as the yes 嗯), "哈哈，没有啦" and "啊？当然不是啦"
+  are noes. A message that is nothing but interjections ("嗯", "当然") is read as it was
+  typed, so a bare 嗯 stays a yes and a bare 当然 stays unclear.
+* A no said twice ("没有没有，你想多了") is the same no.
+* "不是才怪" is no no (``_SARCASM``), and neither is a first clause about living on or
+  waking up ("我没想过要活下去": ``_NEGATED_VETOES``).
+* :func:`read_answer` also reads a first clause that negates the intent in the first person
+  ("我绝对没有想结束生命，只是项目做不下去"): the rules see a risk phrase in it, which is
+  under the negation. It is a no only when the whole message carries no plan evidence (L3),
+  the rest of the message, screened on its own (``rest_screen``), is L0 with no ask cue and
+  no unsure phrase occurs anywhere;
+  ``IntentReading.negated`` then tells the session that the no carries the only cue.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
@@ -32,6 +50,26 @@ from olivia.core.safety.normalize import fold_words
 _CLAUSE_END: Final = re.compile(r"[,.!?;:。、~…\n\"“”]")
 _FILLERS: Final = "啊呃额哦噢喔诶欸哎"
 _PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢"
+# Round 3: interjections, laughter and "what are you thinking" before the answer, each
+# optionally followed by punctuation or a space. Dropped from the front again and again.
+_INTERJECTION: Final = re.compile(
+    r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
+    r"你?想啥呢|你?想什么呢|你?在想啥|怎么可能|当然|肯定|"
+    r"(?:lol|lmao|haha\w*|hah|ha|hmm+|um+|uh+|oh|ah|well|lmfao)\b)"
+    r"[\s,.!?;:。、~…\"“”]*"
+)
+# A no said twice or more ("没有没有", "不是不是"; r2 u1b) is the same no.
+_REPEATED: Final = re.compile(r"(.+?)\1+")
+# A no that means yes.
+_SARCASM: Final = ("才怪", "就怪了")
+# Round 3: a first clause that negates an intent in the first person (我绝对没有想……). Only
+# 没(有) and 不是 negate the intent itself; 不想 often is the risk ("我不想活了"), so it is
+# no part of this reading, nor is a clause about living on or waking up.
+_NEGATED_INTENT: Final = re.compile(
+    r"^(?:我|俺)?(?:绝对|真的|根本|从来|完全|并|确实|压根儿?|一点也|一点都)*"
+    r"(?:没有|没|不是)(?:在|有)?(?:想|想过|要|打算|准备|是想|是要)"
+)
+_NEGATED_VETOES: Final = ("活", "醒", "继续", "存在", "下去", "坚持", "撑")
 
 
 class IntentAnswer(StrEnum):
@@ -42,20 +80,76 @@ class IntentAnswer(StrEnum):
     UNCLEAR = "unclear"
 
 
+@dataclass(frozen=True)
+class IntentReading:
+    """:func:`read_answer`'s result."""
+
+    answer: IntentAnswer
+    negated: bool = False
+    """The no is a first-person negated intent clause whose risk phrase is the message's
+    only rule cue (round 3); only with ``answer`` DENIED."""
+
+
 def read_intent_answer(
     answers: IntentAnswers, text: str, assessment: CrisisAssessment
 ) -> IntentAnswer:
     """Read one turn as the answer to the question asked on the turn before."""
+    return read_answer(answers, text, assessment).answer
+
+
+def read_answer(
+    answers: IntentAnswers,
+    text: str,
+    assessment: CrisisAssessment,
+    rest_screen: Callable[[str], CrisisAssessment] | None = None,
+) -> IntentReading:
+    """:func:`read_intent_answer`, with the negated first clause read too when
+    ``rest_screen`` (the rule screen) is given."""
     folded = fold_words(text)
-    clause = _CLAUSE_END.split(folded, maxsplit=1)[0].strip().lstrip(_FILLERS).strip()
-    denies = clause.rstrip(_PARTICLES) in answers.deny_whole or _starts(clause, answers.deny_start)
-    if not denies:
+    body = _drop_interjections(folded)
+    parts = _CLAUSE_END.split(body, maxsplit=1)
+    clause = parts[0].strip().lstrip(_FILLERS).strip()
+    rest = parts[1] if len(parts) > 1 else ""
+    sarcastic = any(word in folded for word in _SARCASM)
+    living = any(word in clause for word in _NEGATED_VETOES)
+    plain = clause.rstrip(_PARTICLES)
+    repeated = _REPEATED.fullmatch(plain)
+    base = repeated.group(1) if repeated is not None else plain
+    denies = (
+        not sarcastic
+        and not living
+        and (base in answers.deny_whole or _starts(clause, answers.deny_start))
+    )
+    unsure = any(_contains(folded, phrase) for phrase in answers.unsure)
+    negated = (
+        not sarcastic
+        and rest_screen is not None
+        and not living
+        and _NEGATED_INTENT.match(clause) is not None
+    )
+    if not denies and not negated:
         yes = _starts(clause, answers.affirm_start)
-        return IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR
+        return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
     calm = assessment.level is CrisisLevel.L0 and not assessment.asks_intent
-    if calm and not any(_contains(folded, phrase) for phrase in answers.unsure):
-        return IntentAnswer.DENIED
-    return IntentAnswer.UNCLEAR
+    if calm and not unsure:
+        return IntentReading(IntentAnswer.DENIED)
+    plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
+    if negated and not unsure and not plan and rest_screen is not None:
+        after = rest_screen(rest) if rest.strip() else None
+        if after is None or (after.level is CrisisLevel.L0 and not after.asks_intent):
+            return IntentReading(IntentAnswer.DENIED, negated=True)
+    return IntentReading(IntentAnswer.UNCLEAR)
+
+
+def _drop_interjections(folded: str) -> str:
+    """``folded`` without its leading interjections; as typed when nothing else is left."""
+    body = folded.strip()
+    while True:
+        match = _INTERJECTION.match(body)
+        if match is None or not match.group(0):
+            break
+        body = body[match.end() :].lstrip()
+    return body if body else folded
 
 
 def _starts(clause: str, phrases: Iterable[str]) -> bool:

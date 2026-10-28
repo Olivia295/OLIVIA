@@ -32,6 +32,9 @@ clause of a longer message that says the user is safe ("我现在在家，是安
 安全，已经给我姐打了电话") confirms, but only when the screen found no rule risk cue in the
 message (``CrisisAssessment.rule_clear``) and no F10 denial veto or contrast and no
 confirm veto occurs in it; the exit rule after a confirmation is unchanged.
+Round 3 (2026-10-27, re-test r2 第 5 节): a promise not to harm oneself ("我答应你今晚不会
+做什么傻事", "我保证不会做傻事") confirms like a safe clause, under the same guards, and
+"I am safe now" is a short yes; the exit rule after a confirmation is unchanged.
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -84,6 +87,24 @@ _SAFE_CLAUSE: Final = re.compile(
 _DIRECT_ANSWER_ENGLISH: Final[frozenset[str]] = frozenset(
     {"yes", "yeah", "yep", "i'msafe", "iamsafe", "imsafe", "yesi'msafe", "yesiamsafe"}
 )
+# Round 3 (2026-10-27): "I am safe now", "yes, I'm safe right now" (folded, no spaces, no
+# punctuation), as the whole message.
+_ENGLISH_SAFE: Final = re.compile(
+    r"(?:yes|yeah|yep|ok|okay)?(?:i'm|im|iam)(?:totally|really|completely|perfectly)?"
+    r"safe(?:now|rightnow)?(?:thanks|thankyou|don'tworry|dontworry|promise)?"
+)
+# Round 3 (2026-10-27, re-test r2 第 5 节): a promise not to harm oneself, as the whole
+# message or one clause of it ("我答应你今晚不会做什么傻事", "我答应你，今晚不会做什么",
+# "我保证不会做傻事"). Either a promise verb or an object that names the harm (傻事, 伤害
+# 自己); never a plain "不会" alone. Read like the safe clause: no rule risk cue, no F10
+# veto or contrast and no confirm veto in the message.
+_PROMISE: Final = re.compile(
+    r"(?:嗯+|好+的?|放心吧?)?我?(?:答应你|向你保证|跟你保证|保证|发誓)我?"
+    r"(?:今晚|今天|今天晚上|晚上|这几天)?(?:绝对|肯定|一定)?不会(?:做|干|去做)?"
+    r"(?:什么|啥|任何)?(?:傻事|蠢事|事|伤害自己的事)?(?:的|了|啦)?"
+    r"|我?(?:今晚|今天|这几天)?(?:绝对|肯定|一定)?不会(?:做|干|去做)(?:傻事|蠢事|伤害自己的事)"
+    r"(?:的|了|啦)?"
+)
 # An L0 turn with a known valence at or above this is calm: it resets the escalation count.
 _CALM_VALENCE: Final = 0.0
 # Valence must rise by more than this to count as an improvement (float noise guard).
@@ -119,7 +140,7 @@ def _compact(text: str) -> str:
 
 def _is_direct_answer(compact: str) -> bool:
     bare = compact.translate(_ANSWER_PUNCTUATION)
-    if bare in _DIRECT_ANSWER_ENGLISH:
+    if bare in _DIRECT_ANSWER_ENGLISH or _ENGLISH_SAFE.fullmatch(bare) is not None:
         return True
     return _DIRECT_ANSWER.fullmatch(bare) is not None and any(
         word in bare for word in _DIRECT_ANSWER_WORDS
@@ -323,10 +344,17 @@ class CrisisTracker:
         so "我是安全的，可是药还在" or "我现在安全，就是今晚不想睡" never counts."""
         if not assessment.rule_clear:
             return False
+        # Round 3: a message that is nothing but a promise ("我答应你，今晚不会做什么"): its
+        # time word is the promise's own scope, so the F10 time vetoes do not apply to it.
+        if _PROMISE.fullmatch(compact.translate(_ANSWER_PUNCTUATION)) is not None:
+            return True
         if self._clause_guard is not None and self._clause_guard.find_all(normalized):
             return False
-        clauses = (c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact))
-        return any(c and _SAFE_CLAUSE.fullmatch(c) is not None for c in clauses)
+        clauses = [c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact)]
+        return any(
+            c and (_SAFE_CLAUSE.fullmatch(c) is not None or _PROMISE.fullmatch(c) is not None)
+            for c in clauses
+        )
 
     def _status(
         self, level: CrisisLevel, escalated: bool, just_entered: bool, just_exited: bool

@@ -15,14 +15,48 @@ session can answer with resources for the other person.
 Every check fails toward keeping the phrase: a self word anywhere between the speaker and
 the phrase (except an object such as 跟我说), clause punctuation between speaker and verb,
 anything but a filler after the verb, or a veto such as 我也是 in the message.
+
+Round 3 (2026-10-27, re-test r2 第 3 节; grammar, not a list of example sentences):
+
+* The speaker must be the subject of its clause. A self word before it in its clause
+  counts only as a possessive ("我妈", "我的好朋友", "我们班有个学生"), and a recipient word
+  before it ("我跟妈妈说不想活了": the user told her) makes it no speaker. Before this, the
+  second 妈 of "我跟妈妈说不想活了" was read as the speaker and the user's own words as hers.
+* More speakers and verbs, built in here: a kinship word after a possessive self word
+  (我哥, 我姐, 我妹 ...), common words for a person (女生, 同桌, 学长 ...) and written or posted
+  words (周记里写, 发了一条, 私信, 留了言 ...). A speech verb that opens the next clause
+  ("我妹在朋友圈发了一条，说今晚……") is the same speaker's.
+* :meth:`ReportedSpeech.contents` also reads someone else's intent told in the third
+  person, with no speech verb ("我表哥打算周末去跳河", "闺蜜已经写好遗书了"): a specific
+  person as the subject of the clause and an intent or preparation verb (想, 要, 打算, 写好
+  ...) after it; the words are the rest of the clause.
+* The reported words go on into the next clause when it has no self word, listener, veto
+  or contrast and it starts with a third-person pronoun or a conclusion word (不如, 干脆,
+  所以), or the clause before it began with a third-person pronoun and carried no risk cue
+  of its own ("室友说她明天要去江边，不想活了": the plan's place, then why). A next clause
+  that only follows a complete risk statement ("她说她不想活了，活着好累") stays the user's.
+* English: "my roommate … she told me she wants to kill herself and she has pills". A
+  speaker (my + a person, she, he, they), a speech or intent verb, then the words up to
+  the first first-person word or the end of the sentence.
+* The screen reads the words turned to the first person (``ReportedSpan.screen``: "i want
+  to kill myself and i have pills"; 他要去天台跳下去 -> 我要去天台跳下去), since the risk
+  phrases and compositions of ``risk.yaml`` read a third person as someone else.
+
+Only :meth:`ReportedSpeech.contents` (the session's card for someone else) reads the intent
+clauses, the clause chain and English; :meth:`ReportedSpeech.reported` (the rule level)
+gets the subject check and the extra speakers and verbs only.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from typing import Final
 
 from olivia.core.safety.lexicon import CompositionRules, ReportedSpeechRules
 from olivia.core.safety.matcher import Match, PhraseMatcher
+from olivia.core.safety.normalize import fold_words, normalize
 
 _SPEAKER = "s"
 _SPEAKER_EXCEPTION = "S"
@@ -31,6 +65,128 @@ _VERB_EXCEPTION = "V"
 _SELF = "m"
 _RECIPIENT = "r"
 _VETO = "x"
+_KIN = "k"
+_INTENT = "i"
+_PRONOUN = "p"
+_CONNECTIVE = "c"
+_CONTRAST = "t"
+_LISTENER = "l"
+
+# Round 3 (2026-10-27): speakers and verbs the ``reported_speech`` section of risk.yaml does
+# not list. They are kept here, next to the grammar that reads them, because risk.yaml is
+# outside this change; each is a closed word class, not an example sentence.
+# Common words for a person who can be the subject of a clause.
+_EXTRA_SPEAKERS: Final = (
+    "女生", "男生", "女孩", "男孩", "女孩子", "男孩子", "姑娘", "小姑娘", "小伙子", "小孩",
+    "家人", "亲戚", "前任", "前男友", "前女友", "学长", "学姐", "学弟", "学妹", "师兄", "师姐",
+    "师弟", "师妹", "同桌", "发小", "老乡", "闺女", "媳妇", "丈夫", "妻子", "爱人", "婆婆",
+    "公公", "岳母", "丈母娘", "嫂子", "姐夫", "妹夫", "侄子", "侄女", "外甥", "外甥女",
+    "孙子", "孙女", "继父", "继母", "后妈", "来访者", "病友", "好友", "朋友们", "同学们",
+)  # fmt: skip
+# Kinship words that name a speaker only after a possessive self word (我哥, 我亲姐).
+_KIN_WORDS: Final = ("哥", "姐", "弟", "妹", "舅", "姨", "叔", "婶", "嫂")
+# Speech, written and posted words.
+_EXTRA_VERBS: Final = (
+    "写", "写了", "写着", "写下", "写过", "写的是", "发了", "发了条", "发了一条", "私信",
+    "发短信", "发微信", "发语音", "打电话", "留了言", "提起", "透露", "坦白", "承认", "吐槽",
+    "哭诉", "扬言", "威胁", "嚷嚷", "说过", "总说", "老说",
+)  # fmt: skip
+# A 写 or 发 that is no report of words (写好遗书 is read as an intent instead).
+_EXTRA_VERB_EXCEPTIONS: Final = (
+    "写好", "写完", "写作", "写字", "写代码", "写论文", "写报告", "写作业", "写小说", "写歌",
+    "发了工资", "发了脾气", "发了火", "发了烧", "发了疯", "打电话给",
+)  # fmt: skip
+# Intent and preparation verbs that make a clause someone's intent ("她打算周末……").
+_INTENT_VERBS: Final = (
+    "想", "要", "打算", "准备", "计划", "决定", "写好", "买好", "攒了", "攒够", "藏了",
+)  # fmt: skip
+# Generic speakers that name nobody in particular: never the subject of an intent clause
+# ("有人想死吗" may be the user asking about themselves).
+_GENERIC_SPEAKERS: Final = frozenset({"有人", "别人", "他们", "她们"})
+_PRONOUNS: Final = ("他", "她", "ta", "他们", "她们", "佢", "佢哋")
+# A clause that starts with one of these draws the conclusion of the clause before it.
+_CONNECTIVES: Final = ("不如", "还不如", "干脆", "所以", "就想", "只想", "然后就", "索性")
+# A clause with one of these is no longer the other person's words for sure.
+_CONTRASTS: Final = ("但", "可是", "不过", "然而", "其实", "可我", "而我", "反正我")
+_LISTENERS: Final = ("你", "您")
+# A self word before the speaker in its clause is a possessive only when what follows it up
+# to the speaker matches this (我妈, 我的好朋友, 我们班有个学生, 我那个同事, 我家孩子).
+_POSSESSIVE: Final = re.compile(
+    r"(?:们)?(?:家|班|宿舍|寝室|公司|单位|学校|部门|组|群)?(?:里|上|中)?的?有?"
+    r"(?:一个|一位|个|位|那个|这个|那位|这位)?(?:最好的|很好的|好|亲|新|老)?的?"
+)
+_KIN_POSSESSIVE: Final = re.compile(r"(?:的|家|们家)?亲?")
+# Clause chain: only a comma-like stop is crossed, never a sentence end.
+_CHAIN_STOPS: Final = frozenset(",、")
+_CHAIN_MAX: Final = 3
+# A speech verb that opens a later clause is the speaker's when it lies this close.
+_NEXT_CLAUSE_GAP: Final = 20
+
+# -- English ------------------------------------------------------------------------------
+_EN_PERSON = (
+    r"(?:friend|roommate|flatmate|housemate|sister|brother|sis|bro|mom|mum|mother|dad|father|"
+    r"son|daughter|kid|child|wife|husband|partner|boyfriend|girlfriend|bf|gf|fianc[eé]e?|"
+    r"cousin|aunt|uncle|niece|nephew|grandma|grandpa|grandmother|grandfather|colleague|"
+    r"coworker|co-worker|classmate|student|teammate|neighbou?r|ex|buddy|pal|bestie|bff)s?"
+)
+_EN_SPEAKER: Final = re.compile(
+    rf"\b(?:(?:my|our)\s+(?:(?:best|close|old|older|younger|little|big|twin|dear)\s+)?"
+    rf"{_EN_PERSON}|(?:a|one)\s+(?:of\s+my\s+)?{_EN_PERSON}(?:\s+of\s+mine)?|she|he|they)\b"
+)
+_EN_SPEECH: Final = re.compile(
+    r"\s*(?:,\s*)?(?:said|says|told\s+(?:me|us|everyone)|tells\s+(?:me|us)|texted(?:\s+me)?|"
+    r"texts(?:\s+me)?|messaged(?:\s+me)?|wrote|writes|posted|keeps\s+saying|kept\s+saying|"
+    r"mentioned|admitted|confessed|threatened|called\s+me\s+and\s+said)\b(?:\s+that)?\s*"
+)
+_EN_INTENT: Final = re.compile(
+    r"\s*(?:wants|wanted|is\s+going|was\s+going|'s\s+going|is\s+gonna|'s\s+gonna|plans|"
+    r"planned|is\s+planning|has\s+been\s+planning|is\s+thinking|has\s+been\s+thinking|"
+    r"has\s+been\s+talking|tried|attempted|is\s+trying|has|had|keeps|doesn't\s+want|"
+    r"does\s+not\s+want|can't|cannot|will|'ll|is|was|'s)\b"
+)
+_EN_SENTENCE_END: Final = re.compile(r"[.!?;。！？；]")
+_EN_FIRST_PERSON: Final = re.compile(r"\b(?:i|i'm|im|i've|i'd|i'll|me|my|mine|myself|we|us|our)\b")
+_EN_GAP: Final = 60
+# The user joins in ("my friend wants to die and so do i"): no English words are reported.
+_EN_VETO: Final = re.compile(
+    r"\b(?:so do i|so am i|me too|same here|i do too|i feel the same|i want to too|"
+    r"same for me|me as well|i do as well)\b"
+)
+# Third person -> first person, in order (the screen's English phrases say "myself").
+_EN_SHIFT: Final[tuple[tuple[re.Pattern[str], str], ...]] = tuple(
+    (re.compile(pattern), repl)
+    for pattern, repl in (
+        (r"\b(?:herself|himself|themselves|themself)\b", "myself"),
+        (r"\b(?:she's|he's|they're)\b", "i'm"),
+        (r"\b(?:she|he|they)\s+(?:is|are)\b", "i am"),
+        (r"\b(?:she|he|they)\b", "i"),
+        (r"\b(?:her|his|their)\b", "my"),
+        (r"\bwants\b", "want"),
+        (r"\bhas\b", "have"),
+        (r"\bplans\b", "plan"),
+        (r"\bneeds\b", "need"),
+        (r"\bkeeps\b", "keep"),
+        (r"\bfeels\b", "feel"),
+        (r"\bthinks\b", "think"),
+        (r"\bdoesn't\b", "don't"),
+        (r"\bdoes\b", "do"),
+        (r"\bhates\b", "hate"),
+        (r"\btries\b", "try"),
+        (r"\bgoes\b", "go"),
+        (r"\bsays\b", "say"),
+    )
+)
+
+
+@dataclass(frozen=True)
+class ReportedSpan:
+    """Someone else's words in a message: ``start`` and ``end`` index the normalized text;
+    ``screen`` is what the screen rates as if the user had said it (the words themselves,
+    or English words turned to the first person)."""
+
+    start: int
+    end: int
+    screen: str
 
 
 def _covered(span: Match, covers: Iterable[Match]) -> bool:
@@ -47,6 +203,19 @@ class ReportedSpeech:
         # Longest first, so "他们" is stripped before "他".
         self._fillers = tuple(sorted(rules.fillers, key=len, reverse=True))
         roles: dict[str, set[str]] = {}
+        extras: tuple[tuple[str, Iterable[str]], ...] = ()
+        if self._enabled:
+            extras = (
+                (_SPEAKER, _EXTRA_SPEAKERS),
+                (_VERB, _EXTRA_VERBS),
+                (_VERB_EXCEPTION, _EXTRA_VERB_EXCEPTIONS),
+                (_KIN, _KIN_WORDS),
+                (_INTENT, _INTENT_VERBS),
+                (_PRONOUN, _PRONOUNS),
+                (_CONNECTIVE, _CONNECTIVES),
+                (_CONTRAST, _CONTRASTS),
+                (_LISTENER, _LISTENERS),
+            )
         for role, phrases in (
             (_SPEAKER, rules.speakers),
             (_SPEAKER_EXCEPTION, rules.speaker_exceptions),
@@ -55,11 +224,14 @@ class ReportedSpeech:
             (_SELF, compositions.selves),
             (_RECIPIENT, compositions.recipients),
             (_VETO, rules.vetoes),
+            *extras,
         ):
             for phrase in phrases:
-                roles.setdefault(phrase, set()).add(role)
-        self._roles = {phrase: frozenset(r) for phrase, r in roles.items()}
+                roles.setdefault(normalize(phrase), set()).add(role)
+        self._roles = {phrase: frozenset(r) for phrase, r in roles.items() if phrase}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._roles})
+
+    # -- the rule level -------------------------------------------------------------------
 
     def reported(self, text: str, phrases: Sequence[Match]) -> list[Match]:
         """The ``phrases`` (spans in the normalized ``text``) that are reported speech.
@@ -67,20 +239,15 @@ class ReportedSpeech:
         Empty when the message carries a veto (the user joins in: 我也是, 一起)."""
         if not self._enabled or not phrases:
             return []
-        found: dict[str, list[Match]] = {}
-        for match in self._matcher.find_all(text):
-            for role in self._roles[match.key]:
-                found.setdefault(role, []).append(match)
-        if found.get(_VETO) or not found.get(_VERB) or not found.get(_SPEAKER):
+        found = self._found(text)
+        if found.get(_VETO) or not found.get(_VERB):
             return []
         recipient_ends = {m.end for m in found.get(_RECIPIENT, ())}
         selves = found.get(_SELF, [])
-        verbs = [v for v in found[_VERB] if not _covered(v, found.get(_VERB_EXCEPTION, ()))]
-        speakers = [
-            s
-            for s in found[_SPEAKER]
-            if not _covered(s, found.get(_SPEAKER_EXCEPTION, ())) and s.start not in recipient_ends
-        ]
+        verbs = self._verbs(found)
+        speakers = self._speakers(text, found, recipient_ends)
+        if not speakers:
+            return []
         return [
             phrase
             for phrase in phrases
@@ -93,44 +260,261 @@ class ReportedSpeech:
             )
         ]
 
-    def contents(self, text: str) -> list[tuple[int, int]]:
-        """Spans of someone else's reported words in the normalized ``text`` (问题单第 6
-        条, 2026-10-26): from a speech verb whose third-person speaker stands shortly
-        before it, in its clause and with no self word as subject (as for :meth:`reported`),
-        to the end of that clause, leading fillers dropped ("他说周末要……" -> "周末要……").
+    # -- the session's card for someone else ----------------------------------------------
 
-        Every check fails toward the user: a span that holds a self word (我, 自己 as the
-        user ...) is left out, and the message has none when it carries a veto (我也, 一起)
-        or no speaker and verb. Spans never overlap; only the session reads them, to tell
-        the level of the reported words themselves."""
+    def contents(
+        self, text: str, *, cues: Sequence[Match] = (), raw: str | None = None
+    ) -> list[ReportedSpan]:
+        """Spans of someone else's words in the normalized ``text`` (问题单第 6 条,
+        2026-10-26; round 3, 2026-10-27).
+
+        * Speech: from a speech verb whose third-person speaker is the subject of its
+          clause and stands shortly before it, with no self word as subject in between
+          (as for :meth:`reported`), leading fillers dropped ("他说周末要……" -> "周末
+          要……"). A speech verb that opens a later clause counts too.
+        * Intent: a specific person as the subject of a clause with an intent or
+          preparation verb after it ("我表哥打算周末去跳河"): the rest of the clause.
+        * The words go on into the next clauses as the module docstring says; ``cues``
+          (risk cue spans in ``text``) tell whether a clause carried risk of its own.
+        * English, read on ``raw`` (the message as typed; word breaks matter).
+
+        Every check fails toward the user: a span that would hold a self word ends before
+        it (or is left out when that leaves nothing), and the message has none when it
+        carries a veto (我也, 一起). Only the session reads them, to tell the level of the
+        reported words themselves."""
         if not self._enabled:
             return []
+        found = self._found(text)
+        if found.get(_VETO):
+            return []
+        spans = self._chinese_contents(text, found, cues)
+        if raw is not None:
+            spans.extend(self._english_contents(raw, text))
+        kept: list[ReportedSpan] = []
+        for span in sorted(spans, key=lambda s: (s.start, -s.end)):
+            if any(k.start <= span.start and span.end <= k.end for k in kept):
+                continue
+            kept.append(span)
+        return kept
+
+    def _chinese_contents(
+        self, text: str, found: dict[str, list[Match]], cues: Sequence[Match]
+    ) -> list[ReportedSpan]:
+        if not found.get(_SPEAKER) and not found.get(_KIN):
+            return []
+        recipient_ends = {m.end for m in found.get(_RECIPIENT, ())}
+        selves = found.get(_SELF, [])
+        speakers = self._speakers(text, found, recipient_ends)
+        # (where the words start, the verb or speaker start): right after the verb or the
+        # subject, so a cue that begins with a filler (已经写好遗书) lies inside them.
+        starts: list[tuple[int, int]] = []
+        for verb in self._verbs(found):
+            if self._spoken_by(text, verb, speakers, selves, recipient_ends, cross=True):
+                starts.append((verb.end, verb.start))
+        for speaker in speakers:
+            if text[speaker.start : speaker.end] in _GENERIC_SPEAKERS:
+                continue
+            if self._intends(text, speaker, found, selves):
+                starts.append((speaker.end, speaker.start))
+        spans: list[ReportedSpan] = []
+        for start, anchor in sorted(starts):
+            end = self._clause_end(text, self._skip_fillers(text, start, len(text)))
+            words = self._skip_fillers(text, start, end)
+            if words >= end:
+                continue
+            pronoun = self._starts_with(text, anchor, found.get(_PRONOUN, ()), words)
+            end = self._chain(text, start, end, found, cues, pronoun=pronoun)
+            end = min([end, *(m.start for m in selves if start <= m.start < end)])
+            end = self._trim(text, start, end)
+            if start < end:
+                spans.append(ReportedSpan(start, end, self._first_person(text, start, end, found)))
+        return spans
+
+    def _first_person(self, text: str, start: int, end: int, found: dict[str, list[Match]]) -> str:
+        """``text[start:end]`` with each third-person pronoun turned into 我, so the screen
+        rates the words as if the user had said them: a composition reads "他要去天台跳下去"
+        as someone else's plan, but "我要去天台跳下去" as a plan (round 3)."""
+        exceptions = found.get(_SPEAKER_EXCEPTION, ())
+        pronouns = [
+            p
+            for p in found.get(_PRONOUN, ())
+            if start <= p.start and p.end <= end and not _covered(p, exceptions)
+        ]
+        out: list[str] = []
+        at = start
+        for p in sorted(pronouns, key=lambda m: (m.start, -m.end)):
+            if p.start < at:
+                continue
+            out.append(text[at : p.start])
+            out.append("我")
+            at = p.end
+        out.append(text[at:end])
+        return "".join(out)
+
+    def _english_contents(self, raw: str, text: str) -> list[ReportedSpan]:
+        """English reported words in ``raw``, located in the normalized ``text``."""
+        folded = fold_words(raw)
+        if not _EN_SPEAKER.search(folded) or _EN_VETO.search(folded):
+            return []
+        # Index of each folded character in the normalized text (spaces have none).
+        if folded.replace(" ", "") != text:
+            return []  # the two folds disagree: read nothing rather than guess
+        positions: list[int] = []
+        count = 0
+        for ch in folded:
+            positions.append(count)
+            if ch != " ":
+                count += 1
+        positions.append(count)
+        spans: list[ReportedSpan] = []
+        for speaker in _EN_SPEAKER.finditer(folded):
+            rest = folded[speaker.end() : speaker.end() + _EN_GAP]
+            if _EN_SENTENCE_END.search(rest[:1]):
+                continue
+            speech = _EN_SPEECH.match(folded, speaker.end())
+            intent = None if speech is not None else _EN_INTENT.match(folded, speaker.end())
+            if speech is not None:
+                start = speech.end()
+            elif intent is not None:
+                start = speaker.end() + (len(intent.group(0)) - len(intent.group(0).lstrip()))
+            else:
+                continue
+            stop = _EN_SENTENCE_END.search(folded, start)
+            end = stop.start() if stop is not None else len(folded)
+            first = _EN_FIRST_PERSON.search(folded, start, end)
+            if first is not None:
+                end = first.start()
+            words = folded[start:end].strip(" ,")
+            if not words or not re.search(r"[a-z]", words):
+                continue
+            shifted = words
+            for pattern, repl in _EN_SHIFT:
+                shifted = pattern.sub(repl, shifted)
+            begin = positions[start]
+            finish = positions[end]
+            if begin < finish:
+                spans.append(ReportedSpan(begin, finish, normalize(shifted)))
+        return spans
+
+    # -- shared pieces --------------------------------------------------------------------
+
+    def _found(self, text: str) -> dict[str, list[Match]]:
         found: dict[str, list[Match]] = {}
         for match in self._matcher.find_all(text):
             for role in self._roles[match.key]:
                 found.setdefault(role, []).append(match)
-        if found.get(_VETO) or not found.get(_VERB) or not found.get(_SPEAKER):
-            return []
-        recipient_ends = {m.end for m in found.get(_RECIPIENT, ())}
-        selves = found.get(_SELF, [])
-        verbs = [v for v in found[_VERB] if not _covered(v, found.get(_VERB_EXCEPTION, ()))]
-        speakers = [
+        return found
+
+    def _verbs(self, found: dict[str, list[Match]]) -> list[Match]:
+        exceptions = found.get(_VERB_EXCEPTION, ())
+        return sorted(
+            (v for v in found.get(_VERB, ()) if not _covered(v, exceptions)),
+            key=lambda m: m.start,
+        )
+
+    def _speakers(
+        self, text: str, found: dict[str, list[Match]], recipient_ends: set[int]
+    ) -> list[Match]:
+        """Speakers that are the subject of their clause (round 3): not inside a speaker
+        exception (吉他), not right after a recipient word (跟她说), a kinship word only
+        after a possessive self word (我哥), and no recipient word and no self word but a
+        possessive one before it in its clause."""
+        exceptions = found.get(_SPEAKER_EXCEPTION, ())
+        recipients = found.get(_RECIPIENT, ())
+        selves = found.get(_SELF, ())
+        candidates = [
             s
-            for s in found[_SPEAKER]
-            if not _covered(s, found.get(_SPEAKER_EXCEPTION, ())) and s.start not in recipient_ends
+            for s in found.get(_SPEAKER, ())
+            if not _covered(s, exceptions) and s.start not in recipient_ends
         ]
-        spans: list[tuple[int, int]] = []
-        for verb in sorted(verbs, key=lambda m: m.start):
-            if spans and verb.start < spans[-1][1]:
+        for kin in found.get(_KIN, ()):
+            if _covered(kin, candidates):
                 continue
-            if not self._spoken_by(text, verb, speakers, selves, recipient_ends):
+            owner = [m for m in selves if m.end <= kin.start]
+            if owner and _KIN_POSSESSIVE.fullmatch(text[owner[-1].end : kin.start]):
+                candidates.append(kin)
+        speakers: list[Match] = []
+        for s in candidates:
+            clause = self._clause_start(text, s.start)
+            if any(clause <= r.start and r.end <= s.start for r in recipients):
                 continue
-            start = self._skip_fillers(text, verb.end, len(text))
-            end = next((i for i in range(start, len(text)) if text[i] in self._stops), len(text))
-            if start >= end or any(start <= m.start < end for m in selves):
+            before = [m for m in selves if clause <= m.start and m.end <= s.start]
+            if all(_POSSESSIVE.fullmatch(text[m.end : s.start]) for m in before):
+                speakers.append(s)
+        return speakers
+
+    def _clause_start(self, text: str, index: int) -> int:
+        start = index
+        while start > 0 and text[start - 1] not in self._stops:
+            start -= 1
+        return start
+
+    def _clause_end(self, text: str, start: int) -> int:
+        return next((i for i in range(start, len(text)) if text[i] in self._stops), len(text))
+
+    def _intends(
+        self,
+        text: str,
+        speaker: Match,
+        found: dict[str, list[Match]],
+        selves: Sequence[Match],
+    ) -> bool:
+        """An intent or preparation verb after ``speaker`` in its clause, within the gap,
+        with no self word in between ("我表哥打算……", "闺蜜已经写好遗书了")."""
+        end = self._clause_end(text, speaker.end)
+        for verb in found.get(_INTENT, ()):
+            if not speaker.end <= verb.start < end or verb.start - speaker.end > self._gap:
                 continue
-            spans.append((start, end))
-        return spans
+            if any(speaker.end <= m.start < verb.start for m in selves):
+                continue
+            return True
+        return False
+
+    def _starts_with(self, text: str, anchor: int, pronouns: Sequence[Match], start: int) -> bool:
+        """A third-person pronoun stands between the anchor (a verb or the subject) and the
+        words, or opens them: the words are about that person ("说她明天要……")."""
+        return any(anchor <= p.start <= start for p in pronouns)
+
+    def _chain(
+        self,
+        text: str,
+        start: int,
+        end: int,
+        found: dict[str, list[Match]],
+        cues: Sequence[Match],
+        *,
+        pronoun: bool,
+    ) -> int:
+        """Where the words end once the next clauses are read as theirs (module docstring)."""
+        blocking = (
+            *found.get(_SELF, ()),
+            *found.get(_LISTENER, ()),
+            *found.get(_CONTRAST, ()),
+        )
+        pronouns = found.get(_PRONOUN, ())
+        connectives = found.get(_CONNECTIVE, ())
+        about_them = pronoun and not any(start <= c.start < end for c in cues)
+        for _ in range(_CHAIN_MAX):
+            if end >= len(text) or text[end] not in _CHAIN_STOPS:
+                break
+            nxt = end + 1
+            nxt_end = self._clause_end(text, nxt)
+            if nxt >= nxt_end or any(nxt <= m.start < nxt_end for m in blocking):
+                break
+            opens = self._skip_fillers(text, nxt, nxt_end)
+            opener = any(p.start == nxt for p in pronouns) or any(
+                c.start in (nxt, opens) for c in connectives
+            )
+            if not (opener or about_them):
+                break
+            end = nxt_end
+            about_them = about_them and not any(nxt <= c.start < nxt_end for c in cues)
+        return end
+
+    def _trim(self, text: str, start: int, end: int) -> int:
+        while end > start and text[end - 1] in self._stops:
+            end -= 1
+        return end
 
     def _skip_fillers(self, text: str, start: int, end: int) -> int:
         """The first index from ``start`` that does not begin a filler (他, 也, 已经 ...)."""
@@ -158,14 +542,24 @@ class ReportedSpeech:
         speakers: Sequence[Match],
         selves: Sequence[Match],
         recipient_ends: set[int],
+        *,
+        cross: bool = False,
     ) -> bool:
-        """A third-person speaker shortly before the verb, in its clause, with no self
-        word in between that is not an object (跟我说) or part of the verb (告诉我)."""
+        """A third-person speaker shortly before the verb, with no self word in between
+        that is not an object (跟我说) or part of the verb (告诉我). In its clause, or, with
+        ``cross`` (round 3, :meth:`contents` only), in an earlier clause when the verb
+        opens its own clause after fillers only ("我妹在朋友圈发了一条，说……")."""
+        clause = self._clause_start(text, verb.start)
+        opens = self._skip_fillers(text, clause, verb.start) == verb.start
         for speaker in speakers:
-            if speaker.end > verb.start or verb.start - speaker.end > self._gap:
+            if speaker.end > verb.start:
                 continue
             between = text[speaker.end : verb.start]
-            if any(ch in self._stops for ch in between):
+            crosses = any(ch in self._stops for ch in between)
+            if crosses:
+                if not (cross and opens) or verb.start - speaker.end > _NEXT_CLAUSE_GAP:
+                    continue
+            elif verb.start - speaker.end > self._gap:
                 continue
             subject = any(
                 speaker.end <= m.start and m.end <= verb.start and m.start not in recipient_ends

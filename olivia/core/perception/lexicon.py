@@ -78,6 +78,16 @@ _PHRASE_SECTIONS: Final = (
     "imminent_times",
     "imminent_means",
     "keep_secret_cues",
+    "imminent_context",
+    "third_party_unreachable",
+    "third_party_questions",
+    "help_seeking_cues",
+    "hotline_fee",
+    "hotline_hours",
+    "hotline_language",
+    "hotline_real",
+    "hotline_more",
+    "hotline_words",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -104,6 +114,7 @@ _SECTIONS: Final = frozenset(
         "hotline_request_patterns",
         "minor_disclosure_patterns",
         "contraindicated_practices",
+        "hotline_places",
         *_PHRASE_SECTIONS,
     }
 )
@@ -240,6 +251,32 @@ class PerceptionLexicon:
     imminent_means: tuple[str, ...] = ()
     """Means and place words that, with ``imminent_times``, make reported risk urgent."""
     keep_secret_cues: tuple[str, ...] = ()
+    imminent_context: tuple[str, ...] = ()
+    """Places and everyday means ("江边", "pills") that make someone else's reported risk
+    urgent only together with risk the rules find in the reported words (round 3)."""
+    third_party_unreachable: tuple[str, ...] = ()
+    """The user cannot reach the other person ("我联系不上他"; round 3)."""
+    third_party_questions: tuple[str, ...] = ()
+    """The user asks what to do for the other person ("我该怎么办"; round 3)."""
+    help_seeking_cues: tuple[str, ...] = ()
+    """The user means to see a doctor or counsellor ("想去学校的心理中心看看"; round 3)."""
+    hotline_fee: tuple[str, ...] = ()
+    """A follow-up about a hotline: does it cost money ("要收费吗"; round 3)."""
+    hotline_hours: tuple[str, ...] = ()
+    """When it answers ("晚上有人接吗")."""
+    hotline_language: tuple[str, ...] = ()
+    """Which languages ("能讲普通话吗")."""
+    hotline_real: tuple[str, ...] = ()
+    """Whether the number is real ("你确定这个号码是真的吗")."""
+    hotline_more: tuple[str, ...] = ()
+    """More numbers ("除了12356还有别的吗")."""
+    hotline_words: tuple[str, ...] = ()
+    """A phone line or a call named ("这个号码", "打过去")."""
+    hotline_places: Mapping[str, tuple[str, ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    """Region code -> place names where the user says they are (round 3); ``ZZ`` is a
+    place without verified numbers here."""
     """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
@@ -371,6 +408,17 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         imminent_times=phrases["imminent_times"],
         imminent_means=phrases["imminent_means"],
         keep_secret_cues=phrases["keep_secret_cues"],
+        imminent_context=phrases["imminent_context"],
+        third_party_unreachable=phrases["third_party_unreachable"],
+        third_party_questions=phrases["third_party_questions"],
+        help_seeking_cues=phrases["help_seeking_cues"],
+        hotline_fee=phrases["hotline_fee"],
+        hotline_hours=phrases["hotline_hours"],
+        hotline_language=phrases["hotline_language"],
+        hotline_real=phrases["hotline_real"],
+        hotline_more=phrases["hotline_more"],
+        hotline_words=phrases["hotline_words"],
+        hotline_places=MappingProxyType(_places(doc.get("hotline_places"))),
     )
 
 
@@ -541,6 +589,18 @@ def _therapy_names(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
     ordered = {mid: names[mid] for mid in methods if mid in names}
     ordered.update({aid: names[aid] for aid in practices if aid in names and aid not in ordered})
     return ordered
+
+
+def _places(node: Any) -> dict[str, tuple[str, ...]]:
+    """``hotline_places``: a two-letter region code (upper case) -> place names."""
+    section = _mapping(node, "hotline_places")
+    places: dict[str, tuple[str, ...]] = {}
+    for key, raw in section.items():
+        if not (isinstance(key, str) and len(key) == 2 and key.isascii() and key.isupper()):
+            raise PerceptionLexiconError(f"{_FILE}: hotline_places: {key!r} is not a region code")
+        places[key] = _phrases(raw, f"hotline_places.{key}")
+    _check_distinct(places, "hotline_places")
+    return places
 
 
 def _keyed_cues(node: Any, where: str, known: tuple[str, ...]) -> dict[str, tuple[str, ...]]:

@@ -435,16 +435,47 @@ class RenderText:
     """Once a session, after it: the user may take care of themselves too."""
     third_party_secret: tuple[str, ...] = ()
     """When the other person asked the user to keep it secret."""
+    heard: tuple[str, ...] = ()
+    """Round 3 (2026-10-27): after a short mirror of new words said in a crisis or while a
+    card waits ("你今天看到一只很胖的猫，" + this)."""
+    question_heard: tuple[str, ...] = ()
+    """Round 3: the same for a question about something else."""
+    brief_heard: tuple[str, ...] = ()
+    """Round 3: the same for a very short message."""
+    help_seeking: tuple[str, ...] = ()
+    """Round 3: the user means to see a doctor or counsellor; where to go, no diagnosis."""
+    check_denied: tuple[str, ...] = ()
+    """Round 3: a clear no to a safety question while a card waits for feedback."""
+    third_party_unreachable: tuple[str, ...] = ()
+    """Round 3 (2026-10-27): after that card, the user cannot reach the other person."""
+    third_party_urgent_steps: tuple[str, ...] = ()
+    """Round 3: after an urgent card, the user asks what to do."""
     hotline_request: tuple[str, ...] = ()
     """Opens the region's resources when the user asks for a hotline (问题单第 7 条)."""
     hotline_anonymous: tuple[str, ...] = ()
     """One true line about giving one's real name."""
     hotline_abroad: tuple[str, ...] = ()
     """One true line about calling from abroad."""
+    hotline_fee: tuple[str, ...] = ()
+    """Round 3 (2026-10-27): one true line about what a call costs."""
+    hotline_hours: tuple[str, ...] = ()
+    """Round 3: when the lines answer (the card shows each line's hours)."""
+    hotline_language: tuple[str, ...] = ()
+    """Round 3: which languages the lines take."""
+    hotline_real: tuple[str, ...] = ()
+    """Round 3: where the numbers come from."""
+    hotline_more: tuple[str, ...] = ()
+    """Round 3: these are all the verified numbers."""
+    hotline_other_region: tuple[str, ...] = ()
+    """Round 3: leads the card of another supported region the user says they are in."""
+    hotline_elsewhere: tuple[str, ...] = ()
+    """Round 3: leads the general card for a place without verified numbers here."""
     care_watch: tuple[str, ...] = ()
     """One line of care for an L1 turn after a crisis (问题单第 11 条)."""
     care_hotline: str = ""
     """Leads the one line of the region's hotlines after ``care_watch``."""
+    chat_help: str = ""
+    """Round 3 (2026-10-27): the chat commands, shown for /help, /帮助 or /?."""
 
 
 @dataclass(frozen=True)
@@ -986,11 +1017,26 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         third_party_support=crisis_lists["third_party_support"],
         third_party_self_care=crisis_lists["third_party_self_care"],
         third_party_secret=crisis_lists["third_party_secret"],
+        heard=crisis_lists["heard"],
+        question_heard=crisis_lists["question_heard"],
+        brief_heard=crisis_lists["brief_heard"],
+        help_seeking=crisis_lists["help_seeking"],
+        check_denied=crisis_lists["check_denied"],
+        third_party_unreachable=crisis_lists["third_party_unreachable"],
+        third_party_urgent_steps=crisis_lists["third_party_urgent_steps"],
         hotline_request=crisis_lists["hotline_request"],
         hotline_anonymous=crisis_lists["hotline_anonymous"],
         hotline_abroad=crisis_lists["hotline_abroad"],
+        hotline_fee=crisis_lists["hotline_fee"],
+        hotline_hours=crisis_lists["hotline_hours"],
+        hotline_language=crisis_lists["hotline_language"],
+        hotline_real=crisis_lists["hotline_real"],
+        hotline_more=crisis_lists["hotline_more"],
+        hotline_other_region=crisis_lists["hotline_other_region"],
+        hotline_elsewhere=crisis_lists["hotline_elsewhere"],
         care_watch=crisis_lists["care_watch"],
         care_hotline=texts["care_hotline"],
+        chat_help=texts["chat_help"],
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
         ),
@@ -1722,13 +1768,28 @@ _CRISIS_LISTS: Final = (
     "third_party_support",
     "third_party_self_care",
     "third_party_secret",
+    "third_party_unreachable",
+    "third_party_urgent_steps",
+    "heard",
+    "question_heard",
+    "brief_heard",
+    "help_seeking",
+    "check_denied",
     "hotline_request",
     "hotline_anonymous",
     "hotline_abroad",
+    "hotline_fee",
+    "hotline_hours",
+    "hotline_language",
+    "hotline_real",
+    "hotline_more",
+    "hotline_other_region",
+    "hotline_elsewhere",
     "care_watch",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (
+    "chat_help",
     "minor_trusted_adult",
     "third_party_emergency_heading",
     "third_party_lines_heading",
