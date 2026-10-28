@@ -882,10 +882,11 @@ class LanguageEngine:
         without numbers.
 
         ``plan_block`` is the user's own safety plan (B10, ``chang/safety_plan.py``). It
-        skips WILLOW and goes after the opening sentence when the card carries no
-        emergency numbers (an L2 card with a regional line), otherwise after the card, so
-        emergency numbers come before any other number. The whole reply passes the gate
-        with the plan's own digit runs allowed for this reply only; if it is blocked, the
+        skips WILLOW and goes after the opening sentence when no emergency numbers lead the
+        card (an L2 card with a regional line, the mainland's 120 after it included),
+        otherwise after the card, so leading emergency numbers come before any other number.
+        The whole reply passes the gate with the plan's own digit runs allowed for this
+        reply only; if it is blocked, the
         plan block is dropped and the reply is the one without it (minimal-card fallback
         included). :attr:`last_plan_gate` keeps the verdict on the reply with the plan.
 
@@ -925,7 +926,7 @@ class LanguageEngine:
             willow = self._data.willow
             head = apply_willow(opening, ContentKind.CRISIS, willow)
             card_text = apply_willow("\n\n".join(resources), ContentKind.CRISIS, willow)
-            if card.emergency:
+            if card.emergency and (card.emergency_leads or urgent):
                 blocks = [head, card_text, plan_block]
             else:
                 blocks = [head, plan_block, card_text]
@@ -949,7 +950,9 @@ class LanguageEngine:
             return result.text
         return self._minimal_card(numbers)
 
-    def render_safety_check(self, card: ResourceCard, slots: Slots, stage: HelpStage) -> str:
+    def render_safety_check(
+        self, card: ResourceCard, slots: Slots, stage: HelpStage, *, urgent: bool = False
+    ) -> str:
         """The direct question about intent (decision D3) plus the card's resource lines.
 
         The question is one ``followups.safety_check`` variant (name slots only) under the
@@ -957,7 +960,8 @@ class LanguageEngine:
         region's L2 CRISIS card), under the CRISIS filters. The whole reply passes the gate
         as NORMAL content in ``stage`` with the card's numbers allowed, the way crisis
         cards pass it. A block falls back to the minimal card, never to a reply without
-        numbers.
+        numbers. ``urgent`` frames the emergency numbers as :meth:`render_crisis` does (a
+        model L3 that asks first, owner decision 2026-10-28).
         """
         if card.mode is not CardMode.CRISIS or card.level < CrisisLevel.L2:
             raise ValueError("render_safety_check needs a CRISIS-mode card at L2 or L3")
@@ -969,7 +973,7 @@ class LanguageEngine:
         willow = self._data.willow
         question = apply_willow(_fill(self._rng.choice(usable), values), ContentKind.NORMAL, willow)
         resources = apply_willow(
-            "\n\n".join(self._resource_blocks(card)), ContentKind.CRISIS, willow
+            "\n\n".join(self._resource_blocks(card, urgent=urgent)), ContentKind.CRISIS, willow
         )
         numbers = _numbers(card)
         result = self._gate.check(
@@ -1101,14 +1105,20 @@ class LanguageEngine:
         ``urgent`` frames the emergency numbers as an L3 card does (:meth:`render_crisis`).
         ``emergency_heading`` / ``lines_heading`` replace the headings; without
         ``contact_people`` an L3 framing leaves out the line asking to call someone close.
+        A card whose emergency numbers do not lead (``ResourceCard.emergency_leads``: the
+        mainland L2 card's 120, owner decision 2026-10-28) lists them after the lines under
+        the L2 emergency heading, unless ``urgent`` puts them first.
         """
         r = self._data.render
         stale = set(card.stale_entries)
         mark = r.crisis_stale_mark
         blocks: list[str] = []
+        leads = card.emergency_leads or urgent
+        emergency_block: str | None = None
         if card.emergency:
             framing = CrisisLevel.L3 if urgent else card.level
-            lines = [emergency_heading or r.crisis_emergency_heading[framing]]
+            heading = emergency_heading if leads else None
+            lines = [heading or r.crisis_emergency_heading[framing]]
             for em in card.emergency:
                 purpose = r.emergency_purposes[em.purpose]
                 lines.append(f"· {em.number}（{purpose}）{mark if em.id in stale else ''}")
@@ -1117,7 +1127,9 @@ class LanguageEngine:
                     lines.append(r.crisis_contact_people)
                 if card.region_used == _UNKNOWN_REGION:
                     lines.append(r.crisis_unknown_region_l3)
-            blocks.append("\n".join(lines))
+            emergency_block = "\n".join(lines)
+            if leads:
+                blocks.append(emergency_block)
         if card.lines:
             lines = [lines_heading or r.crisis_lines_heading]
             for ln in card.lines:
@@ -1125,6 +1137,8 @@ class LanguageEngine:
                 if ln.hours != _UNKNOWN_HOURS and ln.kind is not LineKind.DIRECTORY_URL:
                     lines.append(f"  {r.crisis_hours_label}{ln.hours}")
             blocks.append("\n".join(lines))
+        if emergency_block is not None and not leads:
+            blocks.append(emergency_block)
         return blocks
 
     def _minimal_card(self, numbers: Sequence[str]) -> str:

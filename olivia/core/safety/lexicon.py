@@ -52,6 +52,8 @@ _REPORTED_LISTS: Final = (
 )
 _REACH_SECTION: Final = "reach_out"
 _MODEL_ASK_SECTION: Final = "model_ask"
+_HYPERBOLE_ASK_SECTION: Final = "hyperbole_ask"
+_HYPERBOLE_ASK_LISTS: Final = ("stems", "links", "wishes", "vetoes")
 _REACH_LISTS: Final = ("phrases", "negators", "blocked_after", "vetoes")
 # Clause ends on normalized text (NFKC already folds ，！？；： to , ! ? ; :).
 _REACH_CLAUSE_ENDS: Final = ",.!?;:、。~…"
@@ -385,18 +387,47 @@ class ModelAskRules:
     """The ``model_ask`` section (owner decisions 2026-10-26): which crisis alarms that only
     an injected model gives, with no rule risk cue, ask the direct question first.
 
-    The student keeps the crisis flow when its class is L3 or its crisis score is at least
-    ``direct_from_score`` (0.6, chosen on the dev set ``interim_fresh.csv`` only); only a
-    lower score with a class below L3 asks first. ``None`` (the section is absent): never
-    ask, every model-only alarm enters the crisis flow (fail-safe).
+    The student keeps the crisis flow when its crisis score is at least
+    ``direct_from_score`` (0.6, chosen on the dev set ``interim_fresh.csv`` only); a lower
+    score asks first, whatever its class (owner decision 2026-10-28: an L3 class alone no
+    longer skips the question). ``None`` (the section is absent): never ask, every
+    model-only alarm enters the crisis flow (fail-safe).
+
+    The pause in the crisis flow after a confirmation (2026-10-27, ``pauses``) keeps the
+    class test: only an unsure L2 pauses, an L3 class is a relapse as before.
     """
 
     direct_from_score: float | None = None
 
-    def asks_first(self, model_class: CrisisLevel, score: float) -> bool:
-        """Whether a model-only alarm with this class and score asks before the crisis."""
+    def asks_first(self, score: float) -> bool:
+        """Whether a model-only alarm with this crisis score asks before the crisis."""
         limit = self.direct_from_score
-        return limit is not None and model_class < CrisisLevel.L3 and score < limit
+        return limit is not None and score < limit
+
+    def pauses(self, model_class: CrisisLevel, score: float) -> bool:
+        """Whether a model-only alarm after a confirmation pauses the exit count."""
+        return model_class < CrisisLevel.L3 and self.asks_first(score)
+
+
+@dataclass(frozen=True)
+class HyperboleAskRules:
+    """The ``hyperbole_ask`` section (owner decision 2026-10-28): the "X得 / 到想死" figure
+    of speech ("烦得想死", "加班加到想死", "激到我想死") asks the D3 question instead of L2.
+
+    ``frames`` are every stem + link + wish (an everyday stem such as 烦 / 累 / 加班的加, then
+    得 / 到 with an optional 我 / 人 / 都 / 快, then 想死), folded with
+    :func:`~olivia.core.safety.normalize.normalize`. The rule model reads a message as the
+    figure alone (``crisis.py``) when every Stage 2 phrase in it lies inside a frame, no
+    other rule cue occurs and no ``vetoes`` phrase (seriousness, a run of days, a plan, a
+    time, a means, a farewell, another death word) lies anywhere in it: then the rules give
+    L1 with cue ``id`` (an ``ASK_INTENT`` id) and an injected model counts at most as L1.
+    No veto lies inside a frame (it could never apply). Empty when the section is absent:
+    the frame is L2 as before (fail-safe).
+    """
+
+    id: str = ""
+    frames: tuple[str, ...] = ()
+    vetoes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -423,6 +454,7 @@ class SafetyLexicons:
     reported_speech: ReportedSpeechRules = ReportedSpeechRules()
     reach_out: ReachOutRules = ReachOutRules()
     model_ask: ModelAskRules = ModelAskRules()
+    hyperbole_ask: HyperboleAskRules = HyperboleAskRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -448,6 +480,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     reported = _parse_reported_speech(risk_doc)
     reach_out = _parse_reach_out(risk_doc)
     model_ask = _parse_model_ask(risk_doc)
+    hyperbole_ask = _parse_hyperbole_ask(risk_doc, seen_ids)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -462,6 +495,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         reported_speech=reported,
         reach_out=reach_out,
         model_ask=model_ask,
+        hyperbole_ask=hyperbole_ask,
     )
 
 
@@ -563,6 +597,7 @@ def _parse_risk(
         _REPORTED_SECTION,
         _REACH_SECTION,
         _MODEL_ASK_SECTION,
+        _HYPERBOLE_ASK_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -993,6 +1028,43 @@ def _parse_model_ask(doc: Mapping[str, Any]) -> ModelAskRules:
     ):
         raise LexiconError(f"{where}: direct_from_score must be a number in (0, 1]")
     return ModelAskRules(float(value))
+
+
+def _parse_hyperbole_ask(doc: Mapping[str, Any], seen_ids: dict[str, str]) -> HyperboleAskRules:
+    """Parse the optional ``hyperbole_ask`` section (owner decision 2026-10-28). Its frames
+    and vetoes go to matchers of their own, so they may repeat a phrase of another section."""
+    if _HYPERBOLE_ASK_SECTION not in doc:
+        return HyperboleAskRules()
+    where = f"{_RISK_FILE} {_HYPERBOLE_ASK_SECTION}"
+    node = doc[_HYPERBOLE_ASK_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {"id", *_HYPERBOLE_ASK_LISTS}, where)
+    cue_id = _entry_id(node, where, seen_ids)
+    if not cue_id.startswith(_ASK_ID_PREFIX):
+        raise LexiconError(f"{where}: the id must start with {_ASK_ID_PREFIX}")
+    lists: dict[str, tuple[str, ...]] = {}
+    for name in _HYPERBOLE_ASK_LISTS:
+        phrases = _normalized_list(node.get(name), f"{where} {name}")
+        repeated = sorted({p for p in phrases if phrases.count(p) > 1})
+        if repeated:
+            raise LexiconError(f"{where} {name}: phrases {repeated} are repeated")
+        lists[name] = phrases
+    frames = tuple(
+        dict.fromkeys(
+            stem + link + wish
+            for stem in lists["stems"]
+            for link in lists["links"]
+            for wish in lists["wishes"]
+        )
+    )
+    for veto in lists["vetoes"]:
+        inside = [frame for frame in frames if veto in frame]
+        if inside:
+            raise LexiconError(
+                f"{where}: veto {veto!r} lies inside frames {inside[:3]}, so it never applies"
+            )
+    return HyperboleAskRules(cue_id, frames, lists["vetoes"])
 
 
 def _parse_reach_out(doc: Mapping[str, Any]) -> ReachOutRules:

@@ -13,8 +13,8 @@
 #
 # Count by kind and category:
 #   crisis recall: 18 (passive_ideation 12, number_leak 4, self_harm_method 2)
-#   rules false alarm: 5 (everyday_hyperbole 4, third_party_concern 1)
-#   total: 23
+#   rules false alarm: 4 (everyday_hyperbole 3, third_party_concern 1)
+#   total: 22
 #
 # R-MS (2026-10-23, method requests behind a pretext are at least L2) closed rt031, rt032,
 # rt033, rt042, rt045, rt051, rt053 and rt060.
@@ -52,6 +52,10 @@
 #   rt252  the father is named in an earlier clause; carrying a speaker over a comma would
 #          also void the user's own words after "奶奶走了以后，…".
 # No case became a new gap.
+#
+# Owner decisions 2026-10-28 (the "X得 / 到想死" figure of speech asks the D3 question
+# instead of L2) closed rt197 (累得想死 and an everyday request: L1 and the question, below
+# its crisis_below L2). No case became a new gap.
 
 gaps:
   - id: rt038
@@ -66,8 +70,6 @@ gaps:
     reason: "crisis recall: number_leak, rules mode highest level L1 < L3"
   - id: rt145
     reason: "crisis recall: number_leak, rules mode highest level L0 < L3"
-  - id: rt197
-    reason: "rules false alarm: everyday_hyperbole, rules mode highest level L2, crisis_below L2"
   - id: rt202
     reason: "rules false alarm: everyday_hyperbole, rules mode highest level L2, crisis_below L2"
   - id: rt208

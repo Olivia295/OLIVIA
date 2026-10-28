@@ -39,7 +39,9 @@ def _numbers(card: ResourceCard) -> list[str]:
 # Expected card contents per region, in priority (file) order.
 EXPECTED = {
     "CN": {
-        CrisisLevel.L2: ([], ["12356"]),
+        # Owner decision 2026-10-28: the mainland L2 card also lists 120 (not 110), after
+        # 12356 (``ResourceCard.emergency_leads`` is False).
+        CrisisLevel.L2: (["120"], ["12356"]),
         CrisisLevel.L3: (["110", "120"], ["12356"]),
     },
     "HK": {
@@ -203,7 +205,9 @@ def test_entries_older_than_180_days_are_flagged() -> None:
 
 def test_stale_flag_only_covers_shown_entries() -> None:
     card = _card("CN", CrisisLevel.L2, today=date(2030, 1, 1))
-    assert card.stale_entries == ("cn_12356",)
+    assert card.stale_entries == ("cn_emergency_120", "cn_12356")
+    hk = _card("HK", CrisisLevel.L2, today=date(2030, 1, 1))
+    assert not any("emergency" in entry for entry in hk.stale_entries)
 
 
 def test_l2_falls_back_to_emergency_when_region_has_no_l2_line() -> None:
@@ -254,7 +258,42 @@ def test_l2_shows_emergency_numbers_when_its_lines_are_only_directories() -> Non
     assert [e.number for e in card.emergency] == ["112"]
 
 
-@pytest.mark.parametrize("code", [c for c in SUPPORTED if c != "ZZ"])
+@pytest.mark.parametrize("code", [c for c in SUPPORTED if c not in ("ZZ", "CN")])
 def test_l2_with_a_phone_line_still_shows_no_emergency_numbers(code: str) -> None:
-    """GEO-02: an L2 card with a line to call stays as it was (CN: 12356 only)."""
+    """GEO-02: an L2 card with a line to call stays as it was outside the mainland."""
     assert _card(code, CrisisLevel.L2).emergency == ()
+
+
+@pytest.mark.parametrize("is_minor", [False, True])
+def test_the_mainland_l2_card_adds_120_after_its_lines(is_minor: bool) -> None:
+    """Owner decision 2026-10-28: CN's L2 card lists the ambulance number 120 from the same
+    signed data (CN's ``ambulance`` emergency entry), never 110, and after its hotlines:
+    ``emergency_leads`` is False, so 12356 comes first."""
+    card = _card("CN", CrisisLevel.L2, is_minor=is_minor)
+    cn = STORE.region("CN")
+    assert card.emergency == tuple(e for e in cn.emergency if e.purpose.value == "ambulance")
+    assert [e.number for e in card.emergency] == ["120"]
+    assert "110" not in _numbers(card)
+    assert card.emergency_leads is False
+    assert [ln.number for ln in card.lines][0] == "12356"
+
+
+@pytest.mark.parametrize("code", SUPPORTED)
+def test_every_other_crisis_card_leads_with_its_emergency_numbers(code: str) -> None:
+    for level in CRISIS_LEVELS:
+        card = _card(code, level)
+        if code == "CN" and level is CrisisLevel.L2:
+            continue
+        assert card.emergency_leads is True
+    assert _card(code, CrisisLevel.L0, mode=CardMode.BROWSING).emergency_leads is True
+
+
+def test_the_120_comes_from_the_data_not_the_code() -> None:
+    """A mainland region without an ambulance entry gets no emergency number at L2."""
+    from dataclasses import replace
+
+    cn = STORE.region("CN")
+    police_only = replace(cn, emergency=tuple(e for e in cn.emergency if e.number == "110"))
+    store = replace(STORE, regions={**STORE.regions, "CN": police_only})
+    card = resolve(store, _region("CN"), CrisisLevel.L2, mode=CardMode.CRISIS, today=TODAY)
+    assert card.emergency == ()

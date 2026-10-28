@@ -244,11 +244,20 @@ def test_cantonese_living_in_the_past_is_benign() -> None:
 # -- reported speech --------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("text", ["激到我想死", "烦得想死", "每天都痛苦得想死", "烦得想去死"])
-def test_x_to_death_has_no_mask(text: str) -> None:
-    # Ruling 2026-10-22 (known_false_positives fp11 / fp12): a mask would also hide
-    # "我烦得想死 是真的想死那种", so X得 / X到想死 stays L2 until the owner decides.
+@pytest.mark.parametrize("text", ["每天都痛苦得想死", "烦得想去死", "我烦得想死 是真的想死那种"])
+def test_x_to_death_is_never_masked(text: str) -> None:
+    # Ruling 2026-10-22: no mask, since a mask would also hide "我烦得想死 是真的想死那种". The
+    # owner decision of 2026-10-28 asks the D3 question for the bare figure instead
+    # (tests/safety/test_hyperbole_ask.py); inner pain, a run of days, another death word or
+    # seriousness keep L2.
     assert SCREEN.assess(text).level is L.L2, text
+
+
+@pytest.mark.parametrize("text", ["激到我想死", "烦得想死"])
+def test_the_bare_x_to_death_figure_asks(text: str) -> None:
+    # Owner decision 2026-10-28: L1 + the D3 question, never L0.
+    assessment = SCREEN.assess(text)
+    assert assessment.level is L.L1 and assessment.asks_intent, text
 
 
 @pytest.mark.parametrize(

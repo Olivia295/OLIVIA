@@ -261,9 +261,11 @@ rules found no risk cue at all (``CrisisAssessment.rule_clear``: rule level L0 a
 Stage 1/Stage 2/hyperbole/negation phrase, pair anchor, composition or ask cue; see
 ``safety.crisis.rules_found_nothing``), and the model did not fail, the turn does not
 enter the crisis flow when the student is unsure (owner decision 2026-10-26, second:
-``risk.yaml`` ``model_ask``, its class below L3 and its crisis score below 0.6, chosen on
-the dev set only): it asks the same D3 question with the region's L2 lines. A sure
-student (class L3 or score >= 0.6) enters the crisis flow as before. The turn
+``risk.yaml`` ``model_ask``, its crisis score below 0.6, chosen on the dev set only; owner
+decision 2026-10-28: whatever its class): it asks the same D3 question with the region's
+L2 lines, led by the region's emergency numbers when the student's class is L3 (as the
+2026-10-24 rule frames a capped model L3 in the crisis flow, which then keeps them). A
+sure student (score >= 0.6) enters the crisis flow as before. The turn
 reports the screen's level (``crisis_level`` L2, not in crisis) and
 ``inspect["safety_check_by"]`` ``model``. The next turn is read as for D3, except that a
 no must also pass the F10 denial conditions
@@ -1054,6 +1056,12 @@ class Session:
         self._text_flags |= self._shared.detector.detect(text)
         self._context = self._contra.observe(signals, perception, status, flags)
         ask = model_ask or (answer is None and assessment.asks_intent and not status.in_crisis)
+        if ask and model_level == CrisisLevel.L3.name:
+            # Owner decision 2026-10-28: a model L3 that asks first (a score below 0.6, or a
+            # figure of speech the screen capped) keeps the 2026-10-24 framing: the region's
+            # emergency numbers lead the question's card, and the crisis flow that follows
+            # an answer (or the farewell when there is none) keeps them in front.
+            self._urgent = True
         # The request on an ask turn is not a request for an exercise, and the answer to the
         # question is not an answer to any other question.
         if ask:
@@ -1818,7 +1826,9 @@ class Session:
         """The region's CRISIS card at ``level`` (the minors' lines only after the user said
         they are under 18 in this session, 第 5 条), and whether it is framed as urgent:
         below L3 after a capped model L3 (``_urgent``), the region's emergency numbers are
-        added in front of every line of the card."""
+        added in front of every line of the card. A card whose emergency numbers already
+        lead it (ZZ's L2) is left as it is; the mainland L2 card's trailing 120 (owner
+        decision 2026-10-28) is replaced by every emergency number in front."""
         card = resolve(
             self._shared.store,
             self._profile.region,
@@ -1827,7 +1837,8 @@ class Session:
             today=now.date(),
             is_minor=self._minor,
         )
-        if not self._urgent or level >= CrisisLevel.L3 or card.emergency:
+        leading = bool(card.emergency) and card.emergency_leads
+        if not self._urgent or level >= CrisisLevel.L3 or leading:
             return card, False
         l3 = resolve(
             self._shared.store,
@@ -1841,6 +1852,7 @@ class Session:
         urgent = replace(
             card,
             emergency=l3.emergency,
+            emergency_leads=True,
             stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
         )
         return urgent, True
@@ -1947,10 +1959,14 @@ class Session:
 
     def _compact_numbers(self, card: ResourceCard) -> str | None:
         """Every number of ``card`` in one line (``crisis.care_hotline`` first), through
-        the gate with those numbers allowed; None when it is blocked."""
+        the gate with those numbers allowed; None when it is blocked. Emergency numbers
+        come first unless they follow the lines on the card (the mainland L2 card's 120)."""
         render = self._engine.data.render
-        items = [f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in card.emergency]
-        items.extend(f"{ln.name_zh} {ln.number}" for ln in card.lines)
+        urgent = [
+            f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in card.emergency
+        ]
+        lines = [f"{ln.name_zh} {ln.number}" for ln in card.lines]
+        items = [*urgent, *lines] if card.emergency_leads else [*lines, *urgent]
         if not items or not render.care_hotline:
             return None
         text = f"{render.care_hotline}{'；'.join(items)}"
@@ -1969,20 +1985,16 @@ class Session:
         return assessment.rule_clear and self._shared.lexicons.reach_out.says(normalize(text))
 
     def _safety_check(self, stage: HelpStage, now: datetime) -> _Rendered:
-        """The D3 question with the region's L2 resource lines (never the minors' lines).
+        """The D3 question with the region's L2 crisis card (the minors' lines only after
+        the user said they are under 18).
 
-        A model-only alarm asks it too (owner decisions 2026-10-26), only when the
-        student's class is below L3, so its card is never framed as urgent."""
-        card = resolve(
-            self._shared.store,
-            self._profile.region,
-            CrisisLevel.L2,
-            mode=CardMode.CRISIS,
-            today=now.date(),
-            is_minor=self._minor,
-        )
+        A model-only alarm asks it too (owner decisions 2026-10-26). When the model's class
+        is L3 (owner decision 2026-10-28: a score below 0.6 asks whatever the class), the
+        card is framed as urgent as in the crisis flow (``_crisis_card``): the region's
+        emergency numbers lead it."""
+        card, urgent = self._crisis_card(CrisisLevel.L2, now)
         self._engine.last_gate = None
-        reply = self._engine.render_safety_check(card, self._plain_slots(), stage)
+        reply = self._engine.render_safety_check(card, self._plain_slots(), stage, urgent=urgent)
         self._note_gate()
         return _Rendered(reply, ReplyKind.SAFETY_CHECK, card=card)
 
@@ -1999,10 +2011,11 @@ class Session:
         (as of the turn before) and not the answer to a question, the screen is at L2 or
         above while the rules found no risk cue at all (``CrisisAssessment.rule_clear``,
         see ``safety.crisis.rules_found_nothing``) and the model did not fail. It asks
-        first only when the student is unsure (``risk.yaml`` ``model_ask``: its class is
-        below L3 and its crisis score below ``direct_from_score``, 0.6, chosen on the dev
-        set only) and it is the session's first model-only alarm: any later one, and a
-        sure one, enter the crisis flow as before.
+        first only when the student is unsure (``risk.yaml`` ``model_ask``: its crisis
+        score below ``direct_from_score``, 0.6, chosen on the dev set only; since the owner
+        decision of 2026-10-28 whatever its class, L3 included) and it is the session's
+        first model-only alarm: any later one, and a sure one, enter the crisis flow as
+        before.
         """
         before = self._last_status
         alarm = (
@@ -2019,8 +2032,7 @@ class Session:
             return False
         first = not self._model_asked
         self._model_asked = True
-        rules = self._shared.lexicons.model_ask
-        return first and rules.asks_first(CrisisLevel[model_level], model_score)
+        return first and self._shared.lexicons.model_ask.asks_first(model_score)
 
     def _model_pause(
         self, assessment: CrisisAssessment, model_level: str | None, model_score: float | None
@@ -2036,8 +2048,9 @@ class Session:
         The pause applies only when, as of the turn before, the session is in the crisis
         flow with an explicit confirmation counted; the turn is at L2 or above while the
         rules found no risk cue at all and the model did not fail; and the student is unsure
-        by the owner's ask-first rule (``risk.yaml`` ``model_ask``: its class below L3 and
-        its score below ``direct_from_score``). The turn then neither counts as safe nor
+        (``ModelAskRules.pauses``: its class below L3 and its score below
+        ``direct_from_score``; the 2026-10-28 change to the first question kept this class
+        test). The turn then neither counts as safe nor
         voids the confirmation (the tracker's L1 after a confirmation), so the exit rule
         itself (a confirmation, then 2 or 3 safe turns) is unchanged. A rule cue, a model
         failure, an L3 class or a sure score is a relapse as before."""
@@ -2054,7 +2067,7 @@ class Session:
             or model_score is None
         ):
             return False
-        return self._shared.lexicons.model_ask.asks_first(CrisisLevel[model_level], model_score)
+        return self._shared.lexicons.model_ask.pauses(CrisisLevel[model_level], model_score)
 
     def _answer_safety_check(
         self, text: str, assessment: CrisisAssessment, *, model: bool = False
@@ -2251,7 +2264,7 @@ class Session:
         region's emergency numbers come first (CN 110 / 120), then those lines."""
         render = self._engine.data.render
         card = self._resource_card(CrisisLevel.L2, now, mode=CardMode.CRISIS, minor=True)
-        if not card.emergency:
+        if not card.emergency or not card.emergency_leads:
             # Round 3 (re-test r3): the region's emergency numbers lead, then the lines for
             # young people and everyone, as the reply tells a minor to call for help.
             l3 = resolve(
@@ -2266,6 +2279,7 @@ class Session:
             card = replace(
                 card,
                 emergency=l3.emergency,
+                emergency_leads=True,
                 stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
             )
         if self._minor_told:

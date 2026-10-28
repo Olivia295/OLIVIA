@@ -2368,9 +2368,56 @@ reach_out:
 # found no risk cue at all (CrisisAssessment.rule_clear): owner decisions 2026-10-26. The
 # first one asks the direct question once instead of entering the crisis flow; the second
 # (2026-10-26, chosen on the dev set interim_fresh.csv only) keeps the crisis flow when the
-# student is sure: its 4-class head says L3, or its crisis score is at or above
-# `direct_from_score`. Only a score below it with a class below L3 asks first. Read by
-# lexicon.ModelAskRules; without this section every model-only alarm enters the crisis
-# flow (fail-safe). 0 < direct_from_score <= 1.
+# student is sure: its crisis score is at or above `direct_from_score`. Owner decision
+# 2026-10-28: only the score counts; a score below it asks first whatever the class (L3
+# included, whose emergency numbers then lead the question's card). The pause after a
+# confirmation (2026-10-27) still needs a class below L3. Read by lexicon.ModelAskRules;
+# without this section every model-only alarm enters the crisis flow (fail-safe).
+# 0 < direct_from_score <= 1.
 model_ask:
   direct_from_score: 0.6
+# Owner decision 2026-10-28: the "X得 / 到想死" figure of speech ("烦得想死", "加班加到想死",
+# "激到我想死", "气得想死") asks the D3 question (L1 + ASK_INTENT_HYPERBOLE_DIE) instead of
+# L2, reversing the 2026-10-22 "no mask" ruling for this frame only. A frame is a stem +
+# a link + a wish. Stems are everyday irritations, tiredness, discomfort and chores (加 as
+# in 加班加到, 写 as in 写论文写到); words of inner pain (痛苦, 绝望, 难受, 崩溃, 委屈, 折磨),
+# being forced (逼) and verbs that make "得 / 到想死" literal (觉得, 感到, 变得, 想到, 说到, 记得,
+# 难得) are not stems, so "我觉得想死" stays L2. The rules read a message as the figure alone
+# only when every Stage 2 phrase lies inside a frame, no other rule cue occurs (another
+# Stage 2 phrase, a negation phrase, a pair anchor, a pair cue, a composition) and no veto
+# below lies anywhere in it: seriousness (真的, 不是开玩笑, 那种), a run of days, a plan, a
+# time, a means, a farewell or another death or hopelessness word. Otherwise the frame is
+# L2 as before, so "烦得想死 真的不想活了", "烦得想死 是真的想死那种" and "加班加到想死 不是开玩笑"
+# stay L2. An injected model counts at most as L1 on the figure alone (a model failure is
+# still L2), and the tracker makes it L2 at once when the session already showed risk (an
+# earlier rule L1+ turn or D3 cue other than this one, or a crisis). Read by
+# lexicon.HyperboleAskRules; without this section the frame is L2 (fail-safe). No veto may
+# lie inside a frame. Every word is written here, not taken from an evaluation set.
+hyperbole_ask:
+  id: ASK_INTENT_HYPERBOLE_DIE
+  stems: ["烦", "累", "气", "饿", "热", "冷", "冻", "困", "忙", "闷", "吵", "晒", "渴", "痒", "晕", "酸",
+          "疼", "憋", "臭", "辣", "腻", "撑", "挤", "堵", "卡", "慢", "急", "激", "笑", "尬", "尴尬", "无聊",
+          "无语", "烦躁", "恶心", "丢人", "丢脸", "后悔", "羡慕", "嫉妒", "加", "写", "改", "背", "读",
+          "学", "考", "赶", "等", "熬", "肝", "刷", "卷", "搞", "弄", "骂", "输", "开", "跑", "练", "做",
+          "上", "坐", "站", "走", "爬", "排", "修", "讲"]
+  links: ["得", "到", "得我", "到我", "得人", "到人", "得都", "到都", "得我都", "到我都", "得快", "到快",
+          "得我快", "到我快"]
+  wishes: ["想死"]
+  vetoes: [
+           # seriousness
+           "真的", "真心", "认真", "当真", "说真的", "讲真", "没开玩笑", "不是开玩笑", "不开玩笑", "没在开玩笑",
+           "不是玩笑", "不是说说", "不夸张", "没夸张", "不是夸张", "那种", "字面", "真想",
+           # a run of days
+           "每天", "天天", "一直", "总是", "老是", "经常", "整天", "每晚", "每次都", "好久了", "很久了",
+           "这么多年",
+           # a plan or a time
+           "想好了", "决定了", "计划好", "安排好", "都准备好", "准备好了", "动手", "今晚就", "今天就",
+           "明天就", "现在就", "马上就",
+           # a means or a place
+           "药", "绳", "刀", "炭", "农药", "楼顶", "天台", "跳", "割", "吊",
+           # a farewell
+           "遗书", "遗言", "后事", "告别", "再见", "永别", "最后一次", "最后的话", "下辈子", "来世",
+           # another death or hopelessness word
+           "了断", "了结", "解脱", "一了百了", "结束这一切", "结束生命", "结束自己", "活着", "活下去",
+           "不想活", "去死", "死掉", "自杀", "轻生", "寻死", "消失", "离开这个世界", "没意思", "没意义",
+           "撑不下去", "撑不住", "绝望", "不想醒"]

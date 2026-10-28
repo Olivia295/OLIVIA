@@ -24,12 +24,15 @@ class ResourceCard:
     level: CrisisLevel
     mode: CardMode
     emergency: tuple[EmergencyNumber, ...]
-    """Emergency numbers; render before ``lines`` (L3 shows emergency first)."""
+    """Emergency numbers; they render before ``lines`` unless ``emergency_leads`` is False."""
     lines: tuple[HotlineEntry, ...]
     stale_entries: tuple[str, ...]
     """Ids of shown entries verified more than 180 days ago ("可能已过期")."""
     compiled_on: date
     directory_version: int
+    emergency_leads: bool = True
+    """Whether ``emergency`` renders before ``lines``. True for every card but the mainland
+    L2 crisis card, whose 120 follows 12356 (owner decision 2026-10-28)."""
 
     @property
     def stale(self) -> bool:
