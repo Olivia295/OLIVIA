@@ -146,6 +146,25 @@ _AFTER_VERB: Final = re.compile(
 )
 # Quoted words: the opening mark and its closing mark (NFKC keeps these as they are).
 _QUOTES: Final = {"“": "”", "「": "」", "『": "』", '"': '"'}
+# Round 5 (re-test q2 第 1 节): a time or an adverb that may open a clause before a speech
+# verb of the same speaker ("……，前天还说……").
+_TIME_LEAD: Final = re.compile(
+    r"(?:昨天|前天|今天|昨晚|前晚|今早|今晚|刚才|刚刚|后来|最近|这几天|前几天|这两天|那天|上周|"
+    r"上次|上礼拜|上星期|上个月|前段时间|前阵子|那时候|有天|早上|晚上|半夜|夜里|有一次|有时候|"
+    r"还|又|也|老|总|一直|经常|甚至|居然|竟然|突然|再)*"
+)
+# A possessive self word that may open a message before the person it owns (我室友, 我的好
+# 朋友, 我们班的同学; round 5).
+_OWNER: Final = re.compile(
+    r"(?:我|俺|咱)(?:们)?(?:家|班|宿舍|寝室|公司|单位|学校|部门|组|群)?(?:里|上|中)?的?有?"
+    r"(?:一个|一位|个|位|那个|这个|那位|这位)?(?:最好的|很好的|好|亲|新|老)?的?"
+)
+# A self word right after one of these is an object ("拖累了我们", "找我"), not a subject.
+_OBJECT_BEFORE: Final = (
+    "了", "找", "问", "叫", "喊", "求", "骂", "怪", "缠", "拖累", "连累", "麻烦", "烦", "打",
+    "陪", "帮", "给", "对", "跟", "和", "告诉", "嘱咐", "交给", "托付", "回", "发", "劝", "安慰",
+    "哄", "通知", "提醒",
+)  # fmt: skip
 # Words after a colon run to the end of the sentence.
 _SENTENCE_END: Final = frozenset("。!?;")
 # A self word right before or after these is no subject of the speech: a place or an
@@ -379,6 +398,50 @@ class ReportedSpeech:
                 continue
             kept.append(span)
         return kept
+
+    def about_others(self, text: str) -> bool:
+        """The normalized ``text`` is about a specific other person (round 5, re-test q2
+        第 1 节): a speaker that is the subject of its clause and names someone (not 有人 /
+        别人), and every self word is a possessive before such a speaker (我室友), an object
+        (跟我说, 拖累了我们, 找我), a place or an owner (我的帖子) or a reflexive 自己 after
+        the speaker. No veto (我也, 一起) may occur. It reads grammar only: whether the
+        message carries risk, and whose, is the caller's business."""
+        if not self._enabled:
+            return False
+        found = self._found(text)
+        if found.get(_VETO):
+            return False
+        recipient_ends = {m.end for m in found.get(_RECIPIENT, ())}
+        speakers = [
+            s
+            for s in self._speakers(text, found, recipient_ends)
+            if text[s.start : s.end] not in _GENERIC_SPEAKERS
+        ]
+        # The message opens with the person: the first clause's subject, after a time or an
+        # adverb or a possessive self word ("我室友……"). A clause with no subject of its own
+        # is the user's ("计划好了，先把猫送到朋友家"), so a speaker later on is not enough.
+        timed = _TIME_LEAD.match(text)
+        first = timed.end() if timed is not None else 0
+        owner = _OWNER.match(text, first)
+        if not any(s.start in (first, owner.end() if owner else -1) for s in speakers):
+            return False
+        for m in found.get(_SELF, ()):
+            if text[m.start : m.end] == _REFLEXIVE and any(s.end <= m.start for s in speakers):
+                continue
+            if m.start in recipient_ends or self._placed(text, m) or self._object(text, m):
+                continue
+            if any(
+                m.end <= s.start
+                and self._clause_start(text, s.start) <= m.start
+                and (
+                    _POSSESSIVE.fullmatch(text[m.end : s.start]) is not None
+                    or _KIN_POSSESSIVE.fullmatch(text[m.end : s.start]) is not None
+                )
+                for s in speakers
+            ):
+                continue
+            return False
+        return True
 
     def _chinese_contents(
         self, text: str, found: dict[str, list[Match]], cues: Sequence[Match]
@@ -684,6 +747,11 @@ class ReportedSpeech:
         before = text[self_word.start - 1] if self_word.start > 0 else ""
         return before in _SELF_PLACE_BEFORE or text.startswith(_SELF_OWNED, self_word.end)
 
+    def _object(self, text: str, self_word: Match) -> bool:
+        """A self word right after a verb or 了 is its object, not the subject ("她说她拖累
+        了我们", "他总找我"; round 5)."""
+        return text.endswith(_OBJECT_BEFORE, 0, self_word.start)
+
     def _after_verb(self, text: str, verb: Match, phrase: Match) -> bool:
         """Only fillers stand between the verb and the phrase."""
         rest = text[verb.end : phrase.start]
@@ -714,6 +782,11 @@ class ReportedSpeech:
         if told is not None and told.end() <= verb.start:
             # Round 4: "……，跟我说……" opens its clause with the listener, then the verb.
             lead = self._skip_fillers(text, told.end(), verb.start)
+        # Round 5: a time or an adverb may open the clause before the verb ("……，昨天还说
+        # ……"); the verb still opens it.
+        timed = _TIME_LEAD.match(text, lead)
+        if timed is not None and timed.end() <= verb.start:
+            lead = self._skip_fillers(text, timed.end(), verb.start)
         opens = lead == verb.start
         for speaker in speakers:
             if speaker.end > verb.start:
@@ -730,6 +803,7 @@ class ReportedSpeech:
                 and m.end <= verb.start
                 and m.start not in recipient_ends
                 and not self._placed(text, m)
+                and not self._object(text, m)
                 for m in selves
             )
             if not subject:

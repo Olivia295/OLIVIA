@@ -636,6 +636,13 @@ _AFTER_LOSS_NO_LENS: Final = frozenset({"06", "07"})
 # 第 6 条: "我该怎么跟她说" is read as about the other person up to this many turns after
 # the user reported their risk.
 _THIRD_PARTY_WINDOW: Final = 3
+# Round 5: a third-person pronoun: the message speaks of the other person again.
+_THEM: Final = re.compile(r"他|她|ta")
+# Round 5: the user joins in the other person's risk ("我也", "我自己也", "跟她一样").
+_JOINING: Final = re.compile(
+    r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样)"
+    r"|(?:跟|和|同)(?:他|她|ta|他们|她们)(?:一样|差不多)"
+)
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
 # Round 4 (SDD §4.4): Arousal = SUDS / 10.
@@ -1059,8 +1066,27 @@ class Session:
         # the crisis flow for it (nor asked the D3 question); the reply is the region's card
         # to pass on, with the emergency numbers first when the words carry a plan.
         reported = self._reported_risk(text, assessment, answer)
-        if reported is not None:
+        other_alarm = False
+        if reported is None:
+            other_alarm, reported = self._model_on_someone_else(
+                text, assessment, answer, model_level
+            )
+        if reported is not None or other_alarm:
             assessment = self._for_someone_else(assessment)
+        elif self._joins_in(text, assessment, answer):
+            # Round 5: "我也……" with a risk cue of the user's own, a few turns after the card
+            # for someone else's risk, joins in that risk: the user's own crisis flow.
+            assessment = replace(
+                assessment,
+                level=CrisisLevel.L2,
+                score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L2")),
+                rule_clear=False,
+            )
+        if self._minor_first(text, assessment, answer):
+            # Round 5 (re-test q2 第 4 节): an age under 18 that only the model alarms on
+            # takes the minors' flow first (its emergency numbers lead), never the crisis
+            # flow, whose question a "是" to the age question would answer.
+            assessment = replace(assessment, level=CrisisLevel.L1)
         model_ask = self._model_only_alarm(assessment, answer, model_level, model_score)
         if model_ask:
             # Owner decisions 2026-10-26: the rules found nothing and the student is unsure,
@@ -1264,12 +1290,15 @@ class Session:
             and rules.level is CrisisLevel.L0
             and assessment.level < CrisisLevel.L2
             and (
-                signals.keep_secret
+                other_alarm
+                or signals.keep_secret
                 or signals.advice_request
                 or signals.third_party_unreachable
                 or signals.third_party_question
                 or signals.third_party_how_to_ask
                 or signals.third_party_says_fine
+                or signals.third_party_far
+                or signals.third_party_stranger
             )
         )
         third_now = open_turn and not minor_now and (reported is not None or third_follow)
@@ -2155,6 +2184,28 @@ class Session:
             return True
         return first and self._shared.lexicons.model_ask.asks_first(model_score)
 
+    def _minor_first(
+        self, text: str, assessment: CrisisAssessment, answer: IntentAnswer | None
+    ) -> bool:
+        """An age under 18 said on a turn only the injected model alarms on (round 5).
+
+        Outside a crisis (as of the turn before), not the answer to a question, the screen
+        at L2 or above while the rules found no risk cue at all (``rule_clear``), the model
+        did not fail, and the message says the user is under 18. The turn is then answered
+        by the minors' reply (emergency numbers first, then the lines for young people),
+        not by the crisis flow; any rule cue, of this turn or a later one, still enters it.
+        """
+        before = self._last_status
+        return (
+            not (before is not None and before.in_crisis)
+            and answer is None
+            and self._risk.model is not None
+            and assessment.level >= CrisisLevel.L2
+            and assessment.rule_clear
+            and MODEL_FAILURE not in assessment.cue_ids
+            and self._shared.stub.discloses_minor(text)
+        )
+
     def _model_pause(
         self, assessment: CrisisAssessment, model_level: str | None, model_score: float | None
     ) -> bool:
@@ -2221,7 +2272,11 @@ class Session:
             None if model else shared.assess,
         )
         answer = reading.answer
-        if model and answer is IntentAnswer.DENIED and not shared.clear_denial(text):
+        if (
+            (model or reading.reason_split)
+            and answer is IntentAnswer.DENIED
+            and not shared.clear_denial(text)
+        ):
             answer = IntentAnswer.UNCLEAR
         if answer is IntentAnswer.DENIED:
             if not model:
@@ -2345,6 +2400,78 @@ class Session:
             rule_level=CrisisLevel.L0,
             uncapped_level=None,
             rule_clear=False,
+        )
+
+    def _third_party_window(self) -> bool:
+        """Within a few turns of the card for someone else's risk."""
+        return (
+            self._third_party_turn is not None
+            and self._state.global_turn_count + 1 - self._third_party_turn <= _THIRD_PARTY_WINDOW
+        )
+
+    def _model_on_someone_else(
+        self,
+        text: str,
+        assessment: CrisisAssessment,
+        answer: IntentAnswer | None,
+        model_level: str | None,
+    ) -> tuple[bool, ReportedRisk | None]:
+        """A model-only alarm on a message about someone else (round 5, re-test q2 第 1 节).
+
+        Outside a crisis (as of the turn before) and not the answer to a question, the
+        screen is at L2 or above while the rules found no risk cue at all (``rule_clear``)
+        and the model did not fail, and the message is about a specific other person with
+        nothing of the user's own (``SafetyScreen.about_others``: every self word is a
+        possessive, an object, a place or a reflexive). The structural evidence is that
+        grammar: the model rated "同事把东西都送人了，说以后见不到他了" or "她跟我说她想通了"
+        as the user's own risk and asked the user whether they were thinking of ending
+        their life.
+
+        * Within a few turns of the card for someone else's risk, the turn is a follow-up
+          about that person: ``(True, None)``, answered with the card and what to do.
+        * Otherwise the turn gets the card to pass on, urgent when the model's class is L3:
+          ``(False, ReportedRisk)``; but reported words that never name the other person
+          again (no 他 / 她: "我妈留言：累了就回家", words said to the user) stay the
+          question (round 4).
+
+        Either way the user is capped at L1 (``_for_someone_else``); any rule cue of the
+        user's own, now or later, takes the user's own flow."""
+        before = self._last_status
+        alarm = (
+            not (before is not None and before.in_crisis)
+            and answer is None
+            and self._risk.model is not None
+            and assessment.level >= CrisisLevel.L2
+            and assessment.rule_clear
+            and MODEL_FAILURE not in assessment.cue_ids
+            and self._shared.screen.about_others(text)
+        )
+        if not alarm:
+            return False, None
+        if self._third_party_window():
+            return True, None
+        if self._reported_words and _THEM.search(normalize(text)) is None:
+            return False, None
+        plan = model_level == CrisisLevel.L3.name
+        return False, ReportedRisk(assessment.level, plan, user_clear=True)
+
+    def _joins_in(
+        self, text: str, assessment: CrisisAssessment, answer: IntentAnswer | None
+    ) -> bool:
+        """The user joins in someone else's risk (round 5, re-test q2 第 1 节): within a few
+        turns of the card for it, outside a crisis and not the answer to a question, a
+        message with a risk cue of the user's own (rule level L1 or above) says 我也 / 我自己
+        也 / 跟他一样 ("说实话我也差不多，真的撑不住了"). The other person's risk was serious
+        enough for the card, so the user's own words are read at its level (L2)."""
+        before = self._last_status
+        rule = assessment.rule_level or CrisisLevel.L0
+        return (
+            answer is None
+            and not (before is not None and before.in_crisis)
+            and assessment.level < CrisisLevel.L2
+            and rule >= CrisisLevel.L1
+            and self._third_party_window()
+            and _JOINING.search(normalize(text)) is not None
         )
 
     def _resource_card(
@@ -2472,13 +2599,21 @@ class Session:
             if self._third_party_turn is None:
                 tail.append(self._pick(render.third_party_self_care))
         else:
-            urgent = self._third_party_urgent or signals.third_party_unreachable
+            # Round 5 (re-test q2 第 1 节): far from the other person, or not knowing them,
+            # gets what to do from there, with the emergency numbers (the L3 card) after it.
+            far = signals.third_party_far and bool(render.third_party_far)
+            stranger = signals.third_party_stranger and bool(render.third_party_stranger)
+            urgent = self._third_party_urgent or signals.third_party_unreachable or far or stranger
             # Round 4 (re-test q2 第 1 节): how to ask and "he says he is fine" get their
             # own concrete lines; an urgent report keeps what to do in an emergency first.
             asking = signals.third_party_how_to_ask or signals.advice_request
             tail = []
             if signals.third_party_unreachable:
                 lead = [self._pick(render.third_party_unreachable)]
+            elif far:
+                lead = [self._pick(render.third_party_far)]
+            elif stranger:
+                lead = [self._pick(render.third_party_stranger)]
             elif urgent and not signals.keep_secret:
                 lead = [self._pick(render.third_party_urgent_steps)]
                 if asking and render.third_party_how_to_ask:

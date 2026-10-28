@@ -81,6 +81,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import re
 from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -373,8 +374,29 @@ class _FigureIndex:
             return False
         if self._vetoes is not None and self._vetoes.find_all(normalized):
             return False
-        cover = _MaskCover(self._frames.find_all(normalized))
+        cover = _MaskCover([*self._frames.find_all(normalized), *_repeated_frames(normalized)])
         return all(cover.contains(m) for m in valid)
+
+
+# Round 5 (re-test q2 第 2 节, owner decision 2026-10-28 applied to more verbs): the figure
+# with its verb said twice ("剪视频剪得想死", "整理整理得想死"), whatever the verb: a verb, at
+# most three characters (its object), the same verb again, then a frame's link and 想死.
+# A verb of inner pain, of being forced or of living, or one that makes "得 / 到想死"
+# literal (觉得, 感到, 想到 ...), is no everyday verb, so the frame stays L2 for it.
+_REPEATED_FRAME: Final = re.compile(
+    r"([\u4e00-\u9fff]{1,2})[\u4e00-\u9fff]{0,3}?\1(?:得|到)(?:我|人)?都?快?想死"
+)
+_NOT_EVERYDAY: Final = frozenset("觉感变想说记难活死痛苦哭逼折崩绝委煎疯恨怕伤")
+
+
+def _repeated_frames(normalized: str) -> list[Match]:
+    frames: list[Match] = []
+    for found in _REPEATED_FRAME.finditer(normalized):
+        verb = found.group(1)
+        if any(ch in _NOT_EVERYDAY for ch in verb):
+            continue
+        frames.append(Match(found.group(0), found.start(), found.end()))
+    return frames
 
 
 class _RecallIndex:
@@ -782,6 +804,11 @@ class SafetyScreen:
             clear,
         )
         return assessment, observed
+
+    def about_others(self, text: str) -> bool:
+        """The message is about a specific other person and says nothing of the user's own
+        (``ReportedSpeech.about_others``; round 5). The rules' grammar only, no level."""
+        return self._index.reported.about_others(normalize(text))
 
     def clear_denial(self, text: str) -> bool:
         """Whether a no to the question a model-only alarm asked passes the F10 denial

@@ -90,6 +90,8 @@ _PHRASE_SECTIONS: Final = (
     "hotline_words",
     "help_seeking_school",
     "third_party_how_to_ask",
+    "third_party_far",
+    "third_party_stranger",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -289,6 +291,10 @@ class PerceptionLexicon:
     other person ("我该怎么开口问他"; round 4)."""
     third_party_says_fine_patterns: tuple[re.Pattern[str], ...] = ()
     """After that card: the other person says they are fine ("他说他没事"; round 4)."""
+    third_party_far: tuple[str, ...] = ()
+    """After that card: the user is far from the other person ("他在外地"; round 5)."""
+    third_party_stranger: tuple[str, ...] = ()
+    """After that card: the user does not know the other person ("我又不认识他"; round 5)."""
     local_emergency_places: Mapping[str, tuple[str, ...]] = field(
         default_factory=lambda: MappingProxyType({})
     )
@@ -441,6 +447,8 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         hotline_places=MappingProxyType(_places(doc.get("hotline_places"))),
         help_seeking_school=phrases["help_seeking_school"],
         third_party_how_to_ask=phrases["third_party_how_to_ask"],
+        third_party_far=phrases["third_party_far"],
+        third_party_stranger=phrases["third_party_stranger"],
         third_party_says_fine_patterns=_patterns(
             doc.get("third_party_says_fine_patterns"), "third_party_says_fine_patterns"
         ),
