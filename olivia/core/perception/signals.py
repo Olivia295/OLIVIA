@@ -186,6 +186,12 @@ class TurnSignals:
     third_party_says_fine: bool = False
     """The other person says they are fine ("他说他没事"; round 4): read only a few turns
     after that card."""
+    third_party_far: bool = False
+    """The user is far from the other person ("他在外地，我过不去"; round 5): read only a
+    few turns after that card."""
+    third_party_stranger: bool = False
+    """The user does not know the other person ("我们只是网上认识"; round 5): read only a
+    few turns after that card."""
     hotline_country: str | None = None
     """The ISO code of a country without verified hotlines here whose official emergency
     numbers the render data lists ("我在日本" -> ``JP``; round 4), the first one named."""

@@ -1295,6 +1295,24 @@ answers:
     - 存起来吧
     - ok
     - okay
+    # Round 5 (re-test q2 第 4 节): a Cantonese or English yes, and more particles.
+    - "yes"
+    - "yeah"
+    - "yep"
+    - "yup"
+    - sure
+    - 系
+    - 系呀
+    - 系啊
+    - 系嘅
+    - 系啦
+    - 啱
+    - 啱呀
+    - 是呀
+    - 是啊
+    - 对呀
+    - 嗯呐
+    - 没错
     - 没问题
     - 麻烦你了
     - 拜托了
@@ -1815,7 +1833,7 @@ suds_patterns:
 # nothing about age is written anywhere.
 minor_disclosure_patterns:
   - "我(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是)*(?:1[0-7]|十[一二三四五六七]?)(?:岁|周岁)(?!的|那|时|以前|之前|左右)"
-  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是|刚|刚刚)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只是|也|就|都|是|刚|刚刚)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
   - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:一个|个)?(?:未成年|未满(?:18|十八)|没满(?:18|十八)|不满(?:18|十八)|不到(?:18|十八))(?!的时候|时|那|以前|之前)"
   # Round 3 (2026-10-27, re-test r2 第 2 节; 草稿：待 G-0). Grammar, not example sentences:
   # - the self word may be 本人 / 俺 / 咱 too, and the age may stand with 了 instead of 岁
@@ -2014,6 +2032,21 @@ third_party_questions:
   - howcanihelp
   - howdoihelp
   - shouldicall
+  # Round 5 (re-test q2 第 1 节; 草稿：待 G-0): the same questions said colloquially.
+  - 做点啥
+  - 做些啥
+  - 能做啥
+  - 可以做啥
+  - 干点啥
+  - 能干啥
+  - 能帮啥
+  - 帮上忙
+  - 帮得上
+  - 帮上什么
+  - 帮上啥
+  - 咋办
+  - 咋整
+  - 怎么整
 # After the card for someone else's risk (round 4, 2026-10-28, re-test q2 第 1 节; 草稿：待
 # G-0), read only within a few turns of it: how to start the talk or what to say to the
 # other person ("我该怎么开口问他", "我现在该跟她说点什么"). The card comes again with how to
@@ -2044,11 +2077,77 @@ third_party_how_to_ask:
   - whatdoisay
   - whatshouldisay
   - bringitup
+  # Round 5 (re-test q2 第 1 节; 草稿：待 G-0): worry about starting the talk at all.
+  - 开口
+  - 尴尬
+  - 别扭
+  - 冒犯
+  - 不熟
+  - 不太熟
+  - 不算熟
+  - 怎么说
+  - 咋说
+  - 怎么讲
+  - 提这个
+  - 提这件事
+  - 说点啥
+  - 说啥好
+# After the card for someone else's risk (round 5, 2026-10-29, re-test q2 第 1 节; 草稿：待
+# G-0), read only within a few turns of it. The user is far from the other person ("他在外
+# 地，我过不去"): what to do from afar (render.yaml crisis.third_party_far, the emergency
+# numbers after it). Folded, no spaces.
+third_party_far:
+  - 在外地
+  - 在国外
+  - 在老家
+  - 不在身边
+  - 不在一个城市
+  - 不在同一个城市
+  - 另一个城市
+  - 别的城市
+  - 离得远
+  - 离得太远
+  - 离他好远
+  - 离她好远
+  - 隔得远
+  - 太远了
+  - 过不去
+  - 赶不过去
+  - 去不了
+  - 没法过去
+  - 没办法过去
+  - 异地
+  - 公里
+  - faraway
+  - anotherstate
+  - anothercity
+# The user does not know the other person ("我又不认识他", "只是网上认识"; round 5; 草稿：待
+# G-0): what one can still do (render.yaml crisis.third_party_stranger). Folded, no spaces.
+third_party_stranger:
+  - 不认识
+  - 网上认识
+  - 网友
+  - 陌生人
+  - 素不相识
+  - 只见过
+  - 没见过面
+  - 不知道他是谁
+  - 不知道她是谁
+  - 不知道他住哪
+  - 不知道她住哪
+  - 帖子
+  - 评论区
+  - 直播间
+  - stranger
+  - don'tknowhim
+  - don'tknowher
+  - dontknowhim
+  - dontknowher
 # The other person says they are fine (round 4; 草稿：待 G-0), read only within a few turns
 # of that card ("要是他说没事呢", "他说他没事"): the card again with what to watch for and
 # that it is fine to ask again. A third person (他 / 她 / ta / 对方) who says it, folded.
 third_party_says_fine_patterns:
-  - "(?:他|她|ta|对方)(?:又|还|就|一直|总|都|只)?(?:跟我|对我|和我)?(?:说|讲|回|回我|表示)(?:他|她|ta|自己)?(?:真的|其实|已经|只是)?(?:没事|没什么事|没什么|还好|挺好|好多了|开玩笑|随便说说|说着玩|随口说说|随口一说)"
+  - "(?:他|她|ta|对方)(?:今天|昨天|刚才|刚刚|后来|现在|最近)?(?:又|还|就|一直|总|都|只)?(?:跟我|对我|和我)?(?:说|讲|回|回我|表示)(?:他|她|ta|自己)?(?:真的|其实|已经|只是|现在)?(?:没事|没什么事|没什么|还好|挺好|好多了|好了|想开了|想通了|开玩笑|随便说说|说着玩|随口说说|随口一说)"
   - "(?:he|she|they)(?:says|said|toldme)(?:he's|she's|they're|heis|sheis|theyare)(?:fine|ok|okay|alright|joking|kidding)"
 
 # The user means to see a doctor, a counsellor or a school or work mental health centre

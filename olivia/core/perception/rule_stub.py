@@ -205,6 +205,8 @@ _PHONE_WORDS: Final = "hotline_words"
 _PLACE: Final = "hotline_place"
 _SCHOOL: Final = "help_seeking_school"
 _HOW_TO_ASK: Final = "third_party_how_to_ask"
+_FAR: Final = "third_party_far"
+_STRANGER: Final = "third_party_stranger"
 _COUNTRY: Final = "hotline_country"
 _UNREACHABLE_CALL: Final = "hotline_unreachable"
 _EMERGENCY_ASKED: Final = "hotline_emergency"
@@ -359,6 +361,8 @@ class RuleStub:
             add(_PLACE, code, phrases)
         add(_SCHOOL, _SCHOOL, lexicon.help_seeking_school)
         add(_HOW_TO_ASK, _HOW_TO_ASK, lexicon.third_party_how_to_ask)
+        add(_FAR, _FAR, lexicon.third_party_far)
+        add(_STRANGER, _STRANGER, lexicon.third_party_stranger)
         for code, phrases in lexicon.local_emergency_places.items():
             add(_COUNTRY, code, phrases)
         self._fine_patterns = lexicon.third_party_says_fine_patterns
@@ -553,6 +557,8 @@ class RuleStub:
             or self._raw_place(text),
             help_seeking_school=bool(hits.get(_SCHOOL)),
             third_party_how_to_ask=bool(hits.get(_HOW_TO_ASK)),
+            third_party_far=bool(hits.get(_FAR)),
+            third_party_stranger=bool(hits.get(_STRANGER)),
             third_party_says_fine=self._live(body, self._fine_patterns),
             hotline_country=next(
                 (label for label, _ in sorted(hits.get(_COUNTRY, ()), key=lambda h: h[1].start)),
@@ -567,6 +573,13 @@ class RuleStub:
             and any(p.search(text.casefold()) for p in self._place_hint_patterns),
         )
         return context, turn
+
+    def discloses_minor(self, text: str) -> bool:
+        """The message says the user is under 18 (``TurnSignals.minor_disclosure``), read
+        before the turn's perception (round 5: the minors' flow comes before a model-only
+        alarm)."""
+        body = clip_for_perception(normalize(text))
+        return any(p.search(body) for p in self._minor_patterns)
 
     def _number(self, body: str) -> str | None:
         """The digits of a number the message asks about ("12356是干嘛的"; round 5)."""

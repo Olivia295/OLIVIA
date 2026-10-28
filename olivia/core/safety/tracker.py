@@ -138,6 +138,55 @@ _LEFT_PLACE: Final = re.compile(
     r"从(?:天台|楼顶|顶楼|阳台|窗台|桥上|桥边|大桥上|江边|河边|湖边|海边|铁轨边?)上?"
     r"(?:下来|回来|走下来|撤下来|走开|回到家|回家)(?:了|啦)"
 )
+# Round 5 (2026-10-29, re-test q2 第 3 节): three more ways to say it, each a closed
+# grammar read as one clause of the message:
+# - a safe clause with its own time ("今晚我很安全", "我这几天都是安全的") or a future
+#   ("我会安全的"): the time word is the clause's scope, as in a promise;
+# - letting go of the thought ("那个念头我放下了", "我把这个想法打消了"): it confirms;
+# - staying in a safe place for a time ("今晚就在家里待着"): no confirmation alone, but its
+#   time word is its scope, so it no longer voids a confirmation next to it.
+# A time or the word for the thought is exempt from the vetoes only inside such a clause,
+# and only when the rest of the message passes the F10 denial guard and the rules found no
+# risk cue in it (``_scoped_clear``), so "今晚我是安全的，明天就不一定了" stays no confirmation.
+_SCOPE_TIME = r"(?:今晚|今夜|今天|今天晚上|晚上|这几天|这两天|这周|周末|这个周末)?"
+_TIMED_SAFE: Final = re.compile(
+    rf"(?:嗯+|放心吧?)?我?{_SCOPE_TIME}我?(?:都|也)?(?:会|是|很|挺|都是|会是)?安全(?:的|了|啦)?(?:哦|呀|啊|呢)?"
+)
+_THOUGHT = r"(?:念头|想法|打算|主意|傻念头|坏念头)"
+_LET_GO: Final = re.compile(
+    rf"我?(?:已经)?(?:把)?(?:这个|那个|刚才的|刚才那个|这种|那种|那些|这些)?{_THOUGHT}"
+    rf"(?:我)?(?:已经)?(?:放下|打消|放弃|丢掉|扔掉|收起来|压下去|断)(?:了|啦)"
+)
+_STAY_SAFE_PLACE: Final = re.compile(
+    rf"我?{_SCOPE_TIME}我?(?:都|会|就|会好好|就好好|好好)?(?:待|呆|留|躺|睡)?在"
+    r"(?:家|家里|宿舍|寝室|房间|屋里)(?:里)?(?:待着|呆着|睡觉|休息|不出去|不出门)?(?:的|了|啦)?"
+)
+_SCOPE_WORDS: Final = frozenset(
+    {"今晚", "今夜", "今天", "今天晚上", "晚上", "这几天", "这两天", "这周", "周末", "这个周末",
+     "打算", "主意"}
+)  # fmt: skip
+# A message ending in 什么 / 啥 after a negated verb says what the user will not do ("不会
+# 做什么"), not a question.
+_NOT_DOING: Final = re.compile(
+    r"(?:不会|不去|不想|不打算|不准备|没想)[^,.!?;:、。]{0,4}(?:什么|啥)$"
+)
+# Round 5: a means handed over or thrown away ("药也交给室友了", "刀扔掉了") is no means veto
+# for a confirm phrase next to it; only these spans are dropped before the guard.
+_MEANS_GONE: Final = re.compile(
+    r"(?:药|安眠药|刀|刀片|绳子|绳|炭)(?:也|都|已经|全)*"
+    r"(?:交给[^,.!?;:、。]{1,6}|给了[^,.!?;:、。]{1,6}|扔了|扔掉了|丢了|丢掉了|冲掉了|上交了|剪掉了|剪断了|"
+    r"交出去了|收走了)(?:了|啦)?"
+)
+# Round 5: what voids a confirm phrase in the same message: a hedge, a later time, a means
+# or place, a farewell or a plan (with the F10 contrasts). Narrower than the F10 vetoes,
+# whose 那边 or 最后 are everyday words next to "热线接通了".
+_PHRASE_GUARD: Final = (
+    "暂时", "目前", "至少", "可能", "也许", "说不定", "不一定", "不确定", "现在还", "如果",
+    "要是", "万一", "明天", "后天", "待会", "等会", "过几天", "以后", "迟早", "早晚", "药", "绳",
+    "刀", "炭", "农药", "煤气", "楼顶", "天台", "桥", "铁轨", "跳", "割", "遗书", "遗言", "后事",
+    "买好", "攒", "囤", "计划", "打算", "决定", "想好了", "下定决心", "一了百了", "解脱", "再见",
+    "永别", "告别",
+)  # fmt: skip
 # An L0 turn with a known valence at or above this is calm: it resets the escalation count.
 _CALM_VALENCE: Final = 0.0
 # Valence must rise by more than this to count as an improvement (float noise guard).
@@ -182,6 +231,24 @@ def _promise_spans(normalized: str) -> list[tuple[int, int]]:
     return spans
 
 
+def _scoped_spans(normalized: str) -> list[tuple[int, int]]:
+    """Spans of the clauses that scope their own time or thought word (round 5): a timed
+    safe clause, letting go of the thought, staying in a safe place."""
+    spans: list[tuple[int, int]] = []
+    for clause in _CLAUSE_TEXT.finditer(normalized):
+        bare = _compact(clause.group(0)).translate(_ANSWER_PUNCTUATION)
+        if bare and any(
+            p.fullmatch(bare) is not None for p in (_TIMED_SAFE, _LET_GO, _STAY_SAFE_PLACE)
+        ):
+            spans.append(clause.span())
+    return spans
+
+
+def _confirms_scoped(clause: str) -> bool:
+    """A clause that confirms on its own (round 5): a timed safe clause or letting go."""
+    return _TIMED_SAFE.fullmatch(clause) is not None or _LET_GO.fullmatch(clause) is not None
+
+
 def _is_direct_answer(compact: str) -> bool:
     bare = compact.translate(_ANSWER_PUNCTUATION)
     if bare in _DIRECT_ANSWER_ENGLISH or _ENGLISH_SAFE.fullmatch(bare) is not None:
@@ -216,6 +283,11 @@ class CrisisTracker:
         # the ``denial`` section anywhere in the message voids it.
         guards = (*lexicons.denial.vetoes, *lexicons.denial.contrasts)
         self._clause_guard = PhraseMatcher({p: p for p in guards}) if guards else None
+        # Round 5: a confirm phrase ("我很安全") is voided by a contrast, a hedge, a later
+        # time, a means or place, or a plan word next to it (``_PHRASE_GUARD``).
+        self._phrase_guard = PhraseMatcher(
+            {p: p for p in (*lexicons.denial.contrasts, *_PHRASE_GUARD)}
+        )
 
         self._run = 0
         self._last_l1_valence: float | None = None
@@ -409,18 +481,27 @@ class CrisisTracker:
         vetoes, a question and a negation in front of a phrase still win over both paths.
         """
         promised = _promise_spans(normalized)
-        if any(
-            not any(s <= hit.start and hit.end <= e for s, e in promised)
-            or normalized[hit.start : hit.end] not in _PROMISE_TIMES
-            for hit in self._veto_matcher.find_all(normalized)
-        ):
+        scoped = _scoped_spans(normalized)
+        exempted = False
+        for hit in self._veto_matcher.find_all(normalized):
+            word = normalized[hit.start : hit.end]
+            if any(s <= hit.start and hit.end <= e for s, e in promised) and word in _PROMISE_TIMES:
+                continue
+            if any(s <= hit.start and hit.end <= e for s, e in scoped) and word in _SCOPE_WORDS:
+                exempted = True  # round 5: the clause's own scope; the rest is guarded below
+                continue
             return False
-        if normalized.rstrip(_TRAILING_PUNCTUATION).endswith(_QUESTION_ENDINGS):
+        if exempted and not self._scoped_clear(normalized, assessment):
+            return False
+        ending = normalized.rstrip(_TRAILING_PUNCTUATION)
+        if ending.endswith(_QUESTION_ENDINGS) and _NOT_DOING.search(ending) is None:
             return False
         compact = _compact(normalized)
         hits = self._confirm_matcher.find_all(compact)
         if any(not compact[: hit.start].endswith(_NEGATING_PREFIXES) for hit in hits):
-            return True
+            # Round 5: a danger cue next to the phrase ("我很安全，但药还在") voids it, as for
+            # the safe clause (the F10 denial guard outside a clause's own scope).
+            return self._guard_clear(normalized, self._phrase_guard)
         if _is_direct_answer(compact):
             return True
         return self._safe_clause(normalized, compact, assessment)
@@ -440,13 +521,7 @@ class CrisisTracker:
         # Round 4: "从天台下来了" says the user has left the place; the rest is read as before.
         # A time word inside a promise clause is the promise's scope ("我保证今晚好好的，不会
         # 乱来"), as for the whole-message promise above.
-        guarded = _LEFT_PLACE.sub("", normalized)
-        promised = _promise_spans(guarded)
-        if self._clause_guard is not None and any(
-            not any(s <= hit.start and hit.end <= e for s, e in promised)
-            or guarded[hit.start : hit.end] not in _PROMISE_TIMES
-            for hit in self._clause_guard.find_all(guarded)
-        ):
+        if not self._guard_clear(normalized):
             return False
         clauses = [c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact)]
         return any(
@@ -455,9 +530,34 @@ class CrisisTracker:
                 _SAFE_CLAUSE.fullmatch(c) is not None
                 or _PROMISE.fullmatch(c) is not None
                 or _ENGLISH_SAFE.fullmatch(c) is not None
+                or _confirms_scoped(c)
             )
             for c in clauses
         )
+
+    def _guard_clear(self, normalized: str, guard: PhraseMatcher | None = None) -> bool:
+        """No F10 denial veto or contrast (or, with ``guard``, none of its phrases) in the
+        message outside the clauses that scope their own time (a promise, round 4) or time
+        or thought word (round 5)."""
+        matcher = self._clause_guard if guard is None else guard
+        if matcher is None:
+            return True
+        guarded = _MEANS_GONE.sub("", _LEFT_PLACE.sub("", normalized))
+        promised = _promise_spans(guarded)
+        scoped = _scoped_spans(guarded)
+        for hit in matcher.find_all(guarded):
+            word = guarded[hit.start : hit.end]
+            if any(s <= hit.start and hit.end <= e for s, e in promised) and word in _PROMISE_TIMES:
+                continue
+            if any(s <= hit.start and hit.end <= e for s, e in scoped) and word in _SCOPE_WORDS:
+                continue
+            return False
+        return True
+
+    def _scoped_clear(self, normalized: str, assessment: CrisisAssessment) -> bool:
+        """A confirm veto was let through as a clause's own scope (round 5): the rest of the
+        message must carry no rule risk cue and pass the F10 denial guard."""
+        return assessment.rule_clear and self._guard_clear(normalized)
 
     def _status(
         self, level: CrisisLevel, escalated: bool, just_entered: bool, just_exited: bool

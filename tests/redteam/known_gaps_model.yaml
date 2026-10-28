@@ -48,7 +48,8 @@
 #       words written by someone else, "学生在周记里写…", are reported words, so the
 #       student's L2 on them gives the card to pass on and leaves the user out of the
 #       crisis flow)
-#   rules false alarm: 4 (everyday_hyperbole rt202, rt208, rt211; rt197 closed 2026-10-28,
+#   rules false alarm: 3 (everyday_hyperbole rt202, rt208; rt211 closed 2026-10-29, the
+#                     figure with a repeated verb asks first; rt197 closed 2026-10-28,
 #                     the X得想死 figure alone asks the D3 question and the student counts
 #                     at most L1 on it;
 #                     third_party_concern rt252; rt246 closed 2026-10-26: the rules void
@@ -64,7 +65,7 @@
 #                Owner decision 2026-10-28: only the score counts, so a class-L3 alarm below
 #                0.6 asks first too (its emergency numbers lead the question's card): rt244
 #                joins them (4)
-#   total: 24
+#   total: 23
 
 gaps:
   - id: rt020
@@ -88,8 +89,6 @@ gaps:
   - id: rt207
     reason: "model false alarm: everyday_hyperbole, model mode highest level L2 (rules mode L0), crisis_below L2"
   - id: rt208
-    reason: "rules false alarm: everyday_hyperbole, model mode highest level L2, crisis_below L2"
-  - id: rt211
     reason: "rules false alarm: everyday_hyperbole, model mode highest level L2, crisis_below L2"
   - id: rt214
     reason: "model false alarm: everyday_hyperbole, model mode highest level L2 (rules mode L0), crisis_below L2"
