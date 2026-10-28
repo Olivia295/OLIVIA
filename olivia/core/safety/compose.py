@@ -304,13 +304,25 @@ class Composer:
         self._reach = {ch: tuple(sorted(ps, key=len, reverse=True)) for ch, ps in reach.items()}
         self._lists = _Lists.of(rules)
         self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
-        # Which entries a head phrase belongs to: a message only visits the entries whose
-        # heads occur in it (round 3: the entries keep growing, most messages hit none).
-        by_head: dict[str, list[int]] = {}
+        # Which part of which entry a phrase is: a message only visits the entries whose
+        # every required part occurs in it (round 3: the entries keep growing, most
+        # messages hit none; 2026-10-28: a head as common as 去 or 多少 visits its entry
+        # only when the tail, the context and each `also` group occur too). A part is a
+        # bit of the entry's mask: heads 1, tails 2, context 4, the k-th `also` group 8 << k.
+        by_part: dict[str, list[tuple[int, int]]] = {}
+        needed: list[int] = []
         for index, entry in enumerate(rules.entries):
-            for head in dict.fromkeys(entry.heads):
-                by_head.setdefault(head, []).append(index)
-        self._by_head = {head: tuple(indices) for head, indices in by_head.items()}
+            parts = [entry.heads, entry.tails, entry.context, *(g.phrases for g in entry.also)]
+            mask = 0
+            for bit, part in enumerate(parts):
+                if not part:
+                    continue
+                mask |= 1 << bit
+                for phrase in dict.fromkeys(part):
+                    by_part.setdefault(phrase, []).append((index, 1 << bit))
+            needed.append(mask)
+        self._by_part = {phrase: tuple(roles) for phrase, roles in by_part.items()}
+        self._needed = tuple(needed)
 
     def find(self, text: str) -> list[CompositionHit]:
         """The first accepted match of each entry that fires, in entry order."""
@@ -319,8 +331,13 @@ class Composer:
         found: dict[str, list[Match]] = {}
         for match in self._matcher.find_all(text):
             found.setdefault(match.key, []).append(match)
-        by_head = self._by_head
-        candidates = sorted({i for key in found for i in by_head.get(key, ())})
+        seen: dict[int, int] = {}
+        by_part = self._by_part
+        for key in found:
+            for index, bit in by_part.get(key, ()):
+                seen[index] = seen.get(index, 0) | bit
+        needed = self._needed
+        candidates = sorted(i for i, mask in seen.items() if mask == needed[i])
         if not candidates:
             return []
         facts = _Text(text, self._rules, self._lists, found)
