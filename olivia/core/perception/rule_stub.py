@@ -203,6 +203,14 @@ _REAL: Final = "hotline_real"
 _MORE: Final = "hotline_more"
 _PHONE_WORDS: Final = "hotline_words"
 _PLACE: Final = "hotline_place"
+_SCHOOL: Final = "help_seeking_school"
+_HOW_TO_ASK: Final = "third_party_how_to_ask"
+_COUNTRY: Final = "hotline_country"
+# Round 4 (SUDS, PRD COLBO-07): a Chinese numeral rating -> its value.
+_NUMERALS: Final = {
+    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8,
+    "九": 9, "十": 10,
+}  # fmt: skip
 # "我不知道该怎么说" tells how hard it is; it asks nothing (dogfood I1).
 _NOT_KNOWING: Final = ("不知道", "不晓得", "不清楚", "不明白")
 # What makes a message ask about a named practice (dogfood I2): "冷水敷脸呢", "行不行".
@@ -345,6 +353,12 @@ class RuleStub:
         add(_PHONE_WORDS, _PHONE_WORDS, lexicon.hotline_words)
         for code, phrases in lexicon.hotline_places.items():
             add(_PLACE, code, phrases)
+        add(_SCHOOL, _SCHOOL, lexicon.help_seeking_school)
+        add(_HOW_TO_ASK, _HOW_TO_ASK, lexicon.third_party_how_to_ask)
+        for code, phrases in lexicon.local_emergency_places.items():
+            add(_COUNTRY, code, phrases)
+        self._fine_patterns = lexicon.third_party_says_fine_patterns
+        self._suds_patterns = lexicon.suds_patterns
         self._request_patterns = lexicon.direct_request_patterns
         self._hotline_patterns = lexicon.hotline_request_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
@@ -529,8 +543,27 @@ class RuleStub:
                 (label for label, _ in sorted(hits.get(_PLACE, ()), key=lambda h: h[1].start)),
                 None,
             ),
+            help_seeking_school=bool(hits.get(_SCHOOL)),
+            third_party_how_to_ask=bool(hits.get(_HOW_TO_ASK)),
+            third_party_says_fine=self._live(body, self._fine_patterns),
+            hotline_country=next(
+                (label for label, _ in sorted(hits.get(_COUNTRY, ()), key=lambda h: h[1].start)),
+                None,
+            ),
+            suds=None if command is not None or battery is not None else self._suds(folded),
         )
         return context, turn
+
+    def _suds(self, folded: str) -> int | None:
+        """A whole-message 0-10 distress rating (round 4, SUDS), else None."""
+        for pattern in self._suds_patterns:
+            match = pattern.search(folded)
+            if match is not None and match.groups():
+                raw = match.group(1)
+                value = _NUMERALS.get(raw) if not raw.isdigit() else int(raw)
+                if value is not None and 0 <= value <= 10:
+                    return value
+        return None
 
     def _live(self, body: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
         """A match of one of ``patterns`` that is not negated ("不需要热线")."""

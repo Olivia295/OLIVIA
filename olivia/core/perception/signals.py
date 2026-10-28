@@ -178,6 +178,20 @@ class TurnSignals:
     third_party_question: bool = False
     """The user asks what to do for the other person ("我该怎么办"; round 3): read only a
     few turns after the card for someone else's risk."""
+    help_seeking_school: bool = False
+    """With ``help_seeking``: the place is at school or university (round 4, 2026-10-28)."""
+    third_party_how_to_ask: bool = False
+    """How to start the talk or what to say to the other person ("我该怎么开口问他";
+    round 4): read only a few turns after the card for someone else's risk."""
+    third_party_says_fine: bool = False
+    """The other person says they are fine ("他说他没事"; round 4): read only a few turns
+    after that card."""
+    hotline_country: str | None = None
+    """The ISO code of a country without verified hotlines here whose official emergency
+    numbers the render data lists ("我在日本" -> ``JP``; round 4), the first one named."""
+    suds: int | None = None
+    """The whole message is a 0-10 distress rating ("7", "大概8分"; SUDS, PRD COLBO-07,
+    round 4). The session reads it only while a card waits: arousal = SUDS / 10."""
 
     def __post_init__(self) -> None:
         if self.battery is not None and not 0.0 <= self.battery <= 1.0:
@@ -186,3 +200,5 @@ class TurnSignals:
             raise ValueError("a turn cannot both set and release the listening lock")
         if self.feedback is not None and self.feedback_unclear:
             raise ValueError("feedback cannot be both read and unclear")
+        if self.suds is not None and not 0 <= self.suds <= 10:
+            raise ValueError(f"suds must be within 0-10, got {self.suds}")

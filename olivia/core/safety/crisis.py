@@ -101,7 +101,7 @@ from olivia.core.safety.lexicon import (
 )
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.safety.normalize import normalize
-from olivia.core.safety.reported import ReportedSpeech
+from olivia.core.safety.reported import ReportedSpeech, farewell_strength, names_death
 from olivia.core.taxonomy import Taxonomy
 
 _MATCHED_SECTIONS: Final[tuple[RiskSection, ...]] = ("stage1", "stage2", "hyperbole", "negation")
@@ -168,7 +168,13 @@ class ReportedRisk:
     "过一阵子就好了" (someone's comfort) is not someone else's risk (re-test 2026-10-27)."""
     anchor: bool = False
     """A death word the rules know only as a pair anchor (自杀, "end my life") lies in the
-    reported words (round 3): with a time or a means it is someone else's plan."""
+    reported words (round 3), or (round 4, 2026-10-28) a word for dying by one's own hand
+    (去死, 跳楼; ``reported.names_death``) the rules may miss: with a time or a means it is
+    someone else's plan."""
+    farewell: int = 0
+    """A farewell in the reported words (round 4; ``reported.farewell_strength``): 2 for a
+    strong one ("永别了"), which opens the card alone, 1 for a weak one ("大家再见了"),
+    which opens it only with a means or a place in the message."""
 
 
 def rules_found_nothing(
@@ -633,6 +639,7 @@ class SafetyScreen:
         plan = False
         rule_risk = False
         anchor = False
+        farewell = 0
         for span in spans:
             # The words are rated as the user's own: a pronoun inside them ("她说……，她想
             # 死") is no second report to void.
@@ -640,13 +647,18 @@ class SafetyScreen:
             level = max(level, assessment.level)
             rules = assessment.rule_level or CrisisLevel.L0
             rule_risk = rule_risk or rules >= CrisisLevel.L1 or assessment.asks_intent
-            anchor = anchor or any(m.key in anchors for m in self._index.scan(span.screen))
+            anchor = (
+                anchor
+                or any(m.key in anchors for m in self._index.scan(span.screen))
+                or names_death(span.screen)
+            )
+            farewell = max(farewell, farewell_strength(span.screen))
             plan = (
                 plan
                 or assessment.level is CrisisLevel.L3
                 or (model is not None and model.level is CrisisLevel.L3)
             )
-        return ReportedRisk(level, plan, user_clear, rule_risk, anchor)
+        return ReportedRisk(level, plan, user_clear, rule_risk, anchor, farewell)
 
     def _assess(
         self, text: str, *, void_reported: bool = True

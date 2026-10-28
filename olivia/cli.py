@@ -1254,6 +1254,20 @@ def _chat(
             state_recorder.observe(session.carried_state())  # feedback survives a crash
             if session.safety_plan_suggested:
                 plan_store.mark_suggested()
+            if session.take_minor_record():
+                # Round 4 (ruling 22): the user confirmed being under 18 in the chat; the
+                # same refusal record as the first visit (no age, no words), so the next
+                # ``olivia chat`` shows the refusal.
+                moment = clock()
+                _save_profile(
+                    console,
+                    PersonaProfile(
+                        age_confirmed_18_plus=False,
+                        created_at=moment,
+                        updated_at=moment,
+                        age_gate_refused_at=moment,
+                    ),
+                )
             if inspect:
                 for panel_line in inspect_panel(result):
                     console.say(panel_line)

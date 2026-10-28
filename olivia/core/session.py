@@ -300,8 +300,9 @@ which):
   everyone (CN 12355 first, then 12356): first a gentle note that this place is for
   adults and a trusted adult, then on every later turn a shorter one with how to leave;
   no practice and no chat, a goodbye stays a goodbye, and the stage holds. Crisis and D3
-  cards then carry the minors' lines too. The profile is never written; whether to record
-  the age is for the caller to ask the user.
+  cards then carry the minors' lines too. The session never writes the profile; since
+  round 4 it asks whether to record "under 18" and the caller writes the record after a
+  yes (see round 4 below).
 * 6, someone else's risk: when the message reports a third person's words
   (``SafetyScreen.reported_risk``) and every rule cue lies inside them, and they carry risk
   by the rules (their own rule level L1 or above or a D3 cue, or a time and a means,
@@ -349,6 +350,36 @@ Session flows, round 3 (re-test 2026-10-27, r1/r2/r4; new wording 草稿：待 G
   hours, language, real, more) get fixed true lines; a place the user is in that is not
   the profile's gets that region's card, or the general card for a place without verified
   numbers. ``/help``, ``/帮助`` and ``/?`` list the chat commands (``crisis.chat_help``).
+
+Session flows, round 4 (re-test 2026-10-28, q2; new wording 草稿：待 G-0):
+
+* In a crisis the L1 escalation does not apply (``tracker.py``, SDD §8.2): after a
+  confirmation an L1 turn only pauses the exit count.
+* Someone else's risk in more forms (``reported.py``: 跟我说 opening a later clause, quoted
+  words, words after a colon, a reflexive 自己, a strong farewell or a weak one posted with
+  a place or a means, a death word with a time); a follow-up that asks how to start the
+  talk or says the other person is fine gets ``crisis.third_party_how_to_ask`` /
+  ``third_party_says_fine``; 我也 with a worried word is no joining in. A model-only alarm
+  on a message that reports someone's words, with no rule cue in them or in the user's own,
+  asks the question (whatever the score) and never enters the crisis flow on its own.
+* Confirmations: an English safe clause, a promise to be well tonight, having come down
+  from a roof (``tracker.py``).
+* In the crisis flow, a question about when a number on the card answers lists the hours
+  from the signed hotline data (``crisis.hotline_hours_from_data``); a counselling centre at
+  school or university, in English too, gets ``crisis.help_seeking_school``.
+* Minors (PRD ruling 22): the first minors' reply ends with ``crisis.minor_confirm``; a yes
+  on the next turn makes :meth:`Session.take_minor_record` true once, and the CLI writes
+  the under-18 record as the first visit does (no age, no words); anything else keeps it to
+  this session. ``inspect["minor_record"]`` is ``confirmed`` or ``session_only`` on that
+  turn.
+* Hotlines: "是真的吗，别骗我", "官方的吗" and Cantonese questions are follow-ups; for the
+  region "other" no reply calls its numbers the user's region's, and a named country with
+  official emergency numbers in ``crisis.local_emergency`` gets them as a last line.
+  ``/commands`` lists the chat commands too.
+* SUDS (PRD COLBO-07, SDD §4.4): while a card waits, a 0-10 rating as the whole message
+  sets the turn's arousal to SUDS / 10 (``inspect["suds"]``), so the arousal retreat and
+  the stabilization whitelist apply; the reply leads with ``crisis.suds_heard`` (read as
+  "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``.
 
 Care greeting (PRD §9, step A3): ``care_greeting`` renders the opening check-in for a
 session that follows a crisis (or a no to the D3 question) in an earlier one; the CLI
@@ -607,6 +638,10 @@ _AFTER_LOSS_NO_LENS: Final = frozenset({"06", "07"})
 _THIRD_PARTY_WINDOW: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
+# Round 4 (SDD §4.4): Arousal = SUDS / 10.
+_SUDS_SCALE: Final = 10
+# Round 4: ``ReportedRisk.farewell`` of a farewell that opens the card alone ("永别了").
+_STRONG_FAREWELL: Final = 2
 
 
 class FeedbackSource(StrEnum):
@@ -821,6 +856,10 @@ class Session:
         # when the last line of care after a crisis was added (第 11 条).
         self._minor = False
         self._minor_told = False
+        # Round 4 (ruling 22): the first minors' reply asked whether to record "under 18"
+        # (the next turn is the answer); a yes leaves the record due for the caller.
+        self._minor_asking = False
+        self._minor_record_due = False
         self._crisis_seen: CrisisLevel | None = None
         self._third_party_turn: int | None = None
         # Round 3: the last report of someone else's risk was urgent (its follow-ups keep
@@ -828,6 +867,9 @@ class Session:
         self._third_party_urgent = False
         self._resources_turn: int | None = None
         self._care_turn: int | None = None
+        # Round 4: this turn reports someone else's words and every rule cue lies in them
+        # (set by ``_reported_risk``; a model-only alarm on it asks, never the crisis flow).
+        self._reported_words = False
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
         self._gentle_care = False
         # This session opened with the A3 check-in greeting (``care_greeting``).
@@ -961,9 +1003,18 @@ class Session:
     def minor_disclosed(self) -> bool:
         """The user said in this session that they are under 18 (问题单第 5 条): from then
         on every reply outside the crisis flow is resources and a goodbye. Kept in memory
-        only; the session never changes the profile, and a caller that wants to record an
-        age must first ask the user to confirm it."""
+        only; the session never changes the profile. Round 4: it asks the user to confirm,
+        and :meth:`take_minor_record` tells the caller when to write the record."""
         return self._minor
+
+    def take_minor_record(self) -> bool:
+        """Whether the user has just confirmed being under 18 (round 4, PRD ruling 22: "阻止
+        再次进入"). True once, on the turn of the yes: the caller then writes the under-18
+        record as the first visit does (no age, no words), so a later ``olivia chat`` shows
+        the refusal. Without a yes nothing is recorded; this session stays as it is."""
+        due = self._minor_record_due
+        self._minor_record_due = False
+        return due
 
     @property
     def safety_plan_suggested(self) -> bool:
@@ -1003,6 +1054,7 @@ class Session:
         model_level, model_score = self._risk.take_turn()
         # What the screen said, for ``inspect`` and the reported level of a question turn.
         screened = assessment
+        self._reported_words = False
         # 问题单第 6 条: someone else's risk, reported by the user. The user is not put into
         # the crisis flow for it (nor asked the D3 question); the reply is the region's card
         # to pass on, with the emergency numbers first when the words carry a plan.
@@ -1033,6 +1085,13 @@ class Session:
         if status.in_crisis:
             entry = max(CrisisLevel.L2, status.entry_level or CrisisLevel.L2)
             self._crisis_seen = max(entry, self._crisis_seen or entry)
+        # Round 4: the turn after the question about recording the age is its answer: a yes
+        # (or saying the age again) confirms; anything else keeps it to this session.
+        minor_answer: bool | None = None
+        if self._minor_asking and not status.in_crisis:
+            self._minor_asking = False
+            minor_answer = signals.answer is Answer.AFFIRM or signals.minor_disclosure
+            self._minor_record_due = minor_answer
         if signals.minor_disclosure:
             self._minor = True
         # The tracker heard an explicit safety confirmation on this crisis turn.
@@ -1052,6 +1111,25 @@ class Session:
             self._plan_shown_in_crisis = False
         if self._heads is not None:
             perception = self._heads.refine(text, perception)
+        # Round 4 (PRD COLBO-07, SDD §4.4): every card ends by asking for a 0-10 distress
+        # rating; while one waits, a number that is the whole message is that rating and
+        # sets the turn's arousal (Arousal = SUDS / 10), so the state machine's arousal
+        # retreat and the stabilization whitelist apply as for any other arousal.
+        suds = (
+            signals.suds
+            if self._pending is not None
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L2
+            else None
+        )
+        if suds is not None:
+            arousal = suds / _SUDS_SCALE
+            perception = replace(
+                perception,
+                arousal=arousal,
+                somatic_stabilization_eligible=arousal >= self._somatic,
+            )
+            signals = replace(signals, feedback_unclear=False)
         flags = self._red_flags.observe(text)
         self._text_flags |= self._shared.detector.detect(text)
         self._context = self._contra.observe(signals, perception, status, flags)
@@ -1190,6 +1268,8 @@ class Session:
                 or signals.advice_request
                 or signals.third_party_unreachable
                 or signals.third_party_question
+                or signals.third_party_how_to_ask
+                or signals.third_party_says_fine
             )
         )
         third_now = open_turn and not minor_now and (reported is not None or third_follow)
@@ -1404,7 +1484,7 @@ class Session:
         elif help_now:
             rendered = self._followup((self._engine.data.render.chat_help,), stage)
         elif minor_now and not leaving:
-            rendered = self._minor_reply(stage, now)
+            rendered = self._minor_reply(stage, now, minor_answer)
         elif third_now:
             rendered = self._third_party_reply(stage, now, reported, signals)
             self._third_party_turn = turn_no
@@ -1511,7 +1591,13 @@ class Session:
             )
             and not transition.state.pure_listening_locked
             and feedback is None
-            and not (pending is not None and pending.stage is HelpStage.S_EXPLORE)
+            # Round 4: a distress rating at the somatic line after an S_explore card gets
+            # the stabilization whitelist again, not a mirror of the number.
+            and not (
+                pending is not None
+                and pending.stage is HelpStage.S_EXPLORE
+                and not (suds is not None and perception.arousal >= self._somatic)
+            )
         ):
             rendered = self._offer(stage, perception, flags, spectrum, mirror_text, now)
         elif mirror_schema is not None:
@@ -1544,6 +1630,14 @@ class Session:
             self._add_line(rendered, templates.unhelpful_ack, stage, first=True)
         if switch and rendered.kind is ReplyKind.CARD:
             self._add_line(rendered, templates.card_switched, stage, first=True)
+        if suds is not None and stage is not HelpStage.S_CRISIS and not resources:
+            # Round 4: the rating is heard, read as "higher is worse" (the mood score at the
+            # start and end of a chat runs the other way); at the somatic line, first steady.
+            render = self._engine.data.render
+            high = suds / _SUDS_SCALE >= self._somatic
+            pool = render.suds_high if high else render.suds_heard
+            if pool:
+                self._add_line(rendered, pool, stage, first=True)
         if masked and stage is not HelpStage.S_CRISIS and not resources:
             # Not the diagnosis, only that the body needs care (dogfood I2, 草稿：待 G-0).
             self._add_line(rendered, self._notice("masked_practice"), stage, first=True)
@@ -1670,6 +1764,10 @@ class Session:
             extra["safety_plan_reminded"] = True
         if reached_out:
             extra["reach_out"] = True
+        if suds is not None:
+            extra["suds"] = suds
+        if minor_answer is not None:
+            extra["minor_record"] = "confirmed" if minor_answer else "session_only"
         inspect: dict[str, object] = {
             "turn": transition.state.global_turn_count,
             "level": level.name,
@@ -1903,12 +2001,21 @@ class Session:
         ``brief_heard`` line for anything else. Only for a turn with no rule risk cue (the
         callers check); None when the gate or a taboo topic rules it out."""
         render = self._engine.data.render
-        if signals.hotline_words and _asks(text):
-            note = self._hotline_note(signals)
+        named = self._named_numbers(text)
+        if (signals.hotline_words or named) and _asks(text):
+            # Round 4 (re-test q2 n03): "12356 晚上几点还有人接？" names a number on the card.
+            note = None
+            if signals.hotline_hours:
+                note = self._hours_note(named)
+            if note is None:
+                note = self._hotline_note(signals)
             if note is not None and not self._has_taboo(note, ""):
                 return note
         if signals.help_seeking and render.help_seeking:
-            line = self._plain_line(render.help_seeking, stage)
+            # Round 4 (re-test q2 n01, n08): school or university, in English too.
+            school = signals.help_seeking_school and bool(render.help_seeking_school)
+            pool = render.help_seeking_school if school else render.help_seeking
+            line = self._plain_line(pool, stage)
             return None if line is None or self._has_taboo(line[0], "") else line[0]
         kind = utterance_kind(text)
         if kind is Utterance.QUESTION or kind is Utterance.REQUEST:
@@ -2039,6 +2146,13 @@ class Session:
             return False
         first = not self._model_asked
         self._model_asked = True
+        if self._reported_words:
+            # Round 4 (re-test q2 第 1 节): the message reports someone else's words, the
+            # rules find nothing in them or in the user's own, and the model's alarm is
+            # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
+            # so the user is asked, whatever the score and however often, never put into
+            # the crisis flow on the model's word alone ("我妈留言：累了就回家……").
+            return True
         return first and self._shared.lexicons.model_ask.asks_first(model_score)
 
     def _model_pause(
@@ -2194,13 +2308,26 @@ class Session:
         self._risk.take_turn()
         if found is None or not found.user_clear:
             return None
+        # Round 4: the message reports someone else's words and every rule cue lies in them.
+        self._reported_words = True
         if found.rule_risk or found.plan:
             # Round 3: the model's own L3 class for the words alone (a plan) opens the card
             # too ("说他今晚就吃药走了"), as it put the user into the crisis flow before.
             return found
         _, probe = self._shared.stub.perceive(text, assessment)
         near = probe.imminent_time or probe.imminent_means
-        return found if probe.imminent or (found.anchor and near) else None
+        place = probe.imminent_means or probe.imminent_context
+        if (
+            probe.imminent
+            or (found.anchor and near)
+            or found.farewell >= _STRONG_FAREWELL
+            or (found.farewell and place)
+        ):
+            # Round 4: a death word next to a time or a means even when the rules miss the
+            # words ("下周一考完试她就去死"), a strong farewell, or a weak one posted with a
+            # place or a means ("大家再见了，谢谢你们" with a picture of a roof).
+            return found
+        return None
 
     def _for_someone_else(self, assessment: CrisisAssessment) -> CrisisAssessment:
         """The turn's assessment when its risk words are someone else's (第 6 条): at most
@@ -2263,7 +2390,9 @@ class Session:
     def _pick(self, variants: tuple[str, ...]) -> str:
         return self._engine.pick_line(variants, self._plain_slots().values())
 
-    def _minor_reply(self, stage: HelpStage, now: datetime) -> _Rendered:
+    def _minor_reply(
+        self, stage: HelpStage, now: datetime, answer: bool | None = None
+    ) -> _Rendered:
         """After the user said they are under 18 (问题单第 5 条, 2026-10-26, draft, G-0): the
         first time, that this place is for adults, a trusted adult and the region's lines
         for young people or everyone (CN 12355 first); every later reply, resources and how
@@ -2289,13 +2418,22 @@ class Session:
                 emergency_leads=True,
                 stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
             )
+        tail: list[str] = []
         if self._minor_told:
             lead = [self._pick(render.minor_again)]
+            # Round 4 (ruling 22): the answer to whether to record the age, said first.
+            said = render.minor_recorded if answer else render.minor_session_only
+            if answer is not None and said:
+                lead.insert(0, said)
         else:
             lead = [self._pick(render.minor), render.minor_trusted_adult]
             self._minor_told = True
+            if render.minor_confirm:
+                # Round 4 (ruling 22): ask gently whether to record it, after the numbers.
+                tail = [render.minor_confirm]
+                self._minor_asking = True
         self._pending = None
-        return self._resource_reply(card, lead, stage)
+        return self._resource_reply(card, lead, stage, tail=tail)
 
     def _third_party_reply(
         self,
@@ -2324,7 +2462,7 @@ class Session:
         pool = render.third_party_secret if signals.keep_secret else render.third_party_support
         if reported is not None:
             near = signals.imminent_time or signals.imminent_means or signals.imminent_context
-            risky = reported.rule_risk or reported.anchor
+            risky = reported.rule_risk or reported.anchor or reported.farewell > 0
             urgent = reported.plan or signals.imminent or (risky and near)
             self._third_party_urgent = urgent or (
                 self._third_party_turn is not None and self._third_party_urgent
@@ -2335,13 +2473,22 @@ class Session:
                 tail.append(self._pick(render.third_party_self_care))
         else:
             urgent = self._third_party_urgent or signals.third_party_unreachable
+            # Round 4 (re-test q2 第 1 节): how to ask and "he says he is fine" get their
+            # own concrete lines; an urgent report keeps what to do in an emergency first.
+            asking = signals.third_party_how_to_ask or signals.advice_request
+            tail = []
             if signals.third_party_unreachable:
                 lead = [self._pick(render.third_party_unreachable)]
             elif urgent and not signals.keep_secret:
                 lead = [self._pick(render.third_party_urgent_steps)]
+                if asking and render.third_party_how_to_ask:
+                    tail = [self._pick(render.third_party_how_to_ask)]
+            elif asking and render.third_party_how_to_ask:
+                lead = [self._pick(render.third_party_how_to_ask)]
+            elif signals.third_party_says_fine and render.third_party_says_fine:
+                lead = [self._pick(render.third_party_says_fine)]
             else:
                 lead = [self._pick(pool)]
-            tail = []
         level = CrisisLevel.L3 if urgent else CrisisLevel.L2
         card = self._resource_card(level, now, mode=CardMode.CRISIS)
         return self._resource_reply(
@@ -2385,6 +2532,12 @@ class Session:
         else:
             card = self._resource_card(CrisisLevel.L2, now, mode=CardMode.BROWSING)
             head = render.hotline_request if signals.hotline_request else ()
+            if card.region_used == UNKNOWN_COUNTRY and (
+                signals.hotline_request or signals.hotline_place is not None
+            ):
+                # Round 4 (re-test q2 h06 / h10): the region is "other", so no number here
+                # is "your region's"; say so and point at findahelpline.com.
+                head = render.hotline_elsewhere
         notes = [
             self._pick(pool)
             for flag, pool in (
@@ -2399,8 +2552,76 @@ class Session:
             if flag and pool
         ]
         if head:
-            return self._resource_reply(card, [self._pick(head)], stage, tail=notes)
-        return self._resource_reply(card, notes, stage)
+            rendered = self._resource_reply(card, [self._pick(head)], stage, tail=notes)
+        else:
+            rendered = self._resource_reply(card, notes, stage)
+        local = self._local_emergency_line(signals, card)
+        if local is not None:
+            rendered.reply = f"{rendered.reply}\n\n{local}"
+        return rendered
+
+    def _region_card(self) -> ResourceCard:
+        """The profile region's BROWSING card (every line and emergency number)."""
+        return self._resource_card(CrisisLevel.L2, self._now(), mode=CardMode.BROWSING)
+
+    def _named_numbers(self, text: str) -> frozenset[str]:
+        """The numbers of the region's card the message names ("12356 晚上几点还有人接";
+        round 4), digits only."""
+        runs = {r for r in _DIGIT_RUNS.findall(normalize(text)) if len(r) >= _MIN_NUMBER_DIGITS}
+        if not runs:
+            return frozenset()
+        card = self._region_card()
+        numbers = {_digits(em.number) for em in card.emergency} | {
+            _digits(ln.number) for ln in card.lines
+        }
+        return frozenset(numbers & runs)
+
+    def _hours_note(self, named: frozenset[str]) -> str | None:
+        """When the region's lines answer, as the signed hotline data says (round 4, re-test
+        q2 n03): ``crisis.hotline_hours_from_data``, then "name number: hours" for the lines
+        the message names (every line when it names none), then the ``hotline_hours`` line
+        (call the emergency number at night). None when the gate blocks it."""
+        render = self._engine.data.render
+        card = self._region_card()
+        lines = [ln for ln in card.lines if ln.hours and (not named or _digits(ln.number) in named)]
+        if not lines or not render.hotline_hours_from_data or not render.hotline_hours:
+            return None
+        body = "\n".join(f"· {ln.name_zh} {ln.number}：{ln.hours}" for ln in lines)
+        text = f"{render.hotline_hours_from_data}\n{body}\n{self._pick(render.hotline_hours)}"
+        result = self._engine.gate.check(
+            text,
+            kind=ContentKind.CRISIS,
+            stage=HelpStage.S_CRISIS,
+            allowed_numbers=[ln.number for ln in lines],
+        )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text
+
+    def _local_emergency_line(self, signals: TurnSignals, card: ResourceCard) -> str | None:
+        """The official emergency numbers of the country the user says they are in, for a
+        place without verified hotlines here (round 4, re-test q2 h06 / h10): the general
+        card's 112 may not be the local number. None for a supported region, a country the
+        render data does not list, or when the gate blocks the line."""
+        render = self._engine.data.render
+        code = signals.hotline_country
+        if card.region_used != UNKNOWN_COUNTRY or code is None:
+            return None
+        local = render.local_emergency.get(code)
+        if local is None or not render.hotline_local_emergency_intro:
+            return None
+        text = f"{render.hotline_local_emergency_intro}{local}"
+        result = self._engine.gate.check(
+            text,
+            kind=ContentKind.CRISIS,
+            stage=HelpStage.S_CRISIS,
+            allowed_numbers=_DIGIT_RUNS.findall(local),
+        )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text
 
     def _hotline_note(self, signals: TurnSignals) -> str | None:
         """The first true line for a follow-up about the numbers on screen (round 3), for a
@@ -3384,19 +3605,34 @@ class Session:
 
 # Round 3 (re-test r3): the chat's help commands, as folded by ``normalize`` (NFKC maps
 # the full-width ／ and ？ to these).
-_HELP_COMMANDS: Final = frozenset({"/help", "/帮助", "/?"})
-# Round 3: a question ("12356收费吗", "能不能讲普通话", "is it free?").
-_QUESTION_END: Final = re.compile(r"(?:吗|呢|么|嘛|吧|\?|？)[\s.。!！~…]*$")
+_HELP_COMMANDS: Final = frozenset({"/help", "/帮助", "/?", "/commands", "/命令"})
+# Round 3: a question ("12356收费吗", "能不能讲普通话", "is it free?"). Round 4 (2026-10-28,
+# re-test q2 第 6 节): a question may end its own clause before more words ("这号码是真的吗，
+# 别骗我"), and Cantonese asks with 唔 between the two halves ("可唔可以讲普通话").
+_QUESTION_END: Final = re.compile(
+    r"(?:吗|呢|么|嘛|咩|\?|？)[\s.。!！~…]*(?:$|[,，;；])|吧[\s.。!！~…]*$"
+)
 _QUESTION_WORDS: Final = (
     "能不能", "可不可以", "是不是", "有没有", "会不会", "要不要", "有冇", "系唔系", "多少", "几点",
-    "什么时候", "怎么", "is it", "is there", "are there", "can i", "do they", "does it",
+    "什么时候", "怎么", "可唔可以", "得唔得", "会唔会", "使唔使", "係唔係", "是唔是", "有无",
+    "is it", "is there", "are there", "can i", "do they", "does it",
 )  # fmt: skip
 
 
 def _asks(text: str) -> bool:
-    """The message asks something (a question mark or particle, or a question word)."""
+    """The message asks something (a question mark or particle ending a clause, or a
+    question word)."""
     folded = text.strip().casefold()
     return _QUESTION_END.search(folded) is not None or any(w in folded for w in _QUESTION_WORDS)
+
+
+_DIGIT_RUNS: Final = re.compile(r"\d+")
+# Round 4: a named number has at least this many digits (3: 110, 120, 988, 999).
+_MIN_NUMBER_DIGITS: Final = 3
+
+
+def _digits(number: str) -> str:
+    return "".join(_DIGIT_RUNS.findall(number))
 
 
 def _hotline_followup(signals: TurnSignals) -> bool:

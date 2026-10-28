@@ -88,6 +88,8 @@ _PHRASE_SECTIONS: Final = (
     "hotline_real",
     "hotline_more",
     "hotline_words",
+    "help_seeking_school",
+    "third_party_how_to_ask",
 )
 _SECTIONS: Final = frozenset(
     {
@@ -115,6 +117,9 @@ _SECTIONS: Final = frozenset(
         "minor_disclosure_patterns",
         "contraindicated_practices",
         "hotline_places",
+        "local_emergency_places",
+        "third_party_says_fine_patterns",
+        "suds_patterns",
         *_PHRASE_SECTIONS,
     }
 )
@@ -277,6 +282,21 @@ class PerceptionLexicon:
     )
     """Region code -> place names where the user says they are (round 3); ``ZZ`` is a
     place without verified numbers here."""
+    help_seeking_school: tuple[str, ...] = ()
+    """With ``help_seeking``, the place is at school or university (round 4, 2026-10-28)."""
+    third_party_how_to_ask: tuple[str, ...] = ()
+    """After the card for someone else's risk: how to start the talk or what to say to the
+    other person ("我该怎么开口问他"; round 4)."""
+    third_party_says_fine_patterns: tuple[re.Pattern[str], ...] = ()
+    """After that card: the other person says they are fine ("他说他没事"; round 4)."""
+    local_emergency_places: Mapping[str, tuple[str, ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    """ISO country code -> place names of a country without verified hotlines here whose
+    official emergency numbers render.yaml lists (round 4)."""
+    suds_patterns: tuple[re.Pattern[str], ...] = ()
+    """A whole-message 0-10 distress rating (SUDS, PRD COLBO-07; round 4); group 1 is the
+    number."""
     """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
@@ -419,6 +439,15 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         hotline_more=phrases["hotline_more"],
         hotline_words=phrases["hotline_words"],
         hotline_places=MappingProxyType(_places(doc.get("hotline_places"))),
+        help_seeking_school=phrases["help_seeking_school"],
+        third_party_how_to_ask=phrases["third_party_how_to_ask"],
+        third_party_says_fine_patterns=_patterns(
+            doc.get("third_party_says_fine_patterns"), "third_party_says_fine_patterns"
+        ),
+        local_emergency_places=MappingProxyType(
+            _places(doc.get("local_emergency_places"), "local_emergency_places")
+        ),
+        suds_patterns=_patterns(doc.get("suds_patterns"), "suds_patterns"),
     )
 
 
@@ -591,15 +620,16 @@ def _therapy_names(tax: Taxonomy, node: Any) -> dict[str, tuple[str, ...]]:
     return ordered
 
 
-def _places(node: Any) -> dict[str, tuple[str, ...]]:
-    """``hotline_places``: a two-letter region code (upper case) -> place names."""
-    section = _mapping(node, "hotline_places")
+def _places(node: Any, where: str = "hotline_places") -> dict[str, tuple[str, ...]]:
+    """``hotline_places`` (or ``local_emergency_places``): a two-letter region code (upper
+    case) -> place names."""
+    section = _mapping(node, where)
     places: dict[str, tuple[str, ...]] = {}
     for key, raw in section.items():
         if not (isinstance(key, str) and len(key) == 2 and key.isascii() and key.isupper()):
-            raise PerceptionLexiconError(f"{_FILE}: hotline_places: {key!r} is not a region code")
-        places[key] = _phrases(raw, f"hotline_places.{key}")
-    _check_distinct(places, "hotline_places")
+            raise PerceptionLexiconError(f"{_FILE}: {where}: {key!r} is not a region code")
+        places[key] = _phrases(raw, f"{where}.{key}")
+    _check_distinct(places, where)
     return places
 
 

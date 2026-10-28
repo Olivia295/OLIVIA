@@ -66,6 +66,26 @@ def test_first_visit_talk_crisis_card_exit(run_cli, data_home):
     assert top_level == [CARE_FILENAME, PROFILE_FILENAME]
 
 
+def test_a_confirmed_minor_in_the_chat_leaves_the_refusal_record(run_cli, data_home):
+    # Round 4 (PRD ruling 22): after a yes, the same record as the first visit's refusal
+    # (no age, no words); the next launch is refused.
+    save_profile(data_home)
+    run = run_cli(["chat", "--rules"], ["我才十六，爸妈天天吵架", "是的", "/exit"])
+    assert run.code == 0
+    record = json.loads((data_home / PROFILE_FILENAME).read_text(encoding="utf-8"))
+    assert record["age_gate_refused_at"] is not None and record["region"] is None
+    assert "十六" not in json.dumps(record, ensure_ascii=False)
+    again = run_cli(["chat", "--rules"], ["你好"])
+    assert again.code == 1 and again.sessions == [] and "12355" in again.out
+
+
+def test_an_unconfirmed_minor_in_the_chat_records_nothing(run_cli, data_home):
+    saved = save_profile(data_home)
+    run = run_cli(["chat", "--rules"], ["我才十六，爸妈天天吵架", "不是", "/exit"])
+    assert run.code == 0
+    assert ProfileStore(data_home).load() == saved
+
+
 def test_returning_user_skips_onboarding(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["chat", "--rules"], ["今天上班好累"])
