@@ -31,6 +31,25 @@ Round 3 (2026-10-27, re-test r2 第 1 节):
   the rest of the message, screened on its own (``rest_screen``), is L0 with no ask cue and
   no unsure phrase occurs anywhere;
   ``IntentReading.negated`` then tells the session that the no carries the only cue.
+
+2026-10-28 (SDD retrace): a no is read only up to where a new statement starts, and what
+follows it must carry no risk. "我没有想自杀 今晚就把药全吃了" was a no: the first clause
+ran to the end (no punctuation, only a space) and the denial's own negation voided the
+plan after it. Now the first clause also ends at a space next to a Han character and
+before a time word, a plan word or a new 我 (``_SOFT_BREAK``); with ``rest_screen`` given,
+everything after that point is screened on its own and any risk cue there (L1 or above,
+an ask cue, plan evidence) makes the answer UNCLEAR, for a plain no and a negated intent
+alike.
+
+Re-test q2 (2026-10-28): a clear no said with an interjection, twice, in dialect or in
+English read as unclear and entered the crisis flow ("嗐，没有啦…我好着呢", "No no, nothing
+like that", "额，不是滴…憋屈", "不是不是，没有那种想法，就是想喘口气"). Now 嗐 / 哟 / 呦 are
+interjections too (哎哟 is dropped whole), 滴 is a particle (不是滴), a no repeated with
+spaces between ("no no") is the same no, and a repeated no is checked for unsure words as
+said once (不是不是 holds the unsure 不是不). After the no, "只不过" is "just" (not the
+unsure 不过) and 有点 / 有一点 before a feeling (有点烦, 有一点累) is a degree, not the
+hedge 有一点 (that stays unsure alone, before a particle or before 想 / 会 / 要). What
+follows is still screened: any risk cue there keeps the answer unclear.
 """
 
 from __future__ import annotations
@@ -49,17 +68,21 @@ from olivia.core.safety.normalize import fold_words
 # Clause ends after fold_words (NFKC already maps ，！？；： to , ! ? ; :).
 _CLAUSE_END: Final = re.compile(r"[,.!?;:。、~…\n\"“”]")
 _FILLERS: Final = "啊呃额哦噢喔诶欸哎"
-_PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢"
+_PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢滴喎"
 # Round 3: interjections, laughter and "what are you thinking" before the answer, each
 # optionally followed by punctuation or a space. Dropped from the front again and again.
 _INTERJECTION: Final = re.compile(
-    r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
+    r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀嗐哟呦唷]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
     r"你?想啥呢|你?想什么呢|你?在想啥|怎么可能|当然|肯定|"
     r"(?:lol|lmao|haha\w*|hah|ha|hmm+|um+|uh+|oh|ah|well|lmfao)\b)"
     r"[\s,.!?;:。、~…\"“”]*"
 )
 # A no said twice or more ("没有没有", "不是不是"; r2 u1b) is the same no.
 _REPEATED: Final = re.compile(r"(.+?)\1+")
+# After a no, "just" (只不过) and a degree before a feeling (有点烦) are no hedge
+# (re-test q2): only the unsure words they would otherwise hold are kept out.
+_JUST_BUT: Final = re.compile(r"只不过")
+_DEGREE: Final = re.compile(r"有一?点(?=[^\W想会要打准念吧呢啊了么嘛])")
 # A no that means yes.
 _SARCASM: Final = ("才怪", "就怪了")
 # Round 3: a first clause that negates an intent in the first person (我绝对没有想……). Only
@@ -70,6 +93,16 @@ _NEGATED_INTENT: Final = re.compile(
     r"(?:没有|没|不是)(?:在|有)?(?:想|想过|要|打算|准备|是想|是要)"
 )
 _NEGATED_VETOES: Final = ("活", "醒", "继续", "存在", "下去", "坚持", "撑")
+# 2026-10-28: where a new statement starts inside a first clause typed without punctuation
+# (fold_words keeps spaces): a space next to a Han character, or, after the first
+# character, a time, a plan word or a new 我. Only what follows is screened for risk, so a
+# break found too early makes the reading stricter, never looser.
+_HAN: Final = "\u3400-\u4dbf\u4e00-\u9fff"
+_SOFT_BREAK: Final = re.compile(
+    rf"\s(?=[{_HAN}])|(?<=[{_HAN}])\s|(?<=.)(?=今晚|今夜|今天|明天|明早|明晚|后天|这周|本周|周末|下周|"
+    r"下个月|月底|周[一二三四五六日天]|星期|礼拜|过两天|过几天|这几天|凌晨|半夜|一会儿|待会|等会|"
+    r"马上|现在|立刻|晚上|早上|一早|我|俺|打算|准备|决定|计划|已经|还是|干脆)"
+)
 
 
 class IntentAnswer(StrEnum):
@@ -113,14 +146,18 @@ def read_answer(
     sarcastic = any(word in folded for word in _SARCASM)
     living = any(word in clause for word in _NEGATED_VETOES)
     plain = clause.rstrip(_PARTICLES)
-    repeated = _REPEATED.fullmatch(plain)
+    # A no said twice, with or without spaces between ("没有没有", "no no").
+    repeated = _REPEATED.fullmatch(plain.replace(" ", ""))
     base = repeated.group(1) if repeated is not None else plain
-    denies = (
-        not sarcastic
-        and not living
-        and (base in answers.deny_whole or _starts(clause, answers.deny_start))
+    wholes = answers.deny_whole
+    whole_no = base in wholes or (
+        repeated is not None and base in {p.replace(" ", "") for p in wholes}
     )
-    unsure = any(_contains(folded, phrase) for phrase in answers.unsure)
+    denies = not sarcastic and not living and (whole_no or _starts(clause, answers.deny_start))
+    # Unsure words are looked for in the no as said once and in what follows it.
+    said = folded if repeated is None else f"{base}{clause[len(plain) :]},{rest}"
+    said = _DEGREE.sub("", _JUST_BUT.sub("只是", said))
+    unsure = any(_contains(said, phrase) for phrase in answers.unsure)
     negated = (
         not sarcastic
         and rest_screen is not None
@@ -130,15 +167,31 @@ def read_answer(
     if not denies and not negated:
         yes = _starts(clause, answers.affirm_start)
         return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
+    if rest_screen is not None:
+        following = _following(clause, rest)
+        if following and _risky(rest_screen(following)):
+            return IntentReading(IntentAnswer.UNCLEAR)
     calm = assessment.level is CrisisLevel.L0 and not assessment.asks_intent
     if calm and not unsure:
         return IntentReading(IntentAnswer.DENIED)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
     if negated and not unsure and not plan and rest_screen is not None:
-        after = rest_screen(rest) if rest.strip() else None
-        if after is None or (after.level is CrisisLevel.L0 and not after.asks_intent):
-            return IntentReading(IntentAnswer.DENIED, negated=True)
+        return IntentReading(IntentAnswer.DENIED, negated=True)
     return IntentReading(IntentAnswer.UNCLEAR)
+
+
+def _following(clause: str, rest: str) -> str:
+    """What follows the no: the first clause after its first soft break, then the rest."""
+    soft = _SOFT_BREAK.search(clause)
+    tail = clause[soft.end() :].strip() if soft is not None else ""
+    return ",".join(part for part in (tail, rest.strip()) if part)
+
+
+def _risky(screened: CrisisAssessment) -> bool:
+    """Any risk cue: L1 or above, an ask cue or plan evidence."""
+    return (
+        screened.level is not CrisisLevel.L0 or screened.asks_intent or screened.has_plan_evidence
+    )
 
 
 def _drop_interjections(folded: str) -> str:

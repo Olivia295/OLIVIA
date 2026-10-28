@@ -14,8 +14,11 @@ clause. Each is described on :class:`~olivia.core.safety.lexicon.Composition`.
 Round 3 (2026-10-27): an entry may need more than one context (``also``: a plan word, a
 time, a place, each within its own window across clauses and, unless marked negatable, not
 right after a negator), so a frame of three or four parts can be said in any order over
-several short clauses; with ``clause_negation`` a negator anywhere earlier in the clause
-voids the match (我不打算这周末去楼顶跳下去).
+several short clauses; with ``clause_negation`` a negator earlier in the clause voids the
+match (我不打算这周末去楼顶跳下去) when only the words of the denied plan (``negation_reach``:
+plan words, times, places, prepositions) stand between them. Any other word ends its reach
+(2026-10-28): in 我再也不想忍了我打算今晚从楼顶跳下去, typed with no punctuation, the 不
+belongs to 忍 and the plan after it stands.
 
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
 Aho-Corasick scan over every phrase of the section, then a bounded search per entry. An
@@ -26,7 +29,7 @@ in the message, not per phrase of the entry (F6a: the entries keep growing).
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable, Sequence, Set
+from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass
 from itertools import accumulate
 from typing import Final
@@ -294,15 +297,32 @@ class Composer:
                 *(group.phrases for group in entry.also),
             )
         self._matcher = PhraseMatcher({phrase: phrase for phrase in phrases})
+        # The reach phrases by first character, for the rare check of a far negator.
+        reach: dict[str, list[str]] = {}
+        for phrase in dict.fromkeys(rules.negation_reach):
+            reach.setdefault(phrase[0], []).append(phrase)
+        self._reach = {ch: tuple(sorted(ps, key=len, reverse=True)) for ch, ps in reach.items()}
         self._lists = _Lists.of(rules)
         self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
-        # Which entries a head phrase belongs to: a message only visits the entries whose
-        # heads occur in it (round 3: the entries keep growing, most messages hit none).
-        by_head: dict[str, list[int]] = {}
+        # Which part of which entry a phrase is: a message only visits the entries whose
+        # every required part occurs in it (round 3: the entries keep growing, most
+        # messages hit none; 2026-10-28: a head as common as 去 or 多少 visits its entry
+        # only when the tail, the context and each `also` group occur too). A part is a
+        # bit of the entry's mask: heads 1, tails 2, context 4, the k-th `also` group 8 << k.
+        by_part: dict[str, list[tuple[int, int]]] = {}
+        needed: list[int] = []
         for index, entry in enumerate(rules.entries):
-            for head in dict.fromkeys(entry.heads):
-                by_head.setdefault(head, []).append(index)
-        self._by_head = {head: tuple(indices) for head, indices in by_head.items()}
+            parts = [entry.heads, entry.tails, entry.context, *(g.phrases for g in entry.also)]
+            mask = 0
+            for bit, part in enumerate(parts):
+                if not part:
+                    continue
+                mask |= 1 << bit
+                for phrase in dict.fromkeys(part):
+                    by_part.setdefault(phrase, []).append((index, 1 << bit))
+            needed.append(mask)
+        self._by_part = {phrase: tuple(roles) for phrase, roles in by_part.items()}
+        self._needed = tuple(needed)
 
     def find(self, text: str) -> list[CompositionHit]:
         """The first accepted match of each entry that fires, in entry order."""
@@ -311,8 +331,13 @@ class Composer:
         found: dict[str, list[Match]] = {}
         for match in self._matcher.find_all(text):
             found.setdefault(match.key, []).append(match)
-        by_head = self._by_head
-        candidates = sorted({i for key in found for i in by_head.get(key, ())})
+        seen: dict[int, int] = {}
+        by_part = self._by_part
+        for key in found:
+            for index, bit in by_part.get(key, ()):
+                seen[index] = seen.get(index, 0) | bit
+        needed = self._needed
+        candidates = sorted(i for i, mask in seen.items() if mask == needed[i])
         if not candidates:
             return []
         facts = _Text(text, self._rules, self._lists, found)
@@ -387,9 +412,14 @@ class Composer:
         if own.blockers.any_inside(first.end, second.start):
             return False
         clause = facts.clause_start[first.start]
-        look = clause if entry.clause_negation else max(clause, first.start - rules.lookback)
+        look = max(clause, first.start - rules.lookback)
         if facts.negators.any_inside(look, first.start) or facts.negators.any_inside(
             first.end, second.start
+        ):
+            return False
+        if entry.clause_negation and any(
+            _covered(facts.text, negator.end, first.start, self._reach)
+            for negator in facts.negators.inside(clause, look)
         ):
             return False
         if entry.persons:
@@ -435,6 +465,23 @@ class Composer:
         if entry.trailing is not None:
             return _only(text, second.end, facts.clause_end[second.end], entry.trailing)
         return True
+
+
+def _covered(text: str, start: int, end: int, by_first: Mapping[str, tuple[str, ...]]) -> bool:
+    """Is ``text[start:end]`` made of reach phrases alone (any split), so that a negator
+    ending at ``start`` still denies what begins at ``end``? Phrases are indexed by their
+    first character; a gap of a few dozen characters costs a few dozen lookups."""
+    reachable = {start}
+    for i in range(start, end):
+        if i not in reachable:
+            continue
+        for phrase in by_first.get(text[i], ()):
+            j = i + len(phrase)
+            if j <= end and text.startswith(phrase, i):
+                if j == end:
+                    return True
+                reachable.add(j)
+    return start == end
 
 
 def _only(text: str, start: int, end: int, phrases: tuple[str, ...]) -> bool:

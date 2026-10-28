@@ -242,7 +242,10 @@ stage2:
                "sickofbeingalive", "can'tdothisanymore", "cantdothisanymore", "can'ttakeitanymore",
                "canttakeitanymore", "can'tgoonlikethis", "cantgoonlikethis", "can'tgoonanymore",
                "cantgoonanymore", "lifeispointless", "nopointinliving", "nopointtoliving",
-               "nothingtolivefor", "noreasontolive", "don'tseethepointinliving", "dontseethepointinliving"]
+               "nothingtolivefor", "noreasontolive", "don'tseethepointinliving", "dontseethepointinliving",
+               # PRD §9.1 names these as L1 (2026-10-28): 心力交瘁, 想躺平什么都不想管.
+               "心力交瘁", "身心俱疲", "什么都不想管", "什么也不想管", "啥都不想管", "啥也不想管",
+               "什么都不想理", "一切都不想管"]
   - id: L1_DISAPPEAR
     level: L1
     score: 0.45
@@ -387,7 +390,10 @@ intent_answers:
   deny_whole: ["不是", "没有", "不会", "没", "不", "不不", "不不不", "没呢", "才不是", "当然不是",
                "并不是", "并没有", "当然没有", "当然不会", "绝对不是", "完全没有", "冇", "唔系", "唔会",
                "无", "no", "nope", "nah", "of course not", "not at all", "absolutely not",
-               "i'm not", "i am not", "i don't", "i do not", "definitely not"]
+               "i'm not", "i am not", "i don't", "i do not", "definitely not",
+               # Re-test q2 (2026-10-28): dialect and English noes.
+               "冇有", "冇嘢", "冇事", "nothing like that",
+               "nothing of the sort", "no way", "no not at all"]
   deny_start: ["不是那个意思", "不是这个意思", "没那个意思", "没有那个意思", "没有这个意思", "不是说",
                "我不是说", "我不是那个意思", "我没有那个意思", "你误会", "误会了", "想多了", "你想多了",
                "不是这样", "不是想", "没有想", "没想", "我不是想", "我没有想", "我没想", "我不会",
@@ -427,7 +433,8 @@ intent_answers:
 #     needs one of its phrases within `window` characters of the match, across clauses (no
 #     window: anywhere), and, unless `negatable: true`, not right after a negator (不打算).
 #     Several groups make a frame of a plan word, a time and a place said in any order.
-#     With `clause_negation: true` a negator anywhere earlier in the clause voids the match.
+#     With `clause_negation: true` a negator earlier in the clause voids the match too, when
+#     only `negation_reach` phrases (the words of the plan it denies) stand between them.
 #   An inline list may splice in a named list with `@name` ("@future_time"); named lists
 #   may do the same, in any order of definition.
 # Levels: L1 / L2 are rule-model cues, voided by the negation and hyperbole masks like the
@@ -455,6 +462,23 @@ compositions:
   # clause does not void a match (我买好炭了，不是烧烤用的; 不是为了烧烤; 并非为了治病).
   unless_negators: ["并非"]
   unless_negation_gap: 3
+  # How far a negator reaches for an entry with `clause_negation` (2026-10-28): across the
+  # words of the plan it denies, and no further. "我不打算这周末去楼顶跳下去" denies the jump
+  # (打算, 这周末, 去, 楼顶 are all here); in "我再也不想忍了我打算今晚从楼顶跳下去", typed
+  # with no punctuation, 忍 is not, so the 不 negates 忍 and the plan after it stands. A
+  # new subject (我) is never here: it starts a new statement. Anything missing here makes
+  # the rules more sensitive, never less.
+  negation_reach: ["@plan_words", "@plan_time", "@time", "@intent", "@jump_wish", "@jump_places",
+                   "@go_heights", "@heights", "去", "到", "从", "在", "上", "上面", "里", "边", "那边",
+                   "这边", "那里", "这里", "那儿", "这儿", "那", "这", "个", "座", "栋", "幢", "层", "楼",
+                   "的", "把", "将", "再", "也", "都", "还", "会", "能", "敢", "是", "有", "过", "想过",
+                   "真", "真的", "一定", "直接", "偷偷", "悄悄", "一个人", "自己", "往", "往下",
+                   "然后", "之后", "以后", "后", "前", "着", "那天", "那晚", "当天", "当晚", "号", "月",
+                   "日", "点", "半", "分", "一", "二", "两", "三", "四", "五", "六", "七", "八", "九",
+                   "十", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "随便", "轻易", "真要",
+                   "必", "绝", "绝对", "从来", "从没", "并", "可能", "应该", "药", "药片", "安眠药",
+                   "吃", "吞", "爬到", "爬上", "趁", "时候", "的时候",
+                   "大家", "睡着", "因为", "为了"]
   non_negators: ["忍不住", "受不了", "不得不", "不如", "要不", "不然", "不行", "不停", "不住",
                  "不知", "了不起", "不少", "说不定", "不管", "不了", "不禁", "不由", "舍不得",
                  "怪不得", "差不多", "不断", "不过", "没准", "没日没夜",
@@ -663,6 +687,26 @@ compositions:
     # Places to jump from or into: heights, edges, water. Bare 楼 / 桥 cover 二十楼, 那座桥.
     jump_places: ["@heights", "顶层", "天桥", "江边", "河边", "海边", "湖边", "江里", "河里", "海里", "湖里",
                   "水库", "大坝", "高架", "消防通道", "楼", "桥"]
+    # A place said before and pointed back to (2026-10-28): "…那层平时没人去，我打算明天从那里
+    # 跳下去". Only with 从, so 那里 alone (我打算明天去那里) is no place to jump from.
+    from_there: ["从那里", "从那儿", "从那边", "从这里", "从这儿", "从那个地方", "从这个地方", "从那上面",
+                 "从这上面", "从上面", "从那上头", "从那块", "从那座", "从那栋", "从那层"]
+    # Dose questions (2026-10-28, L2_DOSE_LETHAL): taking or a drug nearby, the forms of
+    # dying that are hyperbole or a machine, and pets, plants and devices.
+    dose_takes: ["吃", "喝", "吞", "服", "嗑", "磕", "注射", "打针", "药", "片", "颗", "粒", "安眠药", "农药",
+                 "敌敌畏", "百草枯", "剂量"]
+    dose_death_exceptions: ["死机", "死循环", "死锁", "撑死", "饿死", "晒死", "干死", "冻死", "热死", "累死",
+                            "笑死", "困死", "吓死", "烦死", "气死", "渴死", "死角", "死党", "死心", "死记",
+                            "死亡率", "死皮", "死期", "死线", "死档", "卡死", "死缠"]
+    dose_others: ["猫", "狗", "宠物", "鱼", "鸟", "兔", "乌龟", "花", "草", "植物", "多肉", "仙人掌",
+                  "绿萝", "树", "虫", "蟑螂", "蚊子", "细菌", "病毒", "手机", "电脑", "电池", "游戏", "角色",
+                  "葡萄", "巧克力", "洋葱"]
+    # A meeting, an argument, a number or a task that is pointless: no L1.
+    no_meaning_everyday: ["数据", "样本", "统计", "会议", "开会", "这个会", "讨论", "争论", "吵", "比较",
+                          "指标", "这道题", "这个词", "功能", "方案", "这个计划", "项目", "老板",
+                          "变量", "公式", "测试", "实验", "排名", "分数", "这种问题", "纠结这个"]
+    no_meaning: ["没有意义", "没意义", "毫无意义", "没什么意义", "没有任何意义", "没啥意义", "有什么意义",
+                 "有啥意义", "有何意义", "意义何在", "没有一点意义", "一点意义都没有", "一点意义也没有"]
     # Heights one goes up to with a plan and nothing else said (ASK_INTENT_GO_HEIGHT): not the
     # water edges, which are everyday outings (周末去海边).
     go_heights: ["天台", "楼顶", "顶楼", "顶层", "桥", "阳台", "窗台", "悬崖", "崖边", "屋顶", "高楼"]
@@ -1526,11 +1570,14 @@ compositions:
     # 算, 没决定). Like S1_PLAN_JUMP_HEIGHT and S1_TIME_ACT, a jump from a height that is
     # planned or timed is L3. Someone else (男主, 角色, 他), sport and diving, animals,
     # stories, games, role-play, dreams and outings void it nearby.
+    # 2026-10-28: a place named only by "from there" (从那里, 从那儿) counts too, so a place
+    # said in an earlier clause that no list holds (公司消防通道那层…，我打算明天从那里跳下去)
+    # still makes the plan.
     - id: S1_JUMP_PLANNED
       level: L3
       clause_negation: true
       heads: jump_acts
-      context: jump_places
+      context: ["@jump_places", "@from_there"]
       context_window: 16
       also:
         - {phrases: ["@plan_words", "@plan_time"], window: 24}
@@ -1543,7 +1590,7 @@ compositions:
       level: L2
       clause_negation: true
       heads: jump_acts
-      context: jump_places
+      context: ["@jump_places", "@from_there"]
       context_window: 16
       also:
         - {phrases: jump_wish, window: 24}
@@ -2162,6 +2209,116 @@ compositions:
                 "ifidie", "wheni'mdead", "wheni die", "ifiendedit", "ifiwasnotaround"]
       context_window: 24
       persons: false
+    #
+    # -- 2026-10-28: plans with a place no list holds, dose questions, PRD §9.1 L1 wording --
+    # Going somewhere at a set time to end one's life (明天去隧道里了结自己, 周末去山上结束自己):
+    # a time, a movement to a place and an act in one clause are the plan of PRD §9.1 L3
+    # (时间, 地点), whatever the place is called; S1_TIME_ACT holds the bare form (今晚烧炭).
+    # A wish, a report or a how-question in the gap, stories and news, and the ideation and
+    # news forms of the act (自杀的念头, 自杀了) void it, as for S1_TIME_ACT.
+    - id: S1_TIME_GO_ACT
+      level: L3
+      clause_negation: true
+      heads: ["去", "到", "跑去", "跑到", "找个", "找一个"]
+      tails: timed_acts
+      max_gap: 10
+      also:
+        - {phrases: plan_time, window: 8}
+      exceptions: timed_act_exceptions
+      blockers: ["想", "梦", "说", "看", "听", "聊", "写", "读", "查", "新闻", "报道", "有人", "知道",
+                 "了解", "研究", "讨论", "怎么", "怎样", "如何", "关于", "演", "拍", "开会"]
+      unless: ["@fiction", "新闻", "报道", "电影", "剧", "预防", "热线", "干预", "讲座", "培训", "课"]
+      unless_window: 16
+      unless_across: true
+    # Doing it (动手) at a set time, the clause ending there, in a message that speaks of
+    # ending one's life: "我这几天一直在想自杀的事，周末可能就动手". A time and the act itself,
+    # so the plan of PRD §9.1 L3. Only the plain words for ending a life count as the
+    # context (not 要死 / 想死, which are hyperbole too: 烦得要死，周末就动手); a chore, a
+    # fight or a project nearby voids it.
+    - id: S1_TIME_DO_IT
+      level: L3
+      clause_negation: true
+      heads: ["动手", "行动", "实施"]
+      leading: ["我", "就", "可能", "也许", "大概", "应该", "会", "要", "打算", "准备", "决定", "那就",
+                "然后", "直接", "@plan_time"]
+      trailing: ["@particles", "吧", "了吧"]
+      also:
+        - {phrases: plan_time, window: 8}
+      context: ["自杀", "轻生", "寻死", "自尽", "结束自己", "结束生命", "结束我的生命", "了结自己",
+                "了断自己", "一了百了", "离开这个世界", "遗书", "不想活", "活不下去", "割腕", "上吊",
+                "跳楼", "烧炭", "安眠药"]
+      unless: ["装修", "打扫", "收拾", "做饭", "搬家", "打架", "揍", "打他", "打人", "项目", "工作",
+               "论文", "作业", "减肥", "健身", "改", "写", "做", "修", "种", "剪"]
+      unless_window: 12
+    # Asking how much of a drug or a poison kills (PRD §9.1 and R-MS: asking for a method is
+    # at least L2): a quantity question, then dying, with taking or a drug nearby (吃几片安
+    # 眠药能死, 吃多少安眠药会死, 喝多少农药会没命). The forms of dying that are hyperbole or a
+    # machine (撑死, 饿死, 笑死, 死机) are exceptions; pets, plants and devices void it (猫吃几
+    # 颗葡萄会死吗, 绿萝几天不浇水会干死). persons is off: the pretext does not matter (R-MS).
+    - id: L2_DOSE_LETHAL
+      level: L2
+      heads: ["几片", "多少片", "几颗", "多少颗", "几粒", "多少粒", "几瓶", "多少瓶", "几盒", "多少盒",
+              "几板", "多少板", "几克", "多少克", "几毫克", "多少毫克", "几毫升", "多少毫升", "多少剂量",
+              "多大剂量", "多少量", "多大量", "多少", "几包", "多少包", "几支", "多少支", "几口", "多少口"]
+      tails: ["死", "致死", "没命", "丧命", "送命", "毙命", "死人"]
+      max_gap: 10
+      context: dose_takes
+      context_window: 12
+      exceptions: dose_death_exceptions
+      persons: false
+      unless: dose_others
+      unless_window: 16
+      unless_across: true
+    # Whether a whole stock would kill (一下吃一整瓶会不会死, 安眠药全吃了会死吗): the same
+    # question asked yes-or-no about all of it; a drug or a poison must be named or counted
+    # nearby, and a child's or a pet's accident voids it.
+    - id: L2_DOSE_LETHAL_ALL
+      level: L2
+      heads: ["一整瓶", "整瓶", "一瓶", "一整盒", "整盒", "一盒", "一整板", "一板", "一把", "几十片",
+              "几十颗", "几十粒", "上百片", "一百片", "全部", "全吃", "都吃了", "一次吃完", "一起吃", "全吞",
+              "都吞了", "一次性吃"]
+      tails: ["会不会死", "能不能死", "会死吗", "能死吗", "会死么", "能死么", "死得了吗", "死得掉吗",
+              "会不会致死", "能致死吗", "会致死吗", "会没命吗", "会不会没命", "能不能致死", "可以死吗",
+              "能死掉吗", "会死掉吗"]
+      max_gap: 10
+      context: ["药", "药片", "药丸", "安眠药", "农药", "敌敌畏", "百草枯", "片", "颗", "粒"]
+      context_window: 12
+      persons: false
+      unless: ["@dose_others", "误吃", "误服", "不小心", "吃错", "偷吃"]
+      unless_window: 16
+      unless_across: true
+    # PRD §9.1 L1 names "没有意义" (with 活着好累, 心力交瘁, 想躺平什么都不想管; the last two
+    # are L1_WEARY phrases): meaninglessness of one's life, one's doing or everything, not of
+    # a meeting, an argument or a number (这个会开得没有意义, 统计上没有意义).
+    - id: L1_NO_MEANING
+      level: L1
+      heads: no_meaning
+      context: ["一切", "什么都", "做什么", "干什么", "所有的", "所有事", "活着", "活下去", "人生", "生活",
+                "生命", "存在", "我这样", "这样活", "我做的", "我所做", "努力", "坚持", "每一天", "每天",
+                "日子", "未来", "我留下", "留下来", "我还", "我活", "我自己", "我的一生", "这辈子"]
+      context_window: 10
+      unless: no_meaning_everyday
+      unless_window: 16
+      unless_across: true
+    # The same said as a clause of its own (没有意义，真的; 感觉没有意义).
+    - id: L1_NO_MEANING_ALONE
+      level: L1
+      heads: no_meaning
+      leading: ["感觉", "觉得", "真的", "好像", "都", "我", "一切都", "就是", "好", "太", "真", "实在",
+                "我觉得", "我感觉", "总觉得", "总感觉", "越来越", "真心", "全都", "都是", "已经", "早就",
+                "根本", "完全", "也"]
+      trailing: ["@particles", "了"]
+      unless: no_meaning_everyday
+      unless_window: 16
+      unless_across: true
+    # Lying flat with nothing to care about any more (想躺平什么都不想做): the L1 weariness of
+    # PRD §9.1 "想躺平什么都不想管" said with another verb. 躺平 alone is a lazy weekend.
+    - id: L1_LIE_FLAT_ALL
+      level: L1
+      heads: ["躺平", "摆烂"]
+      context: ["什么都不想", "什么也不想", "啥都不想", "啥也不想", "一切都不想", "什么都不管",
+                "什么也不管", "啥都不管"]
+      context_window: 8
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]

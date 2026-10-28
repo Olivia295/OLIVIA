@@ -48,6 +48,9 @@ SAME_IN_TRADITIONAL = frozenset(
     # Round 3 (2026-10-27): plan, farewell and passive-ideation frames, slang (噶, 嚟) and
     # their everyday exceptions (蟑螂, 蚊子, 魔兽世界 ...).
     "元典各商噶嚟孝季寒建彩忘扮投按支敬暑架植泡渴湖漫牌甜祝租童美而胞舞苟蚊螂蟑迷集零首魔鼠桌梯椅沙器官捐稿"
+    # 2026-10-28: dose questions and their pets and plants (仙人掌, 葡萄, 兔), PRD L1 wording
+    # (心力交瘁, 身心俱疲, 努力), and the chores and fights that void 动手 (揍, 循环).
+    "仙俱兔努嗑射巧循掌揍洋疲瘁皮菌萄葡指"
 )
 
 
