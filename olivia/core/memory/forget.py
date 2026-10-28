@@ -55,8 +55,9 @@ left).
 Every deletion (and an edit) first shows what it removes and asks for the typed
 confirmation word, 「确认」 or 「确定」, unless ``assume_yes``; anything else or the end of
 input cancels and says so. A number given on the command line (``--entry``, ``--method``,
-``--edit``) that names nothing is a wrong value, exit 2 (README "退出码"); one typed at a
-prompt is exit 1. An age-gate refusal record (a declared minor, ruling 22) holds no
+``--edit``) that names nothing is a wrong value, exit 2 (README "退出码"), also when there
+is nothing of that kind at all (QA q4 P9); one typed at a prompt is exit 1. Cancelling is
+exit 0. An age-gate refusal record (a declared minor, ruling 22) holds no
 personal data and is kept, so forgetting never reopens onboarding there; ``--all``
 removes anything else and says in one line that this record stays and why. All wording
 is in ``olivia/data/templates/forget.yaml`` (G-0 draft). Nothing here logs.
@@ -725,10 +726,11 @@ class _Command:
                 self.say(self.f["locked"])
                 return 1
             entries = ()
-        if not entries:
-            self.say(self.f["nothing_entry"])
-            return 0
         bad_number = 2 if number is not None else 1
+        if not entries:
+            # A number on the command line names nothing here either (QA q4 P9).
+            self.say(self.f["nothing_entry"])
+            return 0 if number is None else bad_number
         if number is None:
             lines = [
                 line
@@ -764,10 +766,10 @@ class _Command:
         and the kit store re-sealed under a fresh key; the kit and the other methods stay.
         Numbers as ``olivia memory`` lists them; exit codes as :meth:`_entry`."""
         state, preferences = _preferences(self.stores, self.now)
-        if state is None or not preferences:
-            self.say(self.f["nothing_method"])
-            return 0
         bad_number = 2 if number is not None else 1
+        if state is None or not preferences:
+            self.say(self.f["nothing_method"])  # a number given names nothing (QA q4 P9)
+            return 0 if number is None else bad_number
         if number is None:
             number = self._pick(_preference_lines(preferences, self.text), self.f["pick_method"])
             if number is None:

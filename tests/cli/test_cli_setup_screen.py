@@ -8,6 +8,8 @@ to go on or to leave. The sentences are the QA report's own.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from cli_support import ONBOARD_CN, save_profile
 
@@ -95,6 +97,38 @@ def test_topic_words_are_saved_as_taboo_topics(run_cli, data_home):
     assert _saved().taboo_topics == ("自杀", "死亡", "前任")
     assert cli.SETUP_CHOICE not in run.out and cli.SETUP_CRISIS not in run.out
     assert run.out.index(cli.SETUP_TOPICS) < run.out.index("110")
+
+
+# QA q4: the numbers came with 2 of 11 such lists; "我妈的病，遗书" was refused (student 0.66).
+SENSITIVE_LISTS = [
+    "自杀",
+    "死亡",
+    "前任，自杀",
+    "考试、体重、自杀",
+    "跳楼",
+    "自残、轻生",
+    "失恋、自残",
+    "安乐死、葬礼",
+    "我妈的病，遗书",
+]
+
+
+@pytest.mark.parametrize("reply", SENSITIVE_LISTS)
+def test_sensitive_topic_words_always_come_with_the_numbers(run_cli, data_home, reply):
+    save_profile(data_home, taboo_topics=("考试",))
+    run = run_cli(["profile"], ["3", reply])
+    assert run.code == 0
+    assert _saved().taboo_topics == tuple(re.split(r"[，、]", reply))
+    assert cli.SETUP_CHOICE not in run.out and cli.SETUP_CRISIS not in run.out
+    assert run.out.index(cli.SETUP_TOPICS) < run.out.index("12356")
+
+
+def test_ordinary_topic_words_come_without_numbers(run_cli, data_home):
+    save_profile(data_home, taboo_topics=("考试",))
+    run = run_cli(["profile"], ["3", "前任、体重、加班"])
+    assert run.code == 0
+    assert _saved().taboo_topics == ("前任", "体重", "加班")
+    assert cli.SETUP_TOPICS not in run.out and "12356" not in run.out
 
 
 @pytest.mark.parametrize("reply", ["我想死", "我不想活了", "自杀，我今晚就去"])
@@ -208,10 +242,13 @@ def test_the_safety_plan_keeps_a_warning_sign_after_the_numbers(run_cli, data_ho
     entry is kept -- each time (QA r3: the second one used to come without numbers)."""
     save_profile(data_home)
     lines = ["我想死的念头又来了", GO_ON, "开始想死的时候", GO_ON, "", "", "", ""]
-    lines += ["把那盒安眠药交给室友保管", GO_ON, "我打算把攒的药都吞了", GO_ON, ""]
+    # QA q4 P3: putting the pills away is what section 5 asks for; only the student alarms
+    # on it, unsure (0.35), so it asks first and a yes keeps it without the card (owner
+    # decisions 2026-10-26/28).
+    lines += ["把那盒安眠药交给室友保管", "1", "我打算把攒的药都吞了", GO_ON, ""]
     run = run_cli(["safety-plan"], lines)
     assert run.code == 0
-    assert run.out.count(cli.SETUP_CRISIS) == run.out.count(cli.SETUP_CHOICE) == 4
+    assert run.out.count(cli.SETUP_CRISIS) == run.out.count(cli.SETUP_CHOICE) == 3
     kept = SP_CMD["crisis_kept"].replace("{title}", SP_TEXT.titles[Section.WARNING_SIGNS])
     assert run.out.index(cli.SETUP_CRISIS) < run.out.index("12356") < run.out.index(kept)
     plan = _plan()
@@ -393,6 +430,8 @@ TOPIC_WORDS = (
     "自残，割伤",
     "suicide",
     "遗书 葬礼",
+    "我妈的病，遗书",
+    "我家的狗",
 )
 SENTENCES = (
     "我想死",
@@ -410,7 +449,15 @@ SENTENCES = (
     "死了算了",
     "一了百了吧",
     "自杀了",
+    "我的遗书",
+    "我妈不在了我也不想活",
 )
+
+
+def test_sensitive_topics_names_death_and_harm_only():
+    assert all(setup_screen.sensitive_topics(t) for t in SENSITIVE_LISTS)
+    assert not setup_screen.sensitive_topics("考试、前任、体重")
+    assert not setup_screen.sensitive_topics("")
 
 
 def test_topic_words_only_tells_topics_from_sentences():

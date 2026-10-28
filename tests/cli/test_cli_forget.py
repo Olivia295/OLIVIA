@@ -530,7 +530,8 @@ def test_an_unknown_menu_choice_changes_nothing(run_cli, data_home):
 def test_nothing_to_forget_asks_nothing(run_cli, data_home, flag, nothing):
     save_profile(data_home)
     run = run_cli(["forget", flag], [])
-    assert run.code == 0 and run.lines == [F[nothing]]
+    # A number given on the command line names nothing: a wrong value (QA q4 P9).
+    assert run.code == (2 if flag.startswith("--entry") else 0) and run.lines == [F[nothing]]
     assert files_under(data_home) == [data_home / "profile.json"]
 
 
@@ -653,7 +654,9 @@ def test_a_method_number_that_does_not_exist_is_a_wrong_value(run_cli, data_home
 def test_no_method_preferences_to_reset(run_cli, data_home):
     save_profile(data_home)
     run = run_cli(["forget", "--method", "1"])
-    assert run.code == 0 and run.lines == [F["nothing_method"]]
+    assert run.code == 2 and run.lines == [F["nothing_method"]]  # QA q4 P9: README "退出码"
+    menu = run_cli(["forget"], ["3"])  # picked from the menu: nothing to do, not an error
+    assert menu.code == 0 and menu.lines[-1] == F["nothing_method"]
 
 
 # -- editing a note (PRD feature 5) -----------------------------------------------------------

@@ -22,17 +22,37 @@ structural, not a word list: every item must be short and carry no sign of a sen
 about the speaker -- no first-person word, no wanting or planning, no negation, no time,
 no sentence-final particle or punctuation. "我想死" or "不想活了" in the same place is
 still a crisis sentence and is never taken as a topic.
+
+QA q4 (2026-10-28):
+
+* The topic check comes before the alarm, so the screen (often the student alone, "我妈的病，
+  遗书" at 0.66) no longer decides about a list of topic words; a 我 that only says whose
+  ("我妈的病", "我家的狗") is no first-person word.
+* :func:`sensitive_topics`: a topic list that names death, suicide, self-harm or a means
+  ("自杀", "跳楼", "安乐死、葬礼") always brings the numbers with the gentle line (README:
+  "温和地附上求助电话"), not only when the screen happened to alarm on it. The list only
+  adds numbers, so it can only make the screen more cautious.
+* :meth:`SetupScreen.verdict` tells :attr:`Verdict.UNSURE` apart: an alarm that only the
+  student gives, with no rule cue and a crisis score below ``risk.yaml`` ``model_ask``'s
+  ``direct_from_score`` (0.6). In a chat that alarm asks first instead of entering the
+  crisis flow (owner decisions 2026-10-26 and 2026-10-28); the safety plan does the same
+  (the CLI asks once whether the user is safe now, and shows the numbers on anything but
+  a yes) instead of the crisis card for "把家里的酒都送人" or "去河边散散步" (0.45-0.51).
+  It is never silent: a real crisis sentence the student is unsure about is still asked
+  about. A rule cue, a model failure or a sure student still bring the numbers at once.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from enum import StrEnum
 from typing import Final
 
 from olivia.core.chang.onboarding import parse_taboo
 from olivia.core.models import CrisisLevel
-from olivia.core.safety.crisis import SafetyScreen
-from olivia.core.safety.lexicon import load_safety_lexicons
+from olivia.core.safety.crisis import MODEL_FAILURE, CrisisAssessment, SafetyScreen
+from olivia.core.safety.lexicon import ModelAskRules, load_safety_lexicons
 from olivia.core.taxonomy import Taxonomy
 
 ALARM_LEVEL: Final = CrisisLevel.L2
@@ -40,7 +60,18 @@ ALARM_LEVEL: Final = CrisisLevel.L2
 
 TOPIC_MAX_CHARS: Final = 10
 """A topic word longer than this is read as a sentence (the topic list allows 20)."""
-_SPEAKER: Final = re.compile(r"我|俺|咱|本人|自己|人家|(?i:\b(?:i|im|i'm|me|my|myself)\b)")
+_SPEAKER: Final = re.compile(
+    # 我 before a relative, a friend or 家 only says whose ("我妈的病", "我家的狗", QA q4).
+    r"我(?!们家|家|妈|爸|父|母|奶奶|爷爷|外公|外婆|姥姥|姥爷|哥|姐|弟|妹|老公|老婆|男朋友|女朋友|"
+    r"对象|孩子|儿子|女儿|朋友|同学|室友|闺蜜|同事)"
+    r"|俺|咱|本人|自己|人家|(?i:\b(?:i|im|i'm|me|my|myself)\b)"
+)
+_SENSITIVE: Final = re.compile(
+    # Death, suicide, self-harm and the means: a topic list naming one brings the numbers.
+    r"死|杀|自残|自伤|伤害自己|割腕|割伤|跳楼|跳河|跳江|跳海|跳桥|上吊|轻生|寻短见|自尽|遗书|遗言|"
+    r"葬|丧|安眠药|农药|烧炭|过量|"
+    r"(?i:suicid|kill|death|dead|die|self[- ]?harm|overdose|funeral)"
+)
 _SENTENCE: Final = re.compile(
     # wanting, planning, ability and obligation
     r"想|要|打算|准备|决定|计划|宁愿|宁可|希望|干脆|会|该|能|得去|"
@@ -70,6 +101,21 @@ def topic_words_only(reply: str) -> bool:
     )
 
 
+class Verdict(StrEnum):
+    """What the screen made of one setup reply (:meth:`SetupScreen.verdict`)."""
+
+    CLEAR = "clear"
+    UNSURE = "unsure"
+    """Only the student alarms, unsure, with no rule cue: the chat would ask first."""
+    ALARM = "alarm"
+
+
+def sensitive_topics(reply: str) -> bool:
+    """Whether a topic list names death, suicide, self-harm or a means (module docstring):
+    the numbers then come with it, whatever the screen says."""
+    return any(_SENSITIVE.search(topic) for topic in parse_taboo(reply) or ())
+
+
 class SetupScreen:
     """The crisis screen for setup replies; built on first use."""
 
@@ -79,20 +125,51 @@ class SetupScreen:
         self._tax = tax
         self._student = student
         self._screen = screen
+        self._take_turn: Callable[[], tuple[str | None, float | None]] = lambda: (None, None)
+        self._model_ask = ModelAskRules()
 
     def alarms(self, text: str) -> bool:
         """Whether ``text`` screens at L2 or above (a screen that fails counts as yes)."""
+        return self.verdict(text) is not Verdict.CLEAR
+
+    def verdict(self, text: str) -> Verdict:
+        """:attr:`Verdict.CLEAR` below L2; :attr:`Verdict.UNSURE` for an alarm only the
+        student gives, with no rule cue and a crisis score below ``model_ask``'s threshold
+        (module docstring); :attr:`Verdict.ALARM` otherwise, a failed screen included."""
         if not any(ch.isalpha() for ch in text):
-            return False
+            return Verdict.CLEAR
         try:
-            return self._built().assess(text).level >= ALARM_LEVEL
+            screen = self._built()
+            assessment = screen.assess(text)
+            model_level, model_score = self._take_turn()
+            if assessment.level < ALARM_LEVEL:
+                return Verdict.CLEAR
+            if self._unsure_model_only(assessment, model_level, model_score):
+                return Verdict.UNSURE
+            return Verdict.ALARM
         except Exception:  # noqa: BLE001 - never miss a crisis sentence for a failed screen
-            return True
+            return Verdict.ALARM
+
+    def _unsure_model_only(
+        self, assessment: CrisisAssessment, model_level: str | None, model_score: float | None
+    ) -> bool:
+        """The session's test for a model-only alarm that asks first (``session.py``
+        ``_model_only_alarm``): no rule cue, no model failure, a score under the line."""
+        return (
+            assessment.rule_clear
+            and MODEL_FAILURE not in assessment.cue_ids
+            and model_level in CrisisLevel.__members__
+            and model_score is not None
+            and self._model_ask.asks_first(model_score)
+        )
 
     def _built(self) -> SafetyScreen:
         if self._screen is None:
             from olivia.core.perception.student import choose_risk_model  # numpy: lazy
 
-            model = choose_risk_model(student=self._student).model
-            self._screen = SafetyScreen(self._tax, load_safety_lexicons(self._tax), model)
+            choice = choose_risk_model(student=self._student)
+            lexicons = load_safety_lexicons(self._tax)
+            self._screen = SafetyScreen(self._tax, lexicons, choice.model)
+            self._take_turn = choice.take_turn
+            self._model_ask = lexicons.model_ask
         return self._screen
