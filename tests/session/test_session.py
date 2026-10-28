@@ -713,7 +713,8 @@ def test_taboo_topic_is_recomposed_away():
 
 @BOTH_MODES
 def test_taboo_topic_in_the_users_own_words_is_allowed(rules_only):
-    result = _open(rules_only=rules_only, taboo_topics=("钱",)).turn("钱的事情让我压力很大")
+    # Round 4: not a "你感到 + whole sentence" mirror, which now names only the feeling.
+    result = _open(rules_only=rules_only, taboo_topics=("钱",)).turn("我最近一直在为钱的事情发愁")
     assert result.reply_kind is ReplyKind.NORMAL
     assert "钱" in result.reply
 

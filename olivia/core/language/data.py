@@ -538,6 +538,32 @@ class Utterances:
     substance_lines: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     """``SUBSTANCE_LINES`` -> the plain line put before the reply (withdrawal reminder, the
     answer to "is a small drink all right?")."""
+    components: RiskComponents | None = None
+    """Round 4: the kinds of risk component (means, preparation, time, an ending, ...) of
+    which two in one message keep it from being said back (``guarded.components``)."""
+    self_blame: tuple[str, ...] = ()
+    """Round 4: words of the user running themself down ("我真是个废物"), folded."""
+    self_blame_acks: tuple[str, ...] = ()
+    """The mirror slot for a message that runs the user down: never said back as if the
+    companion said it, and no "this matters to you" after it."""
+    addressed_acks: tuple[str, ...] = ()
+    """The mirror slot for a statement whose 你 is the companion ("我知道你不会同意"): the
+    mirror would turn it into 对方 and talk about someone else."""
+
+
+@dataclass(frozen=True)
+class RiskComponents:
+    """``utterances.yaml`` ``guarded.components`` (round 4; draft, G-0), folded.
+
+    A message holding phrases of at least ``min_kinds`` different ``kinds`` is not said
+    back. A ``soft_ending`` phrase ("休息", "晚安") is an ending only next to a ``lasting``
+    one ("永远的那种", "很长很长的那种"). A phrase inside an ``everyday`` word ("计划",
+    "心跳") does not count."""
+
+    min_kinds: int
+    kinds: Mapping[str, tuple[str, ...]]
+    soft_ending: tuple[str, ...] = ()
+    everyday: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -564,6 +590,13 @@ class SubstanceCues:
     quitting: tuple[str, ...] = ()
     desire: tuple[str, ...] = ()
     pleasure: tuple[str, ...] = ()
+    # Round 4 (draft, G-0).
+    non_negators: tuple[str, ...] = ()
+    """Words that hold a negator and negate nothing ("要不", "忍不住")."""
+    excuses: tuple[str, ...] = ()
+    """A reason found for a drink ("度数那么低", "不算破戒", "无醇"): no tacit yes either."""
+    again: tuple[str, ...] = ()
+    """Wanting the feeling once more ("再有一次"): a craving in the session's context."""
 
 
 def _no_feelings() -> Feelings:
@@ -1599,6 +1632,29 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         notices[name] = lines
     guarded_acks, affirmations, extra = _parse_guarded(data.get("guarded"), where)
     craving, said_lines = _parse_substance_lines(data.get("substance"), where)
+    guarded = data.get("guarded")
+    extras = _map(guarded, f"{where} guarded") if guarded is not None else {}
+    here = f"{where} guarded"
+    components = (
+        _parse_components(extras["components"], f"{here}.components")
+        if "components" in extras
+        else None
+    )
+    blame_cues: tuple[str, ...] = ()
+    blame_acks: tuple[str, ...] = ()
+    if "self_blame" in extras:
+        blame = _map(extras["self_blame"], f"{here}.self_blame")
+        _keys(blame, {"cues", "acks"}, f"{here}.self_blame")
+        blame_cues = _folded(blame["cues"], f"{here}.self_blame.cues")
+        blame_acks = _mirror_lines(blame["acks"], f"{here}.self_blame.acks")
+    addressed = (
+        _mirror_lines(extras["addressed_acks"], f"{here}.addressed_acks")
+        if "addressed_acks" in extras
+        else ()
+    )
+    for line in (*blame_acks, *addressed):
+        if any(a in line for a in affirmations):
+            raise LanguageDataError(f"{here}: {line!r} holds an affirmation")
     return Utterances(
         MappingProxyType(acks),
         MappingProxyType(bounds),
@@ -1609,6 +1665,38 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         extra_risk_words=extra,
         craving_acks=craving,
         substance_lines=MappingProxyType(said_lines),
+        components=components,
+        self_blame=blame_cues,
+        self_blame_acks=blame_acks,
+        addressed_acks=addressed,
+    )
+
+
+def _folded(node: Any, here: str) -> tuple[str, ...]:
+    """A list of phrases folded for matching (``safety/normalize.py``); none empty."""
+    words = _unique(tuple(normalize(w) for w in _strs(node, here)), here)
+    if any(not w for w in words):
+        raise LanguageDataError(f"{here}: an empty phrase")
+    return words
+
+
+# guarded.components (round 4): the kinds of risk component; two kinds in one message
+# keep it from being said back.
+COMPONENT_KINDS: Final = ("means", "preparation", "time", "ending", "lasting", "wish")
+
+
+def _parse_components(node: Any, here: str) -> RiskComponents:
+    item = _map(node, here)
+    _keys(item, {"min_kinds", *COMPONENT_KINDS, "soft_ending", "everyday"}, here)
+    min_kinds = _int(item["min_kinds"], f"{here}.min_kinds")
+    if not 1 < min_kinds <= len(COMPONENT_KINDS):
+        raise LanguageDataError(f"{here}.min_kinds: between 2 and {len(COMPONENT_KINDS)}")
+    kinds = {name: _folded(item[name], f"{here}.{name}") for name in COMPONENT_KINDS}
+    return RiskComponents(
+        min_kinds=min_kinds,
+        kinds=MappingProxyType(kinds),
+        soft_ending=_folded(item["soft_ending"], f"{here}.soft_ending"),
+        everyday=_folded(item["everyday"], f"{here}.everyday"),
     )
 
 
@@ -1634,7 +1722,12 @@ def _parse_guarded(
         return (), (), ()
     here = f"{where} guarded"
     item = _map(node, here)
-    _keys(item, {"acks", "affirmations", "extra_risk_words"}, here)
+    _keys(
+        item,
+        {"acks", "affirmations", "extra_risk_words"},
+        here,
+        optional={"components", "self_blame", "addressed_acks"},
+    )
     acks = _mirror_lines(item["acks"], f"{here}.acks")
     affirmations = _unique(_strs(item["affirmations"], f"{here}.affirmations"), here)
     for ack in acks:
@@ -1705,6 +1798,9 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         "quitting",
         "desire",
         "pleasure",
+        "non_negators",
+        "excuses",
+        "again",
     )
     _keys(
         data,
@@ -1740,6 +1836,9 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         quitting=v["quitting"],
         desire=v["desire"],
         pleasure=v["pleasure"],
+        non_negators=v["non_negators"],
+        excuses=v["excuses"],
+        again=v["again"],
     )
 
 

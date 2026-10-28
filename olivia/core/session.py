@@ -1074,8 +1074,11 @@ class Session:
         # call, as for the D3 answer: a model's score band alone does not make "是的" L1.
         shared_screen = self._shared.screen
         rules = assessment if self._screen is shared_screen else shared_screen.assess(text)
-        # Round 3 (B2a): from L1 up, by any reading, the reply never says the words back.
-        self._engine.note_risk(max(screened.level, assessment.level, rules.level))
+        # Round 3 (B2a): from L1 up, by any reading, the reply never says the words back;
+        # round 4: a model-only L1 without risk words is answered as usual.
+        self._engine.note_risk(
+            max(screened.level, assessment.level, rules.level), rules=rules.level
+        )
         calm = (
             not status.in_crisis
             and rules.level < CrisisLevel.L1
@@ -1598,6 +1601,10 @@ class Session:
             boundary = self._engine.boundary_line(text)
             if boundary:
                 rendered.reply = f"{boundary}\n\n{rendered.reply}"
+        elif withdrawal := self._engine.withdrawal_line(text):
+            # Round 4 (复测 q3): a withdrawal sign gets its reminder after the crisis card or
+            # the safety question too.
+            rendered.reply = f"{rendered.reply}\n\n{withdrawal}"
         cared = False
         if (
             (self._care_greeting or self._crisis_seen is not None)
