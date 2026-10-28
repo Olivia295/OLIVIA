@@ -636,8 +636,6 @@ _AFTER_LOSS_NO_LENS: Final = frozenset({"06", "07"})
 # 第 6 条: "我该怎么跟她说" is read as about the other person up to this many turns after
 # the user reported their risk.
 _THIRD_PARTY_WINDOW: Final = 3
-# Round 5: a third-person pronoun: the message speaks of the other person again.
-_THEM: Final = re.compile(r"他|她|ta")
 # Round 5: the user joins in the other person's risk ("我也", "我自己也", "跟她一样").
 _JOINING: Final = re.compile(
     r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样)"
@@ -2430,9 +2428,9 @@ class Session:
         * Within a few turns of the card for someone else's risk, the turn is a follow-up
           about that person: ``(True, None)``, answered with the card and what to do.
         * Otherwise the turn gets the card to pass on, urgent when the model's class is L3:
-          ``(False, ReportedRisk)``; but reported words that never name the other person
-          again (no 他 / 她: "我妈留言：累了就回家", words said to the user) stay the
-          question (round 4).
+          ``(False, ReportedRisk)``. Reported words that never name the other person again
+          (no 他 / 她: "我妈留言：累了就回家", words said to the user) are not about them
+          (``about_others``) and stay the question (round 4).
 
         Either way the user is capped at L1 (``_for_someone_else``); any rule cue of the
         user's own, now or later, takes the user's own flow."""
@@ -2450,8 +2448,7 @@ class Session:
             return False, None
         if self._third_party_window():
             return True, None
-        if self._reported_words and _THEM.search(normalize(text)) is None:
-            return False, None
+
         plan = model_level == CrisisLevel.L3.name
         return False, ReportedRisk(assessment.level, plan, user_clear=True)
 

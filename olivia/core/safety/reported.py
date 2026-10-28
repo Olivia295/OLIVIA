@@ -404,8 +404,10 @@ class ReportedSpeech:
         第 1 节): a speaker that is the subject of its clause and names someone (not 有人 /
         别人), and every self word is a possessive before such a speaker (我室友), an object
         (跟我说, 拖累了我们, 找我), a place or an owner (我的帖子) or a reflexive 自己 after
-        the speaker. No veto (我也, 一起) may occur. It reads grammar only: whether the
-        message carries risk, and whose, is the caller's business."""
+        the speaker. The first clause must open with that person and a third-person pronoun
+        must name them (as the opener or later). No veto (我也, 一起) may occur. It reads
+        grammar only: whether the message carries risk, and whose, is the caller's
+        business."""
         if not self._enabled:
             return False
         found = self._found(text)
@@ -423,7 +425,16 @@ class ReportedSpeech:
         timed = _TIME_LEAD.match(text)
         first = timed.end() if timed is not None else 0
         owner = _OWNER.match(text, first)
-        if not any(s.start in (first, owner.end() if owner else -1) for s in speakers):
+        opener = next(
+            (s for s in speakers if s.start in (first, owner.end() if owner else -1)), None
+        )
+        if opener is None:
+            return False
+        # The message names that person with 他 / 她 / ta (as its opener or later): a later
+        # clause with no subject and no pronoun ("我妈生日是哪天，以后也用不上了") may be the
+        # user's own words.
+        pronouns = found.get(_PRONOUN, ())
+        if not any(p.start >= opener.start for p in pronouns):
             return False
         for m in found.get(_SELF, ()):
             if text[m.start : m.end] == _REFLEXIVE and any(s.end <= m.start for s in speakers):
