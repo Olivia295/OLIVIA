@@ -369,6 +369,9 @@ def test_trailing_is_read_from_the_lexicon():
         "ASK_INTENT_DONT_WAIT",
         "L2_PLACE_THEN_END",
         "S1_ACT_THEN_PLAN",
+        # 2026-10-28: doing it at a set time, meaninglessness as a clause of its own.
+        "S1_TIME_DO_IT",
+        "L1_NO_MEANING_ALONE",
     }
     later = [e for e in LEX.compositions.entries if e.id in round2]
     assert len(later) == len(round2) and all(e.trailing for e in later)

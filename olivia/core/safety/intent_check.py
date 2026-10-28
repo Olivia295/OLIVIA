@@ -31,6 +31,15 @@ Round 3 (2026-10-27, re-test r2 第 1 节):
   the rest of the message, screened on its own (``rest_screen``), is L0 with no ask cue and
   no unsure phrase occurs anywhere;
   ``IntentReading.negated`` then tells the session that the no carries the only cue.
+
+2026-10-28 (SDD retrace): a no is read only up to where a new statement starts, and what
+follows it must carry no risk. "我没有想自杀 今晚就把药全吃了" was a no: the first clause
+ran to the end (no punctuation, only a space) and the denial's own negation voided the
+plan after it. Now the first clause also ends at a space next to a Han character and
+before a time word, a plan word or a new 我 (``_SOFT_BREAK``); with ``rest_screen`` given,
+everything after that point is screened on its own and any risk cue there (L1 or above,
+an ask cue, plan evidence) makes the answer UNCLEAR, for a plain no and a negated intent
+alike.
 """
 
 from __future__ import annotations
@@ -70,6 +79,16 @@ _NEGATED_INTENT: Final = re.compile(
     r"(?:没有|没|不是)(?:在|有)?(?:想|想过|要|打算|准备|是想|是要)"
 )
 _NEGATED_VETOES: Final = ("活", "醒", "继续", "存在", "下去", "坚持", "撑")
+# 2026-10-28: where a new statement starts inside a first clause typed without punctuation
+# (fold_words keeps spaces): a space next to a Han character, or, after the first
+# character, a time, a plan word or a new 我. Only what follows is screened for risk, so a
+# break found too early makes the reading stricter, never looser.
+_HAN: Final = "\u3400-\u4dbf\u4e00-\u9fff"
+_SOFT_BREAK: Final = re.compile(
+    rf"\s(?=[{_HAN}])|(?<=[{_HAN}])\s|(?<=.)(?=今晚|今夜|今天|明天|明早|明晚|后天|这周|本周|周末|下周|"
+    r"下个月|月底|周[一二三四五六日天]|星期|礼拜|过两天|过几天|这几天|凌晨|半夜|一会儿|待会|等会|"
+    r"马上|现在|立刻|晚上|早上|一早|我|俺|打算|准备|决定|计划|已经|还是|干脆)"
+)
 
 
 class IntentAnswer(StrEnum):
@@ -130,15 +149,31 @@ def read_answer(
     if not denies and not negated:
         yes = _starts(clause, answers.affirm_start)
         return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
+    if rest_screen is not None:
+        following = _following(clause, rest)
+        if following and _risky(rest_screen(following)):
+            return IntentReading(IntentAnswer.UNCLEAR)
     calm = assessment.level is CrisisLevel.L0 and not assessment.asks_intent
     if calm and not unsure:
         return IntentReading(IntentAnswer.DENIED)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
     if negated and not unsure and not plan and rest_screen is not None:
-        after = rest_screen(rest) if rest.strip() else None
-        if after is None or (after.level is CrisisLevel.L0 and not after.asks_intent):
-            return IntentReading(IntentAnswer.DENIED, negated=True)
+        return IntentReading(IntentAnswer.DENIED, negated=True)
     return IntentReading(IntentAnswer.UNCLEAR)
+
+
+def _following(clause: str, rest: str) -> str:
+    """What follows the no: the first clause after its first soft break, then the rest."""
+    soft = _SOFT_BREAK.search(clause)
+    tail = clause[soft.end() :].strip() if soft is not None else ""
+    return ",".join(part for part in (tail, rest.strip()) if part)
+
+
+def _risky(screened: CrisisAssessment) -> bool:
+    """Any risk cue: L1 or above, an ask cue or plan evidence."""
+    return (
+        screened.level is not CrisisLevel.L0 or screened.asks_intent or screened.has_plan_evidence
+    )
 
 
 def _drop_interjections(folded: str) -> str:

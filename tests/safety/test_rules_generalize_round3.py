@@ -31,6 +31,7 @@ from __future__ import annotations
 import random
 import shutil
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -375,11 +376,13 @@ def test_engine_a_negated_also_phrase_does_not_count_unless_negatable() -> None:
     assert _fires(_rules(also=(ContextGroup(("丙",), 6),)), "忍不住丙,甲")
 
 
-def test_engine_clause_negation_reaches_back_to_the_clause_start() -> None:
+def test_engine_clause_negation_reaches_back_across_the_denied_plan() -> None:
+    # 2026-10-28: only across `negation_reach` phrases (test_rules_core_bugs.py).
+    reached = replace(_rules(clause_negation=True), negation_reach=("一", "二", "三"))
     assert _fires(_rules(), "不一二三甲")  # beyond lookback: not negated
-    assert not _fires(_rules(clause_negation=True), "不一二三甲")
-    assert _fires(_rules(clause_negation=True), "不一二三,甲")  # another clause
-    assert _fires(_rules(clause_negation=True), "忍不住一二甲")  # a non-negator
+    assert not _fires(reached, "不一二三甲")
+    assert _fires(reached, "不一二三,甲")  # another clause
+    assert _fires(reached, "忍不住一二甲")  # a non-negator
 
 
 def test_engine_a_name_alone_is_addressed_not_carried_as_the_subject() -> None:

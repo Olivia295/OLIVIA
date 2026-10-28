@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Final
 
@@ -61,14 +62,29 @@ _FOLD: Final[dict[int, str | None]] = {
 }
 
 
+# A single ASCII letter with a Han character right before and after it (2026-10-28, re-test
+# q4): a terminal whose line editor drops the escape of a colour code leaves its last
+# letter behind ("我想<ESC>[31m死<ESC>[0m了算了" arrives as 我想m死m了算了). Matching drops it;
+# what is shown and stored keeps the text as typed. Two or more letters (app, zs, die) and
+# a letter at either end of the Han run (B站, X光) are kept. Applied after casefold, so only
+# lowercase letters remain.
+_HAN: Final = "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+_STRAY_LETTER: Final = re.compile(f"(?<=[{_HAN}])[a-z](?=[{_HAN}])")
+
+
+def _drop_stray_letters(folded: str) -> str:
+    return folded if folded.isascii() else _STRAY_LETTER.sub("", folded)
+
+
 # The same fold with spaces kept (whitespace is turned into spaces before it applies).
 _FOLD_KEEP_SPACES: Final[dict[int, str | None]] = {**_FOLD, ord(" "): " "}
 
 
 def normalize(text: str) -> str:
     """Fold text for matching: NFKC, casefold, Traditional -> Simplified, curly quotes
-    -> "'", then drop all whitespace and invisible characters."""
-    return unicodedata.normalize("NFKC", text).casefold().translate(_FOLD)
+    -> "'", then drop all whitespace and invisible characters, and a single ASCII letter
+    standing between two Han characters (a colour code's leftover)."""
+    return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
 
 
 def fold_words(text: str) -> str:
@@ -76,7 +92,7 @@ def fold_words(text: str) -> str:
     space (invisible characters are still dropped), so English words stay apart. Used where
     word boundaries matter (reading a yes or no to the D3 question)."""
     spaced = "".join(" " if ch.isspace() else ch for ch in unicodedata.normalize("NFKC", text))
-    return " ".join(spaced.casefold().translate(_FOLD_KEEP_SPACES).split())
+    return _drop_stray_letters(" ".join(spaced.casefold().translate(_FOLD_KEEP_SPACES).split()))
 
 
 def clip_for_perception(text: str) -> str:

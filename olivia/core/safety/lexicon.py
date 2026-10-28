@@ -74,6 +74,7 @@ _COMP_KEYS: Final = frozenset(
         "subject_window",
         "unless_negation_gap",
         "unless_negators",
+        "negation_reach",
         "lists",
         "entries",
         *_COMP_GLOBAL_LISTS,
@@ -224,8 +225,11 @@ class Composition:
     raise_with_risk: bool = False
     also: tuple[ContextGroup, ...] = ()
     clause_negation: bool = False
-    """A negator anywhere in the clause before the match voids it, not only one within
-    ``lookback`` (我不打算这周末去楼顶跳下去: the plan is denied, so its time is no plan)."""
+    """A negator earlier in the clause voids the match, not only one within ``lookback``,
+    when nothing but ``CompositionRules.negation_reach`` phrases (plan words, times,
+    places, prepositions) stands between the two (我不打算这周末去楼顶跳下去: the plan is
+    denied, so its time is no plan). Any other word ends the negator's reach (2026-10-28:
+    我再也不想忍了我打算今晚从楼顶跳下去 is a plan; the 不 belongs to 忍)."""
 
 
 @dataclass(frozen=True)
@@ -253,6 +257,9 @@ class CompositionRules:
     """A person word right after one of these (跟她说, 给我妈) is an object, not a subject."""
     listeners: tuple[str, ...] = ()
     """The person spoken to (你): never carried over as the subject of a later clause."""
+    negation_reach: tuple[str, ...] = ()
+    """What a negator reaches across to a ``clause_negation`` match: the words of the plan
+    it denies (打算, 这周末, 去, 楼顶). Empty: only ``lookback`` applies."""
     entries: tuple[Composition, ...] = ()
 
 
@@ -710,6 +717,9 @@ def _parse_compositions(
     if not isinstance(raw_lists, dict):
         raise LexiconError(f"{where}: 'lists' must be a mapping")
     lists = _resolve_lists(raw_lists, where)
+    negation_reach: tuple[str, ...] = ()
+    if "negation_reach" in node:
+        negation_reach = _list_or_name(node["negation_reach"], lists, f"{where} negation_reach")
     entries = tuple(
         _parse_composition(tax, item, lists, seen_ids)
         for item in _entry_list(node, "entries", where)
@@ -726,6 +736,7 @@ def _parse_compositions(
         others=shared["others"],
         recipients=shared["recipients"],
         listeners=shared["listeners"],
+        negation_reach=negation_reach,
         entries=entries,
     )
 
