@@ -183,10 +183,19 @@ def test_skipping_everything_saves_nothing(run_cli, data_home):
     assert not (data_home / SAFETY_PLAN_FILENAME).exists()
 
 
-def test_end_of_input_leaves_without_saving(run_cli, data_home):
+def test_end_of_input_keeps_what_was_written(run_cli, data_home):
+    # QA q4 SP-12: what was typed before the input ended is saved, and said so.
     save_profile(data_home)
     result = run_cli(["safety-plan"], ["整夜睡不着觉"])
-    assert result.code == 0 and CMD["left"] in result.out
+    assert result.code == 0 and result.lines[-1] == CMD["left_saved"]
+    plan = SafetyPlanStore(data_home).load()
+    assert plan is not None and plan.warning_signs == ("整夜睡不着觉",)
+
+
+def test_end_of_input_before_anything_is_written_saves_nothing(run_cli, data_home):
+    save_profile(data_home)
+    result = run_cli(["safety-plan"], [])
+    assert result.code == 0 and result.lines[-1] == CMD["left"]
     assert not (data_home / SAFETY_PLAN_FILENAME).exists()
 
 

@@ -814,6 +814,7 @@ class Session:
         carried: CarriedState | None = None,
         safety_plan: SafetyPlan | None = None,
         suggest_safety_plan: bool = False,
+        safety_plan_unreadable: bool = False,
     ) -> None:
         self._tax = tax
         self._profile = profile
@@ -898,6 +899,8 @@ class Session:
         # S5 (2026-10-26): in full once per crisis, then one reminder line; the people of
         # section 4 also go into a crisis farewell.
         self._plan_block = crisis_block(safety_plan)
+        if safety_plan is None and safety_plan_unreadable:  # QA q4 FLT-3: never silent
+            self._plan_block = load_safety_plan_text().crisis_unreadable
         self._plan_reminder = crisis_reminder(safety_plan)
         self._plan_people = farewell_people(safety_plan)
         self._plan_shown_in_crisis = False
@@ -947,6 +950,7 @@ class Session:
         safety_plan: SafetyPlan | None = None,
         suggest_safety_plan: bool = False,
         hotline_updates: Path | None = None,
+        safety_plan_unreadable: bool = False,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
 
@@ -962,7 +966,9 @@ class Session:
         out). With the student on, its other heads also refine perception
         (``perception/model_heads.py``); an injected model leaves perception to the rules.
 
-        ``safety_plan`` is the user's saved plan (B10), shown in crisis replies;
+        ``safety_plan`` is the user's saved plan (B10), shown in crisis replies; with
+        ``safety_plan_unreadable`` (a saved plan that cannot be opened now) the first crisis
+        reply says so in its place instead of leaving it out silently (QA q4 FLT-3);
         ``suggest_safety_plan`` lets the first S_closing reply mention ``olivia safety-plan``
         once (the CLI passes it when no plan exists and none was suggested before).
 
@@ -998,6 +1004,7 @@ class Session:
             carried=carried,
             safety_plan=safety_plan,
             suggest_safety_plan=suggest_safety_plan,
+            safety_plan_unreadable=safety_plan_unreadable,
         )
 
     @property

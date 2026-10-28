@@ -157,7 +157,7 @@ def test_journal_from_a_seeded_ledger(ledger):
     assert len(week.sessions) == 3 and week.notes == 1 and week.journals == ()
     assert render_journal(week, TEXT, MEMORY, TITLES) == "\n".join(
         [
-            "## 这一周的小结",
+            "这一周的小结：",
             variant(GENTLE.intro, NOW),
             variant(GENTLE.bridge, NOW),
             "- 聊天：3 次",
@@ -282,7 +282,7 @@ def test_command_shows_the_card_and_records_the_answer(ledger):
     _seed(ledger)
     script = Script("没有")
     assert run_command(script.ask, script.say, ledger, NOW, method_titles=TITLES) == 0
-    assert script.said[0].startswith("## 这一周的小结")
+    assert script.said[0].startswith("这一周的小结：")
     assert script.said[-2:] == [TEXT.prompts["helpful"], TEXT.replies["helpful_no"]]
     (journal,) = [e for e in ledger.entries() if isinstance(e, JournalEntry)]
     assert (journal.offered_at, journal.shown, journal.helpful) == (NOW, True, False)

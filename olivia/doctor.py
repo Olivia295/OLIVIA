@@ -9,13 +9,18 @@
   it cannot read instead of failing) and, on POSIX, whether every directory is 0700 and
   every file 0600 (the signed hotline update folder ``resources/`` is placed there by the
   user and holds no personal data, so it is not counted);
-* the keychain: :func:`keychain.probe` resolves the backend and touches no item, so a
-  locked keychain is not noticed (that would take an item read, which may prompt);
-* the profile and every sealed store, **without decrypting anything**: a file must
-  exist and look sealed (``aead.looks_sealed``: header and length), its wrapped data
-  key must be there and well formed (``vault.key_file_intact``), and the keychain must be
-  there. A blob altered after its header, or a master key gone from the keychain, is
-  only noticed when the store is opened for real;
+* the keychain: :func:`keychain.probe` resolves the backend and touches no item;
+* the profile and every sealed store: a file must exist, be a file (a folder in its
+  place, or a file in place of ``ledger/`` or ``keys/``, is named as such, QA q4 DOC-09,
+  DOC-10, DOC-19) and look sealed (``aead.looks_sealed``: header and length), its wrapped
+  data key must be there and well formed (``vault.key_file_intact``), and the keychain
+  must be there. Then, as the commands would (QA q4 DOC-06, FLT-3), each store is opened
+  through a :class:`~olivia.core.crypto.vault.ReadOnlyVault`: the master key items are
+  read (never written), each data key unwrapped and each sealed file authenticated, and
+  the plaintext dropped at once: a truncated or altered file, or a master key gone from
+  the keychain, is reported, and nothing it holds can reach the report. A profile that is
+  damaged or gone but has a valid snapshot is a warning: the next command restores it
+  (QA q4 DOC-03, DOC-04);
 * the packaged perception student, loaded and verified as ``chat`` would
   (``student.try_load_student``; nothing is cached);
 * the built-in hotline data's signature and compiled date, and whether a signed update
@@ -31,8 +36,8 @@
   from a snapshot that the user has not been told about yet (``profile.recovered``). The
   lock file and both markers are OLIVIA's own and hold no user data.
 
-Nothing here reads a store's contents or a keychain item, so no user text, name, topic,
-health code or plan can reach the report: it holds states, dates, counts and versions.
+Nothing opened here is kept or shown, so no user text, name, topic, health code or plan
+can reach the report: it holds states, dates, counts and versions.
 """
 
 from __future__ import annotations
@@ -41,13 +46,14 @@ import functools
 import os
 import stat
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
 from typing import Any, Final, Literal
 
+from olivia.core.chang.care import _LABEL as _CARE_LABEL
 from olivia.core.chang.care import CARE_FILENAME, CARE_STORE
 from olivia.core.chang.profile import (
     PROFILE_FILENAME,
@@ -55,16 +61,19 @@ from olivia.core.chang.profile import (
     profile_shape,
     recovery_pending,
 )
+from olivia.core.chang.safety_plan import _LABEL as _PLAN_LABEL
 from olivia.core.chang.safety_plan import SAFETY_PLAN_FILENAME, SAFETY_PLAN_STORE
 from olivia.core.crypto import aead, keychain
-from olivia.core.crypto.vault import key_file_intact
+from olivia.core.crypto.errors import DecryptionError, KeychainUnavailableError, KeyMissingError
+from olivia.core.crypto.vault import KEYS_DIRNAME, ReadOnlyVault, key_file_intact
 from olivia.core.datalock import held_elsewhere
 from olivia.core.memory.forget import forget_all_unfinished
-from olivia.core.memory.ledger import LEDGER_STORE, entry_files
+from olivia.core.memory.ledger import LEDGER_DIRNAME, LEDGER_STORE, entry_files, entry_label
+from olivia.core.memory.state import _LABEL as _STATE_LABEL
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE
 from olivia.core.perception import student
 from olivia.core.resources import bundle
-from olivia.core.storage import StorageAccessError, StorageCorruptError, read_text_with_recovery
+from olivia.core.storage import StorageAccessError, StorageCorruptError, read_with_recovery
 from olivia.notify import jobs
 from olivia.notify.system import Host
 
@@ -80,6 +89,14 @@ _SEALED_FILES: Final = (
     ("care", CARE_FILENAME, CARE_STORE),
     ("safety_plan", SAFETY_PLAN_FILENAME, SAFETY_PLAN_STORE),
 )
+_LABELS: Final = {
+    STATE_STORE: _STATE_LABEL,
+    CARE_STORE: _CARE_LABEL,
+    SAFETY_PLAN_STORE: _PLAN_LABEL,
+}
+"""Each single-file store's seal label, as its own module seals it."""
+_SHOULD_BE_FILES: Final = (PROFILE_FILENAME, STATE_FILENAME, CARE_FILENAME, SAFETY_PLAN_FILENAME)
+_SHOULD_BE_DIRS: Final = (LEDGER_DIRNAME, KEYS_DIRNAME)
 
 
 Access = Literal["file", "unreadable", "unwritable"]
@@ -98,6 +115,15 @@ class StoreState(StrEnum):
     """Intact, but the keychain it needs is not there now."""
     UNREADABLE = "unreadable"
     """The operating system will not let this account read it (permissions)."""
+    RECOVERABLE = "recoverable"
+    """The profile is damaged or gone, but a snapshot is valid: the next command restores
+    it (``ProfileStore.load``)."""
+    MISPLACED = "misplaced"
+    """A folder stands where its file should be (or a file where ``ledger/`` should be)."""
+    NO_KEYS = "no_keys"
+    """There is data, but a file stands where the ``keys/`` folder should be."""
+    NO_MASTER = "no_master"
+    """Its data key names a master key the keychain no longer holds."""
 
 
 @dataclass(frozen=True)
@@ -117,6 +143,8 @@ class ProfileFacts:
     """A profile was saved (first visit done); None when the file cannot be read."""
     notifications: bool | None
     """The reminders switch, when it is readable without the keychain."""
+    sealed: bool = False
+    """Some or all of it is sealed (so its data key is checked too)."""
 
 
 @dataclass(frozen=True)
@@ -153,6 +181,9 @@ class Report:
     reminders: bool | None
     activity: Activity = Activity()
     packaged: PackagedData = field(default_factory=lambda: PackagedData(0, ()))
+    misplaced: tuple[str, ...] = ()
+    """Names in the data directory of the wrong kind: a folder named like a data file, or
+    a file named ``ledger`` or ``keys`` (:func:`misplaced`)."""
 
 
 @dataclass(frozen=True)
@@ -175,19 +206,38 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
     readable = kind == "dir" and access != "unreadable"
     found = keychain.probe()
     there = found in (keychain.Probe.READY, keychain.Probe.UNCHECKED)
+    wrong = misplaced(base) if readable else ()
+    no_keys = KEYS_DIRNAME in wrong
     stores: dict[str, StoreState] = {}
     for name, filename, store in (("ledger", "", LEDGER_STORE), *_SEALED_FILES):
         if kind != "dir":  # nothing there to open
             stores[name] = StoreState.ABSENT
+        elif (filename or LEDGER_DIRNAME) in wrong:
+            stores[name] = StoreState.MISPLACED
         elif filename:
             stores[name] = _guarded(functools.partial(_sealed_file, base, filename, store, there))
         else:
             stores[name] = _guarded(functools.partial(_ledger, base, there))
-    profile = (
-        _profile(base, there)
-        if kind == "dir"
-        else ProfileFacts(StoreState.ABSENT, onboarded=False, notifications=None)
-    )
+        if no_keys and stores[name] is StoreState.BROKEN:
+            stores[name] = StoreState.NO_KEYS
+    if kind != "dir":
+        profile = ProfileFacts(StoreState.ABSENT, onboarded=False, notifications=None)
+    elif PROFILE_FILENAME in wrong:
+        profile = ProfileFacts(StoreState.MISPLACED, onboarded=None, notifications=None)
+    else:
+        profile = _profile(base, there)
+        if no_keys and profile.state is StoreState.BROKEN:
+            profile = replace(profile, state=StoreState.NO_KEYS)
+    if there and readable:
+        vault = ReadOnlyVault(base)
+        stores = {
+            name: _guarded(functools.partial(_opened, base, name, state, vault))
+            for name, state in stores.items()
+        }
+        if profile.sealed and profile.state in (StoreState.READY, StoreState.RECOVERABLE):
+            opened = _guarded(functools.partial(_key_opens, vault, PROFILE_STORE))
+            if opened is not StoreState.READY:
+                profile = replace(profile, state=opened)
     return Report(
         data_dir=DataDir(base, kind, _mismatched(base) if readable else None, access),
         keychain=found,
@@ -198,7 +248,24 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
         reminders=jobs.installed(host()),
         activity=_activity(base) if readable else Activity(),
         packaged=packaged_data(),
+        misplaced=wrong,
     )
+
+
+def misplaced(base: Path) -> tuple[str, ...]:
+    """The names in the data directory ``base`` that are of the wrong kind: a folder where
+    a data file should be, a file where ``ledger/`` or ``keys/`` should be. Read-only."""
+    wrong: list[str] = []
+    for name in (*_SHOULD_BE_FILES, *_SHOULD_BE_DIRS):
+        path = base / name
+        try:
+            if not path.exists():
+                continue
+            if path.is_dir() != (name in _SHOULD_BE_DIRS):
+                wrong.append(name)
+        except OSError:
+            continue
+    return tuple(wrong)
 
 
 def access_problem(base: Path) -> Access | None:
@@ -252,6 +319,49 @@ def _guarded(check: Callable[[], StoreState]) -> StoreState:
         return StoreState.UNREADABLE
 
 
+def _key_opens(vault: ReadOnlyVault, store: str) -> StoreState:
+    """Whether ``store``'s data key unwraps under a master key the keychain holds."""
+    try:
+        vault.check_data_key(store)
+    except KeyMissingError:
+        return StoreState.NO_MASTER
+    except DecryptionError:
+        return StoreState.BROKEN
+    except KeychainUnavailableError:  # locked, or it stopped answering
+        return StoreState.LOCKED
+    return StoreState.READY
+
+
+def _opened(base: Path, name: str, state: StoreState, vault: ReadOnlyVault) -> StoreState:
+    """``state`` after opening the store as its command would (QA q4 DOC-06, FLT-3): its
+    data key, then every sealed file, authenticated and the plaintext dropped at once."""
+    if state not in (StoreState.READY, StoreState.PARTLY):
+        return state
+    store = LEDGER_STORE if name == "ledger" else next(s for n, _, s in _SEALED_FILES if n == name)
+    keyed = _key_opens(vault, store)
+    if keyed is not StoreState.READY:
+        return keyed
+    if name == "ledger":
+        files = [(path, entry_label(path)) for path in entry_files(base)]
+    else:
+        filename = next(f for n, f, _ in _SEALED_FILES if n == name)
+        files = [(base / filename, _LABELS[store])]
+    opened = 0
+    for path, label in files:
+        try:
+            vault.open(store, path.read_bytes(), label=label)
+        except PermissionError:
+            raise  # not damaged: unreadable (``_guarded``)
+        except (OSError, DecryptionError, ValueError):
+            continue
+        except KeychainUnavailableError:
+            return StoreState.LOCKED
+        opened += 1
+    if opened == len(files):
+        return StoreState.READY
+    return StoreState.PARTLY if opened else StoreState.BROKEN
+
+
 def _ledger(base: Path, keychain_there: bool) -> StoreState:
     return _sealed(base, entry_files(base), LEDGER_STORE, keychain_there)
 
@@ -293,7 +403,8 @@ def _sealed(base: Path, files: list[Path], store: str, keychain_there: bool) -> 
 
 
 def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
-    """The profile file (or, as ``ProfileStore.load`` would, its newest valid snapshot)."""
+    """The profile file (or, as ``ProfileStore.load`` would, its newest valid snapshot:
+    then it is :attr:`StoreState.RECOVERABLE`, QA q4 DOC-03 / DOC-04)."""
 
     def is_valid(text: str) -> bool:
         try:
@@ -302,8 +413,9 @@ def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
             return False
         return True
 
+    main = base / PROFILE_FILENAME
     try:
-        text = read_text_with_recovery(base / PROFILE_FILENAME, is_valid)
+        text, source = read_with_recovery(main, is_valid)
     except FileNotFoundError:
         return ProfileFacts(StoreState.ABSENT, onboarded=False, notifications=None)
     except (StorageAccessError, PermissionError):
@@ -311,17 +423,19 @@ def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
     except (StorageCorruptError, OSError):
         return ProfileFacts(StoreState.BROKEN, onboarded=None, notifications=None)
     shape = profile_shape(text)
-    state = StoreState.READY
+    state = StoreState.READY if source == main else StoreState.RECOVERABLE
     if shape.sealed:
         try:
             intact = key_file_intact(base, PROFILE_STORE)
         except OSError:
-            return ProfileFacts(StoreState.UNREADABLE, True, shape.notifications)
+            return ProfileFacts(StoreState.UNREADABLE, True, shape.notifications, sealed=True)
         if not intact:
             state = StoreState.BROKEN
         elif not keychain_there:
             state = StoreState.LOCKED
-    return ProfileFacts(state, onboarded=True, notifications=shape.notifications)
+    return ProfileFacts(
+        state, onboarded=True, notifications=shape.notifications, sealed=shape.sealed
+    )
 
 
 def _mismatched(base: Path) -> int | None:

@@ -178,6 +178,36 @@ class Vault:
         """Whether any store has a wrapped key here (so a master key exists somewhere)."""
         return bool(self._key_files())
 
+    def master_lost(self) -> bool:
+        """Whether a wrapped data key here names a master key the keychain no longer holds
+        (the item was removed, or the keychain reset): what it sealed cannot be opened.
+
+        False when there is no wrapped key or the keychain does not answer now (a locked
+        keychain is not a lost key). Reads the two master items; creates nothing.
+        """
+        files = self._key_files()
+        if not files:
+            return False
+        try:
+            held = {
+                _decode_master(raw).key_id
+                for raw in (self._backend.get(MASTER_ITEM), self._backend.get(NEXT_MASTER_ITEM))
+                if raw is not None
+            }
+        except KeyMissingError:  # a malformed item opens nothing
+            held = set()
+        except KeychainUnavailableError:
+            return False
+        for _, path in files:
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            well_formed = len(raw) > _KEY_HEADER and raw[: len(_KEY_MAGIC)] == _KEY_MAGIC
+            if well_formed and raw[len(_KEY_MAGIC) + 1 : _KEY_HEADER] not in held:
+                return True
+        return False
+
     def check_data_key(self, store: str) -> None:
         """Raise unless ``store``'s data key opens now: :class:`KeyMissingError` (none, or
         its master is gone), :class:`DecryptionError` (the key file is damaged) or
@@ -351,3 +381,31 @@ class Vault:
         atomic_write_bytes(path, header + body, snapshot=False)
         if store in self._deks:
             self._signatures[store] = _signature(path)
+
+
+class ReadOnlyVault(Vault):
+    """A vault that only opens (``olivia doctor``): it reads the master key items, never
+    finishes an interrupted rotation, and never creates, writes or deletes a key."""
+
+    def _load(self) -> None:
+        if self._loaded:
+            return
+        masters: dict[bytes, bytes] = {}
+        for item in (MASTER_ITEM, NEXT_MASTER_ITEM):
+            raw = self._backend.get(item)
+            if raw is not None:
+                found = _decode_master(raw)
+                masters[found.key_id] = found.key
+        self._masters, self._current, self._loaded = masters, None, True
+
+    def _finish_rotation(self, new: _Master) -> None:
+        raise RuntimeError("a read-only vault changes no key")
+
+    def _delete_masters(self) -> None:
+        raise RuntimeError("a read-only vault changes no key")
+
+    def _current_or_new_master(self) -> _Master:
+        raise RuntimeError("a read-only vault changes no key")
+
+    def _write_wrapped(self, path: Path, store: str, dek: bytes, master: _Master) -> None:
+        raise RuntimeError("a read-only vault changes no key")
