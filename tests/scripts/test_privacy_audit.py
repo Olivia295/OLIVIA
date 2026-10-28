@@ -145,6 +145,8 @@ def test_unsealed_passes_a_sealed_directory(whole):
     [
         ("ledger/0a.olv", b"---\nkind: note", False, "ledger/0a.olv: not sealed (no OLVD)"),
         ("state.bin", b"{}", False, "state.bin: not sealed (no OLVD)"),
+        ("state.rekey", b"{}", False, "state.rekey: not sealed (no OLVD)"),
+        (".olivia.lock", b"x", False, ".olivia.lock: marker is not empty"),
         ("keys/ledger.key", b"raw-key", False, "keys/ledger.key: not a wrapped key (no OLVK)"),
         (
             "profile.json",
@@ -172,6 +174,13 @@ def test_unsealed_passes_a_sealed_directory(whole):
 def test_unsealed_names_each_problem(rel, data, whole, problem):
     files = [(r, d) for r, d in _good_files(whole) if r != rel] + [(rel, data)]
     assert problem in audit.unsealed(files, whole, health_recorded=False)
+
+
+def test_unsealed_takes_a_sealed_staging_copy_and_the_lock_but_needs_neither():
+    """Recorded at a re-key's commit point, mid-command: both may be there, or not."""
+    files = [*_good_files(False), ("state.rekey", OLVD), (".olivia.lock", b"")]
+    assert audit.unsealed(files, False, health_recorded=True) == []
+    assert audit.unsealed(_good_files(False), False, health_recorded=True) == []
 
 
 def test_unsealed_fails_when_a_store_was_never_written():
