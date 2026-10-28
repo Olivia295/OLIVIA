@@ -46,9 +46,10 @@ files-no-typed-text [mode]
     ``profile.json`` and its snapshots.
 sensitive-sealed [mode]
     Every sensitive store exists and is sealed whatever the switch says: ledger entries,
-    ``state.bin``, ``care.bin`` and ``safety_plan.bin`` start with ``OLVD``, key files with
-    ``OLVK``; ``profile.json`` (and snapshots) never holds a sensitive field in the clear,
-    its ``sealed_fields``/``sealed_profile`` decode to ``OLVD``, and with the switch on it
+    ``state.bin``, ``care.bin`` and ``safety_plan.bin`` (and the staging ``state.rekey``,
+    when present) start with ``OLVD``, key files with ``OLVK``; ``profile.json`` (and
+    snapshots) never holds a sensitive field in the clear, its
+    ``sealed_fields``/``sealed_profile`` decode to ``OLVD``, and with the switch on it
     holds nothing but ``sealed_profile``. Any file the audit does not know fails.
 master-key-off-disk [mode]
     No keychain value, and no master key in any encoding, appears in a file.
@@ -93,7 +94,11 @@ edit-and-reset-erase [mode]
     ``state.bin`` and their old key files copied back (into a copy of ``OLIVIA_HOME``
     elsewhere), neither the old words nor the old preferences open: both were
     crypto-shredded, not just overwritten. The new words are also part of the typed text
-    every check above searches for.
+    every check above searches for. A card is put in the kit first (as ``/not-now`` would)
+    and must survive the reset. ``forget --method`` stages the new state first: the
+    data directory is also recorded at that commit point (what a crash there would
+    leave, ``state.rekey`` included, so every check above covers it), and afterwards no
+    staging copy or staging key is left.
 forget-all-clean [mode]
     After ``forget --all --yes`` no file is left under ``OLIVIA_HOME`` and the keychain
     holds no item.
@@ -123,7 +128,7 @@ import time  # noqa: E402
 import warnings  # noqa: E402
 from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
-from datetime import datetime  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any, Final  # noqa: E402
 from zoneinfo import ZoneInfo  # noqa: E402
@@ -149,9 +154,18 @@ from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
 from olivia.core.crypto.errors import CryptoError  # noqa: E402
 from olivia.core.crypto.keychain import KeyBackend  # noqa: E402
 from olivia.core.crypto.vault import KEYS_DIRNAME, Vault  # noqa: E402
+from olivia.core.datalock import LOCK_FILENAME  # noqa: E402
 from olivia.core.memory.forget import load_forget_text  # noqa: E402
 from olivia.core.memory.ledger import LEDGER_DIRNAME, LEDGER_STORE, Ledger  # noqa: E402
-from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, StateStore  # noqa: E402
+from olivia.core.memory.state import (  # noqa: E402
+    STATE_FILENAME,
+    STATE_REKEY_FILENAME,
+    STATE_REKEY_STORE,
+    STATE_STORE,
+    CarriedState,
+    KitEntry,
+    StateStore,
+)
 from olivia.core.memory.text import load_memory_text  # noqa: E402
 from olivia.core.session import Session, TurnResult  # noqa: E402
 from olivia.core.taxonomy import load_taxonomy  # noqa: E402
@@ -161,6 +175,10 @@ KEY_MAGIC: Final = b"OLVK"
 SNAPSHOT_DIRNAME: Final = ".snapshots"
 SEALED_FILES: Final = (STATE_FILENAME, CARE_FILENAME, SAFETY_PLAN_FILENAME)
 """Sensitive stores kept as one sealed file each, directly in the data directory."""
+STAGED_FILES: Final = (STATE_REKEY_FILENAME,)
+"""Sealed staging copies that exist only while a re-key is under way (not required)."""
+SHELVED_ACTION: Final = "29:pmr_release"
+"""The card put in the kit before ``forget --method`` (edit-and-reset-erase)."""
 SEALED_PROFILE: Final = "sealed_profile"
 SEALED_FIELDS: Final = "sealed_fields"
 
@@ -499,7 +517,11 @@ def unsealed(files: Files, whole: bool, *, health_recorded: bool) -> list[str]:
     for rel, data in versions:
         if is_profile(rel):
             problems += _profile_problems(rel, data, whole)
-        elif rel in SEALED_FILES or (rel.startswith(f"{LEDGER_DIRNAME}/") and rel.endswith(".olv")):
+        elif (
+            rel in SEALED_FILES
+            or rel in STAGED_FILES
+            or (rel.startswith(f"{LEDGER_DIRNAME}/") and rel.endswith(".olv"))
+        ):
             if not data.startswith(DATA_MAGIC):
                 problems.append(f"{rel}: not sealed (no OLVD)")
         elif rel.startswith(f"{KEYS_DIRNAME}/") and rel.endswith(".key"):
@@ -790,7 +812,9 @@ def tree(home: Path) -> dict[str, bytes | None]:
     }
 
 
-def tree_changes(before: Mapping[str, bytes | None], after: Mapping[str, bytes | None]) -> list[str]:
+def tree_changes(
+    before: Mapping[str, bytes | None], after: Mapping[str, bytes | None]
+) -> list[str]:
     changed = [f"added: {rel}" for rel in after if rel not in before]
     changed += [f"removed: {rel}" for rel in before if rel not in after]
     changed += [f"changed: {rel}" for rel in before if rel in after and before[rel] != after[rel]]
@@ -860,7 +884,13 @@ class Run:
     def mode(self) -> str:
         return "switch-on" if self.whole else "switch-off"
 
-    def record(self, home: Path, keychain_items: Mapping[str, str]) -> None:
+    def record(
+        self, home: Path, keychain_items: Mapping[str, str], *, mid_command: bool = False
+    ) -> None:
+        """``mid_command``: recorded while a command runs and holds the data directory's
+        lock, whose (empty) file is then not read: Windows refuses to read its locked byte
+        to any other handle, the same process's included."""
+
         def add(items: list[Any], item: Any) -> None:
             if item not in items:
                 items.append(item)
@@ -869,7 +899,7 @@ class Run:
         for path in sorted(home.rglob("*")):
             rel = path.relative_to(home).as_posix()
             add(self.modes, (rel, path.is_dir(), path.stat().st_mode & 0o777))
-            if path.is_file():
+            if path.is_file() and not (mid_command and rel == LOCK_FILENAME):
                 add(self.files, (rel, path.read_bytes()))
         for item in keychain_items.items():
             add(self.keychain_seen, item)
@@ -981,9 +1011,33 @@ def _edit_and_reset(home: Path, run: Run, backend: MemoryKeychain) -> None:
     edit = _invoke(["memory", "--edit", str(number)], [EDITED_NOTE, "确认"])
     run.captures.append(edit)
     run.record(home, backend.items)
-    reset = _invoke(["forget", "--method", "1"], ["确定"])
+    # One shelved card, as ``/not-now`` would leave it, so the reset has a kit to keep and
+    # has to stage the new state (a state left empty is only shredded).
+    store = StateStore(home, Vault(home))
+    held = store.load()
+    shelved = KitEntry(SHELVED_ACTION, datetime.now(UTC))
+    if held is None or not store.save(CarriedState(held.bandit, (*held.kit, shelved))):
+        problems.append("no state to reset")
+    staged: list[bool] = []
+    apply_rekey = StateStore._apply_rekey
+
+    def at_commit_point(store: StateStore, state: CarriedState) -> bool:
+        """The data directory as a crash right after the commit point would leave it."""
+        staged.append(store.staging.is_file())
+        run.record(home, backend.items, mid_command=True)
+        return apply_rekey(store, state)
+
+    with _patched(StateStore, "_apply_rekey", at_commit_point):
+        reset = _invoke(["forget", "--method", "1"], ["确定"])
     run.captures.append(reset)
     run.record(home, backend.items)
+    if staged != [True]:
+        problems.append("forget --method did not stage the new state first")
+    after = StateStore(home, Vault(home)).load()
+    if after is None or shelved not in after.kit:
+        problems.append("forget --method did not keep the kit")
+    if (home / STATE_REKEY_FILENAME).exists() or Vault(home).has_data_key(STATE_REKEY_STORE):
+        problems.append("forget --method left its staging copy behind")
     if [n.text for n in Ledger(home, Vault(home)).notes()] != [EDITED_NOTE]:
         problems.append("the edited note does not read back with its new words")
     done = load_forget_text().forget["done_method"].split("{title}")[-1]

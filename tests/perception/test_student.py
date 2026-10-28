@@ -186,6 +186,30 @@ def test_packaged_copy_loads(tmp_path: Path) -> None:
     assert _reason(_copy(tmp_path)) is None
 
 
+def test_loading_holds_the_stored_and_the_float32_weights_once(tmp_path: Path) -> None:
+    """G-3 peak RSS: the float16 arrays are converted one by one, each stored copy dropped
+    once converted, and the file's bytes are not kept past parsing. Loading used to hold
+    the file, every float16 array and every float32 array at once (about 2.3 times the
+    weights); now the peak stays under twice what the loaded model keeps."""
+    import tracemalloc
+
+    folder = _copy(tmp_path)
+    tracemalloc.start()
+    try:
+        model = load_student(folder)
+        kept, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    weights = sum(
+        a.nbytes
+        for m in model._members
+        for a in (m.embedding, m.dense_t, m.dense_bias, m.heads_t, m.heads_bias)
+        + tuple(x for layer in m.layers for x in (layer.weight, layer.bias))
+    )
+    assert weights <= kept
+    assert peak < 2 * weights
+
+
 @pytest.mark.parametrize("name", [WEIGHTS, VOCAB, CONFIG, MANIFEST])
 def test_missing_file(tmp_path: Path, name: str) -> None:
     folder = _copy(tmp_path)

@@ -32,7 +32,20 @@ already tells the user once that memory is unavailable.
 
 :meth:`StateStore.shred` is the hook for ``olivia forget`` (B5); :meth:`StateStore.rekey`
 rewrites the state under a fresh key after one method's preference is reset
-(``olivia forget --method``, RSK-06). Nothing here logs.
+(``olivia forget --method``, RSK-06). Order, so that an interruption never loses the kit
+or the other methods' preferences (the same order as the profile's re-key, #112):
+
+1. seal the new state under the staging store :data:`STATE_REKEY_STORE` into
+   :data:`STATE_REKEY_FILENAME` (an atomic write: the commit point);
+2. delete ``state.bin`` and ``Vault.shred`` the ``state`` key (the master key rotates);
+3. write ``state.bin`` under a fresh ``state`` key;
+4. delete the staging file and shred the staging store.
+
+Interrupted before step 1 nothing changed (a staging key without its file is shredded);
+from step 1 on, the next ``load``, ``save`` or ``rekey`` finishes steps 2-4 first. A
+staging copy that does not open is discarded and ``state.bin`` stays authoritative.
+While the keychain does not answer, an unfinished re-key is left as it is and nothing is
+written over it. Nothing here logs.
 """
 
 from __future__ import annotations
@@ -58,9 +71,14 @@ from olivia.core.taxonomy import Taxonomy, TaxonomyError
 
 STATE_STORE: Final = "state"
 STATE_FILENAME: Final = "state.bin"
+STATE_REKEY_STORE: Final = "state_rekey"
+"""The staging store a re-key seals the new state under (used, then shredded)."""
+STATE_REKEY_FILENAME: Final = "state.rekey"
+"""The staging copy of a re-key; it exists only while one is under way."""
 FORMAT_VERSION: Final = 1
 KIT_MAX: Final = 10
 _LABEL: Final = "state"
+_STAGED_LABEL: Final = "state_rekey"
 _KEYS: Final = frozenset({"olivia_state", "bandit", "kit"})
 _ID_MAX: Final = 64
 
@@ -137,12 +155,18 @@ class StateStore:
     def __init__(self, base_dir: Path | None = None, vault: Vault | None = None) -> None:
         directory = app_data_dir() if base_dir is None else base_dir
         self.path: Path = directory / STATE_FILENAME
+        self.staging: Path = directory / STATE_REKEY_FILENAME
         self.vault: Vault = Vault(directory) if vault is None else vault
         self._keep = False
         """A later version's file, or one the keychain could not open: never overwrite."""
 
     def load(self) -> CarriedState | None:
         """The stored state, or None (no file, damaged, from a later version, locked)."""
+        try:
+            self._finish_rekey()
+        except (CryptoError, OSError):
+            self._keep = True  # an unfinished re-key holds the newest state: leave it
+            return None
         try:
             blob = self.path.read_bytes()
         except FileNotFoundError:
@@ -174,13 +198,13 @@ class StateStore:
         """
         if self._keep:
             return False
-        payload = json.dumps(state.to_dict(), ensure_ascii=False, sort_keys=True)
         try:
-            blob = self.vault.seal(STATE_STORE, payload.encode("utf-8"), label=_LABEL)
+            self._finish_rekey()
+            blob = self.vault.seal(STATE_STORE, _payload(state), label=_LABEL)
         except NoKeychainError:
             raise
-        except CryptoError:
-            return False  # locked now, or the store's keys are damaged
+        except (CryptoError, OSError):
+            return False  # locked now, the store's keys are damaged, or the disk refused
         try:
             atomic_write_bytes(self.path, blob, snapshot=False)
         except OSError:
@@ -188,26 +212,89 @@ class StateStore:
         return True
 
     def rekey(self, state: CarriedState) -> bool:
-        """Crypto-shred every state written so far, then seal ``state`` under a fresh key
+        """Crypto-shred every state written so far and seal ``state`` under a fresh key
         (``olivia forget --method``, RSK-06): a copy of the old file, or of the old key
-        file, never opens again. False when nothing new was written (the old state is
-        gone either way); a state with neither posteriors nor kit is only shredded.
+        file, never opens again. Steps 1-4 of the module docstring, so an interruption
+        leaves the old state or the new one, never neither. A state with neither
+        posteriors nor kit is only shredded.
 
-        Raises :class:`KeychainUnavailableError` (nothing changed) while the keychain does
-        not answer, and :class:`NoKeychainError` without one.
+        False when ``state.bin`` could not be written: the new state then stays staged
+        and the next load finishes the re-key; if even the staging copy cannot be written
+        (a disk that refuses every write), the old state is shredded anyway, as asked.
+
+        Raises :class:`KeychainUnavailableError` (nothing changed, or an interrupted
+        re-key left to finish later) while the keychain does not answer, and
+        :class:`NoKeychainError` without one.
         """
         self.vault.check()
-        self.shred()
+        self._finish_rekey()
         self._keep = False
         if not state.kit and not _has_arms(state.bandit):
+            self.shred()
             return True
-        return self.save(state)
+        try:
+            blob = self.vault.seal(STATE_REKEY_STORE, _payload(state), label=_STAGED_LABEL)
+            atomic_write_bytes(self.staging, blob, snapshot=False)  # the commit point
+        except KeychainUnavailableError:
+            raise
+        except (CryptoError, OSError):
+            self.shred()
+            return False
+        return self._apply_rekey(state)
 
     def shred(self) -> None:
-        """Make every state ever written unreadable (``olivia forget``, B5)."""
+        """Make every state ever written unreadable (``olivia forget``, B5), an
+        unfinished re-key's staging copy included."""
+        self._shred_main()
+        self._discard_staging()
+
+    # -- re-keying -------------------------------------------------------------------------
+
+    def _shred_main(self) -> None:
         remove_file(self.path)
         if self.vault.has_data_key(STATE_STORE):
             self.vault.shred(STATE_STORE)
+
+    def _apply_rekey(self, state: CarriedState) -> bool:
+        """Steps 2-4; each is safe to repeat. False (the staging copy kept, so the next
+        load tries again) when ``state.bin`` cannot be written."""
+        self._shred_main()
+        blob = self.vault.seal(STATE_STORE, _payload(state), label=_LABEL)
+        try:
+            atomic_write_bytes(self.path, blob, snapshot=False)
+        except OSError:
+            return False
+        self._discard_staging()
+        return True
+
+    def _finish_rekey(self) -> None:
+        """Complete a re-key interrupted after its commit point, or discard one
+        interrupted before it. Raises :class:`CryptoError` (a keychain that does not
+        answer, say) or :class:`OSError` (a staging copy the system will not read, or a
+        ``state.bin`` that cannot be written) with the staging copy left in place."""
+        try:
+            blob = self.staging.read_bytes()
+        except FileNotFoundError:
+            if self.vault.has_data_key(STATE_REKEY_STORE):
+                self.vault.shred(STATE_REKEY_STORE)
+            return
+        try:
+            data = json.loads(self.vault.open(STATE_REKEY_STORE, blob, label=_STAGED_LABEL))
+            staged = CarriedState.from_dict(data)
+        except (KeyMissingError, DecryptionError, ValueError, TypeError):
+            self._discard_staging()  # does not open: ``state.bin`` stays authoritative
+            return
+        if not self._apply_rekey(staged):
+            raise OSError("the re-keyed state cannot be written yet")
+
+    def _discard_staging(self) -> None:
+        remove_file(self.staging)
+        if self.vault.has_data_key(STATE_REKEY_STORE):
+            self.vault.shred(STATE_REKEY_STORE)
+
+
+def _payload(state: CarriedState) -> bytes:
+    return json.dumps(state.to_dict(), ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
 def _has_arms(bandit: Mapping[str, object]) -> bool:

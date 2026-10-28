@@ -28,8 +28,8 @@ menu or by a flag (:class:`Target`):
    again; entries that no longer open are dropped and counted;
 2. every chat record: the ledger (``Ledger.shred``) and the care marker (``CareStore.shred``);
 3. one method's preference, by the number ``olivia memory`` lists it under: its posterior
-   is removed in every spectrum and the state re-sealed under a fresh key
-   (``StateStore.rekey``), the kit and the other methods kept;
+   is removed in every spectrum and the state re-sealed under a fresh key through a
+   staging store (``StateStore.rekey``), the kit and the other methods kept;
 4. the kit and the method preferences (``StateStore.shred``);
 5. the safety plan (``SafetyPlanStore.shred``);
 6. everything (:func:`forget_all`): ``Vault.shred_all`` destroys every wrapped data key
@@ -112,7 +112,14 @@ from olivia.core.memory.preferences import (
     method_preferences,
     without_method,
 )
-from olivia.core.memory.state import STATE_FILENAME, STATE_STORE, CarriedState, StateStore
+from olivia.core.memory.state import (
+    STATE_FILENAME,
+    STATE_REKEY_FILENAME,
+    STATE_REKEY_STORE,
+    STATE_STORE,
+    CarriedState,
+    StateStore,
+)
 from olivia.core.models import PersonaProfile
 from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
 from olivia.core.taxonomy import Taxonomy, load_taxonomy
@@ -124,6 +131,7 @@ DATA_FILES: Final = (
     RECOVERED_FILENAME,
     CARE_FILENAME,
     STATE_FILENAME,
+    STATE_REKEY_FILENAME,
     SAFETY_PLAN_FILENAME,
     SUGGESTED_FILENAME,
 )
@@ -608,7 +616,12 @@ def _has_any(stores: DataStores, target: Target) -> bool:
             or stores.vault.has_data_key(CARE_STORE)
         )
     if target is Target.KIT:
-        return stores.state.path.is_file() or stores.vault.has_data_key(STATE_STORE)
+        return (
+            stores.state.path.is_file()
+            or stores.state.staging.is_file()
+            or stores.vault.has_data_key(STATE_STORE)
+            or stores.vault.has_data_key(STATE_REKEY_STORE)
+        )
     if target is Target.SAFETY_PLAN:
         return stores.plan.exists() or stores.vault.has_data_key(SAFETY_PLAN_STORE)
     return any(path.exists() for path in _owned_paths(stores.base))
