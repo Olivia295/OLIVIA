@@ -501,15 +501,18 @@ class LanguageEngine:
         ``substance`` lines: ``ask_to_drink``, then ``withdrawal`` or ``withdrawal_severe``.
         """
         text = normalize(user_text)
+        reading = self.substance(user_text)
         lines = [
             b.line
-            for b in self._data.utterances.boundaries.values()
+            for name, b in self._data.utterances.boundaries.items()
             if any(c in text for c in b.cues)
             and (not b.needs_any or any(n in text for n in b.needs_any))
+            # Round 5: stopping a medicine on one's own gets the withdrawal reminder,
+            # which sends to the doctor or pharmacist too; not both.
+            and not (name == "medication" and reading.stopping)
         ]
         # Round 3 (draft, G-0): the plain answer to "is a little drink all right?", then
         # the withdrawal reminder (the severe one for a severe sign).
-        reading = self.substance(user_text)
         said = self._data.utterances.substance_lines
         wanted = (
             ("ask_to_drink", reading.asks_to_drink),
@@ -577,6 +580,10 @@ class LanguageEngine:
         elif drinking.asks_to_drink:
             # "我就想喝一小杯，应该没事吧": the wish to drink is not said back either.
             instead = said.acks.get(Utterance.QUESTION.value, ())
+        elif drinking.stopping and said.stopping_acks:
+            # Round 5 (复测 q3 W01): "从明天起一口都不碰，说戒就戒" is not said back as if
+            # agreed with; the withdrawal reminder leads the reply.
+            instead = said.stopping_acks
         elif blames:
             instead = said.self_blame_acks
         # Drawn in the order they always were (the same random numbers).
