@@ -30,7 +30,7 @@ negations: [不, 没, 没有, 不是, 不太, 不怎么, 不那么, 没那么, �
 words:
   - word: 疲惫
     replaces: [calm, sadness, overwhelm, numbness, disappointment]
-    cues: [好累, 很累, 太累, 真累, 累死, 累坏, 累瘫, 累得, 累到, 累了, 心累, 有点累, 疲惫, 疲倦, 疲劳, 乏力, 没力气, 精疲力尽, 筋疲力尽, 身心俱疲, 累, tired, exhausted]
+    cues: [好累, 很累, 太累, 真累, 累死, 累坏, 累瘫, 累得, 累到, 累了, 心累, 有点累, 疲惫, 疲倦, 疲劳, 乏力, 没力气, 精疲力尽, 筋疲力尽, 身心俱疲, 累, tired, exhausted, 攰]
     exceptions: [积累, 累积, 累计, 连累, 拖累, 牵累, 累赘, 劳累费]
   - word: 烦躁
     replaces: [calm, anger, overwhelm]
@@ -42,3 +42,13 @@ words:
   - word: 想家的心情
     replaces: [calm, sadness, loneliness]
     cues: [想家, 想回家, 思乡]
+  # 粤语的感受说法（草稿：待 G-0；第四轮 2026-10-28，复测 q3：粤语用户每轮同一句承接）。只收普通话里不用的写法。
+  - word: 难过
+    replaces: [calm, sadness, disappointment]
+    cues: [唔开心, 好灰, 心淡]
+  - word: 想念
+    replaces: [calm, sadness, loneliness]
+    cues: [挂住]
+  - word: 气愤
+    replaces: [calm, anger]
+    cues: [好嬲, 激气, 嬲死]

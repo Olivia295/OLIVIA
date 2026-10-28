@@ -62,6 +62,20 @@ Words not said back (round 3, B2a; draft, G-0; ``language/guard.py``):
   :meth:`LanguageEngine.boundary_line` leads the reply with the withdrawal reminder or the
   plain answer to the question (``substance`` lines). Drinking stays the session's context
   once it came up.
+
+Round 4 (复测 q3, 2026-10-28; draft, G-0):
+
+* Risk components (``guarded.components``): two kinds of them in one message (a means and
+  a preparation, an ending and something lasting, a wish and an ending ...) keep it from
+  being said back at any level, in every mirror (:meth:`LanguageEngine.safe_mirror`, so
+  the crisis flow's answer to new words too). An L1 that only the risk model gives, to a
+  message without them, is answered as usual (:meth:`LanguageEngine.note_risk`).
+* Acknowledgement lines rotate, the least used first. Self-blame ("我真是个废物") and a
+  statement whose 你 is the companion are answered with their own lines; "你感到" + a
+  whole sentence names only the feeling. Any message about drinking or a drug, and
+  self-blame, take no "this matters to you" line.
+* :meth:`LanguageEngine.withdrawal_line`: the reminder alone, for the crisis flow and a
+  safety question, where the session adds it after the card.
 """
 
 from __future__ import annotations
@@ -127,6 +141,11 @@ _NEED_PART: Final = "need"
 # A bereavement (SIT-06-04) draws the bereavement spectrum's images (dogfood P6).
 _BEREAVEMENT: Final = "SIT-06-04"
 _GRIEF_SPECTRUM: Final = "06"
+# Round 4: a mirror "你感到" + more than this many characters is a whole sentence framed as
+# a feeling ("你感到奶奶今天打电话说想你了"); it names the feeling alone, or reports.
+_FELT: Final = "你感到"
+_SAID: Final = "你提到"
+_FELT_MAX: Final = 4
 
 
 @dataclass(frozen=True)
@@ -206,10 +225,16 @@ class LanguageEngine:
         self._rng = rng
         self._data = data if data is not None else load_language_data(tax)
         self._gate = OutputGate(tax, self._data)
-        self._guard = MirrorGuard(lexicons, self._data.utterances.extra_risk_words)
-        # The level the session gave this turn (note_risk), and whether drinking came up
-        # this session (round 3).
+        said = self._data.utterances
+        self._guard = MirrorGuard(lexicons, said.extra_risk_words, said.components)
+        # The level the session gave this turn (note_risk) and the rule screen's own level
+        # (round 4), and whether drinking came up this session (round 3).
         self._turn_level = CrisisLevel.L0
+        self._rules_level = CrisisLevel.L0
+        # How often each acknowledgement filled the mirror slot (round 4: an unused one
+        # first), and the last pick, reused when a turn reads the same message again.
+        self._ack_uses: Counter[str] = Counter()
+        self._last_ack: tuple[str, tuple[str, ...], str] | None = None
         self._drinking = False
         self._words_read: tuple[str, bool] | None = None
         self.last_gate: GateResult | None = None
@@ -364,21 +389,37 @@ class LanguageEngine:
             tiers.append(self._data.metaphors.fallback)
         return tiers
 
-    def note_risk(self, level: CrisisLevel) -> None:
+    def note_risk(self, level: CrisisLevel, *, rules: CrisisLevel | None = None) -> None:
         """The crisis level of the turn about to be answered (the session calls it once a
-        turn): from L1 up the user's words are not said back (round 3)."""
+        turn), and the rule screen's own level (``rules``; ``level`` when not given).
+
+        Round 3: from L1 up the user's words were not said back. Round 4 (复测 q3): an L1
+        that only the risk model gives, to a message with no risk component of its own
+        ("吼了孩子，现在很后悔"), is answered like any other turn; the rule screen's L1 and
+        any L2 or higher still say nothing back."""
         self._turn_level = level
+        self._rules_level = level if rules is None else rules
 
     def guarded(self, user_text: str) -> bool:
-        """None of the user's words this turn are said back: an L1+ turn, or a message
-        with a risk phrase or a risk word (``guard.MirrorGuard``)."""
-        if self._turn_level >= CrisisLevel.L1:
+        """None of the user's words this turn are said back: an L2+ turn, a turn the rule
+        screen rates L1, or a message with a risk component (:meth:`risky_words`)."""
+        if self._turn_level >= CrisisLevel.L2 or self._rules_level >= CrisisLevel.L1:
             return True
+        return self.risky_words(user_text)
+
+    def risky_words(self, user_text: str) -> bool:
+        """``user_text`` holds a risk phrase, a risk word or two kinds of risk component
+        (``guard.MirrorGuard``), whatever level the turn has."""
         # A turn reads the same message more than once (a recomposed reply): read it once.
         if self._words_read is None or self._words_read[0] != user_text:
             said = self._guard.risky(user_text) or self._guard.flagged(user_text)
             self._words_read = (user_text, said)
         return self._words_read[1]
+
+    def runs_self_down(self, user_text: str) -> bool:
+        """Round 4: ``user_text`` runs the user down ("我真是个废物"; ``guarded.self_blame``)."""
+        text = normalize(user_text)
+        return any(cue in text for cue in self._data.utterances.self_blame)
 
     def substance(self, user_text: str) -> SubstanceReading:
         """What ``user_text`` says about drinking (``lexicons/substance.yaml``). Drinking is
@@ -412,16 +453,35 @@ class LanguageEngine:
         """
         kind = utterance_kind(user_text) if kind is None else kind
         acks = self._data.utterances.acks.get(kind.value, ())
+        if not instead and self.risky_words(user_text):
+            # Round 4: risk words are never said back, wherever the mirror is used (the
+            # crisis flow's answer to new words too), whatever the turn's level.
+            instead = self._data.utterances.guarded_acks
         if instead:
-            raw = instead[sum(map(ord, user_text)) % len(instead)]
+            raw = self._pick_ack(instead, user_text)
         elif kind is not Utterance.STATEMENT and acks:
-            raw = acks[sum(map(ord, user_text)) % len(acks)]
+            raw = self._pick_ack(acks, user_text)
         else:
             raw = mirror(user_text)
         text = apply_willow(raw, ContentKind.NORMAL, self._data.willow)
         if not text or self._gate.reasons(text, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):
             return FALLBACK_MIRROR
         return text
+
+    def _pick_ack(self, pool: Sequence[str], user_text: str) -> str:
+        """One line of ``pool`` for the mirror slot, picked from the text itself (no random
+        number). Round 4 (复测 q3): the line used least this session comes first, so the
+        same line does not answer every turn (a Cantonese user got one line each time)."""
+        key = tuple(pool)
+        if self._last_ack is not None and self._last_ack[:2] == (user_text, key):
+            return self._last_ack[2]
+        start = sum(map(ord, user_text)) % len(pool)
+        ordered = [pool[(start + k) % len(pool)] for k in range(len(pool))]
+        least = min(self._ack_uses[line] for line in ordered)
+        picked = next(line for line in ordered if self._ack_uses[line] == least)
+        self._ack_uses[picked] += 1
+        self._last_ack = (user_text, key, picked)
+        return picked
 
     def reassures(self, user_text: str) -> bool:
         """``user_text`` says something like "我没事" (``utterances.yaml`` ``reassurance``),
@@ -464,6 +524,21 @@ class LanguageEngine:
             return ""
         return line
 
+    def withdrawal_line(self, user_text: str) -> str:
+        """Round 4 (复测 q3): the withdrawal reminder alone (``withdrawal`` or, for a severe
+        sign, ``withdrawal_severe``), "" without a sign. The session puts it after a crisis
+        reply or a safety question, where :meth:`boundary_line` is not used: the risk
+        model's misreading must not cost the reminder."""
+        reading = self.substance(user_text)
+        name = "withdrawal_severe" if reading.severe else "withdrawal"
+        line = self._data.utterances.substance_lines.get(name, "")
+        if not (reading.withdrawal and line):
+            return ""
+        line = apply_willow(line, ContentKind.NORMAL, self._data.willow)
+        if self._gate.reasons(line, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):
+            return ""
+        return line
+
     def build_slots(
         self,
         *,
@@ -481,11 +556,19 @@ class LanguageEngine:
         mirrors with a ``guarded.acks`` line and names no need. A sentence relishing a
         drink mirrors with a ``substance.craving`` line and names no feeling from the
         user's own words, and a question whether a little drink is all right is not
-        mirrored. None of these, nor a withdrawal sign, takes an affirmation."""
+        mirrored. None of these, nor a withdrawal sign, takes an affirmation.
+
+        Round 4 (复测 q3; draft, G-0): a message that runs the user down ("我真是个废物")
+        mirrors with a ``guarded.self_blame`` line and takes no affirmation, nor does any
+        message about drinking or a drug; a statement whose 你 is the companion ("我知道
+        你不会同意") takes an ``addressed_acks`` line, never "你知道对方不会同意"; and a
+        mirror "你感到" + a whole sentence ("你感到领导当着全组的面批评你") names only the
+        feeling ("你感到丢脸"), or reports the words when there is none ("你提到…")."""
         risky = self.guarded(user_text)
         self._note_topics(spectrum_id, situations, user_text)
         drinking = self.substance(user_text)
         said = self._data.utterances
+        blames = not risky and self.runs_self_down(user_text)
         instead: Sequence[str] = ()
         if risky:
             instead = said.guarded_acks
@@ -494,11 +577,15 @@ class LanguageEngine:
         elif drinking.asks_to_drink:
             # "我就想喝一小杯，应该没事吧": the wish to drink is not said back either.
             instead = said.acks.get(Utterance.QUESTION.value, ())
+        elif blames:
+            instead = said.self_blame_acks
         # Drawn in the order they always were (the same random numbers).
         emotion = self.feeling_word(emotion_id, "" if drinking.craving else user_text)
         mirrored = (
             self.safe_mirror(user_text, utterance, instead=instead) if user_text.strip() else ""
         )
+        if mirrored and not instead:
+            mirrored = self._plain_mirror(mirrored, user_text, emotion)
         metaphor = self.metaphor_phrase(spectrum_id, yearning_id, situations, user_text)
         need = self.need_phrase(yearning_id) if yearning_id is not None else ""
         return Slots(
@@ -507,10 +594,35 @@ class LanguageEngine:
             emotion=emotion,
             mirror=mirrored,
             metaphor=metaphor,
-            need="" if risky else need,
+            # Round 4: no need named after a craving or self-blame either (every need line
+            # says the need "is no excess", "shows you care").
+            need="" if risky or drinking.any or blames else need,
             card_title=card_title,
-            guarded=risky or drinking.any,
+            guarded=risky or drinking.any or blames,
         )
+
+    def _plain_mirror(self, mirrored: str, user_text: str, emotion: str) -> str:
+        """Round 4 (复测 q3): a mirror that reads wrongly said another way. The 你 of the
+        companion turned into 对方 ("你知道对方不会同意") takes an ``addressed_acks`` line;
+        "你感到" + more than a few characters keeps a short first clause ("你感到好一点
+        了"), else only the feeling, or says "你提到"."""
+        said = self._data.utterances
+        if "对方" in mirrored and "对方" not in user_text and said.addressed_acks:
+            return self._pick_ack(said.addressed_acks, user_text)
+        if not mirrored.startswith(_FELT):
+            return mirrored
+        rest = mirrored[len(_FELT) :]
+        if len(_MEANINGFUL_RE.findall(rest)) <= _FELT_MAX:
+            return mirrored
+        first = re.split(r"[，,；;]", rest, maxsplit=1)[0]
+        if len(_MEANINGFUL_RE.findall(first)) <= _FELT_MAX:
+            # "你感到好一点了，想聊聊你和室友的事情" -> "你感到好一点了".
+            reworded = f"{_FELT}{first}"
+        else:
+            reworded = f"{_FELT}{emotion}" if emotion else f"{_SAID}{rest}"
+        if self._gate.reasons(reworded, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):
+            return mirrored
+        return reworded
 
     def pick_line(self, variants: Sequence[str], values: Mapping[str, str] | None = None) -> str:
         """One variant for a single-line reply (a follow-up or the feedback prompt).
