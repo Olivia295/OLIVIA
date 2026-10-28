@@ -190,9 +190,11 @@ COLBO-07:
     - tests/methods/test_solver.py::test_empower_below_right_wing_battery_keeps_to_the_whitelist
     - tests/methods/test_solver.py::test_empower_at_right_wing_battery_gets_the_full_pool
     - tests/session/test_session.py::test_low_battery_direct_request_gets_a_light_stabilization_card
+    - tests/session/test_session_round4.py::test_a_rating_while_a_card_waits_sets_the_arousal
+    - tests/session/test_session_round4.py::test_a_rating_at_the_somatic_line_retreats_to_stabilization
   reason: >-
     双翼桥接按进度表 9.2 不做（文档未定义判据）。SUDS 换算（taxonomy.yaml suds_mapping，唤醒 = SUDS / 10）
-    已定义但还没接入：卡片结尾请用户给难受打 0–10 分，回的数字被当作普通倾诉；接入在 #139（PR 已开）
+    #139 起接入：卡片等待时回的 0–10 分设定唤醒度，≥ 8 回退稳定化
 
 # ---------------------------------------------------------------- W.I.L.L.O.W.
 WILLOW-01:
@@ -351,6 +353,9 @@ SAFE-09:
     - tests/session/test_session_flows_round3.py::test_an_unsure_model_alarm_after_the_confirmation_pauses_instead_of_voiding_it
     - tests/session/test_session_flows_round3.py::test_a_sure_model_alarm_after_the_confirmation_is_still_a_relapse
     - tests/session/test_session_flows_round3.py::test_a_rule_cue_after_the_confirmation_is_still_a_relapse
+    # #139：危机中的 L1 不计入连续升级，暂停不会在第二次暂停时失效；危机以外照旧升级。
+    - tests/session/test_session_round4.py::test_three_l1_turns_after_a_confirmation_only_pause_the_exit_count
+    - tests/session/test_session_round4.py::test_l1_escalation_still_applies_outside_a_crisis_after_one
 
 # ---------------------------------------------------------------- 非目标 NG
 NG-1:
