@@ -261,6 +261,15 @@ class ProfileStore:
     def load(self) -> PersonaProfile | None:
         self.dropped_sensitive_data = False
         self.recovered_at = None
+        # A file where the data directory should be (QA q4 P7): POSIX says so when the
+        # profile is opened (NotADirectoryError), Windows says "not found", which would
+        # read as "no profile yet"; so it is checked first, the same on every system.
+        try:
+            in_the_way = self.path.parent.exists() and not self.path.parent.is_dir()
+        except OSError:
+            in_the_way = False
+        if in_the_way:
+            raise ProfileUnreadableError(f"{self.path.parent.name} is not a directory")
         try:
             remove_stray_temps(self.path)  # a killed save's copy may hold plaintext (S4)
             self._finish_rekey()

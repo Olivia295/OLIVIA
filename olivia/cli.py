@@ -2554,6 +2554,17 @@ def _run(
     rng: random.Random | None,
 ) -> int:
     """One command under the data directory's lock when it writes (D1-D3)."""
+    if args.command not in _EXEMPT_FROM_UNFINISHED and _data_dir_is_file():
+        # QA q4 P7: said the same way by every command that reads or writes data, on every
+        # system (Windows reads "<file>/profile.json" as merely missing); chat shows the
+        # numbers first (QA #8), the scheduled job stays silent.
+        if args.command == "notify-check":
+            return 1
+        if args.command == "chat":
+            _hotlines_unlocked(console, now)
+            console.say()
+        console.say(DATA_DIR_IS_FILE)
+        return 1
     if _forget_all_pending(args):
         if args.command == "chat":  # QA #8: no chat is refused without the numbers
             _hotlines_unlocked(console, now)

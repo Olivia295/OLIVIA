@@ -161,6 +161,32 @@ def test_a_file_in_place_of_the_data_directory_is_named_as_such(run_cli, data_ho
     assert cli.DATA_DIR_IS_FILE in run.out
 
 
+@pytest.mark.parametrize(
+    "argv", [["region"], ["memory"], ["safety-plan"], ["forget", "--ledger"], ["chat"]]
+)
+def test_a_file_in_place_of_the_data_directory_reads_the_same_on_windows(
+    run_cli, data_home, monkeypatch, argv
+):
+    """Windows says "not found" (FileNotFoundError) where POSIX says NotADirectoryError
+    when ``<file>/profile.json`` is opened: it must not read as "no profile yet"."""
+    from olivia.core.chang import profile as profile_module
+
+    def not_found(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError("[WinError 3] The system cannot find the path specified")
+
+    monkeypatch.setattr(profile_module, "remove_stray_temps", lambda _path: None)
+    monkeypatch.setattr(profile_module, "read_with_recovery", not_found)
+    data_home.parent.mkdir(parents=True, exist_ok=True)
+    data_home.write_text("not a directory", encoding="utf-8")
+    run = run_cli(argv)
+    assert run.code == 1
+    assert cli.DATA_DIR_IS_FILE in run.out
+    assert cli.NO_REGION not in run.out and cli.NOT_SET_UP not in run.out
+    assert run.lines[-1] == cli.DATA_DIR_IS_FILE
+    if argv == ["chat"]:
+        assert run.out.index("112") < run.out.index(cli.DATA_DIR_IS_FILE)
+
+
 # -- P8: a ledger that cannot be written is said at the start ---------------------------------
 
 
