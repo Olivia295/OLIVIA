@@ -376,3 +376,42 @@ def test_the_packaged_reach_is_what_denies_a_negated_plan() -> None:
     text = normalize("我不打算这周末去楼顶跳下去")
     assert "S1_JUMP_PLANNED" in {h.entry.id for h in Composer(plain).find(text)}
     assert "S1_JUMP_PLANNED" not in {h.entry.id for h in COMPOSER.find(text)}
+
+
+# -- 7. a clear no with interjections, repeated, in dialect or English (re-test q2) --------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "啊？不是不是…自我吐槽",
+        "嗐，没有啦…我好着呢",
+        "No no, nothing like that, I'm just really tired",
+        "哎哟，不是啦…嘴碎",
+        "额，不是滴…憋屈",
+        "不是不是，没有那种想法，就是想喘口气",
+        "冇啊，只系有啲攰",
+        "nope, just a rough week",
+        "没有，只不过最近有点烦",
+    ],
+)
+def test_a_clear_no_in_any_form_is_a_no(text: str) -> None:
+    assert _reading(text) is IntentAnswer.DENIED, text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "不是不是，今晚就去楼顶跳下去",
+        "嗐，没有啦，就是不想活了",
+        "no no, I just want to die",
+        "不是，只是有时候会想",
+        "不是，就是有点想",
+        "没有，有一点",
+        "不是不想",
+        "不是吧",
+        "没有没有，可能吧",
+    ],
+)
+def test_a_hedge_or_risk_after_the_no_keeps_it_unclear(text: str) -> None:
+    assert _reading(text) is not IntentAnswer.DENIED, text

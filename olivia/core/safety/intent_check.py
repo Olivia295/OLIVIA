@@ -40,6 +40,16 @@ before a time word, a plan word or a new 我 (``_SOFT_BREAK``); with ``rest_scre
 everything after that point is screened on its own and any risk cue there (L1 or above,
 an ask cue, plan evidence) makes the answer UNCLEAR, for a plain no and a negated intent
 alike.
+
+Re-test q2 (2026-10-28): a clear no said with an interjection, twice, in dialect or in
+English read as unclear and entered the crisis flow ("嗐，没有啦…我好着呢", "No no, nothing
+like that", "额，不是滴…憋屈", "不是不是，没有那种想法，就是想喘口气"). Now 嗐 / 哟 / 呦 are
+interjections too (哎哟 is dropped whole), 滴 is a particle (不是滴), a no repeated with
+spaces between ("no no") is the same no, and a repeated no is checked for unsure words as
+said once (不是不是 holds the unsure 不是不). After the no, "只不过" is "just" (not the
+unsure 不过) and 有点 / 有一点 before a feeling (有点烦, 有一点累) is a degree, not the
+hedge 有一点 (that stays unsure alone, before a particle or before 想 / 会 / 要). What
+follows is still screened: any risk cue there keeps the answer unclear.
 """
 
 from __future__ import annotations
@@ -58,17 +68,21 @@ from olivia.core.safety.normalize import fold_words
 # Clause ends after fold_words (NFKC already maps ，！？；： to , ! ? ; :).
 _CLAUSE_END: Final = re.compile(r"[,.!?;:。、~…\n\"“”]")
 _FILLERS: Final = "啊呃额哦噢喔诶欸哎"
-_PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢"
+_PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢滴喎"
 # Round 3: interjections, laughter and "what are you thinking" before the answer, each
 # optionally followed by punctuation or a space. Dropped from the front again and again.
 _INTERJECTION: Final = re.compile(
-    r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
+    r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀嗐哟呦唷]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
     r"你?想啥呢|你?想什么呢|你?在想啥|怎么可能|当然|肯定|"
     r"(?:lol|lmao|haha\w*|hah|ha|hmm+|um+|uh+|oh|ah|well|lmfao)\b)"
     r"[\s,.!?;:。、~…\"“”]*"
 )
 # A no said twice or more ("没有没有", "不是不是"; r2 u1b) is the same no.
 _REPEATED: Final = re.compile(r"(.+?)\1+")
+# After a no, "just" (只不过) and a degree before a feeling (有点烦) are no hedge
+# (re-test q2): only the unsure words they would otherwise hold are kept out.
+_JUST_BUT: Final = re.compile(r"只不过")
+_DEGREE: Final = re.compile(r"有一?点(?=[^\W想会要打准念吧呢啊了么嘛])")
 # A no that means yes.
 _SARCASM: Final = ("才怪", "就怪了")
 # Round 3: a first clause that negates an intent in the first person (我绝对没有想……). Only
@@ -132,14 +146,18 @@ def read_answer(
     sarcastic = any(word in folded for word in _SARCASM)
     living = any(word in clause for word in _NEGATED_VETOES)
     plain = clause.rstrip(_PARTICLES)
-    repeated = _REPEATED.fullmatch(plain)
+    # A no said twice, with or without spaces between ("没有没有", "no no").
+    repeated = _REPEATED.fullmatch(plain.replace(" ", ""))
     base = repeated.group(1) if repeated is not None else plain
-    denies = (
-        not sarcastic
-        and not living
-        and (base in answers.deny_whole or _starts(clause, answers.deny_start))
+    wholes = answers.deny_whole
+    whole_no = base in wholes or (
+        repeated is not None and base in {p.replace(" ", "") for p in wholes}
     )
-    unsure = any(_contains(folded, phrase) for phrase in answers.unsure)
+    denies = not sarcastic and not living and (whole_no or _starts(clause, answers.deny_start))
+    # Unsure words are looked for in the no as said once and in what follows it.
+    said = folded if repeated is None else f"{base}{clause[len(plain) :]},{rest}"
+    said = _DEGREE.sub("", _JUST_BUT.sub("只是", said))
+    unsure = any(_contains(said, phrase) for phrase in answers.unsure)
     negated = (
         not sarcastic
         and rest_screen is not None

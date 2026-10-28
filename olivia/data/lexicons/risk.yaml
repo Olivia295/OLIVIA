@@ -390,7 +390,10 @@ intent_answers:
   deny_whole: ["不是", "没有", "不会", "没", "不", "不不", "不不不", "没呢", "才不是", "当然不是",
                "并不是", "并没有", "当然没有", "当然不会", "绝对不是", "完全没有", "冇", "唔系", "唔会",
                "无", "no", "nope", "nah", "of course not", "not at all", "absolutely not",
-               "i'm not", "i am not", "i don't", "i do not", "definitely not"]
+               "i'm not", "i am not", "i don't", "i do not", "definitely not",
+               # Re-test q2 (2026-10-28): dialect and English noes.
+               "冇有", "冇嘢", "冇事", "nothing like that",
+               "nothing of the sort", "no way", "no not at all"]
   deny_start: ["不是那个意思", "不是这个意思", "没那个意思", "没有那个意思", "没有这个意思", "不是说",
                "我不是说", "我不是那个意思", "我没有那个意思", "你误会", "误会了", "想多了", "你想多了",
                "不是这样", "不是想", "没有想", "没想", "我不是想", "我没有想", "我没想", "我不会",
