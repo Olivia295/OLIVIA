@@ -94,10 +94,12 @@ def test_l2_opening_then_plan_then_hotline_card(region):
     block = crisis_block(PLAN)
     assert block in result.reply
     opening, rest = plain.reply.split("\n\n", 1)
-    if card.emergency:
+    if card.emergency and card.emergency_leads:
         # A region without an L2 line shows emergency numbers at L2: they stay first.
         assert result.reply == f"{opening}\n\n{rest}\n\n{block}"
     else:
+        # The mainland's 120 follows 12356 (owner decision 2026-10-28), so the plan still
+        # comes before the card as at any other L2 card with a line.
         assert result.reply == f"{opening}\n\n{block}\n\n{rest}"
         assert _plan_at(result.reply) < _first_number_at(result.reply, card)
 

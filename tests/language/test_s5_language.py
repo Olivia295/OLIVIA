@@ -49,7 +49,12 @@ def test_the_farewell_keeps_every_number_of_every_region(tax: Taxonomy, level: C
         numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
         for number in numbers:
             assert number in text, (code, number)
-        if card.emergency:
+        if card.emergency and card.emergency_leads:
             first = min(text.index(e.number) for e in card.emergency)
             assert first <= min(text.index(n) for n in numbers)
+        elif card.emergency:
+            # The mainland L2 card's 120 follows 12356 (owner decision 2026-10-28).
+            assert min(text.index(e.number) for e in card.emergency) > max(
+                text.index(ln.number) for ln in card.lines
+            )
         assert text.index(numbers[-1]) < text.index("表姐：138-0000-0000")

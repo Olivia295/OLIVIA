@@ -9,6 +9,12 @@ province or city lookup is needed.
 A CRISIS card at L3 always leads with the region's emergency numbers; at L2 only when the
 region has no L2 line that can be called (ZZ has only directory links), so no crisis card
 is ever without a number to call.
+
+The mainland L2 card (owner decision 2026-10-28, beyond PRD GEO-02's 12356) also lists the
+ambulance number, CN's ``ambulance`` emergency entry in the same signed data (120; never
+the police number 110), after the hotlines: ``ResourceCard.emergency_leads`` is False, so
+12356 stays the first number and 120 follows under the L2 card's gentler emergency
+heading. Every other region's L2 card is unchanged.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from olivia.core.models import UNKNOWN_COUNTRY, CrisisLevel, UserRegion
 from olivia.core.resources.card import CardMode, ResourceCard
 from olivia.core.resources.store import (
     EmergencyNumber,
+    EmergencyPurpose,
     HotlineEntry,
     LineKind,
     RegionResources,
@@ -27,6 +34,11 @@ from olivia.core.resources.store import (
 )
 
 STALE_AFTER_DAYS: Final = 180
+# Owner decision 2026-10-28: emergency purposes an L2 crisis card lists after its lines, by
+# region. Only the purpose is named here; the number comes from the signed data.
+L2_EMERGENCY_AFTER_LINES: Final[dict[str, frozenset[EmergencyPurpose]]] = {
+    "CN": frozenset({EmergencyPurpose.AMBULANCE}),
+}
 
 
 def resolve_region_code(store: ResourceStore, region: UserRegion | None) -> str:
@@ -54,6 +66,7 @@ def resolve(
     lines = tuple(ln for ln in data.lines if is_minor or not ln.minors_only)
 
     emergency: tuple[EmergencyNumber, ...]
+    leads = True
     if mode is CardMode.BROWSING:
         emergency = data.emergency
         lines = tuple(ln for kind in LineKind for ln in lines if ln.kind is kind)
@@ -61,6 +74,10 @@ def resolve(
         raise ValueError(f"crisis card requires L2 or L3, got {level.name}")
     else:
         emergency, lines = _crisis_entries(data, lines, level)
+        added = L2_EMERGENCY_AFTER_LINES.get(code, frozenset())
+        if level is CrisisLevel.L2 and not emergency and added:
+            emergency = tuple(e for e in data.emergency if e.purpose in added)
+            leads = False
 
     shown: tuple[EmergencyNumber | HotlineEntry, ...] = (*emergency, *lines)
     stale = tuple(e.id for e in shown if (today - e.verified_on).days > STALE_AFTER_DAYS)
@@ -73,6 +90,7 @@ def resolve(
         stale_entries=stale,
         compiled_on=store.compiled_on,
         directory_version=store.version,
+        emergency_leads=leads,
     )
 
 

@@ -425,9 +425,31 @@ def test_crisis_card_lists_every_number_and_nothing_else(
         assert set(phone_like_runs(text)) <= allowed, (card.region_used, text)
         if card.emergency:
             first_line = min(text.index(ln.number) for ln in card.lines) if card.lines else None
-            if first_line is not None:
+            if first_line is not None and card.emergency_leads:
                 assert text.index(card.emergency[0].number) < first_line
+            elif first_line is not None:
+                # The mainland L2 card's 120 follows its lines (owner decision 2026-10-28).
+                last_line = max(text.index(ln.number) for ln in card.lines)
+                assert text.index(card.emergency[0].number) > last_line
         assert "可能已过期" not in text
+
+
+def test_cn_l2_crisis_card_lists_120_after_12356(
+    store: ResourceStore, engine: LanguageEngine
+) -> None:
+    """Owner decision 2026-10-28: 12356 first, then 120 under the L2 heading, never 110."""
+    card = resolve(
+        store, UserRegion("CN", "Asia/Shanghai"), CrisisLevel.L2, mode=CardMode.CRISIS, today=TODAY
+    )
+    render = engine.data.render
+    text = engine.render_crisis(card, _slots(engine, 0))
+    l2_heading = render.crisis_emergency_heading[CrisisLevel.L2]
+    assert text.index("12356") < text.index(l2_heading) < text.index("120（")
+    assert "110" not in text
+    assert render.crisis_emergency_heading[CrisisLevel.L3] not in text
+    assert render.crisis_contact_people not in text
+    urgent = engine.render_crisis(card, _slots(engine, 0), urgent=True)
+    assert urgent.index("120（") < urgent.index("12356")
 
 
 def test_cn_l3_crisis_card(store: ResourceStore, engine: LanguageEngine) -> None:

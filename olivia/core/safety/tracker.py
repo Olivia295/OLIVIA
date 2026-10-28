@@ -27,6 +27,11 @@ A farewell, last words, affairs arranged or a resolve (a D3 cue marked ``raise_w
 in risk.yaml) outside a crisis escalates to L2 at once, instead of asking, when the session
 already showed risk: an earlier L1 turn of the current run or an earlier crisis
 (2026-10-26).
+The "X得 / 到想死" figure of speech that the screen reads as a D3 question (owner decision
+2026-10-28, ``ASK_INTENT_HYPERBOLE_DIE``) escalates to L2 at once, outside a crisis, when
+the session showed any other risk before: an earlier turn whose rule level was L1 or
+above or that carried a D3 cue (the figure itself does not count, so a second one after a
+clear no asks again), or an earlier crisis.
 S5 (2026-10-26): besides the ``safety_confirm`` phrases and the whole-message short yes, one
 clause of a longer message that says the user is safe ("我现在在家，是安全的", "是的，我现在
 安全，已经给我姐打了电话") confirms, but only when the screen found no rule risk cue in the
@@ -167,6 +172,7 @@ class CrisisTracker:
         self._raise_ids = frozenset(
             entry.id for entry in lexicons.compositions.entries if entry.raise_with_risk
         )
+        self._figure_id = lexicons.hyperbole_ask.id
         # The F10 denial conditions guard the clause reading (S5): any veto or contrast of
         # the ``denial`` section anywhere in the message voids it.
         guards = (*lexicons.denial.vetoes, *lexicons.denial.contrasts)
@@ -181,6 +187,9 @@ class CrisisTracker:
         self._confirmed = False
         self._safe_turns = 0
         self._had_crisis = False
+        # Some turn of this session carried a rule risk cue other than the figure of speech
+        # (owner decision 2026-10-28).
+        self._risk_seen = False
 
     @property
     def consecutive_l1_count(self) -> int:
@@ -214,8 +223,11 @@ class CrisisTracker:
 
         level = assessed
         escalated = trend is CrisisLevel.L1 and (
-            self._run >= self._streak or self._asks_again(assessment)
+            self._run >= self._streak
+            or self._asks_again(assessment)
+            or self._figure_after_risk(assessment)
         )
+        self._note_risk(assessment)
         if escalated:
             level = CrisisLevel.L2
 
@@ -266,6 +278,29 @@ class CrisisTracker:
             and not self._raise_ids.isdisjoint(assessment.cue_ids)
             and (self._run >= 2 or self._had_crisis)
         )
+
+    def _is_figure(self, assessment: CrisisAssessment) -> bool:
+        return bool(self._figure_id) and self._figure_id in assessment.cue_ids
+
+    def _figure_after_risk(self, assessment: CrisisAssessment) -> bool:
+        """The "X得 / 到想死" figure (a D3 cue) outside a crisis in a session that already
+        showed other risk or a crisis: L2 at once instead of the question (owner decision
+        2026-10-28)."""
+        return (
+            not self._in_crisis
+            and assessment.asks_intent
+            and self._is_figure(assessment)
+            and (self._risk_seen or self._had_crisis)
+        )
+
+    def _note_risk(self, assessment: CrisisAssessment) -> None:
+        """Remember a turn whose rules saw risk (rule level L1 or above, or a D3 cue), the
+        figure of speech alone excepted."""
+        if self._is_figure(assessment):
+            return
+        rule = assessment.rule_level or CrisisLevel.L0
+        if rule >= CrisisLevel.L1 or assessment.asks_intent:
+            self._risk_seen = True
 
     def _update_trend(self, assessed: CrisisLevel, valence: float | None) -> None:
         if assessed is CrisisLevel.L1:

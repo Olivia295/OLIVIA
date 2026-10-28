@@ -60,6 +60,16 @@ said it, and says whether every rule cue of the message lies inside them. It nev
 ``assess``; the session uses it to answer with resources to pass on instead of the crisis
 flow.
 
+The "X得 / 到想死" figure of speech (owner decision 2026-10-28, ``risk.yaml``
+``hyperbole_ask``): when every Stage 2 phrase that counts lies inside a frame ("烦得想死",
+"加班加到想死", "激到我想死"), no other rule cue occurs (another Stage 2, negation or
+pair-anchor phrase, a pair cue, a composition) and no veto does (真的, 不是开玩笑, 那种, a run
+of days, a plan, a time, a means, a farewell, another death word), the rule model gives
+L1 with ``ASK_INTENT_HYPERBOLE_DIE`` (a D3 cue: ``asks_intent``) instead of L2, and an
+injected model counts at most as L1 (a model failure is still L2; its L3 is no plan
+evidence). Anything else keeps the frame's L2. The tracker raises it to L2 when the
+session already showed risk (``tracker.py``).
+
 ``rule_clear`` (owner decision 2026-10-26) says the rules found no risk cue at all
 (:func:`rules_found_nothing`): the session then asks once before a crisis level that
 only the injected model gives, and the tracker may read a safety clause in a longer
@@ -82,6 +92,7 @@ from olivia.core.safety.compose import Composer, CompositionHit
 from olivia.core.safety.lexicon import (
     Composition,
     DenialRules,
+    HyperboleAskRules,
     PairCue,
     RecallCapRules,
     RiskCue,
@@ -239,10 +250,12 @@ class _CueIndex:
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
         self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
+        self.figure = _FigureIndex(lexicons.hyperbole_ask)
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
                 *(c.id for c in lexicons.compositions.entries if c.ask),
+                *([self.figure.id] if self.figure.id else []),
             ]
         )
 
@@ -326,6 +339,38 @@ class _DenialIndex:
         return all(cover.contains(m) for m in stage2)
 
 
+class _FigureIndex:
+    """The "X得 / 到想死" frames (owner decision 2026-10-28) with their vetoes."""
+
+    def __init__(self, rules: HyperboleAskRules) -> None:
+        self.id = rules.id
+        self._frames = PhraseMatcher({p: p for p in rules.frames}) if rules.frames else None
+        self._vetoes = PhraseMatcher({p: p for p in rules.vetoes}) if rules.vetoes else None
+
+    def alone(
+        self,
+        normalized: str,
+        valid: Sequence[Match],
+        matches: Sequence[Match],
+        cues: Mapping[str, RiskCue],
+        anchors: frozenset[str],
+    ) -> bool:
+        """Every counted Stage 2 phrase lies inside a frame, no negation phrase or pair
+        anchor occurs, and no veto lies anywhere in the message. The caller checks that
+        no pair or composition cue fired."""
+        if self._frames is None or not valid or not normalized:
+            return False
+        if any(
+            m.key in anchors or (m.key in cues and cues[m.key].section == "negation")
+            for m in matches
+        ):
+            return False
+        if self._vetoes is not None and self._vetoes.find_all(normalized):
+            return False
+        cover = _MaskCover(self._frames.find_all(normalized))
+        return all(cover.contains(m) for m in valid)
+
+
 class _RecallIndex:
     """The note recall questions (F16a) with their vetoes."""
 
@@ -379,6 +424,7 @@ class RuleRiskModel:
         self._index = _index if _index is not None else _CueIndex(lexicons)
         self._score_hyperbole = tax.threshold("risk.lexicon_scores.HYPERBOLE")
         self._score_l0 = tax.threshold("risk.lexicon_scores.L0")
+        self._score_l1 = tax.threshold("risk.lexicon_scores.L1")
         self._score_l2 = tax.threshold("risk.lexicon_scores.L2")
 
     def predict(self, text: str) -> RiskPrediction:
@@ -392,12 +438,16 @@ class RuleRiskModel:
         matches: Sequence[Match],
         compositions: Sequence[CompositionHit] = (),
         normalized: str = "",
+        *,
+        void_reported: bool = True,
     ) -> RiskPrediction:
         """Score a prior scan of the normalized text (spans are only valid there).
 
         L3 compositions are Stage 1 evidence and play no part here. With the
         ``normalized`` text, Stage 2 phrases that are all someone else's reported words
-        are void when no pair or composition cue fires (``safety/reported.py``)."""
+        are void when no pair or composition cue fires (``safety/reported.py``; not with
+        ``void_reported`` False), and the "X得 / 到想死" figure alone is L1 with its D3 cue
+        (owner decision 2026-10-28)."""
         cues = self._index.cues
         masks: list[Match] = []
         stage2: list[Match] = []
@@ -421,6 +471,7 @@ class RuleRiskModel:
         if (
             valid
             and normalized
+            and void_reported
             and not pairs
             and not compositions
             and len(self._index.reported.reported(normalized, valid)) == len(valid)
@@ -428,6 +479,15 @@ class RuleRiskModel:
             # Every risk phrase is someone else's reported words and the user adds no cue
             # of their own: the rules leave the user out of the crisis flow.
             valid = []
+        figure = self._index.figure
+        if (
+            not pairs
+            and not compositions
+            and figure.alone(normalized, valid, matches, cues, self._index.pair_anchor_keys)
+        ):
+            # The "X得 / 到想死" figure of speech and nothing else (owner decision
+            # 2026-10-28): L1 with the D3 question instead of L2.
+            return RiskPrediction(CrisisLevel.L1, self._score_l1, (figure.id,))
         phrase_level = max(
             [cues[m.key].level or CrisisLevel.L0 for m in valid] + [p.level for p in pairs],
             default=CrisisLevel.L0,
@@ -611,7 +671,7 @@ class SafetyScreen:
             )
             return stage1_assessment, None
         rule_prediction = self._rule_model.predict_matches(
-            matches, composed, normalized if void_reported else ""
+            matches, composed, normalized, void_reported=void_reported
         )
         prediction = rule_prediction
         asks_intent = not self._index.ask_ids.isdisjoint(prediction.cue_ids)
@@ -634,6 +694,15 @@ class SafetyScreen:
             )
             if figurative:
                 # The rules read every risk phrase as a figure of speech (F8a): at most L1.
+                model_level = min(model_level, CrisisLevel.L1)
+            asked_figure = (
+                not failed
+                and bool(self._index.figure.id)
+                and rule_prediction.cue_ids == (self._index.figure.id,)
+            )
+            if asked_figure:
+                # The "X得 / 到想死" figure alone (owner decision 2026-10-28): the session
+                # asks the D3 question, so the model counts at most as L1.
                 model_level = min(model_level, CrisisLevel.L1)
             recall = (
                 not failed
@@ -670,6 +739,7 @@ class SafetyScreen:
                 self._model_plan_evidence
                 and not failed
                 and not figurative
+                and not asked_figure
                 and not recall
                 and not denial
                 and model_prediction.level is CrisisLevel.L3

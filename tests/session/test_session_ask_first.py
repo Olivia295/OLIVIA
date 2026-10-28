@@ -2,11 +2,12 @@
 
 When a turn's crisis level reaches L2 only because of the injected model (the student in
 the product) while the rules found no risk cue at all (``CrisisAssessment.rule_clear``,
-defined by ``safety.crisis.rules_found_nothing``), and the student is unsure (its class
-below L3 and its crisis score below ``risk.yaml`` ``model_ask.direct_from_score``, 0.6),
-the session does not enter the crisis flow on that turn. It asks the direct question of
-decision D3 once (``SAFETY_CHECK``) with the region's hotlines. A sure student (class L3
-or score >= 0.6) enters the crisis flow at once, as before. The next turn decides: yes,
+defined by ``safety.crisis.rules_found_nothing``), and the student is unsure (its crisis
+score below ``risk.yaml`` ``model_ask.direct_from_score``, 0.6; since the owner decision of
+2026-10-28 whatever its class, see ``test_owner_decisions_1028.py``), the session does not
+enter the crisis flow on that turn. It asks the direct question of decision D3 once
+(``SAFETY_CHECK``) with the region's hotlines. A sure student (score >= 0.6) enters the
+crisis flow at once, as before. The next turn decides: yes,
 unclear, off topic, no answer (the session ending included) or any new risk enters the
 crisis flow; only a clear no that also passes the F10 denial
 conditions stays in ordinary talk, and it leaves no gentle-care flag (I9). A second
@@ -55,9 +56,11 @@ class Scripted:
 
 # Unsure: class L2, score below 0.6, so the alarm asks first.
 L2 = (CrisisLevel.L2, 0.55)
-# Sure: a score at the line, or the class L3 whatever the score.
+# Sure: a score at the line. An L3 class with a score below it asks first since the owner
+# decision of 2026-10-28, with the emergency numbers in front of the question's card.
 SURE = (CrisisLevel.L2, 0.6)
 L3 = (CrisisLevel.L3, 0.52)
+SURE_L3 = (CrisisLevel.L3, 0.6)
 ALARMS = {BREAKUP: L3, TRIP: L2, MEETING: L2}
 
 
@@ -88,7 +91,9 @@ def _assert_asked(result: TurnResult) -> None:
     assert result.crisis_level is CrisisLevel.L2 and result.inspect["assessed_level"] == "L2"
     assert result.action_id is None and result.referral_flags == ()
     assert "12356" in result.reply
-    assert "110" not in result.reply and "120" not in result.reply
+    # The mainland L2 card lists 120 after 12356 (owner decision 2026-10-28), never 110.
+    assert "110" not in result.reply
+    assert result.reply.index("12356") < result.reply.index("120")
 
 
 def _assert_crisis(result: TurnResult) -> None:
@@ -137,8 +142,15 @@ def test_a_model_only_l2_asks_once_with_the_regional_hotlines():
     _assert_asked(_open().turn(TRIP))
 
 
-def test_a_model_only_l3_class_enters_the_crisis_flow_with_the_emergency_numbers():
+def test_a_model_only_l3_class_below_the_line_asks_first_with_the_emergency_numbers():
     result = _open().turn(BREAKUP)
+    assert result.reply_kind is ReplyKind.SAFETY_CHECK and not result.in_crisis
+    assert result.inspect["safety_check_by"] == "model"
+    assert result.reply.index("110") < result.reply.index("12356")
+
+
+def test_a_sure_model_only_l3_class_enters_the_crisis_flow_with_the_emergency_numbers():
+    result = _open({BREAKUP: SURE_L3}).turn(BREAKUP)
     _assert_crisis(result)
     assert result.inspect["safety_check"] is None and "safety_check_by" not in result.inspect
     assert result.reply.index("110") < result.reply.index("12356")
@@ -363,8 +375,10 @@ def _lexicons_with(tmp_path, replacement: str | None):
 def test_the_packaged_line_is_0_6():
     rules = load_safety_lexicons(TAX).model_ask
     assert rules.direct_from_score == 0.6
-    assert rules.asks_first(CrisisLevel.L2, 0.59) and not rules.asks_first(CrisisLevel.L2, 0.6)
-    assert not rules.asks_first(CrisisLevel.L3, 0.3)
+    assert rules.asks_first(0.59) and not rules.asks_first(0.6)
+    # Owner decision 2026-10-28: the class no longer matters for the first question; the
+    # pause after a confirmation (2026-10-27) still treats an L3 class as a relapse.
+    assert rules.pauses(CrisisLevel.L2, 0.59) and not rules.pauses(CrisisLevel.L3, 0.3)
 
 
 @pytest.mark.parametrize("value", ["0", "1.5", "-0.1", "true", "'0.6'", ".nan"])
@@ -378,7 +392,7 @@ def test_a_bad_line_does_not_load(tmp_path, value):
 def test_without_the_section_every_model_only_alarm_enters_the_crisis_flow(tmp_path):
     rules = _lexicons_with(tmp_path, None).model_ask
     assert rules.direct_from_score is None
-    assert not rules.asks_first(CrisisLevel.L2, 0.01)
+    assert not rules.asks_first(0.01) and not rules.pauses(CrisisLevel.L2, 0.01)
 
 
 # -- #119 cues count as rule cues (2026-10-26) -----------------------------------------------------

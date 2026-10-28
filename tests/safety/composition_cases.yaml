@@ -242,7 +242,8 @@ negatives:
 - {id: cn007, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "笑死我了，你要不要这么搞笑"}
 - {id: cn008, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "我准备被老师骂死了"}
 - {id: cn009, kind: hyperbole, level: L0, stage: STAGE2, ask: false, text: "这周加班加得我要累死了"}
-- {id: cn010, kind: hyperbole, level: L2, stage: STAGE2, ask: false, text: "累得想死"}
+# Owner decision 2026-10-28: the X得想死 figure alone is L1 + the D3 question (was L2).
+- {id: cn010, kind: hyperbole, level: L1, stage: STAGE2, ask: true, text: "累得想死"}
 # --- benign_object: intent and plan verbs with everyday objects ---
 - {id: cn020, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "我要自己做饭"}
 - {id: cn021, kind: benign_object, level: L0, stage: STAGE2, ask: false, text: "打算明天去医院"}
