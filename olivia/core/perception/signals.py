@@ -189,6 +189,16 @@ class TurnSignals:
     hotline_country: str | None = None
     """The ISO code of a country without verified hotlines here whose official emergency
     numbers the render data lists ("我在日本" -> ``JP``; round 4), the first one named."""
+    hotline_number: str | None = None
+    """The digits of a number the message asks about ("12356是干嘛的"; round 5,
+    2026-10-29): the reply says what the signed hotline data says it is."""
+    hotline_unreachable: bool = False
+    """A call does not get through ("一直占线", "打唔通"; round 5)."""
+    hotline_emergency: bool = False
+    """The police or ambulance number is asked for ("报警电话是多少"; round 5)."""
+    hotline_place_hint: bool = False
+    """An English place that is no known region ("in Brazil"; round 5): the reply says
+    how to see another region's numbers."""
     suds: int | None = None
     """The whole message is a 0-10 distress rating ("7", "大概8分"; SUDS, PRD COLBO-07,
     round 4). The session reads it only while a card waits: arousal = SUDS / 10."""

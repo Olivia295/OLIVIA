@@ -1546,6 +1546,79 @@ hotline_request_patterns:
   - "(?:心理|情绪|倾诉|聊聊|聊天|说说话|说话|支援|支持|援助|求助|咨询|陪伴|自杀|危机|crisis|support|suicide|mentalhealth|emotional|talkto|talking|counsel)[^.!?。！？]{0,10}?(?:电话|热线|号码|专线|hotline|helpline|line|number){C}{0,6}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
   - "(?:有没有|有冇|有无|能不能|可不可以|可以|能否|给我|给个|告诉我|发我|发给我|推荐|想要|需要|要个|要一个|求个|求一个|找个|找一个|查一下|查查|哪里有|哪儿有|有什么|有哪些|想打|想找|请问|please|canyou|couldyou|give|need|want|isthere|arethere|any|share|send|what'sthe|whatisthe|whatnumber|which|recommend|tellme){C}{0,12}?(?:热线|hotline|helpline|crisisline|supportline)"
   - "(?:热线|hotline|helpline|crisisline|supportline){C}{0,8}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
+  # Round 5 (2026-10-29, re-test q2 第 5 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a giving word, an optional count and 电话 / 号码 with no support word ("给个电话",
+  #   "俾个号码我"); a having word with a phone word and a calling verb ("有冇电话可以打");
+  # - a phone word told to come over, after a clause start or a word naming it ("求助电话发我",
+  #   "号码甩我一个"), never someone's own number ("把他电话发我" has 他 before it);
+  # - the police or ambulance number asked for ("报警电话是多少", "叫救护车拨几号").
+  - "(?:给我|给个|给一个|发我|发个|发给我|告诉我|甩我|甩个|俾我|畀我|俾个|畀个|留个|来个|要个|要一个|求个|求一个|推荐个|推荐一个)(?:一?个|几个|一些|些)?(?:能打的|可以打的|求助的|帮忙的|有人接的|靠谱的)?(?:电话|号码)(?!给|号码给)"
+  - "(?:有没有|有冇|有无|有什么|有啥|有咩|有哪个|有哪些)(?:什么|啥|咩|哪个|哪些|一个|个)?(?:能|可以|可)?(?:打的)?(?:电话|号码){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话)"
+  - "有(?:个)?(?:电话|号码)(?:可以|能|好)(?:打|拨){C}{0,6}?(?:吗|么|嘛|冇|\\?)"
+  - "(?:^|[,.!?;~、]|把|这个|那个|求助|帮忙|援助|热线|心理|急救|报警|紧急|支援|咨询)的?(?:电话|号码)(?:号码)?(?:再|直接|快|赶紧)?(?:发|给|甩|告诉|俾|畀)(?:一下)?(?:我|过来|给我|一个|一下)"
+  - "(?:报警|急救|救护车|救护|紧急|police|ambulance|emergency)(?:的|用的|要打的)?(?:电话|号码|热线|number)(?:是|系)?(?:多少|什么|啥|咩|哪个|几号|几多|来着|吗|呢|\\?)"
+  - "(?:报警|急救|叫救护车|救护车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:哪个|什么|多少|几号|啥|咩|几多)"
+
+# What a number is ("12356是干嘛的"; round 5, 2026-10-29, re-test q2 第 5 节; 草稿：待 G-0):
+# group 1 is the number (at least three digits). The reply names what the signed hotline
+# data says it is, or says it is not in the data; it never guesses. Not slang ("520是什么意思").
+hotline_number_patterns:
+  - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:是|系)?(?:干嘛|干什么|干啥|做什么|做啥|做咩|做乜|什么|啥|咩|乜嘢|乜|边个|谁)(?!意思|梗|日子|节|时候|东西)"
+  - "(?:what'?s|whatis|whatdoes|whois)(?:the)?(?:number)?(\\d{3,})"
+
+# A call that does not get through (round 5; 草稿：待 G-0): with a phone word, a question or a
+# resource card on screen, the reply says what to do (try later or another line, the local
+# emergency number when in danger, someone nearby). Folded, no spaces.
+hotline_unreachable:
+  - 打不通
+  - 打不进
+  - 拨不通
+  - 拨不进
+  - 没人接
+  - 没有人接
+  - 无人接
+  - 无人应答
+  - 占线
+  - 忙音
+  - 接不通
+  - 打唔通
+  - 冇人听
+  - 冇人接
+  - 无人听
+  - 没人听
+  - can'tgetthrough
+  - cantgetthrough
+  - couldn'tgetthrough
+  - noanswer
+  - nooneanswer
+  - nobodyanswer
+  - nobodypickedup
+  - noonepicked
+  - busysignal
+
+# The emergency number asked for (round 5; 草稿：待 G-0): with a hotline request, the reply leads
+# with a line saying the emergency numbers come first. Folded, no spaces.
+hotline_emergency:
+  - 报警
+  - 急救
+  - 救护车
+  - 紧急电话
+  - 紧急号码
+  - police
+  - ambulance
+  - emergency
+
+# A place in English that hotline_places does not name ("hotline in Brazil"; round 5; 草稿：
+# 待 G-0): read on the raw text (lower case, spaces kept). With a hotline request and no place
+# found, the reply says these numbers follow the saved region and how to see another one
+# (olivia resources <code>); it never gives the saved region's card as that place's.
+hotline_place_hint_patterns:
+  - "\\b(?:in|for|of)\\s+(?:the\\s+)?(?!my\\b|me\\b|us\\b|this\\b|that\\b|case\\b|crisis\\b|need\\b|english\\b|chinese\\b|mandarin\\b|cantonese\\b|someone\\b|people\\b|students?\\b|teens?\\b|adults?\\b|free\\b|now\\b|tonight\\b|today\\b|help\\b|support\\b|suicide\\b|mental\\b|depression\\b|anxiety\\b|crisis\\b|emergenc|hotline|helpline|number|a\\b|an\\b|your\\b|you\\b|it\\b|them\\b|him\\b|her\\b|friends?\\b|family\\b|chat|talk|text|call)[a-z]{3,}\\b"
+
+# Places in English that need word edges (round 5; 草稿：待 G-0): region code -> patterns read on
+# the raw text (lower case, spaces kept), like hotline_places ("the hotline in the US").
+hotline_place_patterns:
+  US: ["\\bthe\\s+u\\.?s\\.?(?:a\\.?)?(?![a-z])", "\\bin\\s+u\\.?s\\.?a?\\.?(?![a-z])", "\\bu\\.s\\.(?:a\\.)?", "\\bunited\\s+states\\b"]
 
 # Follow-ups about a hotline (问题单第 7 条; 草稿：待 G-0): asked with a hotline request, or
 # within two turns of a resource card, each gets one plain, true line
@@ -1606,6 +1679,11 @@ hotline_hours:
   - overnight
   - atnight
   - anytime
+  # Round 5 (re-test q2 第 5 节): all night, someone to listen (Cantonese 有人听).
+  - 通宵
+  - 有人听
+  - 几时
+  - 全日
 hotline_language:
   - 普通话
   - 粤语

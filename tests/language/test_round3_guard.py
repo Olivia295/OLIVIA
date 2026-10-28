@@ -208,7 +208,8 @@ def test_drinking_stays_the_context_once_it_came_up() -> None:
     engine = _engine()
     assert engine.boundary_line("今天手有点抖。") == ""
     engine.boundary_line("我在试着戒酒，第五天了。")
-    assert "医生指导" in engine.boundary_line("今天手有点抖，心跳也快。")
+    # Round 5: the reminder says to ask the doctor or pharmacist how to stop.
+    assert "问医生" in engine.boundary_line("今天手有点抖，心跳也快。")
 
 
 def test_the_lines_before_the_reply() -> None:

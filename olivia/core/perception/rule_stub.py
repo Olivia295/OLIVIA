@@ -206,6 +206,8 @@ _PLACE: Final = "hotline_place"
 _SCHOOL: Final = "help_seeking_school"
 _HOW_TO_ASK: Final = "third_party_how_to_ask"
 _COUNTRY: Final = "hotline_country"
+_UNREACHABLE_CALL: Final = "hotline_unreachable"
+_EMERGENCY_ASKED: Final = "hotline_emergency"
 # Round 4 (SUDS, PRD COLBO-07): a Chinese numeral rating -> its value.
 _NUMERALS: Final = {
     "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8,
@@ -351,6 +353,8 @@ class RuleStub:
         add(_REAL, _REAL, lexicon.hotline_real)
         add(_MORE, _MORE, lexicon.hotline_more)
         add(_PHONE_WORDS, _PHONE_WORDS, lexicon.hotline_words)
+        add(_UNREACHABLE_CALL, _UNREACHABLE_CALL, lexicon.hotline_unreachable)
+        add(_EMERGENCY_ASKED, _EMERGENCY_ASKED, lexicon.hotline_emergency)
         for code, phrases in lexicon.hotline_places.items():
             add(_PLACE, code, phrases)
         add(_SCHOOL, _SCHOOL, lexicon.help_seeking_school)
@@ -361,6 +365,9 @@ class RuleStub:
         self._suds_patterns = lexicon.suds_patterns
         self._request_patterns = lexicon.direct_request_patterns
         self._hotline_patterns = lexicon.hotline_request_patterns
+        self._number_patterns = lexicon.hotline_number_patterns
+        self._place_hint_patterns = lexicon.hotline_place_hint_patterns
+        self._place_patterns = lexicon.hotline_place_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
         self._advice_patterns = lexicon.advice_patterns
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
@@ -542,7 +549,8 @@ class RuleStub:
             hotline_place=next(
                 (label for label, _ in sorted(hits.get(_PLACE, ()), key=lambda h: h[1].start)),
                 None,
-            ),
+            )
+            or self._raw_place(text),
             help_seeking_school=bool(hits.get(_SCHOOL)),
             third_party_how_to_ask=bool(hits.get(_HOW_TO_ASK)),
             third_party_says_fine=self._live(body, self._fine_patterns),
@@ -551,8 +559,30 @@ class RuleStub:
                 None,
             ),
             suds=None if command is not None or battery is not None else self._suds(folded),
+            hotline_number=self._number(body),
+            hotline_unreachable=bool(hits.get(_UNREACHABLE_CALL)),
+            hotline_emergency=bool(hits.get(_EMERGENCY_ASKED)),
+            hotline_place_hint=not hits.get(_PLACE)
+            and self._raw_place(text) is None
+            and any(p.search(text.casefold()) for p in self._place_hint_patterns),
         )
         return context, turn
+
+    def _number(self, body: str) -> str | None:
+        """The digits of a number the message asks about ("12356是干嘛的"; round 5)."""
+        for pattern in self._number_patterns:
+            match = pattern.search(body)
+            if match is not None:
+                return "".join(ch for ch in match.group(1) if ch.isdigit())
+        return None
+
+    def _raw_place(self, text: str) -> str | None:
+        """A place that needs word edges ("in the US"; round 5), on the raw text."""
+        raw = text.casefold()
+        for code, patterns in self._place_patterns.items():
+            if any(p.search(raw) for p in patterns):
+                return code
+        return None
 
     def _suds(self, folded: str) -> int | None:
         """A whole-message 0-10 distress rating (round 4, SUDS), else None."""
