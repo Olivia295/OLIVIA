@@ -354,10 +354,10 @@ def test_region_clear_snapshot(run_cli, data_home):
     assert run.out == (
         "已清除保存的地区。求助卡片会显示全球通用的资源；时区按这台电脑的设置用 UTC。\n"
     )
-    assert _saved(data_home) == UserRegion("ZZ", "UTC")
+    assert _saved(data_home) is None  # QA q4 P10: cleared, not "其他地区"
     saved = (data_home / PROFILE_FILENAME).read_text(encoding="utf-8")
     assert "杭州" not in saved and "330100" not in saved
-    assert run_cli(["region"]).out == "地区：其他地区（ZZ）\n时区：UTC\n"
+    assert run_cli(["region"]).out == f"{cli.NO_REGION}\n"
 
 
 def test_region_clear_with_a_code_is_refused(run_cli, data_home):

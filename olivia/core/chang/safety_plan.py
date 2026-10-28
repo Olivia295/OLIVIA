@@ -26,7 +26,9 @@ away are written in those words. Sections 2, 3 and 4 never keep one, since a cri
 reads them back to the user ("能让我分心的人或地方：· 我打算去楼顶待着，然后就结束"): the
 user is told why and asked to write it another way or to press Enter to skip. Leaving there
 keeps what was written before that reply. :func:`without_crisis_entries` drops such entries
-from a plan saved before this check.
+from a plan saved before this check. After the numbers only the question itself comes
+again (QA q4): a menu's lines, or the one line asking for a person; never a section
+heading or a line said about the entry before ("已经写满 5 条了", "表姐和电话都记下了").
 
 Discoverability: when no plan exists and none was suggested on this device before, the
 first S_closing reply of a session ends with one ``suggestion`` line; the CLI then writes
@@ -578,8 +580,9 @@ class _Command:
         self._cmd = text.command
         self._screen = screen
         self._since_ask: list[str] = []
-        """What was said since the last reply: the question, to ask again."""
+        """What was said since the question began (:meth:`_question`), to ask it again."""
         self._saved_any = False
+        self._had_plan = False
 
     def run(self) -> int:
         cmd = self._cmd
@@ -603,7 +606,12 @@ class _Command:
                 return self._new()
             return self._existing(plan)
         except _EndOfInput:
-            self._say(cmd["left"])
+            # QA q4 P12: only looking at a saved plan loses nothing; an edit cut short
+            # keeps the sections already saved.
+            if self._saved_any:
+                self._say(cmd["saved"])
+            else:
+                self._say(cmd["unchanged"] if self._had_plan else cmd["left"])
             return 0
         except _Left:
             self._say(cmd["crisis_left_saved"] if self._saved_any else cmd["crisis_left"])
@@ -642,9 +650,11 @@ class _Command:
 
     def _existing(self, plan: SafetyPlan) -> int:
         cmd = self._cmd
+        self._had_plan = True
         self._show(plan)
         self._say("")
         while True:
+            self._question()
             self._say(cmd["menu"])
             self._say(f"  1. {cmd['menu_edit']}")
             self._say(f"  2. {cmd['menu_clear']}")
@@ -663,6 +673,7 @@ class _Command:
         cmd = self._cmd
         changed = False
         while True:
+            self._question()
             self._say(cmd["pick_section"])
             for number, section in enumerate(SECTIONS, start=1):
                 self._say(f"  {number}. {self._text.titles[section]}")
@@ -694,6 +705,7 @@ class _Command:
         return 0
 
     def _clear(self) -> int:
+        self._question()
         self._say(self._cmd["clear_confirm"])
         if _fold(self._ask()) == "1":
             self._store.clear()
@@ -834,6 +846,10 @@ class _Command:
         self._since_ask.append(text)
         self._say_raw(text)
 
+    def _question(self) -> None:
+        """What is said from here on is the question a crisis sentence brings back."""
+        self._since_ask = []
+
     def _ask(self, section: Section | None = None) -> str:
         """One reply, screened first when there is a screen. ``section`` is the section the
         reply is for (None for a menu choice): a crisis sentence is kept in sections 1 and
@@ -858,6 +874,12 @@ class _Command:
             else:
                 self._say_raw(_fill(cmd["crisis_not_kept"], title=self._text.titles[section]))
             self._say_raw("")
+            # Only the question comes again (QA q4 P1, P2): a menu's lines; for a person the
+            # one line asking for them; for an entry nothing, since crisis_not_kept already
+            # says to write another or press Enter.
+            if section is not None:
+                lines = [line for line in question if line]
+                question = lines[-1:] if section is Section.PEOPLE else []
             while question and not question[0]:
                 question.pop(0)
             for line in question:

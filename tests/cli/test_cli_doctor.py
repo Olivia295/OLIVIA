@@ -506,23 +506,23 @@ def test_every_packaged_file_set_loads(doctor):
     run = doctor()
     from olivia import doctor as doctor_module
 
-    expected = cli.DOCTOR_PACKAGED_OK.format(count=len(doctor_module.PACKAGED_DATA))
+    expected = cli.DOCTOR_PACKAGED_OK.format(count=len(doctor_module.packaged_files()))
     assert _line(run, "程序自带的文字与词表") == f"{OK} {expected}"
 
 
 def test_a_file_set_that_does_not_load_fails_and_says_reinstall(doctor, monkeypatch):
     from olivia import doctor as doctor_module
 
-    def broken() -> object:
+    def broken(_tax: object) -> object:
         raise ValueError("unclosed {{")
 
     entries = list(doctor_module.PACKAGED_DATA)
-    entries[1] = (entries[1][0], broken)
+    entries[1] = doctor_module.PackagedFiles(entries[1].files, broken)
     monkeypatch.setattr(doctor_module, "PACKAGED_DATA", tuple(entries))
     run = doctor()
     assert run.code == 1
     line = _line(run, "程序自带的文字与词表")
-    assert line.startswith(FAIL) and entries[1][0] in line and "重新安装" in line
+    assert line.startswith(FAIL) and entries[1].files[0] in line and "重新安装" in line
 
 
 @pytest.mark.parametrize(
@@ -550,3 +550,102 @@ def test_a_damaged_packaged_file_is_named(doctor, monkeypatch, tmp_path, relativ
     assert run.code == 1
     line = _line(run, "程序自带的文字与词表")
     assert line.startswith(FAIL) and name in line and "重新安装" in line
+
+
+@pytest.fixture
+def damaged_copy(monkeypatch, tmp_path):
+    """A copy of the packaged data that every loader and doctor's own check read, with
+    the named files cut to the r3 report's damage (or given ``text``)."""
+    import importlib
+
+    copy = tmp_path / "pkg"
+    shutil.copytree(Path(str(resources.files("olivia"))) / "data", copy / "data")
+
+    class Files:
+        @staticmethod
+        def files(_package: str) -> Path:
+            return copy
+
+    for module in (
+        "olivia.doctor",
+        "olivia.core.taxonomy",
+        "olivia.core.safety.lexicon",
+        "olivia.core.language.data",
+        "olivia.core.chang.onboarding",
+        "olivia.core.chang.privacy",
+        "olivia.core.chang.safety_plan",
+        "olivia.core.chang.journal",
+        "olivia.core.chang.stats",
+        "olivia.core.memory.forget",
+        "olivia.notify.text",
+    ):
+        monkeypatch.setattr(importlib.import_module(module), "resources", Files)
+
+    def damage(*relative: str, text: str = "rules: [unclosed {{\n  - :::\n") -> None:
+        for name in relative:
+            (copy / "data" / name).write_text(text, encoding="utf-8")
+
+    cached = [
+        importlib.import_module(module)._packaged_text
+        for module in (
+            "olivia.core.chang.safety_plan",
+            "olivia.core.chang.journal",
+            "olivia.core.chang.stats",
+            "olivia.core.memory.forget",
+            "olivia.notify.text",
+        )
+    ]
+    for loader in cached:  # a loader that caches keeps its first result (doctor runs fresh)
+        loader.cache_clear()
+    yield damage
+    for loader in cached:
+        loader.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        ("templates/privacy.yaml",),
+        ("templates/safety_plan.yaml",),
+        ("language/utterances.yaml",),
+        ("templates/gentle_holding.yaml", "templates/stats.yaml"),
+    ],
+)
+def test_only_the_damaged_files_are_named(doctor, damaged_copy, broken):
+    """QA q4 P5: privacy.yaml alone was reported as "onboarding.yaml、privacy.yaml", and
+    safety_plan.yaml alone as five files."""
+    from olivia import doctor as doctor_module
+
+    damaged_copy(*broken)
+    run = doctor()
+    assert run.code == 1
+    line = _line(run, "程序自带的文字与词表")
+    named = [name for name in doctor_module.packaged_files() if name in line]
+    assert named == [name for name in doctor_module.packaged_files() if name in broken]
+
+
+def test_a_well_formed_file_with_a_wrong_key_is_named_alone(doctor, damaged_copy):
+    from olivia import doctor as doctor_module
+
+    damaged_copy("language/render.yaml", text="version: 1\n")
+    line = _line(doctor(), "程序自带的文字与词表")
+    named = [name for name in doctor_module.packaged_files() if name in line]
+    assert named == ["language/render.yaml"]
+
+
+def test_a_damaged_taxonomy_is_named_without_the_files_that_need_it(doctor, damaged_copy):
+    from olivia import doctor as doctor_module
+
+    damaged_copy("taxonomy.yaml")
+    line = _line(doctor(), "程序自带的文字与词表")
+    named = [name for name in doctor_module.packaged_files() if name in line]
+    assert named == ["taxonomy.yaml"]
+
+
+def test_a_file_in_place_of_the_data_directory_does_not_send_to_chat(run_cli, data_home):
+    """QA q4 P7: "还没有完成（运行 olivia chat 开始）" while chat cannot run either."""
+    data_home.parent.mkdir(parents=True, exist_ok=True)
+    data_home.write_text("not a directory", encoding="utf-8")
+    run = run_cli(["doctor"])
+    assert cli.DOCTOR_NOT_ONBOARDED not in run.out
+    assert f"{WARN} {cli.DOCTOR_ONBOARDED_NO_DIR}" in run.lines

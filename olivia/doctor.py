@@ -22,7 +22,8 @@
   in ``<data dir>/resources/`` is used (``bundle.load_hotlines_bytes``);
 * the packaged wording, lexicons and taxonomy (:data:`PACKAGED_DATA`): each is loaded and
   validated as the commands would, one by one, so a damaged or missing file is named (QA
-  r3: a broken crisis lexicon or template used to leave every line ✓);
+  r3: a broken crisis lexicon or template used to leave every line ✓), and only that file
+  (QA q4 P5: not every file loaded beside it);
 * whether the reminder job is installed (``jobs.installed``);
 * what the data directory's markers say (robustness fixes): another OLIVIA holding the
   data directory's lock (``datalock.held_elsewhere``: tried and let go, nothing created),
@@ -43,6 +44,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
+from importlib import resources
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -156,9 +158,9 @@ class Report:
 @dataclass(frozen=True)
 class PackagedData:
     checked: int
-    """How many of :data:`PACKAGED_DATA` were tried."""
+    """How many packaged files were checked (:func:`packaged_files`)."""
     failed: tuple[str, ...]
-    """The names of those that did not load, in :data:`PACKAGED_DATA` order."""
+    """The files that did not load (paths under ``olivia/data``), in check order."""
 
 
 def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
@@ -361,19 +363,16 @@ def _hotlines(base: Path, today: date) -> HotlineFacts:
 # -- the packaged data ----------------------------------------------------------------------
 
 
-def _taxonomy() -> object:
-    from olivia.core.taxonomy import load_taxonomy
+@dataclass(frozen=True)
+class PackagedFiles:
+    """Some packaged files and how the program loads them."""
 
-    return load_taxonomy()
-
-
-def _with_taxonomy(load: Callable[[Any], object]) -> Callable[[], object]:
-    def run() -> object:
-        from olivia.core.taxonomy import load_taxonomy
-
-        return load(load_taxonomy())
-
-    return run
+    files: tuple[str, ...]
+    """Paths under ``olivia/data``."""
+    load: Callable[[Any], object]
+    """The program's own loader; it takes the loaded taxonomy (unused by some)."""
+    needs_taxonomy: bool = True
+    """Whether ``load`` checks against the taxonomy (it cannot be tried without one)."""
 
 
 def _language(tax: Any) -> object:
@@ -388,75 +387,175 @@ def _safety_lexicons(tax: Any) -> object:
     return load_safety_lexicons(tax)
 
 
-def _perception(tax: Any) -> object:
-    from olivia.core.perception.externalize import load_externalize_text
-    from olivia.core.perception.introspector import load_introspection_lexicon, load_mirror_lines
+def _perception_lexicon(tax: Any) -> object:
     from olivia.core.perception.lexicon import load_perception_lexicon
 
-    return (
-        load_perception_lexicon(tax),
-        load_introspection_lexicon(tax),
-        load_mirror_lines(tax),
-        load_externalize_text(tax),
-    )
+    return load_perception_lexicon(tax)
 
 
-def _memory_words() -> object:
+def _introspection(tax: Any) -> object:
+    from olivia.core.perception.introspector import load_introspection_lexicon
+
+    return load_introspection_lexicon(tax)
+
+
+def _mirror_lines(tax: Any) -> object:
+    from olivia.core.perception.introspector import load_mirror_lines
+
+    return load_mirror_lines(tax)
+
+
+def _externalize(tax: Any) -> object:
+    from olivia.core.perception.externalize import load_externalize_text
+
+    return load_externalize_text(tax)
+
+
+def _note_cues(_tax: Any) -> object:
     from olivia.core.memory.notes import load_note_cues
+
+    return load_note_cues()
+
+
+def _memory_text(_tax: Any) -> object:
     from olivia.core.memory.text import load_memory_text
 
-    return load_note_cues(), load_memory_text()
+    return load_memory_text()
 
 
-def _setup_texts() -> object:
+def _onboarding(_tax: Any) -> object:
     from olivia.core.chang.onboarding import load_onboarding_text
+
+    return load_onboarding_text()
+
+
+def _privacy(_tax: Any) -> object:
     from olivia.core.chang.privacy import load_privacy_text
 
-    return load_onboarding_text(), load_privacy_text()
+    return load_privacy_text()
 
 
-def _command_texts() -> object:
-    from olivia.core.chang.journal import load_journal_text
+def _safety_plan(_tax: Any) -> object:
     from olivia.core.chang.safety_plan import load_safety_plan_text
-    from olivia.core.chang.stats import load_stats_text
+
+    return load_safety_plan_text()
+
+
+def _journal(_tax: Any) -> object:
+    from olivia.core.chang.journal import load_journal_text
+
+    return load_journal_text()
+
+
+def _forget(_tax: Any) -> object:
     from olivia.core.memory.forget import load_forget_text
+
+    return load_forget_text()
+
+
+def _stats(_tax: Any) -> object:
+    from olivia.core.chang.stats import load_stats_text
+
+    return load_stats_text()
+
+
+def _notify(_tax: Any) -> object:
     from olivia.notify.text import load_notify_text
 
-    return (
-        load_safety_plan_text(),
-        load_journal_text(),
-        load_forget_text(),
-        load_stats_text(),
-        load_notify_text(),
-    )
+    return load_notify_text()
 
 
-PACKAGED_DATA: Final[tuple[tuple[str, Callable[[], object]], ...]] = (
-    ("taxonomy.yaml", _taxonomy),
-    ("lexicons/risk.yaml、red_flags.yaml", _with_taxonomy(_safety_lexicons)),
-    (
-        "lexicons/perception.yaml、language/externalize.yaml、schema_mirror.yaml",
-        _with_taxonomy(_perception),
-    ),
-    ("lexicons/memory.yaml、templates/memory.yaml", _memory_words),
-    ("language/、cards/ 与四种陪伴方式的模板", _with_taxonomy(_language)),
-    ("templates/onboarding.yaml、privacy.yaml", _setup_texts),
-    (
-        "templates/safety_plan.yaml、journal.yaml、forget.yaml、stats.yaml、notify.yaml",
-        _command_texts,
-    ),
+TAXONOMY_FILE: Final = "taxonomy.yaml"
+LANGUAGE_FILES: Final = (
+    "language/willow.yaml",
+    "language/utterances.yaml",
+    "language/metaphors.yaml",
+    "language/needs.yaml",
+    "language/render.yaml",
+    "language/feelings.yaml",
+    "lexicons/substance.yaml",
+    "cards/grade_a.yaml",
+    "cards/grade_bc_info.yaml",
+    "templates/gentle_holding.yaml",
+    "templates/zen_philosopher.yaml",
+    "templates/rational_peer.yaml",
+    "templates/silent_anchor.yaml",
 )
-"""(the files, how the program loads them): every packaged file the commands read, besides
-the model and the hotline data (checked on their own lines). Loaded fresh in ``olivia
-doctor``'s own process; a loader that caches keeps its first result."""
+PACKAGED_DATA: Final[tuple[PackagedFiles, ...]] = (
+    PackagedFiles(
+        ("lexicons/risk.yaml", "lexicons/red_flags.yaml", "lexicons/perception.yaml"),
+        _safety_lexicons,
+    ),
+    PackagedFiles(("lexicons/perception.yaml",), _perception_lexicon),
+    PackagedFiles(("lexicons/perception.yaml",), _introspection),
+    PackagedFiles(("language/schema_mirror.yaml",), _mirror_lines),
+    PackagedFiles(("language/externalize.yaml",), _externalize),
+    PackagedFiles(("lexicons/memory.yaml",), _note_cues, needs_taxonomy=False),
+    PackagedFiles(("templates/memory.yaml",), _memory_text, needs_taxonomy=False),
+    PackagedFiles(LANGUAGE_FILES, _language),
+    PackagedFiles(("templates/onboarding.yaml",), _onboarding, needs_taxonomy=False),
+    PackagedFiles(("templates/privacy.yaml",), _privacy, needs_taxonomy=False),
+    PackagedFiles(("templates/safety_plan.yaml",), _safety_plan, needs_taxonomy=False),
+    PackagedFiles(("templates/journal.yaml",), _journal, needs_taxonomy=False),
+    PackagedFiles(("templates/forget.yaml",), _forget, needs_taxonomy=False),
+    PackagedFiles(("templates/stats.yaml",), _stats, needs_taxonomy=False),
+    PackagedFiles(("templates/notify.yaml",), _notify, needs_taxonomy=False),
+)
+"""Every packaged file the commands read besides the taxonomy (tried first), the model and
+the hotline data (checked on their own lines), with the program's own loaders. Loaded
+fresh in ``olivia doctor``'s own process; a loader that caches keeps its first result."""
+
+
+def packaged_files() -> tuple[str, ...]:
+    """Every file :func:`packaged_data` checks, the taxonomy first, each once."""
+    names = [TAXONOMY_FILE, *(name for entry in PACKAGED_DATA for name in entry.files)]
+    return tuple(dict.fromkeys(names))
 
 
 def packaged_data() -> PackagedData:
-    """Try every loader of :data:`PACKAGED_DATA`; any exception is a failed file set."""
+    """Load the taxonomy and every :data:`PACKAGED_DATA` entry; name only the files that do
+    not load (QA q4 P5: a damaged file no longer names every file loaded beside it).
+
+    A loader that fails names, of its files, those that are not readable YAML; failing that,
+    those its error names; failing that, all of them. Without a taxonomy the loaders that
+    need one cannot run, so only their unreadable files are named besides the taxonomy."""
     failed: list[str] = []
-    for name, load in PACKAGED_DATA:
+    try:
+        from olivia.core.taxonomy import load_taxonomy
+
+        tax: Any = load_taxonomy()
+    except Exception:  # noqa: BLE001 - whatever the damage, it is named, never raised
+        failed.append(TAXONOMY_FILE)
+        tax = None
+    for entry in PACKAGED_DATA:
+        if tax is None and entry.needs_taxonomy:
+            failed.extend(name for name in entry.files if not _reads_as_yaml(name))
+            continue
         try:
-            load()
-        except Exception:  # noqa: BLE001 - whatever the damage, it is named, never raised
-            failed.append(name)
-    return PackagedData(len(PACKAGED_DATA), tuple(failed))
+            entry.load(tax)
+        except Exception as exc:  # noqa: BLE001 - as above
+            failed.extend(_culprits(entry.files, exc))
+    return PackagedData(len(packaged_files()), tuple(dict.fromkeys(failed)))
+
+
+def _culprits(files: tuple[str, ...], exc: BaseException) -> tuple[str, ...]:
+    """Which of ``files`` made their loader raise ``exc`` (:func:`packaged_data`)."""
+    if len(files) == 1:
+        return files
+    unreadable = tuple(name for name in files if not _reads_as_yaml(name))
+    if unreadable:
+        return unreadable
+    said = " ".join(str(e) for e in (exc, exc.__cause__, exc.__context__) if e is not None)
+    named = tuple(name for name in files if name.rsplit("/", 1)[-1] in said)
+    return named or files
+
+
+def _reads_as_yaml(name: str) -> bool:
+    """Whether the packaged file ``olivia/data/<name>`` is there and parses as YAML."""
+    from olivia.core.yaml_load import safe_load
+
+    try:
+        safe_load(resources.files("olivia").joinpath(f"data/{name}").read_text("utf-8"))
+    except Exception:  # noqa: BLE001 - missing, unreadable or not YAML: all the same here
+        return False
+    return True
