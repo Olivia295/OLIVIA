@@ -59,6 +59,7 @@ from olivia.core.models import (
     PersonaSpectrum,
     UserRegion,
 )
+from olivia.core.resources.fallback import emergency_lines
 from olivia.core.taxonomy import RedFlag, Taxonomy
 from olivia.core.yaml_load import safe_load
 
@@ -780,7 +781,10 @@ class OnboardingFlow:
         self._step = Step.REGION
 
     def _on_region(self, text: str) -> None:
-        code = region_from_reply(text, self._text)
+        # The question says "不想说也完全没关系": Enter or a skip word is "other, or rather
+        # not say" (ZZ), not a reply that was not understood (QA r3).
+        skipped = is_skip(self._text, text)
+        code = UNKNOWN_COUNTRY if skipped else region_from_reply(text, self._text)
         if code is None:
             self._hint = self._text.hints["unrecognized"]
             return
@@ -888,7 +892,11 @@ class OnboardingFlow:
         self._outcome = Completed(profile, text)
 
     def _refusal(self, reason: RefusalReason) -> Refused:
-        return Refused(reason, self._text.outcomes[reason.value])
+        """The refusal page; both pages end by asking to call the local emergency number,
+        so the numbers follow (no region is known here: every supported region's, from
+        ``resources/fallback.py``; QA r3)."""
+        lines = "\n".join(emergency_lines())
+        return Refused(reason, f"{self._text.outcomes[reason.value]}\n{lines}")
 
     def _binary_choice(self, text: str) -> bool | None:
         """True for accept, False for decline, None (with a hint) if unrecognized."""

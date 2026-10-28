@@ -6,8 +6,11 @@
     Every onboarding reply is crisis-screened first, the way the chat will screen
     (``chang/setup_screen.py``, QA 2026-10-26 #4; so are the replies in ``profile``,
     ``health`` and ``safety-plan``): at L2 or above it is not taken as an answer, the
-    hotlines (the region chosen so far, else the global ones) come with one gentle line,
-    and the user chooses to go on or to leave.
+    hotlines (the region chosen so far, else every supported region's emergency numbers)
+    come with one gentle line, and the user chooses to go on or to leave -- at every such
+    reply. A list of topic words for the taboo topics ("自杀、死亡、前任") is saved with the
+    numbers and asked nothing; the safety plan keeps such a sentence only in sections 1
+    and 5 (QA r3).
     By default (owner decision 2026-10-24, F7) the crisis screen also consults the
     packaged perception student, which can only raise the rule level and is capped at L2
     (its L3 is not plan evidence: the L2 card then leads with the emergency numbers), and
@@ -107,11 +110,13 @@
     the whole profile cannot be sealed without a keychain.
 ``olivia doctor``
     A read-only, offline check of this computer's setup (``olivia/doctor.py``), one line
-    each marked ✓ / ! / ✗: versions, the data directory and its modes, whether a keychain
-    is there (no item is read), whether the first visit is done, whether each store would
-    open (judged from its files and key files, never decrypted), the packaged model's
-    verification, the built-in hotline data's signature and age (! after 90 days), the
-    signed update in use, and the reminder job. No user text, name or stored content is
+    each marked ✓ / ! / ✗: versions, the data directory (✗ with how to fix it when this
+    account cannot read or write it, or a file is in its place; QA r3) and its modes,
+    whether a keychain is there (no item is read), whether the first visit is done, whether
+    each store would open (judged from its files and key files, never decrypted), the
+    packaged model's verification, the built-in hotline data's signature and age (! after
+    90 days), the signed update in use, whether every packaged wording, lexicon and taxonomy
+    file loads, and the reminder job. No user text, name or stored content is
     printed; the last line says so. Works before the first visit; exit 1 on any ✗.
 ``olivia --version``
     The installed version, read from the package metadata.
@@ -182,6 +187,7 @@ import functools
 import platform
 import random
 import re
+import shlex
 import sys
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
@@ -220,8 +226,14 @@ from olivia.core.chang.profile import (
     ProfileUnreadableError,
 )
 from olivia.core.chang.profile_command import run_profile
-from olivia.core.chang.safety_plan import SafetyPlanStore, load_safety_plan_text, run_command
-from olivia.core.chang.setup_screen import SetupScreen
+from olivia.core.chang.safety_plan import (
+    SafetyPlanStore,
+    Screened,
+    load_safety_plan_text,
+    run_command,
+    without_crisis_entries,
+)
+from olivia.core.chang.setup_screen import SetupScreen, topic_words_only
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
 from olivia.core.crypto.keychain import Probe
@@ -346,6 +358,7 @@ PROFILE_RECOVERED: Final = (
     "设置文件坏了，已经恢复到 {time} 前后保存的版本，在那之后改过的地方可能没有了。"
     "{region}健康信息、称呼和不想谈的话题，请用 olivia health 和 olivia profile 检查一下。"
 )
+PROFILE_RECOVERED_TIME: Final = "{time}（这台电脑的时区 {zone}）"
 PROFILE_RECOVERED_REGION: Final = (
     "恢复后的地区是{label}（{code}），求助电话按这个地区显示，请用 olivia region 核对；"
 )
@@ -358,6 +371,12 @@ PROFILE_UNREADABLE: Final = (
 )
 # QA 2026-10-26 #8 (草稿：待 G-0): said after ``fallback_text(damaged=False)``, so the
 # numbers are on screen even when ``resources`` would fail the same way.
+# QA r3 (草稿：待 G-0): the same, when the data directory cannot be read or written.
+DATA_DIR_UNUSABLE: Final = (
+    "这台电脑上的数据目录现在读不了或者写不了（可能是权限不对，或者被换成了文件），"
+    "这次没能做完，已经停下了。需要的话，上面的电话随时可以联系。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
 UNEXPECTED_ERROR: Final = (
     "出了点问题，这次没能做完，已经停下了。需要的话，上面的电话随时可以联系。"
     "可以运行 olivia doctor 检查一下这台电脑上的设置和数据文件。"
@@ -372,7 +391,12 @@ SETUP_CHOICE: Final = "想继续，还是先退出？"
 SETUP_CHOICES: Final = ("继续", "先退出")
 SETUP_CHOICE_UNKNOWN: Final = "我没太看懂这个回答，可以选一个序号吗？"
 SETUP_RETRY: Final = "好，我们继续。刚才那句我没有记下，可以重新回答下面的问题。"
-SETUP_KEPT: Final = "这句我先记进安全计划里，我们接着写；需要的话，上面的电话随时可以联系。"
+# QA r3 (草稿：待 G-0): topic words such as "自杀、死亡、前任" are saved as taboo topics; the
+# numbers still come, under this line, and nothing is asked.
+SETUP_TOPICS: Final = (
+    "好，这些话题我不会主动提起。要是它们让你想起很难受的事，下面的电话随时可以联系，"
+    "也可以找一位信任的人陪你说说。"
+)
 SETUP_LEFT: Final = (
     "好，先停在这里，刚才那句没有保存。上面的电话随时可以联系；想回来的时候，再运行一次就好。"
 )
@@ -391,7 +415,10 @@ RESOURCES_ONE_OFF_HINT: Final = (
     "例如 olivia resources HK（只是查看，不会保存）。"
 )
 RESOURCES_ONE_OFF: Final = "这次只是查看，没有保存地区。"
-RESOURCES_UNKNOWN: Final = "没有认出「{raw}」这个地区。可以用下面的代码或名称：\n{choices}"
+RESOURCES_UNKNOWN: Final = (
+    "没有认出「{raw}」这个地区，所以上面先列出了全球通用的资源。"
+    "想看某个地区的电话，可以用下面的代码或名称：\n{choices}"
+)
 REGION_SHOW: Final = "地区：{label}（{code}）\n时区：{timezone}"
 REGION_SAVED: Final = "好的，已经保存：{label}（{code}），时区 {timezone}。"
 REGION_UNKNOWN: Final = (
@@ -468,7 +495,24 @@ DOCTOR_FOOTER: Final = "以上内容不含你的个人信息，可以放心转�
 DOCTOR_VERSION: Final = "OLIVIA {version} · Python {python} · {system}"
 DOCTOR_DIR: Final = "数据目录：{location}"
 DOCTOR_DIR_ABSENT: Final = "数据目录：还没有（{location}，第一次设置时会建立）"
-DOCTOR_DIR_NOT_DIR: Final = "数据目录：{location} 是一个文件，不是文件夹，程序没办法在这里保存"
+DOCTOR_DIR_NOT_DIR: Final = (
+    "数据目录：{location} 是一个文件，不是文件夹，程序没办法在这里保存。"
+    "可以把这个文件改个名字或者挪走（里面有要留的东西就先备份），再运行 olivia chat"
+)
+# QA r3 (草稿：待 G-0): a data directory this account cannot read or write, and how to fix it.
+DOCTOR_DIR_UNREADABLE: Final = (
+    "数据目录读不了：{location} 或者里面的文件夹、文件没有读取权限，程序打不开你的设置和记录"
+)
+DOCTOR_DIR_UNWRITABLE: Final = (
+    "数据目录写不了：{location} 或者里面的文件夹没有写入权限，设置和记录都没办法保存"
+)
+DOCTOR_FIX_POSIX: Final = (
+    "怎么修：在终端里运行 chmod -R u+rwX {path}，把读写权限还给自己，再运行一次 olivia doctor"
+)
+DOCTOR_FIX_WINDOWS: Final = (
+    "怎么修：在这个文件夹上点右键，打开「属性」里的「安全」，给自己的账户勾上读取和写入，"
+    "再运行一次 olivia doctor"
+)
 DOCTOR_PERMISSIONS_OK: Final = "数据目录的权限：只有你自己能读写"
 DOCTOR_PERMISSIONS_OFF: Final = "数据目录的权限：有 {count} 处和应有的不一样，应当只有你自己能读写"
 DOCTOR_PERMISSIONS_WINDOWS: Final = "数据目录的权限：Windows 上不做这项检查"
@@ -496,6 +540,7 @@ DOCTOR_STORE_STATES: Final = {
     StoreState.PARTLY: (DOCTOR_FAIL, "{name}：有一部分打不开"),
     StoreState.BROKEN: (DOCTOR_FAIL, "{name}：打不开，文件或钥匙不完整"),
     StoreState.LOCKED: (DOCTOR_FAIL, "{name}：现在打不开，要等系统钥匙串能用"),
+    StoreState.UNREADABLE: (DOCTOR_FAIL, "{name}：读不了，没有读取权限"),
 }
 DOCTOR_STORES_NOTE: Final = "加密的内容都没有解密，只检查了文件和钥匙是否齐全、完好。"
 DOCTOR_MODEL_OK: Final = "本机模型：文件齐全，校验通过"
@@ -504,6 +549,11 @@ DOCTOR_HOTLINES_OK: Final = "随程序附带的热线资料：签名有效，整
 DOCTOR_HOTLINES_STALE: Final = "，已经超过 {max_days} 天，可以更新程序：pipx reinstall olivia"
 DOCTOR_HOTLINES_BROKEN: Final = (
     "随程序附带的热线资料：签名验证没有通过，程序文件可能不完整，请重新安装"
+)
+# QA r3 (草稿：待 G-0): every packaged wording, lexicon and taxonomy file is loaded once.
+DOCTOR_PACKAGED_OK: Final = "程序自带的文字与词表：{count} 组都能正常读取"
+DOCTOR_PACKAGED_BROKEN: Final = (
+    "程序自带的文字与词表：{names} 读不出来，程序文件可能不完整，请重新安装：pipx reinstall olivia"
 )
 DOCTOR_UPDATE_NONE: Final = "热线更新包：没有，用的是随程序附带的资料"
 DOCTOR_UPDATE_USED: Final = "热线更新包：在用（整理于 {compiled_on}，距今 {days} 天，签名已验证）"
@@ -547,6 +597,12 @@ DOCTOR_TEXTS: Final = (
     DOCTOR_DIR,
     DOCTOR_DIR_ABSENT,
     DOCTOR_DIR_NOT_DIR,
+    DOCTOR_DIR_UNREADABLE,
+    DOCTOR_DIR_UNWRITABLE,
+    DOCTOR_FIX_POSIX,
+    DOCTOR_FIX_WINDOWS,
+    DOCTOR_PACKAGED_OK,
+    DOCTOR_PACKAGED_BROKEN,
     DOCTOR_PERMISSIONS_OK,
     DOCTOR_PERMISSIONS_OFF,
     DOCTOR_PERMISSIONS_WINDOWS,
@@ -585,13 +641,15 @@ USER_TEXTS: Final = (
     *SETUP_CHOICES,
     SETUP_CHOICE_UNKNOWN,
     SETUP_RETRY,
-    SETUP_KEPT,
+    SETUP_TOPICS,
     SETUP_LEFT,
     PROFILE_RECOVERED,
+    PROFILE_RECOVERED_TIME,
     PROFILE_RECOVERED_REGION,
     PROFILE_RECOVERED_NO_REGION,
     PROFILE_UNREADABLE,
     UNEXPECTED_ERROR,
+    DATA_DIR_UNUSABLE,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     PROFILE_LOCKED_NOW,
@@ -683,24 +741,25 @@ class _SetupConsole:
 
     For onboarding, ``olivia profile``, ``olivia health`` and ``olivia safety-plan``. A
     reply that screens at L2 or above is not handed on: ``show_help`` puts the hotlines on
-    screen (the region chosen so far; the global ones before that) under one gentle line,
-    and the user chooses to go on or to leave. Going on asks the same question again (the
-    reply is dropped); leaving ends the exchange as end of input does, with nothing of
-    that reply saved, and sets ``left``.
+    screen (the region chosen so far; before that, every supported region's emergency
+    numbers) under one gentle line,
+    and the user chooses to go on or to leave -- at every such reply, however many come in
+    one run. Going on asks the same question again (the reply is dropped); leaving ends the
+    exchange as end of input does, with nothing of that reply saved, and sets ``left``.
 
-    ``keep`` is for the safety plan, whose sections are where such words belong (the
-    warning signs; "把那盒安眠药交给室友保管" under making the place safer, which the model
-    screens at L2): the numbers and the gentle line come at the first alarm of the run,
-    the reply is kept, and nothing is asked, so writing the plan is not interrupted again
-    and again.
+    ``ask(..., topics=True)`` is the taboo-topic question: a list of topic words
+    (``setup_screen.topic_words_only``: "自杀、死亡、前任") is taken after the numbers and
+    one gentle line, without asking (QA r3); a sentence there is screened as anywhere else.
+
+    The safety plan decides per section what happens to such a reply, so it calls
+    :meth:`check` (the numbers and the choice) and keeps or drops the reply itself
+    (``safety_plan.Screened``).
     """
 
     inner: _Console
     screen: SetupScreen
     show_help: Callable[[], object]
-    keep: bool = False
     left: bool = False
-    _helped: bool = False
     _since_ask: list[str] = field(default_factory=list)
     """What was said since the last reply: the question, to show again."""
 
@@ -708,19 +767,15 @@ class _SetupConsole:
         self._since_ask.append(text)
         self.inner.say(text)
 
-    def ask(self, prompt: str) -> str | None:
+    def ask(self, prompt: str, *, topics: bool = False) -> str | None:
         while True:
             reply = self.inner.ask(prompt)
             question, self._since_ask = self._since_ask, []
             if reply is None or not self.screen.alarms(reply):
                 return reply
-            if self.keep:
-                if not self._helped:
-                    self._helped = True
-                    self._help()
-                    self.inner.say()
-                    self.inner.say(SETUP_KEPT)
-                    self.inner.say()
+            if topics and topic_words_only(reply):
+                self._help(SETUP_TOPICS)
+                self.inner.say()
                 return reply
             if not self._go_on():
                 self.left = True
@@ -733,9 +788,18 @@ class _SetupConsole:
             for line in question:
                 self.say(line)
 
-    def _help(self) -> None:
+    def check(self, reply: str) -> Screened:
+        """For the safety plan: CLEAR, or the numbers and then GO_ON or LEAVE."""
+        if not self.screen.alarms(reply):
+            return Screened.CLEAR
+        if self._go_on():
+            return Screened.GO_ON
+        self.left = True
+        return Screened.LEAVE
+
+    def _help(self, lead: str = SETUP_CRISIS) -> None:
         self.inner.say()
-        self.inner.say(SETUP_CRISIS)
+        self.inner.say(lead)
         self.inner.say()
         self.show_help()
 
@@ -788,7 +852,48 @@ def _enable_line_editing() -> None:  # pragma: no cover - terminal only
 
         os.environ["LC_ALL"] = os.environ["LC_CTYPE"] = name
     with contextlib.suppress(ImportError):
-        import readline  # noqa: F401
+        import readline
+
+        _keep_terminal_sequences(readline)
+
+
+_SEQUENCE_BINDINGS: Final = (
+    # Insert these keys literally instead of reading them as commands, so a terminal
+    # sequence reaches ``strip_controls`` whole: ESC ] would otherwise be eaten as an
+    # unbound Meta key and BEL as "abort", leaving the sequence's text ("0;pwned") in the
+    # line with nothing to show where it ends (QA r3).
+    r'"\e]": "\C-v\e]"',
+    r'"\e[": "\C-v\e["',
+    r'"\e\\": "\C-v\e\\"',
+    r'"\C-g": "\C-v\C-g"',
+)
+_LIBEDIT_BINDINGS: Final = (
+    # The same for libedit (macOS's system and Homebrew Pythons), in its ``bind`` syntax:
+    # ESC ] and the string terminator ESC \ are typed through ed-quoted-insert (^V), BEL is
+    # inserted as itself. CSI (ESC [) is not bound: libedit cannot bind a sequence that
+    # is also the start of the arrow keys' ones, so a colour code typed (not pasted) in a
+    # terminal may leave its final letter ("m") behind there; its digits and the rest of
+    # the line are kept, and an OSC sequence's text never stays.
+    r"bind -s '^[]' '^V^[]'",
+    r"bind -s '^[\\' '^V^[\\'",
+    "bind ^G ed-insert",
+)
+
+
+def readline_is_libedit(readline: Any) -> bool:
+    """Whether Python's ``readline`` is libedit (``backend`` from 3.13, the docstring
+    before)."""
+    if getattr(readline, "backend", None) == "editline":
+        return True
+    return "libedit" in (readline.__doc__ or "")
+
+
+def _keep_terminal_sequences(readline: Any) -> None:  # pragma: no cover - terminal only
+    """:data:`_SEQUENCE_BINDINGS` under GNU readline, :data:`_LIBEDIT_BINDINGS` under
+    libedit (another binding syntax)."""
+    bindings = _LIBEDIT_BINDINGS if readline_is_libedit(readline) else _SEQUENCE_BINDINGS
+    for binding in bindings:
+        readline.parse_and_bind(binding)
 
 
 _UTF8_LOCALES: Final = ("C.UTF-8", "C.utf8", "en_US.UTF-8", "UTF-8")
@@ -913,6 +1018,16 @@ def _show_prompt(console: _Asker, prompt: Prompt) -> None:
         console.say(f"  {number}. {option}")
 
 
+def _setup_hotlines(console: _Console, region: UserRegion | None, clock: Clock) -> None:
+    """The numbers for a crisis sentence typed during the first visit: the region's card
+    once one is chosen; before that the emergency numbers of every supported region
+    (``resources/fallback.py``, the same list the fixed help shows), not a lone 112 (QA r3)."""
+    if region is None:
+        console.say(fallback_text(damaged=False))
+        return
+    _show_hotlines(console, None, clock, region=region)
+
+
 def _onboard(
     console: _Console,
     tax: Taxonomy,
@@ -930,14 +1045,15 @@ def _onboard(
         asker: _Console | _SetupConsole = console
         if screen is not None:
             asker = _SetupConsole(
-                console,
-                screen,
-                lambda: _show_hotlines(console, None, lambda: now, region=flow.region),
+                console, screen, lambda: _setup_hotlines(console, flow.region, lambda: now)
             )
         step: Prompt | Completed | Refused = flow.prompt()
         while isinstance(step, Prompt):
             _show_prompt(asker, step)
-            answer = asker.ask(ANSWER_PROMPT)
+            if isinstance(asker, _SetupConsole):
+                answer = asker.ask(ANSWER_PROMPT, topics=step.step is onboarding.Step.TABOO)
+            else:
+                answer = asker.ask(ANSWER_PROMPT)
             if answer is None:
                 if not (isinstance(asker, _SetupConsole) and asker.left):
                     console.say(GOODBYE)
@@ -1035,8 +1151,9 @@ def _chat(
 ) -> int:
     tax = _taxonomy()
     store = ProfileStore()
+    screen = SetupScreen(tax, student=student)
     try:
-        profile = _onboard(console, tax, store, clock(), SetupScreen(tax, student=student))
+        profile = _onboard(console, tax, store, clock(), screen)
     except KeyboardInterrupt:  # like end of input here: nothing was set up
         console.say()
         console.say(GOODBYE)
@@ -1057,7 +1174,12 @@ def _chat(
     # The posteriors and the kit from earlier sessions (B3); None starts fresh.
     state_store = StateStore(store.path.parent, store.vault)
     plan_store = SafetyPlanStore(vault=store.vault)
-    plan = plan_store.load_quietly()
+    # A crisis reply reads sections 2-4 back: an entry saved before the plan command
+    # screened them is left out if it is itself a crisis sentence (QA r3). Screened as
+    # ``olivia safety-plan`` screens (the student too, even under ``--rules``: leaving an
+    # entry out is the cautious side).
+    plan_screen = screen if student else SetupScreen(tax)
+    plan = without_crisis_entries(plan_store.load_quietly(), plan_screen.alarms)
     try:
         session = Session.open(
             tax,
@@ -1283,28 +1405,34 @@ def _save_profile(console: _Console, profile: PersonaProfile) -> bool:
 
 def _tell_recovery(console: _Console, profile: PersonaProfile | None = None) -> None:
     """Say once that the profile was recovered from a snapshot (robustness D4), with the
-    snapshot's time in the profile's timezone (this computer's without a profile) and the
-    region the recovered version holds (QA 2026-10-26 #12).
+    snapshot's time on this computer's clock with the zone named (QA r3) and the region
+    the recovered version holds (QA 2026-10-26 #12).
 
     The version a damaged main file is recovered from is the newest snapshot that opens,
     which is the one before the last save: its region may not be the one last chosen, and
     nothing on disk says what that was, so the region is always named. Called right after
     the command's own load, so it comes before anything else the command says."""
     base = data_dir_location()
-    if not base.is_dir():
+    try:
+        moment = ProfileStore(base).take_recovery_notice() if base.is_dir() else None
+    except OSError:  # a data directory without permissions: ``olivia doctor`` says so
         return
-    moment = ProfileStore(base).take_recovery_notice()
     if moment is None:
         return
-    zone = _profile_zone(profile)
-    shown = moment.astimezone(zone) if zone is not None else moment
+    # This computer's clock, named (QA r3): the profile's zone may be the recovered
+    # version's, which is not where the user is now.
+    zone = _zone(onboarding.system_timezone())
+    shown = moment.astimezone(zone) if zone is not None else moment.astimezone(UTC)
+    when = PROFILE_RECOVERED_TIME.format(
+        time=shown.strftime("%Y-%m-%d %H:%M"), zone=zone.key if zone is not None else "UTC"
+    )
     region = profile.region if profile is not None else None
     if region is None:
         named = PROFILE_RECOVERED_NO_REGION
     else:
         code = region.country_code
         named = PROFILE_RECOVERED_REGION.format(label=_region_label(code), code=code)
-    console.say(PROFILE_RECOVERED.format(time=shown.strftime("%Y-%m-%d %H:%M"), region=named))
+    console.say(PROFILE_RECOVERED.format(time=when, region=named))
     console.say()
 
 
@@ -1385,9 +1513,12 @@ def _resources(console: _Console, code: str | None, clock: Clock) -> int:
     if profile is not None and profile.is_age_gate_refusal:
         console.say()
         console.say(RESOURCES_ONE_OFF_HINT)
-    elif region is None or region.country_code == UNKNOWN_COUNTRY:
+    elif region is None:
         console.say()
         console.say(RESOURCES_SET_REGION)
+    elif region.country_code == UNKNOWN_COUNTRY:  # chosen ("其他地区，或不想说"): no nagging
+        console.say()
+        console.say(RESOURCES_ONE_OFF_HINT)
     return 0
 
 
@@ -1400,19 +1531,30 @@ def _resources_for(console: _Console, raw: str, clock: Clock) -> int:
         return 1
     code = region_from_reply(raw, load_onboarding_text(), numbers=False)
     if code is None or not store_data.has_region(code):
+        # QA r3: someone in Japan typing "JP" still gets numbers first (the global card).
+        _show_hotlines(console, None, clock)
+        console.say()
         console.say(RESOURCES_UNKNOWN.format(raw=raw.strip(), choices=_region_choices(store_data)))
         return 2
-    store = ProfileStore()
-    try:
-        profile = store.load()
-    except (ProfileCorruptError, ProfileLockedError):
-        profile = store.load_unsealed()  # only whether the minors' lines belong on the card
+    profile = _profile_for_card()
     zone = DEFAULT_TIMEZONES.get(code, onboarding.system_timezone())
     if not _show_hotlines(console, profile, clock, region=UserRegion(code, zone)):
         return 1
     console.say()
     console.say(RESOURCES_ONE_OFF)
     return 0
+
+
+def _profile_for_card() -> PersonaProfile | None:
+    """The profile, only to know whether the minors' lines belong on a card; None when it
+    cannot be read for any reason (QA r3: a data directory without permissions)."""
+    store = ProfileStore(data_dir_location())
+    try:
+        return store.load()
+    except Exception:  # noqa: BLE001 - only one flag is wanted here
+        with contextlib.suppress(Exception):
+            return store.load_unsealed()
+        return None
 
 
 def _region_choices(store: ResourceStore) -> str:
@@ -1557,14 +1699,14 @@ def _safety_plan(console: _Console, clock: Clock) -> int:
     if profile.is_age_gate_refusal:
         console.say(command["adults_only"])
         return 1
-    # QA #4: screened like the other setup replies, but kept: the plan holds such words.
-    asker = _SetupConsole(
-        console,
-        SetupScreen(_taxonomy()),
-        lambda: _show_hotlines(console, profile, clock),
-        keep=True,
+    # QA #4, r3: every crisis sentence brings the numbers and the choice; the plan keeps
+    # it only in sections 1 and 5 (``safety_plan.Screened``).
+    screen = _SetupConsole(
+        console, SetupScreen(_taxonomy()), lambda: _show_hotlines(console, profile, clock)
     )
-    return run_command(lambda: asker.ask(ANSWER_PROMPT), asker.say, SafetyPlanStore())
+    return run_command(
+        lambda: console.ask(ANSWER_PROMPT), console.say, SafetyPlanStore(), screen=screen.check
+    )
 
 
 # -- journal ----------------------------------------------------------------------------------
@@ -1719,13 +1861,39 @@ def _age(today: date, then: date) -> int:
     return max(0, (today - then).days)
 
 
+def _shell_path(path: Path) -> str:
+    """``path`` as it can be typed in a POSIX shell, the home directory as ``~``."""
+    shown = _shown_location(path)
+    if shown == "~":
+        return shown
+    if shown.startswith("~/"):
+        return "~/" + shlex.quote(shown[2:])
+    return shlex.quote(shown)
+
+
+def _doctor_fix(location: Path) -> Row:
+    if sys.platform == "win32":
+        return "", DOCTOR_FIX_WINDOWS
+    return "", DOCTOR_FIX_POSIX.format(path=_shell_path(location))
+
+
 def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
     where = _shown_location(found.location)
     if found.kind == "absent":
         return [(DOCTOR_OK, DOCTOR_DIR_ABSENT.format(location=where))]
-    if found.kind == "other":
+    if found.kind == "other" or found.access == "file":
         return [(DOCTOR_FAIL, DOCTOR_DIR_NOT_DIR.format(location=where))]
+    if found.access == "unreadable":
+        return [
+            (DOCTOR_FAIL, DOCTOR_DIR_UNREADABLE.format(location=where)),
+            _doctor_fix(found.location),
+        ]
     rows = [(DOCTOR_OK, DOCTOR_DIR.format(location=where))]
+    if found.access == "unwritable":
+        rows = [
+            (DOCTOR_FAIL, DOCTOR_DIR_UNWRITABLE.format(location=where)),
+            _doctor_fix(found.location),
+        ]
     if found.mismatched is None:
         rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_WINDOWS))
     elif found.mismatched:
@@ -1788,6 +1956,12 @@ def _doctor_hotline_rows(found: doctor.HotlineFacts, today: date) -> list[Row]:
     return rows
 
 
+def _doctor_packaged_row(found: doctor.PackagedData) -> Row:
+    if found.failed:
+        return DOCTOR_FAIL, DOCTOR_PACKAGED_BROKEN.format(names="；".join(found.failed))
+    return DOCTOR_OK, DOCTOR_PACKAGED_OK.format(count=found.checked)
+
+
 def _doctor_reminder_row(installed: bool | None, switched_on: bool | None) -> Row:
     if installed is None:
         return DOCTOR_WARN, DOCTOR_REMINDERS_UNKNOWN
@@ -1815,6 +1989,7 @@ def doctor_rows(report: doctor.Report, today: date) -> list[Row]:
         if reason is None
         else (DOCTOR_FAIL, DOCTOR_MODEL_FAILED.format(reason=reason)),
         *_doctor_hotline_rows(report.hotlines, today),
+        _doctor_packaged_row(report.packaged),
         _doctor_reminder_row(report.reminders, report.profile.notifications),
     ]
 
@@ -1939,6 +2114,7 @@ def _profile(console: _Console, clock: Clock) -> int:
         profile,
         save=lambda changed: _save_profile(console, changed),
         now=clock(),
+        ask_topics=lambda: asker.ask(ANSWER_PROMPT, topics=True),
     )
 
 
@@ -2149,11 +2325,21 @@ def _writes(args: argparse.Namespace) -> bool:
     return False
 
 
+def _forget_all_unfinished_here() -> bool:
+    """:func:`forget_all_unfinished` for the data directory; False when the directory is
+    not there or cannot be read (QA r3: a directory without permissions must not stop
+    ``doctor``, ``privacy`` or ``resources``; a command that needs it says so itself)."""
+    base = data_dir_location()
+    try:
+        return base.is_dir() and forget_all_unfinished(base)
+    except OSError:
+        return False
+
+
 def _forget_all_pending(args: argparse.Namespace) -> bool:
     """An interrupted ``forget --all`` waits to be finished, and this command is not the
     one that finishes it (robustness E2)."""
-    base = data_dir_location()
-    if not base.is_dir() or not forget_all_unfinished(base):
+    if not _forget_all_unfinished_here():
         return False
     if args.command == "forget" and args.all:
         return False
@@ -2242,7 +2428,7 @@ def _run(
         code = _dispatch(args, console, now, rng)
         if args.command not in ("notify-check", "doctor"):  # doctor writes nothing at all
             _tell_recovery(console)
-        if args.command == "resources" and forget_all_unfinished(data_dir_location()):
+        if args.command == "resources" and _forget_all_unfinished_here():
             console.say()
             console.say(load_forget_text().forget["unfinished"])
         return code
@@ -2292,7 +2478,8 @@ def main(
             console.say(fallback_text(damaged=False))
             console.say()
         with contextlib.suppress(Exception):
-            console.say(UNEXPECTED_ERROR)
+            unusable = doctor.access_problem(data_dir_location()) is not None
+            console.say(DATA_DIR_UNUSABLE if unusable else UNEXPECTED_ERROR)
         return 1
 
 

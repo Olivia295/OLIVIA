@@ -13,6 +13,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from cli_support import L3_SENTENCE, NOW, ONBOARD_CN, files_under, save_profile
@@ -31,8 +32,9 @@ from olivia.core.datalock import DataDirLock
 from olivia.core.memory.forget import FORGET_ALL_MARKER, load_forget_text
 from olivia.core.memory.ledger import Ledger
 from olivia.core.memory.state import STATE_FILENAME
+from olivia.core.models import UserRegion
 from olivia.core.resources.fallback import fallback_text
-from olivia.core.storage import snapshot_paths
+from olivia.core.storage import snapshot_paths, snapshot_time
 
 TEXT = load_forget_text()
 M, F = TEXT.memory, TEXT.forget
@@ -526,3 +528,22 @@ def test_a_recovered_version_without_a_region_says_so(run_cli, data_home):
     run = run_cli(["persona"])
     (notice,) = [line for line in run.lines if line.startswith("设置文件坏了")]
     assert cli.PROFILE_RECOVERED_NO_REGION in notice
+
+
+def test_the_recovered_time_is_on_this_computers_clock_and_names_the_zone(
+    run_cli, data_home, monkeypatch
+):
+    """QA r3: the time was in the recovered profile's zone (US) with no zone named; on a
+    computer in Shanghai that read as a time that never happened here."""
+    from olivia.core.chang import onboarding
+
+    monkeypatch.setattr(onboarding, "system_timezone", lambda: "Asia/Shanghai")
+    save_profile(data_home, region=UserRegion("US", "America/Chicago"))
+    save_profile(data_home, user_name="阿青", region=UserRegion("US", "America/Chicago"))
+    (data_home / PROFILE_FILENAME).write_bytes(b"{")
+    taken = snapshot_time(snapshot_paths(data_home / PROFILE_FILENAME)[0])
+    assert taken is not None
+    run = run_cli(["persona"])
+    (notice,) = [line for line in run.lines if line.startswith("设置文件坏了")]
+    assert "（这台电脑的时区 Asia/Shanghai）" in notice
+    assert taken.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M") in notice

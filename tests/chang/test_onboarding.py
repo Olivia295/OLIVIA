@@ -34,6 +34,7 @@ from olivia.core.models import (
     PersonaSpectrum,
     UserRegion,
 )
+from olivia.core.resources.fallback import EMERGENCY, emergency_lines
 from olivia.core.taxonomy import load_taxonomy
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -185,7 +186,7 @@ def test_disclaimer_refusal_stops_and_saves_nothing(tmp_path, reply):
     result = flow.answer(reply)
     assert isinstance(result, Refused)
     assert result.reason is RefusalReason.DISCLAIMER_DECLINED
-    assert result.text == TEXT.outcomes["disclaimer_declined"]
+    assert result.text == TEXT.outcomes["disclaimer_declined"] + "\n" + "\n".join(emergency_lines())
     assert _files(tmp_path) == []
     with pytest.raises(OnboardingFinishedError):
         flow.prompt()
@@ -264,6 +265,23 @@ def test_age_confirmation_needs_a_clear_answer(tmp_path, reply):
     assert isinstance(again, Prompt) and again.step is Step.AGE_CONFIRM
     assert again.text.startswith(TEXT.hints["unrecognized"])
     assert _files(tmp_path) == []
+
+
+@pytest.mark.parametrize("answers", [["1", "2", "1"], ["2"]])
+def test_refusal_pages_list_the_emergency_numbers_they_ask_for(tmp_path, answers):
+    """QA r3: both pages say "请…拨打当地的紧急电话"; no region is known yet, so every
+    supported region's numbers follow (the fixed list, checked against hotlines.yaml)."""
+    result = _walk(_flow(tmp_path), answers)
+    assert isinstance(result, Refused)
+    asked = result.text.index("紧急电话")
+    for _code, label, numbers in EMERGENCY:
+        assert f"· {label}：" in result.text[asked:]
+        assert all(number in result.text[asked:] for number, _ in numbers)
+    assert result.text.endswith("\n".join(emergency_lines()))
+    for number in ("110", "120", "999", "911", "000", "112"):
+        assert number in result.text
+    if result.reason is RefusalReason.UNDER_18:
+        assert "12355" in result.text
 
 
 def test_minor_message_numbers_match_the_hotline_data():
@@ -467,7 +485,7 @@ def test_region_with_several_zones_asks(tmp_path, code):
     )
 
 
-@pytest.mark.parametrize("reply", ["9", "ZZ", "其他", "不想说"])
+@pytest.mark.parametrize("reply", ["9", "ZZ", "其他", "不想说", "", "  ", "跳过"])
 def test_unknown_region_is_zz_and_defaults_to_the_system_timezone(tmp_path, reply, monkeypatch):
     monkeypatch.setattr(onb, "system_timezone", lambda: "Asia/Tokyo")
     flow = _flow(tmp_path)

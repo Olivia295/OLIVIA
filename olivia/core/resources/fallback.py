@@ -11,6 +11,11 @@ The text is written here, not loaded, so it survives any damage to the data file
 ``tests/resources/test_fallback.py`` locks it and checks every number against the verified
 emergency numbers in ``hotlines.yaml`` (the same regions, numbers and order), so the two
 cannot drift apart. Wording is a draft pending G-0 (草稿：待 G-0).
+
+:func:`emergency_lines` is the same list on its own, for wherever the emergency numbers
+are needed before a region is known (QA r3): a crisis sentence typed during the first visit
+before the region step, and the under-18 and declined-disclaimer pages, which say "请马上
+拨打当地的紧急电话" and now list the numbers.
 """
 
 from __future__ import annotations
@@ -45,16 +50,23 @@ _DAMAGED: Final = (
 )
 
 
+def emergency_lines() -> tuple[str, ...]:
+    """One line per region, ``· 中国大陆：110（报警）、120（急救）`` ..., in
+    :data:`EMERGENCY` order (the last one for anywhere else: 112)."""
+    rows = []
+    for _code, label, numbers in EMERGENCY:
+        shown = "、".join(f"{n}（{what}）" if what else n for n, what in numbers)
+        rows.append(f"· {label}：{shown}")
+    return tuple(rows)
+
+
 def fallback_text(*, damaged: bool = True) -> str:
     """The fixed crisis help: emergency numbers first, then the directory, then why.
 
     ``damaged=False`` leaves out the sentence about the hotline data: the CLI's last
     resort for an error nothing else handled shows the numbers that way (QA 2026-10-26
     #8), since the data itself may be fine."""
-    rows = [_LEAD]
-    for _code, label, numbers in EMERGENCY:
-        shown = "、".join(f"{n}（{what}）" if what else n for n, what in numbers)
-        rows.append(f"· {label}：{shown}")
+    rows = [_LEAD, *emergency_lines()]
     rows.append(_DIRECTORY.format(url=DIRECTORY_URL))
     if damaged:
         rows.append(_DAMAGED)

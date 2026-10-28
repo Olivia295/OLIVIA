@@ -3,10 +3,12 @@
 :func:`examine` gathers facts only; the CLI turns them into one marked line each
 (``cli.py``, the ``DOCTOR_*`` texts). Every check is read-only and offline:
 
-* the data directory: where it is, whether it exists (it is never created) and, on
-  POSIX, whether every directory is 0700 and every file 0600 (the signed hotline update
-  folder ``resources/`` is placed there by the user and holds no personal data, so it is
-  not counted);
+* the data directory: where it is, whether it exists (it is never created), whether
+  this account may read and write it (:func:`access_problem`: a directory without read or
+  write permission, or a file in its place, QA r3; every other check then copes with what
+  it cannot read instead of failing) and, on POSIX, whether every directory is 0700 and
+  every file 0600 (the signed hotline update folder ``resources/`` is placed there by the
+  user and holds no personal data, so it is not counted);
 * the keychain: :func:`keychain.probe` resolves the backend and touches no item, so a
   locked keychain is not noticed (that would take an item read, which may prompt);
 * the profile and every sealed store, **without decrypting anything**: a file must
@@ -18,6 +20,9 @@
   (``student.try_load_student``; nothing is cached);
 * the built-in hotline data's signature and compiled date, and whether a signed update
   in ``<data dir>/resources/`` is used (``bundle.load_hotlines_bytes``);
+* the packaged wording, lexicons and taxonomy (:data:`PACKAGED_DATA`): each is loaded and
+  validated as the commands would, one by one, so a damaged or missing file is named (QA
+  r3: a broken crisis lexicon or template used to leave every line ✓);
 * whether the reminder job is installed (``jobs.installed``);
 * what the data directory's markers say (robustness fixes): another OLIVIA holding the
   data directory's lock (``datalock.held_elsewhere``: tried and let go, nothing created),
@@ -31,14 +36,15 @@ health code or plan can reach the report: it holds states, dates, counts and ver
 
 from __future__ import annotations
 
+import functools
 import os
 import stat
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from olivia.core.chang.care import CARE_FILENAME, CARE_STORE
 from olivia.core.chang.profile import (
@@ -56,7 +62,7 @@ from olivia.core.memory.ledger import LEDGER_STORE, entry_files
 from olivia.core.memory.state import STATE_FILENAME, STATE_STORE
 from olivia.core.perception import student
 from olivia.core.resources import bundle
-from olivia.core.storage import StorageCorruptError, read_text_with_recovery
+from olivia.core.storage import StorageAccessError, StorageCorruptError, read_text_with_recovery
 from olivia.notify import jobs
 from olivia.notify.system import Host
 
@@ -74,6 +80,10 @@ _SEALED_FILES: Final = (
 )
 
 
+Access = Literal["file", "unreadable", "unwritable"]
+"""What keeps the data directory from being used (:func:`access_problem`)."""
+
+
 class StoreState(StrEnum):
     ABSENT = "absent"
     READY = "ready"
@@ -84,6 +94,8 @@ class StoreState(StrEnum):
     """The data or its wrapped key is damaged or gone: it cannot be opened."""
     LOCKED = "locked"
     """Intact, but the keychain it needs is not there now."""
+    UNREADABLE = "unreadable"
+    """The operating system will not let this account read it (permissions)."""
 
 
 @dataclass(frozen=True)
@@ -92,6 +104,8 @@ class DataDir:
     kind: Literal["absent", "dir", "other"]
     mismatched: int | None
     """Paths whose mode is not 0700 / 0600; None when not checked (Windows, or no dir)."""
+    access: Access | None = None
+    """Why the program cannot use the directory (:func:`access_problem`); None when it can."""
 
 
 @dataclass(frozen=True)
@@ -136,42 +150,131 @@ class Report:
     hotlines: HotlineFacts
     reminders: bool | None
     activity: Activity = Activity()
+    packaged: PackagedData = field(default_factory=lambda: PackagedData(0, ()))
+
+
+@dataclass(frozen=True)
+class PackagedData:
+    checked: int
+    """How many of :data:`PACKAGED_DATA` were tried."""
+    failed: tuple[str, ...]
+    """The names of those that did not load, in :data:`PACKAGED_DATA` order."""
 
 
 def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
     """Look at the data directory ``base`` and the installed package (module docstring)."""
-    kind: Literal["absent", "dir", "other"] = (
-        "dir" if base.is_dir() else "other" if base.exists() else "absent"
-    )
+    try:
+        kind: Literal["absent", "dir", "other"] = (
+            "dir" if base.is_dir() else "other" if base.exists() else "absent"
+        )
+    except OSError:  # its parent cannot be searched: as good as unreadable
+        kind = "dir"
+    access = access_problem(base)
+    readable = kind == "dir" and access != "unreadable"
     found = keychain.probe()
-    keychain_there = found in (keychain.Probe.READY, keychain.Probe.UNCHECKED)
-    stores = {"ledger": _sealed(base, entry_files(base), LEDGER_STORE, keychain_there)}
-    for name, filename, store in _SEALED_FILES:
-        path = base / filename
-        stores[name] = _sealed(base, [path] if path.exists() else [], store, keychain_there)
+    there = found in (keychain.Probe.READY, keychain.Probe.UNCHECKED)
+    stores: dict[str, StoreState] = {}
+    for name, filename, store in (("ledger", "", LEDGER_STORE), *_SEALED_FILES):
+        if kind != "dir":  # nothing there to open
+            stores[name] = StoreState.ABSENT
+        elif filename:
+            stores[name] = _guarded(functools.partial(_sealed_file, base, filename, store, there))
+        else:
+            stores[name] = _guarded(functools.partial(_ledger, base, there))
+    profile = (
+        _profile(base, there)
+        if kind == "dir"
+        else ProfileFacts(StoreState.ABSENT, onboarded=False, notifications=None)
+    )
     return Report(
-        data_dir=DataDir(base, kind, _mismatched(base) if kind == "dir" else None),
+        data_dir=DataDir(base, kind, _mismatched(base) if readable else None, access),
         keychain=found,
-        profile=_profile(base, keychain_there),
+        profile=profile,
         stores=stores,
         model_reason=student.try_load_student().reason,
         hotlines=_hotlines(base, today),
         reminders=jobs.installed(host()),
-        activity=_activity(base) if kind == "dir" else Activity(),
+        activity=_activity(base) if readable else Activity(),
+        packaged=packaged_data(),
     )
+
+
+def access_problem(base: Path) -> Access | None:
+    """Why this account cannot use the data directory ``base``, or None when it can (or
+    when there is no directory yet: the first visit makes it).
+
+    ``"file"``: something that is not a directory is in its place. ``"unreadable"``: the
+    directory, or a directory or file in it, cannot be read (or a directory not searched).
+    ``"unwritable"``: the directory, or a directory in it, cannot be written, so nothing
+    can be saved (files are replaced by renaming, so only directories count). The signed
+    update folder ``resources/`` is the user's and is not looked at. Read-only.
+    """
+    try:
+        if not base.exists():
+            return None
+        if not base.is_dir():
+            return "file"
+    except OSError:
+        return "unreadable"
+    if not os.access(base, os.R_OK | os.X_OK):
+        return "unreadable"
+    unwritable = not os.access(base, os.W_OK)
+    try:
+        inside = list(base.rglob("*"))
+    except OSError:
+        return "unreadable"
+    for path in inside:
+        relative = path.relative_to(base).parts
+        if relative and relative[0] == bundle.OVERRIDE_DIR_NAME:
+            continue
+        try:
+            info = path.lstat()
+        except OSError:
+            return "unreadable"
+        if stat.S_ISLNK(info.st_mode):
+            continue
+        if stat.S_ISDIR(info.st_mode):
+            if not os.access(path, os.R_OK | os.X_OK):
+                return "unreadable"
+            unwritable = unwritable or not os.access(path, os.W_OK)
+        elif not os.access(path, os.R_OK):
+            return "unreadable"
+    return "unwritable" if unwritable else None
+
+
+def _guarded(check: Callable[[], StoreState]) -> StoreState:
+    """A store check that a permission problem turns into ``UNREADABLE``, not a failure."""
+    try:
+        return check()
+    except OSError:
+        return StoreState.UNREADABLE
+
+
+def _ledger(base: Path, keychain_there: bool) -> StoreState:
+    return _sealed(base, entry_files(base), LEDGER_STORE, keychain_there)
+
+
+def _sealed_file(base: Path, filename: str, store: str, keychain_there: bool) -> StoreState:
+    path = base / filename
+    return _sealed(base, [path] if path.exists() else [], store, keychain_there)
 
 
 def _activity(base: Path) -> Activity:
-    return Activity(
-        busy=held_elsewhere(base),
-        forget_unfinished=forget_all_unfinished(base),
-        recovered=recovery_pending(base),
-    )
+    try:
+        return Activity(
+            busy=held_elsewhere(base),
+            forget_unfinished=forget_all_unfinished(base),
+            recovered=recovery_pending(base),
+        )
+    except OSError:  # a marker that cannot be read: said by the data directory's own line
+        return Activity()
 
 
 def _looks_sealed(path: Path) -> bool:
     try:
         return aead.looks_sealed(path.read_bytes())
+    except PermissionError:
+        raise  # not damaged: the store is unreadable (``_guarded``)
     except OSError:
         return False
 
@@ -201,12 +304,18 @@ def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
         text = read_text_with_recovery(base / PROFILE_FILENAME, is_valid)
     except FileNotFoundError:
         return ProfileFacts(StoreState.ABSENT, onboarded=False, notifications=None)
+    except (StorageAccessError, PermissionError):
+        return ProfileFacts(StoreState.UNREADABLE, onboarded=None, notifications=None)
     except (StorageCorruptError, OSError):
         return ProfileFacts(StoreState.BROKEN, onboarded=None, notifications=None)
     shape = profile_shape(text)
     state = StoreState.READY
     if shape.sealed:
-        if not key_file_intact(base, PROFILE_STORE):
+        try:
+            intact = key_file_intact(base, PROFILE_STORE)
+        except OSError:
+            return ProfileFacts(StoreState.UNREADABLE, True, shape.notifications)
+        if not intact:
             state = StoreState.BROKEN
         elif not keychain_there:
             state = StoreState.LOCKED
@@ -239,8 +348,115 @@ def _hotlines(base: Path, today: date) -> HotlineFacts:
     except (bundle.BundleIntegrityError, OSError):
         return HotlineFacts(False, None, None, None, None)
     builtin_on = bundle.compiled_on_of(builtin.data)
-    loaded = bundle.load_hotlines_bytes(base / bundle.OVERRIDE_DIR_NAME, today=today)
+    try:
+        loaded = bundle.load_hotlines_bytes(base / bundle.OVERRIDE_DIR_NAME, today=today)
+    except OSError:  # the data directory cannot be read: no update can be used
+        return HotlineFacts(True, builtin_on, "builtin", bundle.REASON_UNREADABLE, None)
     if loaded.source == "override":
         return HotlineFacts(True, builtin_on, "override", None, bundle.compiled_on_of(loaded.data))
     reason = None if loaded.reason == bundle.REASON_NO_OVERRIDE else loaded.reason
     return HotlineFacts(True, builtin_on, "builtin", reason, None)
+
+
+# -- the packaged data ----------------------------------------------------------------------
+
+
+def _taxonomy() -> object:
+    from olivia.core.taxonomy import load_taxonomy
+
+    return load_taxonomy()
+
+
+def _with_taxonomy(load: Callable[[Any], object]) -> Callable[[], object]:
+    def run() -> object:
+        from olivia.core.taxonomy import load_taxonomy
+
+        return load(load_taxonomy())
+
+    return run
+
+
+def _language(tax: Any) -> object:
+    from olivia.core.language.data import load_language_data
+
+    return load_language_data(tax)
+
+
+def _safety_lexicons(tax: Any) -> object:
+    from olivia.core.safety.lexicon import load_safety_lexicons
+
+    return load_safety_lexicons(tax)
+
+
+def _perception(tax: Any) -> object:
+    from olivia.core.perception.externalize import load_externalize_text
+    from olivia.core.perception.introspector import load_introspection_lexicon, load_mirror_lines
+    from olivia.core.perception.lexicon import load_perception_lexicon
+
+    return (
+        load_perception_lexicon(tax),
+        load_introspection_lexicon(tax),
+        load_mirror_lines(tax),
+        load_externalize_text(tax),
+    )
+
+
+def _memory_words() -> object:
+    from olivia.core.memory.notes import load_note_cues
+    from olivia.core.memory.text import load_memory_text
+
+    return load_note_cues(), load_memory_text()
+
+
+def _setup_texts() -> object:
+    from olivia.core.chang.onboarding import load_onboarding_text
+    from olivia.core.chang.privacy import load_privacy_text
+
+    return load_onboarding_text(), load_privacy_text()
+
+
+def _command_texts() -> object:
+    from olivia.core.chang.journal import load_journal_text
+    from olivia.core.chang.safety_plan import load_safety_plan_text
+    from olivia.core.chang.stats import load_stats_text
+    from olivia.core.memory.forget import load_forget_text
+    from olivia.notify.text import load_notify_text
+
+    return (
+        load_safety_plan_text(),
+        load_journal_text(),
+        load_forget_text(),
+        load_stats_text(),
+        load_notify_text(),
+    )
+
+
+PACKAGED_DATA: Final[tuple[tuple[str, Callable[[], object]], ...]] = (
+    ("taxonomy.yaml", _taxonomy),
+    ("lexicons/risk.yaml、red_flags.yaml", _with_taxonomy(_safety_lexicons)),
+    (
+        "lexicons/perception.yaml、language/externalize.yaml、schema_mirror.yaml",
+        _with_taxonomy(_perception),
+    ),
+    ("lexicons/memory.yaml、templates/memory.yaml", _memory_words),
+    ("language/、cards/ 与四种陪伴方式的模板", _with_taxonomy(_language)),
+    ("templates/onboarding.yaml、privacy.yaml", _setup_texts),
+    (
+        "templates/safety_plan.yaml、journal.yaml、forget.yaml、stats.yaml、notify.yaml",
+        _command_texts,
+    ),
+)
+"""(the files, how the program loads them): every packaged file the commands read, besides
+the model and the hotline data (checked on their own lines). Loaded fresh in ``olivia
+doctor``'s own process; a loader that caches keeps its first result."""
+
+
+def packaged_data() -> PackagedData:
+    """Try every loader of :data:`PACKAGED_DATA`; any exception is a failed file set."""
+    failed: list[str] = []
+    for name, load in PACKAGED_DATA:
+        try:
+            load()
+        except Exception:  # noqa: BLE001 - whatever the damage, it is named, never raised
+            failed.append(name)
+    return PackagedData(len(PACKAGED_DATA), tuple(failed))

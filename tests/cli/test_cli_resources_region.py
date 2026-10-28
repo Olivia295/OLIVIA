@@ -446,14 +446,32 @@ def test_a_one_off_look_at_an_unknown_region_is_a_wrong_value(run_cli, data_home
     assert "「火星」" in run.out and "  HK  中国香港" in run.out
 
 
+@pytest.mark.parametrize("raw", ["JP", "日本", "火星"])
+def test_an_unknown_region_still_shows_the_global_card_first(run_cli, data_home, raw):
+    """QA r3: someone in Japan typing ``olivia resources JP`` gets numbers before the list."""
+    run = run_cli(["resources", raw])
+    assert run.code == 2
+    assert "求助资源 · 其他地区（ZZ）" in run.out
+    assert run.out.index("112") < run.out.index("findahelpline.com") < run.out.index(f"「{raw}」")
+    assert "上面先列出了全球通用的资源" in run.out
+
+
 def test_resources_help_names_the_one_off_region(run_cli, capsys):
     with pytest.raises(SystemExit):
         cli.main(["resources", "-h"])
     assert "不会保存" in capsys.readouterr().out
 
 
-def test_a_saved_other_region_hints_at_both_ways(run_cli, data_home):
+def test_a_saved_other_region_is_not_asked_for_a_region_again(run_cli, data_home):
+    """QA r3: ZZ is a choice ("其他地区，或不想说"); only the one-off look is mentioned."""
     save_profile(data_home, region=UserRegion("ZZ", "UTC"))
+    run = run_cli(["resources"])
+    assert run.lines[-1] == cli.RESOURCES_ONE_OFF_HINT
+    assert cli.RESOURCES_SET_REGION not in run.out
+    assert "告诉我你所在的国家或地区" not in run.out
+
+
+def test_no_saved_region_hints_at_both_ways(run_cli, data_home):
     run = run_cli(["resources"])
     assert run.lines[-1] == cli.RESOURCES_SET_REGION
     assert "olivia resources <代码>" in cli.RESOURCES_SET_REGION
