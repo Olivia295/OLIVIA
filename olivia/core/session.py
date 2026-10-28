@@ -1104,6 +1104,10 @@ class Session:
         tracked = (
             replace(assessment, level=CrisisLevel.L1, uncapped_level=None) if paused else assessment
         )
+        if self._score_band_safe(tracked, model_level):
+            # 负责人 2026-10-29 决定: after a confirmation, an L1 only the model's score band
+            # gives (rules L0, the model's own class L0) is a safe turn, not a pause.
+            tracked = replace(tracked, level=CrisisLevel.L0, uncapped_level=None)
         status = self._tracker.observe(tracked, text, perception.valence if evidence else None)
         self._last_status = status
         if status.in_crisis:
@@ -2181,6 +2185,25 @@ class Session:
             # the crisis flow on the model's word alone ("我妈留言：累了就回家……").
             return True
         return first and self._shared.lexicons.model_ask.asks_first(model_score)
+
+    def _score_band_safe(self, assessment: CrisisAssessment, model_level: str | None) -> bool:
+        """负责人 2026-10-29 决定 (round 5, re-test q2 第 3 节, E03): in the crisis flow with an
+        explicit confirmation counted (as of the turn before), a turn the screen puts at L1
+        only through the model's score band counts as a safe turn: the rules found no risk
+        cue at all (``rule_clear``, rule level L0), the model's own class is L0 and it did
+        not fail. A model class of L1 or above, or any rule cue, still only pauses the exit
+        count (SDD §8.2), and a model L2/L3 still voids the confirmation."""
+        before = self._last_status
+        return (
+            before is not None
+            and before.in_crisis
+            and not before.awaiting_confirmation
+            and assessment.level is CrisisLevel.L1
+            and assessment.rule_clear
+            and (assessment.rule_level or CrisisLevel.L0) is CrisisLevel.L0
+            and MODEL_FAILURE not in assessment.cue_ids
+            and model_level == CrisisLevel.L0.name
+        )
 
     def _minor_first(
         self, text: str, assessment: CrisisAssessment, answer: IntentAnswer | None

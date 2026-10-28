@@ -346,3 +346,48 @@ def test_a_split_no_with_a_means_or_plan_after_it_is_unclear(answer: str) -> Non
     result = session.turn(answer)
     assert result.inspect.get("safety_check") != "denied"
     assert result.in_crisis
+
+
+# -- owner decision 2026-10-29: a score-band L1 after a confirmation is a safe turn --------------
+
+
+def _confirmed_session(model: Scripted) -> Session:
+    session = _open(model=model)
+    assert session.turn("我真的撑不下去了，不想活了").in_crisis
+    session.turn("我现在是安全的")
+    assert _confirmed(session)
+    return session
+
+
+def test_a_score_band_l1_the_model_itself_rates_l0_counts_as_safe() -> None:
+    daily = ("我下楼取了个快递", "晚饭煮了面条")
+    session = _confirmed_session(Scripted({t: (CrisisLevel.L0, 0.25) for t in daily}))
+    remaining = session._last_status.safe_turns_remaining  # type: ignore[union-attr]
+    assert remaining == 2
+    assert session.turn(daily[0]).in_crisis
+    assert session._last_status.safe_turns_remaining == 1  # type: ignore[union-attr]
+    assert session.turn(daily[1]).in_crisis is False
+
+
+def test_a_model_l1_class_after_a_confirmation_still_only_pauses() -> None:
+    text = "我下楼取了个快递"
+    session = _confirmed_session(Scripted({text: (CrisisLevel.L1, 0.25)}))
+    session.turn(text)
+    status = session._last_status
+    assert status is not None and status.in_crisis and status.safe_turns_remaining == 2
+
+
+def test_a_rule_l1_after_a_confirmation_still_only_pauses() -> None:
+    text = "活着好累"
+    session = _confirmed_session(Scripted({text: (CrisisLevel.L0, 0.25)}))
+    result = session.turn(text)
+    status = session._last_status
+    assert result.in_crisis and status is not None and status.safe_turns_remaining == 2
+
+
+def test_a_model_l2_after_a_confirmation_still_voids_it() -> None:
+    text = "我下楼取了个快递"
+    session = _confirmed_session(Scripted({text: (CrisisLevel.L2, 0.8)}))
+    session.turn(text)
+    status = session._last_status
+    assert status is not None and status.awaiting_confirmation
