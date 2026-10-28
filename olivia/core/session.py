@@ -558,6 +558,7 @@ from olivia.core.perception.signals import Answer, Command, NoteRecall, TurnSign
 from olivia.core.perception.student import RiskChoice, choose_risk_model
 from olivia.core.resources.bundle import load_hotlines_bytes
 from olivia.core.resources.card import CardMode, ResourceCard
+from olivia.core.resources.fallback import EMERGENCY
 from olivia.core.resources.resolver import resolve
 from olivia.core.resources.store import LineKind, ResourceStore, parse_store
 from olivia.core.safety.crisis import (
@@ -818,6 +819,7 @@ class Session:
         carried: CarriedState | None = None,
         safety_plan: SafetyPlan | None = None,
         suggest_safety_plan: bool = False,
+        safety_plan_unreadable: bool = False,
     ) -> None:
         self._tax = tax
         self._profile = profile
@@ -902,6 +904,8 @@ class Session:
         # S5 (2026-10-26): in full once per crisis, then one reminder line; the people of
         # section 4 also go into a crisis farewell.
         self._plan_block = crisis_block(safety_plan)
+        if safety_plan is None and safety_plan_unreadable:  # QA q4 FLT-3: never silent
+            self._plan_block = load_safety_plan_text().crisis_unreadable
         self._plan_reminder = crisis_reminder(safety_plan)
         self._plan_people = farewell_people(safety_plan)
         self._plan_shown_in_crisis = False
@@ -951,6 +955,7 @@ class Session:
         safety_plan: SafetyPlan | None = None,
         suggest_safety_plan: bool = False,
         hotline_updates: Path | None = None,
+        safety_plan_unreadable: bool = False,
     ) -> Session:
         """Start a session; ``now`` is the clock (timezone-aware) for cards and the bandit.
 
@@ -966,7 +971,9 @@ class Session:
         out). With the student on, its other heads also refine perception
         (``perception/model_heads.py``); an injected model leaves perception to the rules.
 
-        ``safety_plan`` is the user's saved plan (B10), shown in crisis replies;
+        ``safety_plan`` is the user's saved plan (B10), shown in crisis replies; with
+        ``safety_plan_unreadable`` (a saved plan that cannot be opened now) the first crisis
+        reply says so in its place instead of leaving it out silently (QA q4 FLT-3);
         ``suggest_safety_plan`` lets the first S_closing reply mention ``olivia safety-plan``
         once (the CLI passes it when no plan exists and none was suggested before).
 
@@ -1002,6 +1009,7 @@ class Session:
             carried=carried,
             safety_plan=safety_plan,
             suggest_safety_plan=suggest_safety_plan,
+            safety_plan_unreadable=safety_plan_unreadable,
         )
 
     @property
@@ -1231,7 +1239,13 @@ class Session:
             )
             self._masked_turn = before_turns
         # A command, or a pick from the naming offer (C3), is not something to mirror back.
-        mirror_text = "" if signals.command is not None or naming is not None else text
+        # Round 5 (re-test q2 第 5 节): a slash word that is no chat command ("/热线") is not
+        # chat; one about resources gets them, any other one says so and lists the commands.
+        slash = _unknown_command(text, signals)
+        if slash and _asks_resources(text):
+            signals = replace(signals, hotline_request=True)
+            slash = False
+        mirror_text = "" if signals.command is not None or naming is not None or slash else text
         # Two meta turns outside a crisis: a feedback command with no card waiting for it,
         # and a request in the chat to wipe the memory. Each gets one short line, never a
         # mirror, and holds the stage (the command is not passed on).
@@ -1256,7 +1270,7 @@ class Session:
             and answer is None
         )
         # Round 3 (2026-10-27, re-test r3): /help, /帮助 or /? lists the chat commands.
-        helping = normalize(text) in _HELP_COMMANDS
+        helping = normalize(text) in _HELP_COMMANDS or slash
         help_now = helping and not status.in_crisis and not ask
         privacy = (
             calm_meta
@@ -1314,8 +1328,15 @@ class Session:
             or (recent_card and signals.hotline_place is not None)
             or (signals.hotline_words and asked)
         )
+        # Round 5: a call that does not get through, and what a number is ("12356是干嘛的").
+        followup = followup or (
+            signals.hotline_unreachable and (recent_card or asked or signals.hotline_request)
+        )
         hotline_now = (
-            open_turn and not minor_now and not third_now and (signals.hotline_request or followup)
+            open_turn
+            and not minor_now
+            and not third_now
+            and (signals.hotline_request or followup or signals.hotline_number is not None)
         )
         transition = step(
             self._tax,
@@ -1513,7 +1534,11 @@ class Session:
         elif ask:
             rendered = self._safety_check(stage, now)
         elif help_now:
-            rendered = self._followup((self._engine.data.render.chat_help,), stage)
+            render = self._engine.data.render
+            help_text = render.chat_help
+            if slash and render.unknown_command:
+                help_text = f"{render.unknown_command}\n{help_text}"
+            rendered = self._followup((help_text,), stage)
         elif minor_now and not leaving:
             rendered = self._minor_reply(stage, now, minor_answer)
         elif third_now:
@@ -2033,7 +2058,9 @@ class Session:
         callers check); None when the gate or a taboo topic rules it out."""
         render = self._engine.data.render
         named = self._named_numbers(text)
-        if (signals.hotline_words or named) and _asks(text):
+        if (signals.hotline_words or named or signals.hotline_unreachable) and (
+            _asks(text) or signals.hotline_unreachable
+        ):
             # Round 4 (re-test q2 n03): "12356 晚上几点还有人接？" names a number on the card.
             note = None
             if signals.hotline_hours:
@@ -2687,6 +2714,10 @@ class Session:
         else:
             card = self._resource_card(CrisisLevel.L2, now, mode=CardMode.BROWSING)
             head = render.hotline_request if signals.hotline_request else ()
+            if signals.hotline_emergency and signals.hotline_request and render.hotline_emergency:
+                head = render.hotline_emergency  # round 5: "报警电话是多少"
+            if signals.hotline_unreachable and render.hotline_unreachable:
+                head = render.hotline_unreachable  # round 5: "一直占线怎么办"
             if card.region_used == UNKNOWN_COUNTRY and (
                 signals.hotline_request or signals.hotline_place is not None
             ):
@@ -2703,17 +2734,63 @@ class Session:
                 (signals.hotline_language, render.hotline_language),
                 (signals.hotline_real, render.hotline_real),
                 (signals.hotline_more, render.hotline_more),
+                # Round 5: "the hotline in Brazil" names no region known here.
+                (
+                    signals.hotline_place_hint and not elsewhere and not signals.hotline_more,
+                    render.hotline_place_hint,
+                ),
             )
             if flag and pool
         ]
+        number_note: str | None = None
+        if signals.hotline_number is not None:
+            # Round 5 (re-test q2 第 5 节): what the number is, from the signed data only.
+            number_note = self._number_note(signals.hotline_number)
+            if number_note is None and render.hotline_number_unknown:
+                head = render.hotline_number_unknown
         if head:
             rendered = self._resource_reply(card, [self._pick(head)], stage, tail=notes)
         else:
             rendered = self._resource_reply(card, notes, stage)
+        if number_note is not None:
+            rendered.reply = f"{number_note}\n\n{rendered.reply}"
         local = self._local_emergency_line(signals, card)
         if local is not None:
             rendered.reply = f"{rendered.reply}\n\n{local}"
         return rendered
+
+    def _number_note(self, number: str) -> str | None:
+        """What the signed hotline data says ``number`` is (round 5, re-test q2 第 5 节):
+        ``crisis.hotline_number_known``, then "number: name or purpose (region)" for every
+        region that lists it, the profile's region first. None when no region lists it or
+        the gate blocks the line; nothing is guessed."""
+        render = self._engine.data.render
+        own = self._profile.region.country_code if self._profile.region is not None else None
+        found: list[tuple[bool, str, str]] = []
+        for code, region in self._shared.store.regions.items():
+            place = _REGION_LABELS.get(code, code)
+            for em in region.emergency:
+                if _digits(em.number) == number:
+                    what = render.emergency_purposes[em.purpose]
+                    found.append((code != own, em.number, f"{what}（{place}）"))
+            for ln in region.lines:
+                if _digits(ln.number) == number:
+                    hours = "" if ln.hours in ("", _UNKNOWN_HOURS) else f"；{ln.hours}"
+                    found.append((code != own, ln.number, f"{ln.name_zh}（{place}{hours}）"))
+        if not found or not render.hotline_number_known:
+            return None
+        body = "\n".join(f"· {num}：{what}" for _, num, what in sorted(found, key=lambda f: f[0]))
+        text = f"{render.hotline_number_known}\n{body}"
+        result = self._engine.gate.check(
+            text,
+            kind=ContentKind.CRISIS,
+            stage=HelpStage.S_CRISIS,
+            allowed_numbers=[num for _, num, _ in found],
+        )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text
 
     def _region_card(self) -> ResourceCard:
         """The profile region's BROWSING card (every line and emergency number)."""
@@ -2783,6 +2860,7 @@ class Session:
         crisis turn or a turn while a card waits; None when the message asks none."""
         render = self._engine.data.render
         for flag, pool in (
+            (signals.hotline_unreachable, render.hotline_unreachable),
             (signals.hotline_more, render.hotline_more),
             (signals.hotline_hours, render.hotline_hours),
             (signals.hotline_fee, render.hotline_fee),
@@ -3770,6 +3848,7 @@ _QUESTION_END: Final = re.compile(
 _QUESTION_WORDS: Final = (
     "能不能", "可不可以", "是不是", "有没有", "会不会", "要不要", "有冇", "系唔系", "多少", "几点",
     "什么时候", "怎么", "可唔可以", "得唔得", "会唔会", "使唔使", "係唔係", "是唔是", "有无",
+    "系咪", "係咪", "是咪", "㗎", "几时", "点算", "点办", "咋办", "咋整", "怎办",
     "is it", "is there", "are there", "can i", "do they", "does it",
 )  # fmt: skip
 
@@ -3788,6 +3867,33 @@ _MIN_NUMBER_DIGITS: Final = 3
 
 def _digits(number: str) -> str:
     return "".join(_DIGIT_RUNS.findall(number))
+
+
+# Round 5: the region labels of the resources (``resources/fallback.py``), for a number's
+# region; a slash word naming resources ("/热线", "/hotline") gets them.
+_REGION_LABELS: Final = {code: label for code, label, _ in EMERGENCY}
+_UNKNOWN_HOURS: Final = "unknown"
+_RESOURCE_WORDS: Final = (
+    "热线", "电话", "号码", "求助", "救助", "资源", "急救", "报警", "sos", "hotline", "helpline",
+    "help", "resource", "crisis", "emergency", "call", "phone",
+)  # fmt: skip
+
+
+def _unknown_command(text: str, signals: TurnSignals) -> bool:
+    """A message that is one slash word and no chat command ("/热线", "/foo"; round 5)."""
+    folded = normalize(text)
+    return (
+        folded.startswith("/")
+        and signals.command is None
+        and folded not in _HELP_COMMANDS
+        and len(folded) > 1
+        and not any(ch in folded[1:] for ch in "/,.!?;，。！？；")
+    )
+
+
+def _asks_resources(text: str) -> bool:
+    folded = normalize(text)
+    return any(word in folded for word in _RESOURCE_WORDS)
 
 
 def _hotline_followup(signals: TurnSignals) -> bool:

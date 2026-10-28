@@ -137,6 +137,9 @@ def test_resources_without_a_profile_shows_the_fallback_and_a_hint(run_cli, fixt
         "紧急电话：\n"
         "· 112（通用紧急求助）\n"
         "\n"
+        f"{cli.RESOURCES_EVERYWHERE}\n"  # QA q4 FLT-2: the region is not known
+        "· 英国（GB）：999\n"
+        "\n"
         "求助热线目录：\n"
         "· 全球目录：https://example.org/zz\n"
         "\n"

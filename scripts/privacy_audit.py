@@ -76,7 +76,8 @@ doctor-no-personal [mode]
     line is one of its ``DOCTOR_*`` lines (slots filled), the footer last.
 doctor-read-only [mode]
     ``olivia doctor`` changed no file or directory under ``OLIVIA_HOME`` (list and
-    contents) and read, wrote or deleted no keychain item.
+    contents), wrote or deleted no keychain item and read none but the master keys (it
+    opens each store to check it, QA q4 DOC-06 / FLT-3).
 note-recall [mode]
     The second chat answered the question about the note with the note (F15), and its
     panel says so by ids only (``调出笔记 question（found）``), so the two checks above
@@ -153,7 +154,7 @@ from olivia.core.crypto import keychain as keychain_module  # noqa: E402
 from olivia.core.crypto.aead import DATA_MAGIC  # noqa: E402
 from olivia.core.crypto.errors import CryptoError  # noqa: E402
 from olivia.core.crypto.keychain import KeyBackend  # noqa: E402
-from olivia.core.crypto.vault import KEYS_DIRNAME, Vault  # noqa: E402
+from olivia.core.crypto.vault import KEYS_DIRNAME, MASTER_ITEM, NEXT_MASTER_ITEM, Vault  # noqa: E402
 from olivia.core.datalock import LOCK_FILENAME  # noqa: E402
 from olivia.core.memory.forget import load_forget_text  # noqa: E402
 from olivia.core.memory.ledger import LEDGER_DIRNAME, LEDGER_STORE, Ledger  # noqa: E402
@@ -400,25 +401,31 @@ class NetworkBlock:
 class MemoryKeychain:
     """An in-memory key backend (the shape of ``KeyBackend``); never the OS keychain.
 
-    ``accesses`` counts item reads, writes and deletes; ``ready`` touches no item."""
+    ``accesses`` counts item reads, writes and deletes, ``changes`` only writes and
+    deletes, and ``read`` names every item read; ``ready`` touches no item."""
 
     def __init__(self) -> None:
         self.items: dict[str, str] = {}
         self.accesses = 0
+        self.changes = 0
+        self.read: list[str] = []
 
     def ready(self) -> None:
         return None
 
     def get(self, name: str) -> str | None:
         self.accesses += 1
+        self.read.append(name)
         return self.items.get(name)
 
     def set(self, name: str, value: str) -> None:
         self.accesses += 1
+        self.changes += 1
         self.items[name] = value
 
     def delete(self, name: str) -> None:
         self.accesses += 1
+        self.changes += 1
         self.items.pop(name, None)
 
 
@@ -1071,12 +1078,15 @@ def run_scripted(whole: bool) -> Run:
             NetworkBlock() as block,
         ):
             for argv, lines in script(whole):
-                before, accesses = tree(home), backend.accesses
+                before, changes, reads = tree(home), backend.changes, len(backend.read)
                 run.captures.append(_invoke(argv, lines))
                 if argv[0] == "doctor":
                     run.doctor_changes = tree_changes(before, tree(home))
-                    if backend.accesses != accesses:
-                        run.doctor_changes.append("a keychain item was accessed")
+                    if backend.changes != changes:
+                        run.doctor_changes.append("a keychain item was written or deleted")
+                    # Only the master keys are read, to open what is there (QA q4 FLT-3).
+                    if not set(backend.read[reads:]) <= {MASTER_ITEM, NEXT_MASTER_ITEM}:
+                        run.doctor_changes.append("a keychain item other than a master was read")
                 run.record(home, backend.items)
             _edit_and_reset(home, run, backend)
             _clear_health(run, home, backend)

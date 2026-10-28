@@ -163,7 +163,7 @@ def test_two_sessions_bring_the_offer_and_yes_shows_it(run_cli, data_home):
     when = NOW + timedelta(days=2)
     run = run_cli(["chat", "--rules"], ["5", "好", "有", "今天还行", "/exit", ""], now=when)
     out = run.out
-    assert out.index(RATING) < out.index(OFFER) < out.index("## 这一周的小结") < out.index(HELPFUL)
+    assert out.index(RATING) < out.index(OFFER) < out.index("这一周的小结：") < out.index(HELPFUL)
     assert "- 聊天：2 次" in out and "- 心情分（开始 → 结束）：4 → 6" in out
     assert TEXT.replies["helpful_yes"] in out
     assert run.texts == ["今天还行"]
@@ -178,7 +178,7 @@ def test_two_sessions_bring_the_offer_and_yes_shows_it(run_cli, data_home):
 def test_declining_waits_a_week_and_says_how_to_find_it(run_cli, data_home):
     _two_sessions(run_cli, data_home)
     run = run_cli(["chat", "--rules"], ["", "不用", "/exit"], now=NOW + timedelta(days=2))
-    assert OFFER in run.out and "## 这一周的小结" not in run.out
+    assert OFFER in run.out and "这一周的小结：" not in run.out
     assert TEXT.replies["offer_declined"] in run.out
     (journal,) = _journals(data_home)
     assert not journal.shown and journal.helpful is None
@@ -192,7 +192,7 @@ def test_text_typed_at_the_offer_is_the_first_message(run_cli, data_home):
         ["chat", "--rules"], ["", "今天上班好累", "/exit", ""], now=NOW + timedelta(days=2)
     )
     assert run.texts == ["今天上班好累"]
-    assert "## 这一周的小结" not in run.out
+    assert "这一周的小结：" not in run.out
 
 
 def test_a_care_greeting_opening_stays_alone(run_cli, data_home):
@@ -234,7 +234,7 @@ def test_journal_command_shows_it_any_time(run_cli, data_home):
     run_cli(["chat", "--rules"], ["4", "今天上班好累", "/exit", "6"])
     run = run_cli(["journal"], ["没有"], now=NOW + timedelta(hours=1))
     assert run.code == 0
-    assert "## 这一周的小结" in run.out and "- 聊天：1 次" in run.out
+    assert "这一周的小结：" in run.out and "- 聊天：1 次" in run.out
     (journal,) = _journals(data_home)
     assert journal.shown and journal.helpful is False
     assert run.lines[-1] == TEXT.replies["helpful_no"]
@@ -268,7 +268,7 @@ def test_the_journal_offered_in_chat_leaves_out_taboo_topics(run_cli, data_home)
     save_profile(data_home, taboo_topics=("耗尽",))
     _week_about_exhaustion(data_home)
     run = run_cli(["chat", "--rules"], ["", "好", "", "/exit"])
-    assert "## 这一周的小结" in run.out and "- 常聊到的：低落和没劲" in run.lines
+    assert "这一周的小结：" in run.out and "- 常聊到的：低落和没劲" in run.lines
     assert "耗尽" not in run.out
 
 

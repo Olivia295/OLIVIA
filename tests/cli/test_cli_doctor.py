@@ -1,8 +1,9 @@
 """``olivia doctor``: a read-only check of this computer's setup, safe to paste to us.
 
 Every run must leave the data directory exactly as it was (no file or directory created,
-changed or removed), never read, write or delete a keychain item, run no system program
-on macOS, and print nothing the user typed: names, taboo topics, health or the plan.
+changed or removed), read no keychain item but the master keys and write or delete none,
+run no system program on macOS, and print nothing the user typed: names, taboo topics,
+health or the plan.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from test_cli_hotline_updates import _sign, _update, _yaml, key  # noqa: F401 (f
 from olivia import cli
 from olivia.core.chang.profile import PROFILE_FILENAME
 from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
+from olivia.core.crypto.vault import MASTER_ITEM, NEXT_MASTER_ITEM
 from olivia.core.memory.state import STATE_FILENAME
 from olivia.core.perception import student
 from olivia.core.resources import bundle
@@ -61,7 +63,8 @@ def doctor(run_cli, data_home, keychain, machine):
         result = run_cli(["doctor"], now=now)
         assert _tree(data_home) == before
         assert data_home.exists() is existed
-        assert len(keychain.reads) == reads, "a keychain item was read"
+        # Only the master key items, to open what is there (QA q4 DOC-06, FLT-3).
+        assert set(keychain.reads[reads:]) <= {MASTER_ITEM, NEXT_MASTER_ITEM}
         assert keychain.writes == writes and keychain.items == items
         assert machine.calls[calls:] == []  # macOS: nothing is run, only files looked at
         assert result.lines[-1] == cli.DOCTOR_FOOTER

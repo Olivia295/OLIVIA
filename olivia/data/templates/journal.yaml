@@ -38,7 +38,8 @@ replies:
   not_onboarded: "还没有完成第一次设置。先运行 olivia chat 吧。"
   adults_only: "这里的陪伴只为成年人设计，所以没有小结。"
 card:
-  heading: "## 这一周的小结"
+  # QA q4 RD-32：终端里不用 Markdown 的 ## 标题。
+  heading: "这一周的小结："
   sessions: "- 聊天：{count} 次"
   ratings: "- 心情分（开始 → 结束）：{pairs}"
   no_ratings: "- 这一周没有打心情分，也没关系。"

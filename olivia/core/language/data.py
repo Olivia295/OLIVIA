@@ -502,6 +502,19 @@ class RenderText:
     """Leads the line of a country's official emergency numbers (``local_emergency``)."""
     hotline_hours_from_data: str = ""
     """Leads each line's hours as the signed hotline data gives them."""
+    # Round 5 (2026-10-29, re-test q2 第 5 节; drafts, G-0).
+    hotline_unreachable: tuple[str, ...] = ()
+    """A call does not get through: try later or another line, the emergency number."""
+    hotline_emergency: tuple[str, ...] = ()
+    """Leads the card when the police or ambulance number is asked for."""
+    hotline_number_known: str = ""
+    """Leads "number: what the data says it is" for a number asked about."""
+    hotline_number_unknown: tuple[str, ...] = ()
+    """A number asked about that the signed data does not hold: no guess."""
+    hotline_place_hint: tuple[str, ...] = ()
+    """A place in English that is no known region: how to see another region's numbers."""
+    unknown_command: str = ""
+    """A slash command the chat does not know; the chat commands follow."""
     local_emergency: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     """ISO country code -> one line of that country's official emergency numbers, for a
     place without verified hotlines here (sources in render.yaml)."""
@@ -564,6 +577,9 @@ class Utterances:
     """Slang the crisis screen does not read yet ("自鲨"), for the mirror guard only."""
     craving_acks: tuple[str, ...] = ()
     """The mirror slot for a sentence relishing drinking ("一杯下去整个人都舒坦了")."""
+    stopping_acks: tuple[str, ...] = ()
+    """Round 5: the mirror slot for stopping a drink or a medicine at once, on one's own
+    ("从今晚起一口都不碰"): the plan is not said back as if agreed with."""
     substance_lines: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     """``SUBSTANCE_LINES`` -> the plain line put before the reply (withdrawal reminder, the
     answer to "is a small drink all right?")."""
@@ -626,6 +642,13 @@ class SubstanceCues:
     """A reason found for a drink ("度数那么低", "不算破戒", "无醇"): no tacit yes either."""
     again: tuple[str, ...] = ()
     """Wanting the feeling once more ("再有一次"): a craving in the session's context."""
+    # Round 5 (2026-10-29, 复测 q3 第三节; draft, G-0).
+    stop_objects: tuple[str, ...] = ()
+    """Medicines whose stopping is read too ("药", "舍曲林"); no drinking context."""
+    stopping: tuple[str, ...] = ()
+    """Stopping on one's own, at once ("停掉", "一口都不碰", "停咗"): the withdrawal reminder."""
+    stop_guided: tuple[str, ...] = ()
+    """A taper the doctor leads ("医生让我慢慢减"): no reminder for the stop itself."""
 
 
 def _no_feelings() -> Feelings:
@@ -1113,6 +1136,12 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         minor_session_only=texts["minor_session_only"],
         hotline_local_emergency_intro=texts["hotline_local_emergency_intro"],
         hotline_hours_from_data=texts["hotline_hours_from_data"],
+        hotline_unreachable=crisis_lists["hotline_unreachable"],
+        hotline_emergency=crisis_lists["hotline_emergency"],
+        hotline_number_known=texts["hotline_number_known"],
+        hotline_number_unknown=crisis_lists["hotline_number_unknown"],
+        hotline_place_hint=crisis_lists["hotline_place_hint"],
+        unknown_command=texts["unknown_command"],
         local_emergency=MappingProxyType(local),
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
@@ -1691,7 +1720,7 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
                 )
         notices[name] = lines
     guarded_acks, affirmations, extra = _parse_guarded(data.get("guarded"), where)
-    craving, said_lines = _parse_substance_lines(data.get("substance"), where)
+    craving, said_lines, stopping = _parse_substance_lines(data.get("substance"), where)
     guarded = data.get("guarded")
     extras = _map(guarded, f"{where} guarded") if guarded is not None else {}
     here = f"{where} guarded"
@@ -1724,6 +1753,7 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         affirmations=affirmations,
         extra_risk_words=extra,
         craving_acks=craving,
+        stopping_acks=stopping,
         substance_lines=MappingProxyType(said_lines),
         components=components,
         self_blame=blame_cues,
@@ -1799,16 +1829,20 @@ def _parse_guarded(
     return acks, affirmations, extra
 
 
-def _parse_substance_lines(node: Any, where: str) -> tuple[tuple[str, ...], dict[str, str]]:
+def _parse_substance_lines(
+    node: Any, where: str
+) -> tuple[tuple[str, ...], dict[str, str], tuple[str, ...]]:
     """``substance`` (round 3, B2a; draft, G-0): ``craving`` mirror lines and the plain
     ``SUBSTANCE_LINES``: no slot, digit or dose word, one paragraph of at most 80
-    characters; the withdrawal lines send the user to a doctor."""
+    characters; the withdrawal lines send the user to a doctor. Round 5: ``stopping``
+    mirror lines (optional)."""
     if node is None:
-        return (), {}
+        return (), {}, ()
     here = f"{where} substance"
     item = _map(node, here)
-    _keys(item, {"craving", *SUBSTANCE_LINES}, here)
+    _keys(item, {"craving", *SUBSTANCE_LINES}, here, optional={"stopping"})
     craving = _mirror_lines(item["craving"], f"{here}.craving")
+    stopping = _mirror_lines(item["stopping"], f"{here}.stopping") if "stopping" in item else ()
     lines: dict[str, str] = {}
     for name in SUBSTANCE_LINES:
         line = _str(item[name], f"{here}.{name}")
@@ -1826,7 +1860,7 @@ def _parse_substance_lines(node: Any, where: str) -> tuple[tuple[str, ...], dict
         if name.startswith("withdrawal") and "医" not in line:
             raise LanguageDataError(f"{here}.{name}: the withdrawal line sends to a doctor")
         lines[name] = line
-    return craving, lines
+    return craving, lines, stopping
 
 
 def _check_unaffirmed(tpl: Templates, affirmations: tuple[str, ...], where: str) -> None:
@@ -1864,7 +1898,15 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     )
     _keys(
         data,
-        {"version", "withdrawal", "negation_window", "object_window", "image_topic", *lists},
+        {
+            "version",
+            "withdrawal",
+            "stopping",
+            "negation_window",
+            "object_window",
+            "image_topic",
+            *lists,
+        },
         where,
     )
     _version(data, where)
@@ -1878,6 +1920,8 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     raw = _map(data["withdrawal"], f"{where} withdrawal")
     _keys(raw, {"signs", "severe", "questions"}, f"{where} withdrawal")
     v = {name: folded(data[name], f"{where} {name}") for name in lists}
+    stop = _map(data["stopping"], f"{where} stopping")
+    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping")
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -1899,6 +1943,9 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         non_negators=v["non_negators"],
         excuses=v["excuses"],
         again=v["again"],
+        stop_objects=folded(stop["objects"], f"{where} stopping.objects"),
+        stopping=folded(stop["phrases"], f"{where} stopping.phrases"),
+        stop_guided=folded(stop["guided"], f"{where} stopping.guided"),
     )
 
 
@@ -1952,6 +1999,10 @@ _CRISIS_LISTS: Final = (
     "help_seeking_school",
     "suds_heard",
     "suds_high",
+    "hotline_unreachable",
+    "hotline_emergency",
+    "hotline_number_unknown",
+    "hotline_place_hint",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (
@@ -1965,6 +2016,8 @@ _CRISIS_TEXTS: Final = (
     "minor_session_only",
     "hotline_local_emergency_intro",
     "hotline_hours_from_data",
+    "hotline_number_known",
+    "unknown_command",
 )
 """render.yaml ``crisis`` single lines of the same replies."""
 
