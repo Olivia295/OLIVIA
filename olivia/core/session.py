@@ -939,7 +939,7 @@ class Session:
         screen = (
             shared.screen
             if risk.model is None
-            else SafetyScreen(tax, shared.lexicons, risk.model, model_plan_evidence=False)
+            else shared.screen.with_model(risk.model, model_plan_evidence=False)
         )
         return cls(
             tax,

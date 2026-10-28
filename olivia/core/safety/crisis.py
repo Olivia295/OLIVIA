@@ -499,9 +499,11 @@ class SafetyScreen:
         model: RiskModel | None = None,
         *,
         model_plan_evidence: bool = False,
+        _index: _CueIndex | None = None,
     ) -> None:
         self._tax = tax
-        self._index = _CueIndex(lexicons)
+        self._lexicons = lexicons
+        self._index = _CueIndex(lexicons) if _index is None else _index
         # The rule model always shares this screen's scan. With no injected model it is the
         # Stage 2 model; with one, it is the floor the injected model can only raise.
         self._rule_model = RuleRiskModel(tax, lexicons, _index=self._index)
@@ -509,6 +511,23 @@ class SafetyScreen:
         self._model_plan_evidence = model_plan_evidence
         self._model_failure = RiskPrediction(
             CrisisLevel.L2, tax.threshold("risk.lexicon_scores.L2"), (MODEL_FAILURE,)
+        )
+
+    def with_model(
+        self, model: RiskModel | None, *, model_plan_evidence: bool = False
+    ) -> SafetyScreen:
+        """A screen with the same lexicons and ``model`` as its Stage 2 model.
+
+        It shares this screen's phrase index instead of building its own: the index never
+        changes once built, and it is the largest part of the safety data in memory, so a
+        session in model mode no longer holds a second copy, nor builds one per session
+        (G-3 peak RSS, SDD §0)."""
+        return SafetyScreen(
+            self._tax,
+            self._lexicons,
+            model,
+            model_plan_evidence=model_plan_evidence,
+            _index=self._index,
         )
 
     def assess(self, text: str) -> CrisisAssessment:
