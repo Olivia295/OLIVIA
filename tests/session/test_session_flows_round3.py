@@ -409,7 +409,8 @@ def test_seeing_a_doctor_in_the_crisis_flow_is_answered(text):
     session.turn("我真的不想活了")
     result = session.turn(text)
     assert result.in_crisis and result.inspect["heard"] is True
-    assert result.reply.split("\n\n")[0] in RENDER.help_seeking
+    # Round 4: the school's counselling centre gets its own line (help_seeking_school).
+    assert result.reply.split("\n\n")[0] in (*RENDER.help_seeking, *RENDER.help_seeking_school)
     assert "12356" in result.reply
 
 
@@ -564,7 +565,12 @@ def test_follow_ups_in_the_crisis_flow_get_a_true_line_before_the_card(question)
     result = session.turn(question)
     assert result.in_crisis and result.inspect["heard"] is True
     pools = (*RENDER.hotline_more, *RENDER.hotline_hours)
-    assert result.reply.split("\n\n")[0] in pools
+    first = result.reply.split("\n\n")[0]
+    # Round 4: a question about the hours lists them from the hotline data first.
+    assert first in pools or (
+        first.startswith(RENDER.hotline_hours_from_data)
+        and any(first.endswith(line) for line in RENDER.hotline_hours)
+    )
 
 
 @pytest.mark.parametrize(
@@ -578,8 +584,12 @@ def test_a_place_without_verified_numbers_gets_the_general_card(text):
     assert result.inspect.get("resources_reply") == "hotline"
     assert any(line in result.reply for line in RENDER.hotline_elsewhere)
     assert "findahelpline.com" in result.reply and "112" in result.reply
+    # Round 4: Japan's own emergency numbers (110 / 119) close the reply; none of the
+    # profile region's numbers appear anywhere else.
+    local = RENDER.hotline_local_emergency_intro + RENDER.local_emergency["JP"]
+    assert result.reply.endswith(local)
     for number in ("110", "120", "12356"):
-        assert number not in result.reply
+        assert number not in result.reply.removesuffix(local)
 
 
 def test_another_supported_region_gets_its_own_card():

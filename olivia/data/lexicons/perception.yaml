@@ -1635,6 +1635,17 @@ hotline_real:
   - legit
   - scam
   - fake
+  # Round 4 (2026-10-28, re-test q2 第 6 节; 草稿：待 G-0): whether it is official or
+  # trustworthy ("这个是官方的吗", "别骗我").
+  - 官方
+  - 正规
+  - 可信
+  - 可靠
+  - 骗我
+  - official
+  - trustworthy
+  - genuine
+  - legitimate
 hotline_more:
   - 别的号码
   - 其他号码
@@ -1687,6 +1698,35 @@ hotline_places:
        奥地利, austria, 迪拜, dubai, 阿联酋, 欧洲, europe, 东京, tokyo, 首尔, seoul, 巴黎, paris,
        柏林, berlin]
 
+# The country of a place without verified hotlines here (round 4, 2026-10-28, re-test q2
+# 第 6 节; 草稿：待 G-0): ISO 3166 code -> place names. Only countries whose official
+# emergency numbers render.yaml crisis.local_emergency lists; the reply names those numbers
+# as the local ones to check locally, after the general card. Folded, no spaces.
+local_emergency_places:
+  JP: [日本, japan, 东京, tokyo, 大阪, osaka]
+  KR: [韩国, korea, 首尔, seoul]
+  SG: [新加坡, singapore]
+  MY: [马来西亚, malaysia, 吉隆坡]
+  NZ: [新西兰, newzealand]
+  DE: [德国, germany, 柏林, berlin]
+  FR: [法国, france, 巴黎, paris]
+  IT: [意大利, italy]
+  ES: [西班牙, spain]
+  NL: [荷兰, netherlands]
+  IE: [爱尔兰, ireland]
+  BE: [比利时, belgium]
+  AT: [奥地利, austria]
+  DK: [丹麦, denmark]
+  FI: [芬兰, finland]
+  SE: [瑞典, sweden]
+
+# A distress rating, 0-10, as the whole message (round 4, 2026-10-28; PRD COLBO-07, SDD
+# §4.4; 草稿：待 G-0): every exercise card ends by asking for one ("给此刻的难受打个分：0 是
+# 平静，10 是最难受"). Read only while a card waits for feedback, as SUDS: arousal =
+# SUDS / 10. The number is group 1 (digits or one Chinese numeral), folded, no spaces.
+suds_patterns:
+  - "^(?:大概|大约|差不多|可能|应该|应该是|我打|打|给|嗯|我觉得|现在|现在是|有)*(10|[0-9]|十|零|一|二|两|三|四|五|六|七|八|九)分?(?:/10|左右|吧|的样子|啦|了)?[.。!~]*$"
+
 # The user says they are under 18 after the age gate (问题单第 5 条, 2026-10-26; 草稿：待 G-0):
 # "我才初二", "其实我14岁", "我是未成年人，可以用吗", "我还在上初中". Only the user's own
 # age: 我, then only the listed fillers, then an age under 18, a school year below the
@@ -1716,6 +1756,20 @@ minor_disclosure_patterns:
   - "{S}(?:初一|初二|初三|初中|小学|高一|高二|七年级|八年级|九年级)的?(?:学生党|学生|生|党|狗)(?:一枚|一只|本人|在此)"
   - "(?:i'm|im|iam)(?:only|just|still)?(?:1[0-7]|thirteen|fourteen|fifteen|sixteen|seventeen)(?:yearsold|yrsold|yo)?(?=$|[,.!?;:~)]|and|but|so|now|lol|haha|btw|already|&)"
   - "(?:i'm|im|iam)(?:only|just|still)?a(?:1[0-7]|thirteen|fourteen|fifteen|sixteen|seventeen)-?years?-?old"
+  # Round 4 (2026-10-28, re-test q2 第 5 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - an age with no 岁 that ends its clause or is followed by a particle, after a self
+  #   word and at least one of the age adverbs ("我才十六，爸妈……", "俺今年十六，还在……"),
+  #   never a date or a count ("我今年十六号搬家", "我才十点就困了");
+  # - the Cantonese adverbs 先 (only), 仲 (still) and 啱啱 (just) beside the Mandarin ones
+  #   ("我今年先十四岁咋");
+  # - Hong Kong school forms 中一 to 中五 said of oneself ("我系中四学生"), never 中二病;
+  # - 我们 + a school year + its teacher, class or classmates ("我们初二的数学老师……"):
+  #   the user speaks as a pupil of that year; "我们初二那年" and "我们高一的时候" are past.
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是|先|仲|啱啱)+(?:1[0-7]|十[一二三四五六七]?)(?=$|[,.!?;:~)。、]|啊|呀|呢|嘛|咋|咁|喔|噢|哦|而已|罢了)"
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是|先|仲|啱啱)*(?:先|仲|啱啱)(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是)*(?:1[0-7]|十[一二三四五六七]?)(?:岁|周岁)(?!的|那|时|以前|之前|左右)"
+  - "(?:我|本人|俺|咱)(?:而家|现在|仲|还|才|今年)*(?:系|是|读|念|喺度读|在读)(?:紧)?(?:中一|中二|中三|中四|中五)(?:学生|生)?(?!病|青年|的时候|那|时|以前|之前|毕业|同学|老师|家长)"
+  - "(?:我|本人|俺|咱)(?:中一|中二|中三|中四|中五)(?:学生|生)(?!的|那|时|家长)"
+  - "我们(?:班|年级)?(?:初一|初二|初三|七年级|八年级|九年级|高一|高二|中一|中二|中三|中四|中五)的?(?:班主任|(?:数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)?老师|同学|班)(?!那|时)"
 
 # Strain that is not itself a crisis cue (问题单第 11 条, 2026-10-26; 草稿：待 G-0): "撑不了
 # 多久了". Read only for a user with a crisis history (a care marker or a crisis earlier in
@@ -1794,6 +1848,16 @@ imminent_means:
   - hangherself
   - hanghimself
   - hangthemselves
+  # Round 4 (2026-10-28, re-test q2 第 1 节; 草稿：待 G-0): pills saved up or made ready
+  # ("她把攒的药都准备好了，打算今晚就吃").
+  - 攒的药
+  - 攒下的药
+  - 攒好的药
+  - 囤的药
+  - 药都攒
+  - 药攒够
+  - 药都准备好
+  - 药准备好
 
 # Places and everyday means that make someone else's reported risk urgent (round 3,
 # 2026-10-27; 草稿：待 G-0): "室友说她明天要去江边，不想活了", "she wants to kill herself and she
@@ -1872,6 +1936,42 @@ third_party_questions:
   - howcanihelp
   - howdoihelp
   - shouldicall
+# After the card for someone else's risk (round 4, 2026-10-28, re-test q2 第 1 节; 草稿：待
+# G-0), read only within a few turns of it: how to start the talk or what to say to the
+# other person ("我该怎么开口问他", "我现在该跟她说点什么"). The card comes again with how to
+# ask directly (render.yaml crisis.third_party_how_to_ask). Folded, no spaces.
+third_party_how_to_ask:
+  - 怎么开口
+  - 开口问
+  - 怎么问
+  - 该怎么问
+  - 怎么跟她聊
+  - 怎么跟他聊
+  - 怎么聊
+  - 私聊
+  - 说点什么
+  - 说些什么
+  - 说什么好
+  - 该说什么
+  - 能说什么
+  - 要说什么
+  - 怎么提起
+  - 怎么回她
+  - 怎么回他
+  - 回她什么
+  - 回他什么
+  - howdoiask
+  - howshouldiask
+  - howtoask
+  - whatdoisay
+  - whatshouldisay
+  - bringitup
+# The other person says they are fine (round 4; 草稿：待 G-0), read only within a few turns
+# of that card ("要是他说没事呢", "他说他没事"): the card again with what to watch for and
+# that it is fine to ask again. A third person (他 / 她 / ta / 对方) who says it, folded.
+third_party_says_fine_patterns:
+  - "(?:他|她|ta|对方)(?:又|还|就|一直|总|都|只)?(?:跟我|对我|和我)?(?:说|讲|回|回我|表示)(?:他|她|ta|自己)?(?:真的|其实|已经|只是)?(?:没事|没什么事|没什么|还好|挺好|好多了|开玩笑|随便说说|说着玩|随口说说|随口一说)"
+  - "(?:he|she|they)(?:says|said|toldme)(?:he's|she's|they're|heis|sheis|theyare)(?:fine|ok|okay|alright|joking|kidding)"
 
 # The user means to see a doctor, a counsellor or a school or work mental health centre
 # (round 3, 2026-10-27; 草稿：待 G-0): "我明天想去学校的心理中心看看", "挂什么科". In the crisis
@@ -1900,11 +2000,60 @@ help_seeking_cues:
   - counsellor
   - doctor
   - psychiatrist
+  # Round 4 (2026-10-28, re-test q2 第 4 节; 草稿：待 G-0): English and more Chinese names
+  # for the same places ("Is there a counseling center I can go to at my university?").
+  - counseling
+  - counselling
+  - psychologist
+  - mentalhealthservice
+  - mentalhealthcenter
+  - mentalhealthcentre
+  - 心理辅导
+  - 心理健康中心
+  - 校医院
+
+# With help_seeking, the place is at school or university (round 4, 2026-10-28; 草稿：待
+# G-0): the reply speaks of the school's counselling centre instead of a hospital
+# department (render.yaml crisis.help_seeking_school).
+help_seeking_school:
+  - 学校
+  - 校园
+  - 大学
+  - 学院
+  - 辅导员
+  - 心理老师
+  - 校医院
+  - university
+  - campus
+  - college
+  - school
 
 # The other person asked the user to keep it secret ("她不让我告诉别人"; 问题单第 6 条,
 # 草稿：待 G-0): read only while the user is talking about someone else's risk, and answered
 # with one line about why this is not a secret to keep alone.
 keep_secret_cues:
+  # Round 4 (2026-10-28, re-test q2 第 1 节; 草稿：待 G-0): asked not to tell anyone, the
+  # parents, the family or a teacher; and in English.
+  - 别告诉任何人
+  - 不要告诉任何人
+  - 别跟任何人说
+  - 不要跟任何人说
+  - 千万别告诉
+  - 千万不要告诉
+  - 别告诉爸妈
+  - 不要告诉爸妈
+  - 别告诉父母
+  - 别告诉家里
+  - 别告诉家人
+  - 别告诉老师
+  - 别告诉她妈
+  - 别告诉他妈
+  - 别说出去
+  - 不要说出去
+  - 不准告诉
+  - don'ttellanyone
+  - nottotellanyone
+  - keepitasecret
   - 不让我告诉别人
   - 不让我告诉
   - 不让我说出去

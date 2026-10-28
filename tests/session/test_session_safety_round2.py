@@ -360,7 +360,8 @@ def test_how_to_talk_to_the_other_person_and_a_secret_are_heard():
     session = _open()
     session.turn("她昨天跟我说她不想活了")
     asked = session.turn("我该怎么跟她说比较好")
-    assert any(asked.reply.startswith(line) for line in RENDER.third_party_support), asked.reply
+    # Round 4: how to talk to the other person gets how to ask directly.
+    assert any(asked.reply.startswith(line) for line in RENDER.third_party_how_to_ask), asked.reply
     secret = session.turn("她不让我告诉别人")
     assert any(secret.reply.startswith(line) for line in RENDER.third_party_secret), secret.reply
 

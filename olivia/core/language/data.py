@@ -476,6 +476,30 @@ class RenderText:
     """Leads the one line of the region's hotlines after ``care_watch``."""
     chat_help: str = ""
     """Round 3 (2026-10-27): the chat commands, shown for /help, /帮助 or /?."""
+    # Round 4 (2026-10-28; drafts, G-0).
+    third_party_how_to_ask: tuple[str, ...] = ()
+    """After the card for someone else's risk: how to ask the other person directly."""
+    third_party_says_fine: tuple[str, ...] = ()
+    """After that card: the other person says they are fine; what to watch for."""
+    help_seeking_school: tuple[str, ...] = ()
+    """The user means to go to the school's counselling centre (in place of help_seeking)."""
+    suds_heard: tuple[str, ...] = ()
+    """A 0-7 distress rating while a card waits: heard, read as "higher is worse"."""
+    suds_high: tuple[str, ...] = ()
+    """An 8-10 distress rating while a card waits: steady the body first."""
+    minor_confirm: str = ""
+    """After the first minors' reply: asks whether to record "under 18" (ruling 22)."""
+    minor_recorded: str = ""
+    """The user confirmed: the under-18 record is written by the caller."""
+    minor_session_only: str = ""
+    """The user did not confirm: nothing is recorded, this session stays as it is."""
+    hotline_local_emergency_intro: str = ""
+    """Leads the line of a country's official emergency numbers (``local_emergency``)."""
+    hotline_hours_from_data: str = ""
+    """Leads each line's hours as the signed hotline data gives them."""
+    local_emergency: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    """ISO country code -> one line of that country's official emergency numbers, for a
+    place without verified hotlines here (sources in render.yaml)."""
 
 
 @dataclass(frozen=True)
@@ -941,11 +965,13 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
             "emergency_purposes",
             "reach_out",
             "farewell",
+            "local_emergency",
             *_CRISIS_LISTS,
             *_CRISIS_TEXTS,
         },
         f"{where} crisis",
     )
+    local = _local_emergency(crisis["local_emergency"], f"{where} crisis.local_emergency")
     crisis_lists = {
         k: _unique(_strs(crisis[k], f"{where} crisis.{k}"), f"{where} crisis.{k}")
         for k in ("reach_out", "farewell", *_CRISIS_LISTS)
@@ -1037,6 +1063,17 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         care_watch=crisis_lists["care_watch"],
         care_hotline=texts["care_hotline"],
         chat_help=texts["chat_help"],
+        third_party_how_to_ask=crisis_lists["third_party_how_to_ask"],
+        third_party_says_fine=crisis_lists["third_party_says_fine"],
+        help_seeking_school=crisis_lists["help_seeking_school"],
+        suds_heard=crisis_lists["suds_heard"],
+        suds_high=crisis_lists["suds_high"],
+        minor_confirm=texts["minor_confirm"],
+        minor_recorded=texts["minor_recorded"],
+        minor_session_only=texts["minor_session_only"],
+        hotline_local_emergency_intro=texts["hotline_local_emergency_intro"],
+        hotline_hours_from_data=texts["hotline_hours_from_data"],
+        local_emergency=MappingProxyType(local),
         emergency_purposes=MappingProxyType(
             {p: _str(purposes[p.value], f"{where} purpose {p.value}") for p in EmergencyPurpose}
         ),
@@ -1045,6 +1082,22 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         if isinstance(value, str) and field_name != "card_duration" and slots_of(value):
             raise LanguageDataError(f"{where}: {field_name} must not carry slots")
     return render
+
+
+def _local_emergency(node: object, where: str) -> dict[str, str]:
+    """``crisis.local_emergency`` (round 4, 2026-10-28): an ISO country code -> one line
+    of that country's official emergency numbers. Every line names at least one number
+    and carries no slots."""
+    section = _map(node, where)
+    lines: dict[str, str] = {}
+    for key, raw in section.items():
+        if not (isinstance(key, str) and len(key) == 2 and key.isascii() and key.isupper()):
+            raise LanguageDataError(f"{where}: {key!r} is not a country code")
+        line = _str(raw, f"{where}.{key}")
+        if slots_of(line) or not any(ch.isdigit() for ch in line):
+            raise LanguageDataError(f"{where}.{key}: a line with numbers and no slots")
+        lines[key] = line
+    return lines
 
 
 # -- templates -----------------------------------------------------------------------------
@@ -1786,6 +1839,11 @@ _CRISIS_LISTS: Final = (
     "hotline_other_region",
     "hotline_elsewhere",
     "care_watch",
+    "third_party_how_to_ask",
+    "third_party_says_fine",
+    "help_seeking_school",
+    "suds_heard",
+    "suds_high",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (
@@ -1794,6 +1852,11 @@ _CRISIS_TEXTS: Final = (
     "third_party_emergency_heading",
     "third_party_lines_heading",
     "care_hotline",
+    "minor_confirm",
+    "minor_recorded",
+    "minor_session_only",
+    "hotline_local_emergency_intro",
+    "hotline_hours_from_data",
 )
 """render.yaml ``crisis`` single lines of the same replies."""
 

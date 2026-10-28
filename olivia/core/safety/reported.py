@@ -42,6 +42,15 @@ Round 3 (2026-10-27, re-test r2 第 3 节; grammar, not a list of example senten
   to kill myself and i have pills"; 他要去天台跳下去 -> 我要去天台跳下去), since the risk
   phrases and compositions of ``risk.yaml`` read a third person as someone else.
 
+Round 4 (2026-10-28, re-test q2 第 1 节): a later clause may open with the listener (我哥昨晚
+喝多了，跟我说……); quoted words and words after a colon are the speaker's own, first person
+included; a measure or a second verb of saying may follow the verb (发了一句, 留言说); a self
+word that names a place or an owner (在我朋友圈底下) is no subject; a speaker after 被 / 让 is
+none ("被同事吵得想死"), nor is 想 after a degree complement; a reflexive 自己 stays inside
+the words ("我弟又开始伤害自己了"); 我也 vetoes only when the user joins in (a risk cue after it,
+or no worried word: "我也不知道该怎么办了" is worry). :func:`names_death` and
+:func:`farewell_strength` read the words for the session's card.
+
 Only :meth:`ReportedSpeech.contents` (the session's card for someone else) reads the intent
 clauses, the clause chain and English; :meth:`ReportedSpeech.reported` (the rule level)
 gets the subject check and the extra speakers and verbs only.
@@ -99,6 +108,9 @@ _EXTRA_VERB_EXCEPTIONS: Final = (
 # Intent and preparation verbs that make a clause someone's intent ("她打算周末……").
 _INTENT_VERBS: Final = (
     "想", "要", "打算", "准备", "计划", "决定", "写好", "买好", "攒了", "攒够", "藏了",
+    # Round 4 (2026-10-28): someone else's self-injury told in the third person ("我弟又开始
+    # 伤害自己了"); the words are rated as the user's own, so only real risk opens the card.
+    "开始", "伤害", "自残", "割", "烫",
 )  # fmt: skip
 # Generic speakers that name nobody in particular: never the subject of an intent clause
 # ("有人想死吗" may be the user asking about themselves).
@@ -121,6 +133,77 @@ _CHAIN_STOPS: Final = frozenset(",、")
 _CHAIN_MAX: Final = 3
 # A speech verb that opens a later clause is the speaker's when it lies this close.
 _NEXT_CLAUSE_GAP: Final = 20
+
+# -- round 4 (2026-10-28, re-test q2 第 1 节) ----------------------------------------------
+# A later clause may open with the listener before the verb ("我哥昨晚喝多了，跟我说……").
+_TOLD_ME: Final = re.compile(r"(?:跟|对|和|同|向)(?:我们|我)")
+# What may stand between a speech verb and the words: a measure ("发了一句", "留了一条"), a
+# second verb of saying ("留言说", "写道") or a colon.
+_AFTER_VERB: Final = re.compile(
+    r"(?:了|过|着)?(?:一|几)?(?:句|条|段|篇|则|张)(?:话|消息|动态|留言|朋友圈|微博)?"
+    r"|(?:着|了)?(?:说道|说|道|讲|写道)"
+    r"|:"
+)
+# Quoted words: the opening mark and its closing mark (NFKC keeps these as they are).
+_QUOTES: Final = {"“": "”", "「": "」", "『": "』", '"': '"'}
+# Words after a colon run to the end of the sentence.
+_SENTENCE_END: Final = frozenset("。!?;")
+# A self word right before or after these is no subject of the speech: a place or an
+# owner ("在我朋友圈底下留言", "我的帖子下面").
+_SELF_PLACE_BEFORE: Final = frozenset("在到从于")
+_SELF_OWNED: Final = (
+    "的", "朋友圈", "空间", "微博", "动态", "帖子", "评论", "主页", "群", "家", "作业", "周记",
+    "日记", "本子", "手机", "微信", "相册",
+)  # fmt: skip
+# A speaker right after these is the agent of a passive or causative ("被同事吵得想死"),
+# never the subject of the clause.
+_PASSIVE: Final = frozenset("被让叫给把")
+_REFLEXIVE: Final = "自己"
+# A degree complement between a subject and 想 ("同事吵得想死") is a figure of speech
+# about the user, not the subject's intent.
+_COMPLEMENT: Final = ("得", "到")
+# 我也 and its kin veto the reading only when the user joins in: a risk cue in the rest
+# of its clause, or no helpless or worried word right after it ("她说她想死，我也不知道该
+# 怎么办了" is the user's worry, "她说她想死，我也是" joins in).
+_JOINING_VETOES: Final = frozenset({"我也", "我同样", "我自己也"})
+_HELPLESS: Final = (
+    "不知道", "不晓得", "不清楚", "不知所措", "不懂", "没办法", "没主意", "手足无措", "慌",
+    "怕", "害怕", "担心", "着急", "急", "吓", "很担心", "很害怕", "很慌", "好担心", "好怕",
+    "好慌", "挺担心", "特别担心", "非常担心",
+)  # fmt: skip
+_HELPLESS_LEAD: Final = ("真的", "实在", "完全", "都", "有点", "有些", "也", "就")
+# Death words the session reads as someone else's risk next to a time or a means even when
+# the rules miss the reported words (round 4: "下周一考完试她就去死"). A closed class of
+# words for dying by one's own hand; no figure of speech ("累死了") is one.
+_DEATH_WORDS: Final = (
+    "去死", "死掉", "寻死", "自杀", "轻生", "自尽", "了结", "结束生命", "结束自己", "不想活",
+    "不活了", "活不下去", "跳楼", "跳河", "跳江", "跳桥", "上吊", "割腕", "烧炭", "killmyself",
+    "endmylife",
+)  # fmt: skip
+# Farewells: a strong one is someone else's risk alone ("永别了"); a weak one only with a
+# means or a place in the message ("大家再见了，谢谢你们" posted with a picture of a roof).
+_FAREWELL_STRONG: Final = (
+    "永别", "诀别", "下辈子见", "来世见", "来生再见", "永远再见", "告别这个世界",
+    "别了这个世界", "和这个世界告别", "goodbyeforever",
+)  # fmt: skip
+_FAREWELL_WEAK: Final = (
+    "大家再见", "再见了大家", "各位再见", "再见了各位", "你们好好的", "你们要好好的", "别找我",
+    "不要找我", "谢谢大家这些年", "goodbyeeveryone",
+)  # fmt: skip
+
+
+def names_death(words: str) -> bool:
+    """A death word of :data:`_DEATH_WORDS` in someone else's reported words (round 4)."""
+    return any(w in words for w in _DEATH_WORDS)
+
+
+def farewell_strength(words: str) -> int:
+    """2 for a strong farewell in someone else's reported words, 1 for a weak one, else 0
+    (round 4)."""
+    if any(w in words for w in _FAREWELL_STRONG):
+        return 2
+    return 1 if any(w in words for w in _FAREWELL_WEAK) else 0
+
 
 # -- English ------------------------------------------------------------------------------
 _EN_PERSON = (
@@ -285,7 +368,7 @@ class ReportedSpeech:
         if not self._enabled:
             return []
         found = self._found(text)
-        if found.get(_VETO):
+        if any(self._joins_in(text, veto, cues) for veto in found.get(_VETO, ())):
             return []
         spans = self._chinese_contents(text, found, cues)
         if raw is not None:
@@ -317,14 +400,33 @@ class ReportedSpeech:
             if self._intends(text, speaker, found, selves):
                 starts.append((speaker.end, speaker.start))
         spans: list[ReportedSpan] = []
+        verb_starts = {verb.end for verb in self._verbs(found)}
         for start, anchor in sorted(starts):
+            if start in verb_starts:
+                quoted = self._quoted(text, start)
+                if quoted is not None:
+                    # Round 4: quoted words, or words after a colon, are the speaker's own,
+                    # first person included ("发了一句“我真的撑不下去了，想死”").
+                    spans.append(ReportedSpan(quoted[0], quoted[1], text[quoted[0] : quoted[1]]))
+                    continue
+                start = self._past_verb(text, start)
             end = self._clause_end(text, self._skip_fillers(text, start, len(text)))
             words = self._skip_fillers(text, start, end)
             if words >= end:
                 continue
             pronoun = self._starts_with(text, anchor, found.get(_PRONOUN, ()), words)
             end = self._chain(text, start, end, found, cues, pronoun=pronoun)
-            end = min([end, *(m.start for m in selves if start <= m.start < end)])
+            # A reflexive 自己 inside the words is the speaker's ("他又开始伤害自己"; round 4).
+            end = min(
+                [
+                    end,
+                    *(
+                        m.start
+                        for m in selves
+                        if start <= m.start < end and text[m.start : m.end] != _REFLEXIVE
+                    ),
+                ]
+            )
             end = self._trim(text, start, end)
             if start < end:
                 spans.append(ReportedSpan(start, end, self._first_person(text, start, end, found)))
@@ -425,7 +527,9 @@ class ReportedSpeech:
         candidates = [
             s
             for s in found.get(_SPEAKER, ())
-            if not _covered(s, exceptions) and s.start not in recipient_ends
+            if not _covered(s, exceptions)
+            and s.start not in recipient_ends
+            and not (s.start > 0 and text[s.start - 1] in _PASSIVE)
         ]
         for kin in found.get(_KIN, ()):
             if _covered(kin, candidates):
@@ -452,6 +556,53 @@ class ReportedSpeech:
     def _clause_end(self, text: str, start: int) -> int:
         return next((i for i in range(start, len(text)) if text[i] in self._stops), len(text))
 
+    def _past_verb(self, text: str, start: int) -> int:
+        """Past a measure or a second verb of saying after a speech verb ("发了一句",
+        "留言说"; round 4), so the words start where the speech does."""
+        while True:
+            match = _AFTER_VERB.match(text, start)
+            if match is None or not match.group(0):
+                return start
+            start = match.end()
+
+    def _quoted(self, text: str, start: int) -> tuple[int, int] | None:
+        """The words in quotes, or after a colon, right after a speech verb ("说：", "发了
+        一句“……”"; round 4): (start, end) in ``text``, else None. Quoted words end at the
+        closing mark (or the end of the message), words after a colon at the end of the
+        sentence."""
+        at = self._past_verb(text, start)
+        colon = text.startswith(":", start) or text.startswith(":", at - 1)
+        while at < len(text) and text[at] in ",":
+            at += 1
+        if at < len(text) and text[at] in _QUOTES:
+            close = text.find(_QUOTES[text[at]], at + 1)
+            end = len(text) if close < 0 else close
+            return (at + 1, end) if at + 1 < end else None
+        if colon:
+            end = next((i for i in range(at, len(text)) if text[i] in _SENTENCE_END), len(text))
+            end = self._trim(text, at, end)
+            return (at, end) if at < end else None
+        return None
+
+    def _joins_in(self, text: str, veto: Match, cues: Sequence[Match]) -> bool:
+        """Whether a veto (我也, 一起 ...) means the user joins in (round 4): always, but for
+        我也 and its kin with no risk cue in the rest of their clause and a helpless or
+        worried word right after them."""
+        if text[veto.start : veto.end] not in _JOINING_VETOES:
+            return True
+        end = self._clause_end(text, veto.end)
+        if any(veto.end <= c.start < end for c in cues):
+            return True
+        at = veto.end
+        moved = True
+        while moved:
+            moved = False
+            for lead in _HELPLESS_LEAD:
+                if text.startswith(lead, at, end):
+                    at += len(lead)
+                    moved = True
+        return not any(text.startswith(w, at, end) for w in _HELPLESS)
+
     def _intends(
         self,
         text: str,
@@ -467,6 +618,8 @@ class ReportedSpeech:
                 continue
             if any(speaker.end <= m.start < verb.start for m in selves):
                 continue
+            if any(c in text[speaker.end : verb.start] for c in _COMPLEMENT):
+                continue  # round 4: "同事吵得想死" is no intent of the colleague's
             return True
         return False
 
@@ -525,6 +678,12 @@ class ReportedSpeech:
             start += len(filler)
         return start
 
+    def _placed(self, text: str, self_word: Match) -> bool:
+        """A self word that names a place or an owner, not the subject ("在我朋友圈底下",
+        "我的帖子"; round 4)."""
+        before = text[self_word.start - 1] if self_word.start > 0 else ""
+        return before in _SELF_PLACE_BEFORE or text.startswith(_SELF_OWNED, self_word.end)
+
     def _after_verb(self, text: str, verb: Match, phrase: Match) -> bool:
         """Only fillers stand between the verb and the phrase."""
         rest = text[verb.end : phrase.start]
@@ -550,7 +709,12 @@ class ReportedSpeech:
         ``cross`` (round 3, :meth:`contents` only), in an earlier clause when the verb
         opens its own clause after fillers only ("我妹在朋友圈发了一条，说……")."""
         clause = self._clause_start(text, verb.start)
-        opens = self._skip_fillers(text, clause, verb.start) == verb.start
+        lead = self._skip_fillers(text, clause, verb.start)
+        told = _TOLD_ME.match(text, lead)
+        if told is not None and told.end() <= verb.start:
+            # Round 4: "……，跟我说……" opens its clause with the listener, then the verb.
+            lead = self._skip_fillers(text, told.end(), verb.start)
+        opens = lead == verb.start
         for speaker in speakers:
             if speaker.end > verb.start:
                 continue
@@ -562,7 +726,10 @@ class ReportedSpeech:
             elif verb.start - speaker.end > self._gap:
                 continue
             subject = any(
-                speaker.end <= m.start and m.end <= verb.start and m.start not in recipient_ends
+                speaker.end <= m.start
+                and m.end <= verb.start
+                and m.start not in recipient_ends
+                and not self._placed(text, m)
                 for m in selves
             )
             if not subject:

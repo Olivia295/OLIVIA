@@ -13,6 +13,10 @@ L2 or above, crisis entry included, and crisis exit reset it too.
 Exit from crisis needs an explicit safety confirmation followed by N safe (L0) turns, so
 a single calm message never switches emergency resources off. After confirmation an L1
 turn pauses the count: it neither counts as safe nor resets the turns already counted.
+Round 4 (2026-10-28, SDD §8.2 "L1 轮暂停计数"): the L1 escalation applies outside a crisis
+only. In a crisis an L1 turn does not join an L1 run and never escalates, so a run of L1
+turns after a confirmation (a model's score band, "活着好累" three times) no longer turns
+the third one into L2 and voids the confirmation; an L2/L3 turn still does.
 While a confirmation is awaited, an explicit confirmation that only an injected model
 raises to L2 or L3 (the turn's ``rule_level`` is below L2, and the model did not fail) is
 tracked at the rules' level, so the model's L2 alone does not make it a relapse (F8a).
@@ -94,21 +98,45 @@ _DIRECT_ANSWER_ENGLISH: Final[frozenset[str]] = frozenset(
 )
 # Round 3 (2026-10-27): "I am safe now", "yes, I'm safe right now" (folded, no spaces, no
 # punctuation), as the whole message.
+# Round 4 (2026-10-28): a promise may lead ("I promise I'm safe now"), and one clause of a
+# longer English message may say it ("I'm safe now, I promise. My friend is here with me."),
+# read like the Chinese safe clause (no rule risk cue, no F10 veto or contrast such as "for
+# now", "yet", "but", no confirm veto).
 _ENGLISH_SAFE: Final = re.compile(
-    r"(?:yes|yeah|yep|ok|okay)?(?:i'm|im|iam)(?:totally|really|completely|perfectly)?"
-    r"safe(?:now|rightnow)?(?:thanks|thankyou|don'tworry|dontworry|promise)?"
+    r"(?:yes|yeah|yep|ok|okay)?(?:ipromise|honestly|really|don'tworry|dontworry)?"
+    r"(?:i'm|im|iam)(?:totally|really|completely|perfectly)?"
+    r"safe(?:now|rightnow)?(?:thanks|thankyou|don'tworry|dontworry|promise|ipromise)?"
 )
 # Round 3 (2026-10-27, re-test r2 第 5 节): a promise not to harm oneself, as the whole
 # message or one clause of it ("我答应你今晚不会做什么傻事", "我答应你，今晚不会做什么",
 # "我保证不会做傻事"). Either a promise verb or an object that names the harm (傻事, 伤害
 # 自己); never a plain "不会" alone. Read like the safe clause: no rule risk cue, no F10
 # veto or contrast and no confirm veto in the message.
+_PROMISE_TIMES: Final = frozenset({"今晚", "今天", "今天晚上", "晚上", "这几天"})
+_PROMISE_TIME = r"(?:今晚|今天|今天晚上|晚上|这几天)?"
+# A clause of the normalized message (between clause punctuation).
+_CLAUSE_TEXT: Final = re.compile(r"[^,.!?;:、。！？，；：~…\s]+")
+_PROMISE_SURE = r"(?:绝对|肯定|一定)?"
+# Round 4 (2026-10-28, re-test q2 第 3 节): "我保证今晚好好的，不会乱来". A promise may also be
+# to be well ("会好好的", "好好的") and a harm word may be a figure for it (乱来, 想不开, 寻短见),
+# both closed classes.
+_PROMISE_WELL = r"(?:会|都会)?好好(?:的|地|活着|照顾自己)(?:过|待着|睡觉|休息)?"
+_PROMISE_NO_HARM = (
+    r"不会(?:做|干|去做)?(?:什么|啥|任何)?(?:傻事|蠢事|事|伤害自己的事)?"
+    r"|不会(?:乱来|想不开|寻短见|伤害自己)"
+)
 _PROMISE: Final = re.compile(
-    r"(?:嗯+|好+的?|放心吧?)?我?(?:答应你|向你保证|跟你保证|保证|发誓)我?"
-    r"(?:今晚|今天|今天晚上|晚上|这几天)?(?:绝对|肯定|一定)?不会(?:做|干|去做)?"
-    r"(?:什么|啥|任何)?(?:傻事|蠢事|事|伤害自己的事)?(?:的|了|啦)?"
-    r"|我?(?:今晚|今天|这几天)?(?:绝对|肯定|一定)?不会(?:做|干|去做)(?:傻事|蠢事|伤害自己的事)"
-    r"(?:的|了|啦)?"
+    rf"(?:嗯+|好+的?|放心吧?)?我?(?:答应你|向你保证|跟你保证|保证|发誓)我?"
+    rf"{_PROMISE_TIME}{_PROMISE_SURE}(?:{_PROMISE_NO_HARM}|{_PROMISE_WELL})(?:的|了|啦)?"
+    rf"|我?{_PROMISE_TIME}{_PROMISE_SURE}(?:不会(?:做|干|去做)(?:傻事|蠢事|伤害自己的事)"
+    rf"|不会(?:乱来|寻短见|伤害自己))(?:的|了|啦)?"
+)
+# Round 4 (re-test q2 x06: "我已经从天台下来了，现在在家，安全的"): a place the user has come
+# down from or left is no means or place veto. Only these spans are dropped before the F10
+# guard reads the message; "我在天台上，挺安全的" and "从楼顶下来了，但明天还会上去" keep it.
+_LEFT_PLACE: Final = re.compile(
+    r"从(?:天台|楼顶|顶楼|阳台|窗台|桥上|桥边|大桥上|江边|河边|湖边|海边|铁轨边?)上?"
+    r"(?:下来|回来|走下来|撤下来|走开|回到家|回家)(?:了|啦)"
 )
 # An L0 turn with a known valence at or above this is calm: it resets the escalation count.
 _CALM_VALENCE: Final = 0.0
@@ -141,6 +169,17 @@ def _compact(text: str) -> str:
     for filler in _CONFIRM_FILLERS:
         text = text.replace(filler, "")
     return text
+
+
+def _promise_spans(normalized: str) -> list[tuple[int, int]]:
+    """Spans of the clauses of ``normalized`` that are each a whole promise (round 4): a
+    time word inside one ("我保证今晚好好的") is the promise's scope, not a confirm veto."""
+    spans: list[tuple[int, int]] = []
+    for clause in _CLAUSE_TEXT.finditer(normalized):
+        bare = _compact(clause.group(0)).translate(_ANSWER_PUNCTUATION)
+        if bare and _PROMISE.fullmatch(bare) is not None:
+            spans.append(clause.span())
+    return spans
 
 
 def _is_direct_answer(compact: str) -> bool:
@@ -219,13 +258,23 @@ class CrisisTracker:
             and assessment.rule_level is CrisisLevel.L0
         ):
             trend = CrisisLevel.L0  # a model-only L1 is not part of an L1 run (F8a)
-        self._update_trend(trend, usable)
+        # Round 4 (SDD §8.2): the L1 escalation rule applies outside a crisis only. In a
+        # crisis an L1 turn neither joins a run nor escalates: after a confirmation it
+        # pauses the exit count (neither counts nor resets it), so the third L1 turn after
+        # "我现在是安全的" no longer voids the confirmation.
+        in_crisis_l1 = self._in_crisis and trend is CrisisLevel.L1
+        if not in_crisis_l1:
+            self._update_trend(trend, usable)
 
         level = assessed
-        escalated = trend is CrisisLevel.L1 and (
-            self._run >= self._streak
-            or self._asks_again(assessment)
-            or self._figure_after_risk(assessment)
+        escalated = (
+            not in_crisis_l1
+            and trend is CrisisLevel.L1
+            and (
+                self._run >= self._streak
+                or self._asks_again(assessment)
+                or self._figure_after_risk(assessment)
+            )
         )
         self._note_risk(assessment)
         if escalated:
@@ -359,7 +408,12 @@ class CrisisTracker:
         hedge or a crisis cue, so it is read whatever level a risk model gave the turn;
         vetoes, a question and a negation in front of a phrase still win over both paths.
         """
-        if self._veto_matcher.find_all(normalized):
+        promised = _promise_spans(normalized)
+        if any(
+            not any(s <= hit.start and hit.end <= e for s, e in promised)
+            or normalized[hit.start : hit.end] not in _PROMISE_TIMES
+            for hit in self._veto_matcher.find_all(normalized)
+        ):
             return False
         if normalized.rstrip(_TRAILING_PUNCTUATION).endswith(_QUESTION_ENDINGS):
             return False
@@ -383,11 +437,25 @@ class CrisisTracker:
         # time word is the promise's own scope, so the F10 time vetoes do not apply to it.
         if _PROMISE.fullmatch(compact.translate(_ANSWER_PUNCTUATION)) is not None:
             return True
-        if self._clause_guard is not None and self._clause_guard.find_all(normalized):
+        # Round 4: "从天台下来了" says the user has left the place; the rest is read as before.
+        # A time word inside a promise clause is the promise's scope ("我保证今晚好好的，不会
+        # 乱来"), as for the whole-message promise above.
+        guarded = _LEFT_PLACE.sub("", normalized)
+        promised = _promise_spans(guarded)
+        if self._clause_guard is not None and any(
+            not any(s <= hit.start and hit.end <= e for s, e in promised)
+            or guarded[hit.start : hit.end] not in _PROMISE_TIMES
+            for hit in self._clause_guard.find_all(guarded)
+        ):
             return False
         clauses = [c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact)]
         return any(
-            c and (_SAFE_CLAUSE.fullmatch(c) is not None or _PROMISE.fullmatch(c) is not None)
+            c
+            and (
+                _SAFE_CLAUSE.fullmatch(c) is not None
+                or _PROMISE.fullmatch(c) is not None
+                or _ENGLISH_SAFE.fullmatch(c) is not None
+            )
             for c in clauses
         )
 
