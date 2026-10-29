@@ -1295,6 +1295,24 @@ answers:
     - 存起来吧
     - ok
     - okay
+    # Round 5 (re-test q2 第 4 节): a Cantonese or English yes, and more particles.
+    - "yes"
+    - "yeah"
+    - "yep"
+    - "yup"
+    - sure
+    - 系
+    - 系呀
+    - 系啊
+    - 系嘅
+    - 系啦
+    - 啱
+    - 啱呀
+    - 是呀
+    - 是啊
+    - 对呀
+    - 嗯呐
+    - 没错
     - 没问题
     - 麻烦你了
     - 拜托了
@@ -1546,6 +1564,79 @@ hotline_request_patterns:
   - "(?:心理|情绪|倾诉|聊聊|聊天|说说话|说话|支援|支持|援助|求助|咨询|陪伴|自杀|危机|crisis|support|suicide|mentalhealth|emotional|talkto|talking|counsel)[^.!?。！？]{0,10}?(?:电话|热线|号码|专线|hotline|helpline|line|number){C}{0,6}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
   - "(?:有没有|有冇|有无|能不能|可不可以|可以|能否|给我|给个|告诉我|发我|发给我|推荐|想要|需要|要个|要一个|求个|求一个|找个|找一个|查一下|查查|哪里有|哪儿有|有什么|有哪些|想打|想找|请问|please|canyou|couldyou|give|need|want|isthere|arethere|any|share|send|what'sthe|whatisthe|whatnumber|which|recommend|tellme){C}{0,12}?(?:热线|hotline|helpline|crisisline|supportline)"
   - "(?:热线|hotline|helpline|crisisline|supportline){C}{0,8}?(?:吗|呢|么|嘛|是多少|多少|是什么|有哪些|有吗|有冇|\\?|please)"
+  # Round 5 (2026-10-29, re-test q2 第 5 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a giving word, an optional count and 电话 / 号码 with no support word ("给个电话",
+  #   "俾个号码我"); a having word with a phone word and a calling verb ("有冇电话可以打");
+  # - a phone word told to come over, after a clause start or a word naming it ("求助电话发我",
+  #   "号码甩我一个"), never someone's own number ("把他电话发我" has 他 before it);
+  # - the police or ambulance number asked for ("报警电话是多少", "叫救护车拨几号").
+  - "(?:给我|给个|给一个|发我|发个|发给我|告诉我|甩我|甩个|俾我|畀我|俾个|畀个|留个|来个|要个|要一个|求个|求一个|推荐个|推荐一个)(?:一?个|几个|一些|些)?(?:能打的|可以打的|求助的|帮忙的|有人接的|靠谱的)?(?:电话|号码)(?!给|号码给)"
+  - "(?:有没有|有冇|有无|有什么|有啥|有咩|有哪个|有哪些)(?:什么|啥|咩|哪个|哪些|一个|个)?(?:能|可以|可)?(?:打的)?(?:电话|号码){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话)"
+  - "有(?:个)?(?:电话|号码)(?:可以|能|好)(?:打|拨){C}{0,6}?(?:吗|么|嘛|冇|\\?)"
+  - "(?:^|[,.!?;~、]|把|这个|那个|求助|帮忙|援助|热线|心理|急救|报警|紧急|支援|咨询)的?(?:电话|号码)(?:号码)?(?:再|直接|快|赶紧)?(?:发|给|甩|告诉|俾|畀)(?:一下)?(?:我|过来|给我|一个|一下)"
+  - "(?:报警|急救|救护车|救护|紧急|police|ambulance|emergency)(?:的|用的|要打的)?(?:电话|号码|热线|number)(?:是|系)?(?:多少|什么|啥|咩|哪个|几号|几多|来着|吗|呢|\\?)"
+  - "(?:报警|急救|叫救护车|救护车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:哪个|什么|多少|几号|啥|咩|几多)"
+
+# What a number is ("12356是干嘛的"; round 5, 2026-10-29, re-test q2 第 5 节; 草稿：待 G-0):
+# group 1 is the number (at least three digits). The reply names what the signed hotline
+# data says it is, or says it is not in the data; it never guesses. Not slang ("520是什么意思").
+hotline_number_patterns:
+  - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:是|系)?(?:干嘛|干什么|干啥|做什么|做啥|做咩|做乜|什么|啥|咩|乜嘢|乜|边个|谁)(?!意思|梗|日子|节|时候|东西)"
+  - "(?:what'?s|whatis|whatdoes|whois)(?:the)?(?:number)?(\\d{3,})"
+
+# A call that does not get through (round 5; 草稿：待 G-0): with a phone word, a question or a
+# resource card on screen, the reply says what to do (try later or another line, the local
+# emergency number when in danger, someone nearby). Folded, no spaces.
+hotline_unreachable:
+  - 打不通
+  - 打不进
+  - 拨不通
+  - 拨不进
+  - 没人接
+  - 没有人接
+  - 无人接
+  - 无人应答
+  - 占线
+  - 忙音
+  - 接不通
+  - 打唔通
+  - 冇人听
+  - 冇人接
+  - 无人听
+  - 没人听
+  - can'tgetthrough
+  - cantgetthrough
+  - couldn'tgetthrough
+  - noanswer
+  - nooneanswer
+  - nobodyanswer
+  - nobodypickedup
+  - noonepicked
+  - busysignal
+
+# The emergency number asked for (round 5; 草稿：待 G-0): with a hotline request, the reply leads
+# with a line saying the emergency numbers come first. Folded, no spaces.
+hotline_emergency:
+  - 报警
+  - 急救
+  - 救护车
+  - 紧急电话
+  - 紧急号码
+  - police
+  - ambulance
+  - emergency
+
+# A place in English that hotline_places does not name ("hotline in Brazil"; round 5; 草稿：
+# 待 G-0): read on the raw text (lower case, spaces kept). With a hotline request and no place
+# found, the reply says these numbers follow the saved region and how to see another one
+# (olivia resources <code>); it never gives the saved region's card as that place's.
+hotline_place_hint_patterns:
+  - "\\b(?:in|for|of)\\s+(?:the\\s+)?(?!my\\b|me\\b|us\\b|this\\b|that\\b|case\\b|crisis\\b|need\\b|english\\b|chinese\\b|mandarin\\b|cantonese\\b|someone\\b|people\\b|students?\\b|teens?\\b|adults?\\b|free\\b|now\\b|tonight\\b|today\\b|help\\b|support\\b|suicide\\b|mental\\b|depression\\b|anxiety\\b|crisis\\b|emergenc|hotline|helpline|number|a\\b|an\\b|your\\b|you\\b|it\\b|them\\b|him\\b|her\\b|friends?\\b|family\\b|chat|talk|text|call)[a-z]{3,}\\b"
+
+# Places in English that need word edges (round 5; 草稿：待 G-0): region code -> patterns read on
+# the raw text (lower case, spaces kept), like hotline_places ("the hotline in the US").
+hotline_place_patterns:
+  US: ["\\bthe\\s+u\\.?s\\.?(?:a\\.?)?(?![a-z])", "\\bin\\s+u\\.?s\\.?a?\\.?(?![a-z])", "\\bu\\.s\\.(?:a\\.)?", "\\bunited\\s+states\\b"]
 
 # Follow-ups about a hotline (问题单第 7 条; 草稿：待 G-0): asked with a hotline request, or
 # within two turns of a resource card, each gets one plain, true line
@@ -1606,6 +1697,11 @@ hotline_hours:
   - overnight
   - atnight
   - anytime
+  # Round 5 (re-test q2 第 5 节): all night, someone to listen (Cantonese 有人听).
+  - 通宵
+  - 有人听
+  - 几时
+  - 全日
 hotline_language:
   - 普通话
   - 粤语
@@ -1737,7 +1833,7 @@ suds_patterns:
 # nothing about age is written anywhere.
 minor_disclosure_patterns:
   - "我(?:才|今年|现在|其实|还|只|只有|刚|刚刚|刚满|也|就|都|是)*(?:1[0-7]|十[一二三四五六七]?)(?:岁|周岁)(?!的|那|时|以前|之前|左右)"
-  - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是|刚|刚刚)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|其实|还|只|只是|也|就|都|是|刚|刚刚)*(?:在)?(?:上|读|念)?(?:初一|初二|初三|初中|小学|六年级|五年级|四年级|高一|高二)(?:生|学生)?(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|生的|学生的|家长|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)"
   - "我(?:才|今年|现在|其实|还|只|只是|也|就|都|是)*(?:一个|个)?(?:未成年|未满(?:18|十八)|没满(?:18|十八)|不满(?:18|十八)|不到(?:18|十八))(?!的时候|时|那|以前|之前)"
   # Round 3 (2026-10-27, re-test r2 第 2 节; 草稿：待 G-0). Grammar, not example sentences:
   # - the self word may be 本人 / 俺 / 咱 too, and the age may stand with 了 instead of 岁
@@ -1936,6 +2032,21 @@ third_party_questions:
   - howcanihelp
   - howdoihelp
   - shouldicall
+  # Round 5 (re-test q2 第 1 节; 草稿：待 G-0): the same questions said colloquially.
+  - 做点啥
+  - 做些啥
+  - 能做啥
+  - 可以做啥
+  - 干点啥
+  - 能干啥
+  - 能帮啥
+  - 帮上忙
+  - 帮得上
+  - 帮上什么
+  - 帮上啥
+  - 咋办
+  - 咋整
+  - 怎么整
 # After the card for someone else's risk (round 4, 2026-10-28, re-test q2 第 1 节; 草稿：待
 # G-0), read only within a few turns of it: how to start the talk or what to say to the
 # other person ("我该怎么开口问他", "我现在该跟她说点什么"). The card comes again with how to
@@ -1966,11 +2077,77 @@ third_party_how_to_ask:
   - whatdoisay
   - whatshouldisay
   - bringitup
+  # Round 5 (re-test q2 第 1 节; 草稿：待 G-0): worry about starting the talk at all.
+  - 开口
+  - 尴尬
+  - 别扭
+  - 冒犯
+  - 不熟
+  - 不太熟
+  - 不算熟
+  - 怎么说
+  - 咋说
+  - 怎么讲
+  - 提这个
+  - 提这件事
+  - 说点啥
+  - 说啥好
+# After the card for someone else's risk (round 5, 2026-10-29, re-test q2 第 1 节; 草稿：待
+# G-0), read only within a few turns of it. The user is far from the other person ("他在外
+# 地，我过不去"): what to do from afar (render.yaml crisis.third_party_far, the emergency
+# numbers after it). Folded, no spaces.
+third_party_far:
+  - 在外地
+  - 在国外
+  - 在老家
+  - 不在身边
+  - 不在一个城市
+  - 不在同一个城市
+  - 另一个城市
+  - 别的城市
+  - 离得远
+  - 离得太远
+  - 离他好远
+  - 离她好远
+  - 隔得远
+  - 太远了
+  - 过不去
+  - 赶不过去
+  - 去不了
+  - 没法过去
+  - 没办法过去
+  - 异地
+  - 公里
+  - faraway
+  - anotherstate
+  - anothercity
+# The user does not know the other person ("我又不认识他", "只是网上认识"; round 5; 草稿：待
+# G-0): what one can still do (render.yaml crisis.third_party_stranger). Folded, no spaces.
+third_party_stranger:
+  - 不认识
+  - 网上认识
+  - 网友
+  - 陌生人
+  - 素不相识
+  - 只见过
+  - 没见过面
+  - 不知道他是谁
+  - 不知道她是谁
+  - 不知道他住哪
+  - 不知道她住哪
+  - 帖子
+  - 评论区
+  - 直播间
+  - stranger
+  - don'tknowhim
+  - don'tknowher
+  - dontknowhim
+  - dontknowher
 # The other person says they are fine (round 4; 草稿：待 G-0), read only within a few turns
 # of that card ("要是他说没事呢", "他说他没事"): the card again with what to watch for and
 # that it is fine to ask again. A third person (他 / 她 / ta / 对方) who says it, folded.
 third_party_says_fine_patterns:
-  - "(?:他|她|ta|对方)(?:又|还|就|一直|总|都|只)?(?:跟我|对我|和我)?(?:说|讲|回|回我|表示)(?:他|她|ta|自己)?(?:真的|其实|已经|只是)?(?:没事|没什么事|没什么|还好|挺好|好多了|开玩笑|随便说说|说着玩|随口说说|随口一说)"
+  - "(?:他|她|ta|对方)(?:今天|昨天|刚才|刚刚|后来|现在|最近)?(?:又|还|就|一直|总|都|只)?(?:跟我|对我|和我)?(?:说|讲|回|回我|表示)(?:他|她|ta|自己)?(?:真的|其实|已经|只是|现在)?(?:没事|没什么事|没什么|还好|挺好|好多了|好了|想开了|想通了|开玩笑|随便说说|说着玩|随口说说|随口一说)"
   - "(?:he|she|they)(?:says|said|toldme)(?:he's|she's|they're|heis|sheis|theyare)(?:fine|ok|okay|alright|joking|kidding)"
 
 # The user means to see a doctor, a counsellor or a school or work mental health centre

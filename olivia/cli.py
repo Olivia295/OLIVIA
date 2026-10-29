@@ -207,7 +207,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from olivia import __version__, doctor
 from olivia.core.chang import onboarding
-from olivia.core.chang.care import CareRecorder, CareStore
+from olivia.core.chang.care import CARE_FILENAME, CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
 from olivia.core.chang.journal import ChatChecks, load_journal_text
 from olivia.core.chang.journal import run_command as run_journal
@@ -227,6 +227,7 @@ from olivia.core.chang.onboarding import (
 )
 from olivia.core.chang.privacy import privacy_notice
 from olivia.core.chang.profile import (
+    PROFILE_FILENAME,
     ProfileCorruptError,
     ProfileLockedError,
     ProfileStore,
@@ -234,6 +235,7 @@ from olivia.core.chang.profile import (
 )
 from olivia.core.chang.profile_command import run_profile
 from olivia.core.chang.safety_plan import (
+    SAFETY_PLAN_FILENAME,
     SafetyPlanStore,
     Screened,
     load_safety_plan_text,
@@ -249,6 +251,7 @@ from olivia.core.chang.setup_screen import (
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
 from olivia.core.crypto.keychain import Probe
+from olivia.core.crypto.vault import KEYS_DIRNAME
 from olivia.core.datalock import DataDirBusyError, DataDirLock
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
@@ -260,9 +263,9 @@ from olivia.core.memory.forget import (
     run_forget,
     run_memory,
 )
-from olivia.core.memory.ledger import Ledger
+from olivia.core.memory.ledger import LEDGER_DIRNAME, Ledger
 from olivia.core.memory.recorder import SessionRecorder
-from olivia.core.memory.state import StateRecorder, StateStore
+from olivia.core.memory.state import STATE_FILENAME, StateRecorder, StateStore
 from olivia.core.models import (
     UNKNOWN_COUNTRY,
     CrisisLevel,
@@ -413,6 +416,18 @@ CHAT_RECORDS_UNSAVED: Final = (
     "这次聊天的小结和让我记住的话可能存不下来；聊天本身照常。"
     "运行 olivia doctor 可以看到是哪里不对、怎么修。"
 )
+# QA q4 DOC-10, FLT-3 (草稿：待 G-0): said before the chat, once, when ``ledger/`` is a
+# file or the keychain no longer holds the master key the saved data needs.
+CHAT_LEDGER_MISPLACED: Final = (
+    "数据目录里的 ledger 文件夹被换成了一个同名文件，"
+    "这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+CHAT_MASTER_LOST: Final = (
+    "系统钥匙串里找不到加密用的主钥匙，之前加密保存的内容（比如聊天记录和安全计划）现在打不开，"
+    "这次聊天的小结也存不下来；聊天本身照常。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
 UNEXPECTED_ERROR: Final = (
     "出了点问题，这次没能做完，已经停下了。需要的话，上面的电话随时可以联系。"
     "可以运行 olivia doctor 检查一下这台电脑上的设置和数据文件。"
@@ -522,6 +537,10 @@ RESOURCES_PURPOSES: Final[dict[EmergencyPurpose, str]] = {
     EmergencyPurpose.GENERIC_GSM_EMERGENCY: "通用紧急求助",
 }
 RESOURCES_STALE_MARK: Final = "（信息可能已过期）"
+# QA q4 FLT-2 (草稿：待 G-0): when the region is not known (none saved, or it cannot be
+# read), the global card also lists every region's emergency numbers from the same
+# verified data, as the first visit and the fixed help do.
+RESOURCES_EVERYWHERE: Final = "还不知道你在哪里，所以也列出各地的紧急电话："
 OTHER_REGION_CHOICE: Final = "其他地区，或不想说"
 _REGION_LABELS: Final[dict[str, str]] = {
     code: label for code, label, _numbers in EMERGENCY if code != UNKNOWN_COUNTRY
@@ -576,7 +595,7 @@ DOCTOR_FIX_WINDOWS: Final = (
 DOCTOR_PERMISSIONS_OK: Final = "数据目录的权限：只有你自己能读写"
 DOCTOR_PERMISSIONS_OFF: Final = "数据目录的权限：有 {count} 处和应有的不一样，应当只有你自己能读写"
 DOCTOR_PERMISSIONS_WINDOWS: Final = "数据目录的权限：Windows 上不做这项检查"
-DOCTOR_KEYCHAIN_READY: Final = "系统钥匙串：可以使用（只确认了它在，没有读取或改动里面的任何条目）"
+DOCTOR_KEYCHAIN_READY: Final = "系统钥匙串：可以使用（没有改动里面的任何条目）"
 DOCTOR_KEYCHAIN_NONE: Final = (
     "系统钥匙串：这台电脑上没有。聊天记录、健康信息和安全计划不会保存，其他照常"
 )
@@ -603,8 +622,36 @@ DOCTOR_STORE_STATES: Final = {
     StoreState.BROKEN: (DOCTOR_FAIL, "{name}：打不开，文件或钥匙不完整"),
     StoreState.LOCKED: (DOCTOR_FAIL, "{name}：现在打不开，要等系统钥匙串能用"),
     StoreState.UNREADABLE: (DOCTOR_FAIL, "{name}：读不了，没有读取权限"),
+    # QA q4 DOC-03/04/09/10/19, FLT-3 (草稿：待 G-0).
+    StoreState.RECOVERABLE: (
+        DOCTOR_WARN,
+        "{name}：坏了或者不见了，下次运行 olivia 的命令时会自动从备份恢复。"
+        "备份是最近一次保存之前的那一份，恢复后请用 olivia region 核对地区",
+    ),
+    StoreState.MISPLACED: (DOCTOR_FAIL, "{name}：{file} 被换成了一个同名的{kind}，程序读不了它"),
+    StoreState.NO_KEYS: (DOCTOR_FAIL, "{name}：打不开，因为存放钥匙的 keys 文件夹被换成了一个文件"),
+    StoreState.NO_MASTER: (DOCTOR_FAIL, "{name}：打不开，系统钥匙串里找不到它的主钥匙"),
 }
-DOCTOR_STORES_NOTE: Final = "加密的内容都没有解密，只检查了文件和钥匙是否齐全、完好。"
+DOCTOR_KIND_FILE: Final = "文件"
+DOCTOR_KIND_FOLDER: Final = "文件夹"
+DOCTOR_MISPLACED_FIX: Final = (
+    "怎么修：把 {path} 改个名字或者挪走（里面有要留的东西就先备份），再运行一次 olivia doctor"
+)
+DOCTOR_KEYS_MISPLACED: Final = (
+    "加密钥匙：keys 文件夹被换成了一个同名文件，"
+    "加密保存的内容（聊天记录、健康信息、安全计划等）都打不开"
+)
+DOCTOR_KEYS_FIX: Final = (
+    "怎么修：如果原来的 keys 文件夹还在（比如被挪到了别处），先把 {path} 这个文件挪开，"
+    "再把文件夹放回原处；找不回来的话，这些加密内容就打不开了，"
+    "可以运行 olivia forget --all 从头开始"
+)
+DOCTOR_MASTER_FIX: Final = (
+    "怎么修：主钥匙是系统钥匙串里服务名为 olivia、名为 master-key 的条目。"
+    "如果清理过钥匙串或者换了电脑，把这个条目恢复回来就能打开；"
+    "找不回来的话，这些加密内容就再也打不开了，可以运行 olivia forget --all 从头开始"
+)
+DOCTOR_STORES_NOTE: Final = "加密的内容只核对了能不能解开，没有显示、也没有保存其中的任何内容。"
 DOCTOR_MODEL_OK: Final = "本机模型：文件齐全，校验通过"
 DOCTOR_MODEL_FAILED: Final = "本机模型：校验没有通过（{reason}），聊天时会自动只用规则做危机筛查"
 DOCTOR_HOTLINES_OK: Final = "随程序附带的热线资料：签名有效，整理于 {compiled_on}，距今 {days} 天"
@@ -675,6 +722,12 @@ DOCTOR_TEXTS: Final = (
     DOCTOR_ONBOARDED_NO_DIR,
     *DOCTOR_STORE_NAMES.values(),
     *(text for _, text in DOCTOR_STORE_STATES.values()),
+    DOCTOR_KIND_FILE,
+    DOCTOR_KIND_FOLDER,
+    DOCTOR_MISPLACED_FIX,
+    DOCTOR_KEYS_MISPLACED,
+    DOCTOR_KEYS_FIX,
+    DOCTOR_MASTER_FIX,
     DOCTOR_STORES_NOTE,
     DOCTOR_MODEL_OK,
     DOCTOR_MODEL_FAILED,
@@ -719,6 +772,8 @@ USER_TEXTS: Final = (
     DATA_DIR_IS_FILE,
     PROGRAM_FILES_DAMAGED,
     CHAT_RECORDS_UNSAVED,
+    CHAT_LEDGER_MISPLACED,
+    CHAT_MASTER_LOST,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     PROFILE_LOCKED_NOW,
@@ -757,6 +812,7 @@ USER_TEXTS: Final = (
     OTHER_REGION_CHOICE,
     *RESOURCES_PURPOSES.values(),
     RESOURCES_STALE_MARK,
+    RESOURCES_EVERYWHERE,
     PERSONA_SHOW,
     PERSONA_CHOICES_HEADING,
     PERSONA_CURRENT_MARK,
@@ -1340,9 +1396,12 @@ def _chat(
     # Round 5 (复测 q4 SP-10): an entry with a place or a means in it ("去天台上一个人待
     # 着") is left out of that block too, whatever the screen made of it.
     plan_screen = screen if student else SetupScreen(tax)
+    saved = plan_store.load_quietly()
     plan = without_crisis_entries(
-        plan_store.load_quietly(), lambda x: plan_screen.alarms(x) or plan_screen.risky_words(x)
+        saved, lambda x: plan_screen.alarms(x) or plan_screen.risky_words(x)
     )
+    # QA q4 FLT-3: a plan that is there but cannot be opened is said so in a crisis reply.
+    plan_unreadable = saved is None and plan_store.exists()
     try:
         session = Session.open(
             tax,
@@ -1352,6 +1411,7 @@ def _chat(
             student=student,
             carried=state_store.load(),
             safety_plan=plan,
+            safety_plan_unreadable=plan_unreadable,
             suggest_safety_plan=plan is None and plan_store.should_suggest(),
             hotline_updates=override_dir_location(),
         )
@@ -1368,8 +1428,10 @@ def _chat(
     recorder = SessionRecorder(ledger, session.state.session_id, local)
     if not recorder.enabled and ledger.take_unavailable_notice():
         console.say(ledger.text.replies["memory_unavailable"])
-    elif _records_blocked(store.path.parent):  # QA q4 P8: said now, not only at the end
-        console.say(CHAT_RECORDS_UNSAVED)
+    else:  # QA q4 P8, DOC-10, FLT-3: said now, not only at the end
+        blocked = _records_blocked(store.path.parent, store)
+        if blocked is not None:
+            console.say(blocked)
     console.say(CHAT_HINT)
     care = CareStore(vault=store.vault)
     marker = care.take(clock())
@@ -1458,13 +1520,19 @@ def _chat(
     return 0
 
 
-def _records_blocked(base: Path) -> bool:
-    """Whether part of the data directory cannot be read or written now (permissions), so
-    the session summary and notes may not be saved (``doctor.access_problem``)."""
+def _records_blocked(base: Path, store: ProfileStore) -> str | None:
+    """Why the session summary and notes will not be saved, said before the chat; None
+    when nothing stands in the way: the keychain no longer holds the master key the data
+    needs (QA q4 FLT-3), a file where ``ledger/`` should be (DOC-10), or part of the data
+    directory cannot be read or written now (permissions, ``doctor.access_problem``)."""
+    if store.vault.master_lost():
+        return CHAT_MASTER_LOST
     try:
-        return doctor.access_problem(base) is not None
+        if LEDGER_DIRNAME in doctor.misplaced(base):
+            return CHAT_LEDGER_MISPLACED
+        return None if doctor.access_problem(base) is None else CHAT_RECORDS_UNSAVED
     except OSError:
-        return True
+        return CHAT_RECORDS_UNSAVED
 
 
 def _failed_turn_reply(tax: Taxonomy, profile: PersonaProfile, today: date) -> str:
@@ -1519,8 +1587,27 @@ def _region_label(code: str) -> str:
     return _REGION_LABELS.get(code, OTHER_REGION_LABEL)
 
 
-def render_browsing(card: ResourceCard) -> str:
-    """BROWSING card text: emergency numbers, then lines grouped by kind, stale marked.
+def render_everywhere(store: ResourceStore) -> str:
+    """Every region's emergency numbers, one line each in the data's order, ZZ (the card
+    shown beside it) left out (QA q4 FLT-2)."""
+    rows = [RESOURCES_EVERYWHERE]
+    for code, found in store.regions.items():
+        if code == UNKNOWN_COUNTRY or not found.emergency:
+            continue
+        numbers = "、".join(
+            # one number for everything goes alone, as in the fixed help (``fallback.py``)
+            e.number
+            if e.purpose is EmergencyPurpose.POLICE_FIRE_AMBULANCE
+            else f"{e.number}（{RESOURCES_PURPOSES[e.purpose]}）"
+            for e in found.emergency
+        )
+        rows.append(f"· {_region_label(code)}（{code}）：{numbers}")
+    return "\n".join(rows)
+
+
+def render_browsing(card: ResourceCard, *, everywhere: str = "") -> str:
+    """BROWSING card text: emergency numbers, then lines grouped by kind, stale marked;
+    ``everywhere`` (:func:`render_everywhere`) goes right after the emergency numbers.
 
     Only the card and the CLI's own words go in (QA q4 R2): no other data file."""
     if card.mode is not CardMode.BROWSING:
@@ -1536,6 +1623,8 @@ def render_browsing(card: ResourceCard) -> str:
         purpose = RESOURCES_PURPOSES[em.purpose]
         emergency.append(f"· {em.number}（{purpose}）{mark(em.id)}")
     blocks.append("\n".join(emergency))
+    if everywhere:
+        blocks.append(everywhere)
     for kind, group in card.lines_by_kind():
         lines = [LINE_KIND_HEADINGS[kind]]
         for ln in group:
@@ -1639,9 +1728,9 @@ def _show_hotlines(
     *,
     region: UserRegion | None = None,
 ) -> bool:
-    """The BROWSING card for ``region`` (by default ``profile``'s; ZZ without one) and its
-    data source; the fixed help instead, and False, when the hotline data cannot be
-    verified (S3)."""
+    """The BROWSING card for ``region`` (by default ``profile``'s; ZZ without one, with
+    every region's emergency numbers, QA q4 FLT-2) and its data source; the fixed help
+    instead, and False, when the hotline data cannot be verified (S3)."""
     if region is None and profile is not None:
         region = profile.region
     minor = profile is not None and profile.is_age_gate_refusal
@@ -1655,7 +1744,8 @@ def _show_hotlines(
     card = resolve(
         store, region, CrisisLevel.L3, mode=CardMode.BROWSING, today=today, is_minor=minor
     )
-    console.say(render_browsing(card))
+    everywhere = render_everywhere(store) if region is None else ""
+    console.say(render_browsing(card, everywhere=everywhere))
     console.say(source)
     return True
 
@@ -2118,6 +2208,15 @@ def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
     return rows
 
 
+_DOCTOR_STORE_PATHS: Final = {
+    "profile": PROFILE_FILENAME,
+    "ledger": LEDGER_DIRNAME,
+    "state": STATE_FILENAME,
+    "care": CARE_FILENAME,
+    "safety_plan": SAFETY_PLAN_FILENAME,
+}
+
+
 def _doctor_store_rows(report: doctor.Report) -> list[Row]:
     profile = report.profile
     if report.data_dir.kind == "other":  # QA q4 P7: not "run olivia chat", which fails too
@@ -2129,9 +2228,19 @@ def _doctor_store_rows(report: doctor.Report) -> list[Row]:
     else:
         rows = [(DOCTOR_WARN, DOCTOR_NOT_ONBOARDED)]
     states = {"profile": profile.state, **report.stores}
+    base = report.data_dir.location
     for name, label in DOCTOR_STORE_NAMES.items():
         mark, template = DOCTOR_STORE_STATES[states[name]]
-        rows.append((mark, template.format(name=label)))
+        file = _DOCTOR_STORE_PATHS[name]
+        kind = DOCTOR_KIND_FILE if file == LEDGER_DIRNAME else DOCTOR_KIND_FOLDER
+        rows.append((mark, template.format(name=label, file=file, kind=kind)))
+        if states[name] is StoreState.MISPLACED:  # QA q4 DOC-10, DOC-19: what and how
+            rows.append(("", DOCTOR_MISPLACED_FIX.format(path=_shell_path(base / file))))
+    if KEYS_DIRNAME in report.misplaced:  # QA q4 DOC-09
+        rows.append((DOCTOR_FAIL, DOCTOR_KEYS_MISPLACED))
+        rows.append(("", DOCTOR_KEYS_FIX.format(path=_shell_path(base / KEYS_DIRNAME))))
+    if StoreState.NO_MASTER in states.values():  # QA q4 FLT-3
+        rows.append(("", DOCTOR_MASTER_FIX))
     rows.append(("", DOCTOR_STORES_NOTE))
     return rows
 
@@ -2619,7 +2728,36 @@ def _run(
     now: Clock,
     rng: random.Random | None,
 ) -> int:
-    """One command under the data directory's lock when it writes (D1-D3)."""
+    """One command under the data directory's lock when it writes (D1-D3). A data
+    directory that was not there before and is still empty afterwards is removed again
+    (QA q4 RD-7: ``resources``, ``profile`` or ``forget --all`` on a fresh computer)."""
+    fresh = _absent(data_dir_location())
+    try:
+        return _run_locked(args, console, now, rng)
+    finally:
+        if fresh:
+            _remove_if_empty(data_dir_location())
+
+
+def _absent(path: Path) -> bool:
+    try:
+        return not path.exists()
+    except OSError:
+        return False
+
+
+def _remove_if_empty(path: Path) -> None:
+    """Remove the directory ``path`` only when nothing is in it (``rmdir`` refuses else)."""
+    with contextlib.suppress(OSError):
+        path.rmdir()
+
+
+def _run_locked(
+    args: argparse.Namespace,
+    console: _Console,
+    now: Clock,
+    rng: random.Random | None,
+) -> int:
     if args.command not in _EXEMPT_FROM_UNFINISHED and _data_dir_is_file():
         # QA q4 P7: said the same way by every command that reads or writes data, on every
         # system (Windows reads "<file>/profile.json" as merely missing); chat shows the

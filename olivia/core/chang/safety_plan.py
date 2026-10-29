@@ -86,6 +86,9 @@ MAX_NAME_CHARS: Final = 12
 MAX_PHONE_CHARS: Final = 20
 MIN_PHONE_DIGITS: Final = 3
 CLEAR_SECTION: Final = "0"
+CLEAR_CONFIRMATIONS: Final = frozenset({"1", "确认", "确定"})
+"""What confirms clearing the whole plan: 1, or the words ``olivia forget`` takes (QA q4
+SP-9)."""
 _LABEL: Final = "plan"
 _VERSION: Final = 1
 _TEXT_FILE: Final = "safety_plan.yaml"
@@ -153,6 +156,8 @@ _COMMAND_KEYS: Final = (
     "crisis_retry",
     "crisis_left",
     "crisis_left_saved",
+    "left_saved",
+    "edit_not_saved",
 )
 
 
@@ -268,6 +273,8 @@ class SafetyPlanText:
     """The same with the names of section 4 (slot ``{name}``)."""
     farewell_people: str = ""
     """The heading of section 4's people in a crisis farewell."""
+    crisis_unreadable: str = ""
+    """Said in a crisis reply in place of a saved plan that cannot be opened now."""
 
     def all_texts(self) -> tuple[str, ...]:
         """Every sentence in the file, for the WILLOW and gate checks in the tests."""
@@ -280,6 +287,7 @@ class SafetyPlanText:
             self.crisis_reminder,
             self.crisis_reminder_people,
             self.farewell_people,
+            self.crisis_unreadable,
         )
 
 
@@ -338,16 +346,25 @@ def _load_text(base: Traversable | Path) -> SafetyPlanText:
     reminder = _string(crisis.get("reminder"), "crisis.reminder")
     reminder_people = _string(crisis.get("reminder_people"), "crisis.reminder_people")
     people_heading = _string(crisis.get("farewell_people"), "crisis.farewell_people")
-    unslotted = (intro, suggestion, reminder, people_heading)
+    unreadable = _string(crisis.get("unreadable"), "crisis.unreadable")
+    unslotted = (intro, suggestion, reminder, people_heading, unreadable)
     if any(_SLOT_RE.search(text) for text in unslotted):
         raise SafetyPlanTextError(
-            f"{_TEXT_FILE}: crisis.intro, crisis.reminder, crisis.farewell_people and "
-            "suggestion take no slots"
+            f"{_TEXT_FILE}: crisis.intro, crisis.reminder, crisis.farewell_people, "
+            "crisis.unreadable and suggestion take no slots"
         )
     if set(_SLOT_RE.findall(reminder_people)) != {"name"}:
         raise SafetyPlanTextError(f"{_TEXT_FILE}: crisis.reminder_people needs exactly {{name}}")
     return SafetyPlanText(
-        titles, prompts, command, intro, suggestion, reminder, reminder_people, people_heading
+        titles,
+        prompts,
+        command,
+        intro,
+        suggestion,
+        reminder,
+        reminder_people,
+        people_heading,
+        unreadable,
     )
 
 
@@ -545,7 +562,13 @@ def protective(text: str) -> bool:
 
 
 class _EndOfInput(Exception):
-    """The input ended mid-exchange."""
+    """The input ended mid-exchange, or Ctrl-C was pressed (``interrupted``); ``partial``
+    holds what the section being written had before it (QA q4 SP-7, SP-12)."""
+
+    def __init__(self, partial: tuple[object, ...] = (), *, interrupted: bool = False) -> None:
+        super().__init__("end of input")
+        self.partial = partial
+        self.interrupted = interrupted
 
 
 class _Left(Exception):
@@ -614,6 +637,7 @@ class _Command:
         """What was said since the question began (:meth:`_question`), to ask it again."""
         self._saved_any = False
         self._had_plan = False
+        self._new_plan = False
 
     def run(self) -> int:
         cmd = self._cmd
@@ -636,11 +660,14 @@ class _Command:
             if plan is None or plan.is_empty:
                 return self._new()
             return self._existing(plan)
-        except _EndOfInput:
+        except _EndOfInput as ended:
             # QA q4 P12: only looking at a saved plan loses nothing; an edit cut short
-            # keeps the sections already saved.
+            # keeps the sections already saved. QA q4 SP-12: a new plan cut short keeps
+            # what was written, and Ctrl-C ends here with this command's own words.
+            if ended.interrupted:
+                self._say("")
             if self._saved_any:
-                self._say(cmd["saved"])
+                self._say(cmd["left_saved"] if self._new_plan else cmd["saved"])
             else:
                 self._say(cmd["unchanged"] if self._had_plan else cmd["left"])
             return 0
@@ -654,12 +681,20 @@ class _Command:
     # -- flows ----------------------------------------------------------------------------
 
     def _new(self) -> int:
+        self._new_plan = True
         self._say(self._cmd["intro"])
         self._say("")
         plan = SafetyPlan()
         for section in SECTIONS:
             try:
                 values = self._section(section, None)
+            except _EndOfInput as ended:
+                # QA q4 SP-12: what was written before the input ended (or Ctrl-C) is kept.
+                plan = _with_section(plan, section, ended.partial)
+                if not plan.is_empty:
+                    self._store.save(plan)
+                    self._saved_any = True
+                raise
             except _Left as left:
                 # What was written before the crisis sentence is kept: sections 2-4 are
                 # what a crisis reply shows, and they may be needed soon.
@@ -716,8 +751,18 @@ class _Command:
                 self._say(cmd["pick_unknown"])
                 continue
             section = SECTIONS[int(choice) - 1]
-            # Leaving mid-section keeps that section as it was (an edit replaces it whole).
-            values = self._section(section, plan)
+            # Leaving mid-section keeps that section as it was (an edit replaces it whole);
+            # lines already typed for it are said not to be saved (QA q4 SP-7).
+            try:
+                values = self._section(section, plan)
+            except _EndOfInput as ended:
+                if ended.partial:
+                    if ended.interrupted:
+                        self._say("")
+                        ended.interrupted = False
+                    title = self._text.titles[section]
+                    self._say(_fill(cmd["edit_not_saved"], title=title))
+                raise
             self._say("")
             updated = _with_section(plan, section, values)
             if updated != plan:
@@ -738,7 +783,7 @@ class _Command:
     def _clear(self) -> int:
         self._question()
         self._say(self._cmd["clear_confirm"])
-        if _fold(self._ask()) == "1":
+        if _fold(self._ask()) in CLEAR_CONFIRMATIONS:
             self._store.clear()
             self._say(self._cmd["cleared"])
         else:
@@ -774,11 +819,15 @@ class _Command:
                 return self._people(kept, people, editing=current is not None)
             except _Left:
                 raise _Left(tuple(people)) from None
+            except _EndOfInput as ended:
+                raise _EndOfInput(tuple(people), interrupted=ended.interrupted) from None
         entries: list[str] = []
         try:
             return self._entries(section, kept, entries, editing=current is not None)
         except _Left:
             raise _Left(tuple(entries)) from None
+        except _EndOfInput as ended:
+            raise _EndOfInput(tuple(entries), interrupted=ended.interrupted) from None
 
     def _entries(
         self, section: Section, kept: tuple[object, ...], entries: list[str], *, editing: bool
@@ -887,13 +936,19 @@ class _Command:
         5 after "go on"; anywhere else it is dropped and the question asked again."""
         while True:
             question, self._since_ask = self._since_ask, []
-            reply = self._ask_raw()
+            try:
+                reply = self._ask_raw()
+            except KeyboardInterrupt:  # QA q4 SP-12: like the end of input, said here
+                raise _EndOfInput(interrupted=True) from None
             if reply is None:
                 raise _EndOfInput
             screen = self._screen
             if section is Section.ENVIRONMENT and protective(reply):
                 screen = self._protective_screen
-            verdict = Screened.CLEAR if screen is None else screen(reply)
+            try:
+                verdict = Screened.CLEAR if screen is None else screen(reply)
+            except KeyboardInterrupt:  # at the crisis choice: as when the input ends there
+                raise _Left from None
             if verdict is Screened.CLEAR:
                 return reply
             if verdict is Screened.LEAVE:

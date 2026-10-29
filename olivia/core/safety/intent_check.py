@@ -83,6 +83,8 @@ _REPEATED: Final = re.compile(r"(.+?)\1+")
 # (re-test q2): only the unsure words they would otherwise hold are kept out.
 _JUST_BUT: Final = re.compile(r"只不过")
 _DEGREE: Final = re.compile(r"有一?点(?=[^\W想会要打准念吧呢啊了么嘛])")
+# Round 5 (re-test q2 第 2 节): where a no typed without punctuation gives its reason.
+_JUST_AFTER_NO: Final = re.compile(r"(?<=.)(?:只是|就是|只不过|主要是|单纯是|纯粹是)")
 # A no that means yes.
 _SARCASM: Final = ("才怪", "就怪了")
 # Round 3: a first clause that negates an intent in the first person (我绝对没有想……). Only
@@ -121,6 +123,10 @@ class IntentReading:
     negated: bool = False
     """The no is a first-person negated intent clause whose risk phrase is the message's
     only rule cue (round 3); only with ``answer`` DENIED."""
+    reason_split: bool = False
+    """Round 5: the no ran straight into "只是 / 就是" with no punctuation and was split
+    there; the caller then also checks the F10 denial conditions (a means or a plan word
+    after it, "没有啊只是药准备好了", is no no)."""
 
 
 def read_intent_answer(
@@ -143,6 +149,13 @@ def read_answer(
     parts = _CLAUSE_END.split(body, maxsplit=1)
     clause = parts[0].strip().lstrip(_FILLERS).strip()
     rest = parts[1] if len(parts) > 1 else ""
+    # Round 5: a no that runs straight into "只是 / 就是" with no punctuation ("没有呀就是
+    # 有点烦") ends there; what follows is read as the rest of the message (screened below).
+    just = _JUST_AFTER_NO.search(clause)
+    split = just is not None and clause[: just.start()].rstrip(_PARTICLES) in answers.deny_whole
+    if just is not None and split:
+        rest = ",".join(part for part in (clause[just.start() :], rest) if part)
+        clause = clause[: just.start()]
     sarcastic = any(word in folded for word in _SARCASM)
     living = any(word in clause for word in _NEGATED_VETOES)
     plain = clause.rstrip(_PARTICLES)
@@ -173,7 +186,7 @@ def read_answer(
             return IntentReading(IntentAnswer.UNCLEAR)
     calm = assessment.level is CrisisLevel.L0 and not assessment.asks_intent
     if calm and not unsure:
-        return IntentReading(IntentAnswer.DENIED)
+        return IntentReading(IntentAnswer.DENIED, reason_split=split)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
     if negated and not unsure and not plan and rest_screen is not None:
         return IntentReading(IntentAnswer.DENIED, negated=True)

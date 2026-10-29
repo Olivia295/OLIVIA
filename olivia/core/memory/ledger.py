@@ -732,6 +732,11 @@ def _label(entry_id: str) -> str:
     return f"e_{entry_id}"
 
 
+def entry_label(entry: Path) -> str:
+    """The seal label of the entry file ``entry`` (one of :func:`entry_files`)."""
+    return _label(entry.stem)
+
+
 def _unavailable(exc: KeychainUnavailableError) -> LedgerUnavailableError:
     return LedgerUnavailableError(
         "the keychain is unavailable", permanent=isinstance(exc, NoKeychainError)

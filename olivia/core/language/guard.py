@@ -233,6 +233,9 @@ class SubstanceReading:
     talks: bool = False
     """Round 4: the message itself is about drinking (a substance word or a drink): no
     "this matters to you" line after it."""
+    stopping: bool = False
+    """Round 5: stopping a drink or a medicine on one's own, at once ("药我自己停掉了",
+    "从今晚起一口都不碰"); ``withdrawal`` too, and the words are not said back."""
 
     @property
     def any(self) -> bool:
@@ -247,6 +250,13 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     folded = normalize(text)
     if not folded or not cues.substances:
         return NOTHING
+    # Round 5 (复测 q3 第三节): stopping a drink or a medicine on one's own, at once, with
+    # the drink or the medicine named in the message, and no doctor-led taper.
+    stopping = (
+        (_has(folded, cues.substances) or _has(folded, cues.stop_objects))
+        and _free(folded, cues.stopping, cues)
+        and not _has(folded, cues.stop_guided)
+    )
     # "突然不喝会出问题吗" is about drinking unless it names something else to drink.
     asked = _has(folded, cues.questions)
     # Cutting down on a drink that is no other beverage ("只是想少喝一点") is drinking too.
@@ -255,10 +265,10 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         or (asked and not _has(folded, cues.not_alcohol))
         or (_has(folded, cues.quitting) and _drinks(folded, cues))
     )
-    if not (context or mentioned):
+    if not (context or mentioned or stopping):
         return NOTHING
     severe = _free(folded, cues.severe, cues)
-    withdrawal = severe or asked or _free(folded, cues.signs, cues)
+    withdrawal = severe or asked or stopping or _free(folded, cues.signs, cues)
     put_off = _has(folded, cues.later) and _has(folded, cues.put_off)
     drinks = _drinks(folded, cues)
     asks_to_drink = (
@@ -272,8 +282,10 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         for sentence in _SENTENCE_RE.split(folded)
         if sentence
     )
-    talks = _has(folded, cues.substances) or drinks
-    return SubstanceReading(mentioned, withdrawal, severe, asks_to_drink, craving, talks)
+    talks = _has(folded, cues.substances) or drinks or stopping
+    return SubstanceReading(
+        mentioned, withdrawal, severe, asks_to_drink, craving, talks, stopping=stopping
+    )
 
 
 def _relishes(sentence: str, cues: SubstanceCues, *, context: bool) -> bool:
