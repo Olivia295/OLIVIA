@@ -226,6 +226,14 @@ class SessionRecorder:
         self._written = (key, rated)
         return True
 
+    def discard(self) -> None:
+        """Record nothing more and drop the open segment unwritten (round 6, re-test q4 F5:
+        a user who said in the chat that they are under 18 leaves no summary of it)."""
+        self.enabled = False
+        self._segment = _Segment()
+        self._written = None
+        self.closed_segment = False
+
     def close(self) -> bool:
         """Write the current session's summary, once. False if it could not be saved."""
         if self.enabled:
