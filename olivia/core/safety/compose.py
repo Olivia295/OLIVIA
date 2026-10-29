@@ -136,15 +136,22 @@ class _EntrySets:
     also: tuple[frozenset[str], ...]
 
     @classmethod
-    def of(cls, entry: Composition) -> _EntrySets:
+    def of(cls, entry: Composition, shared: dict[frozenset[str], frozenset[str]]) -> _EntrySets:
+        """``shared`` keeps one set per distinct list: many entries name the same list
+        (round 6, 2026-10-30: about half a megabyte of repeated sets)."""
+
+        def once(phrases: Iterable[str]) -> frozenset[str]:
+            found = frozenset(phrases)
+            return shared.setdefault(found, found)
+
         return cls(
-            heads=frozenset(entry.heads),
-            tails=frozenset(entry.tails),
-            exceptions=frozenset(entry.exceptions),
-            blockers=frozenset(entry.blockers),
-            context=frozenset(entry.context),
-            unless=frozenset(entry.unless),
-            also=tuple(frozenset(group.phrases) for group in entry.also),
+            heads=once(entry.heads),
+            tails=once(entry.tails),
+            exceptions=once(entry.exceptions),
+            blockers=once(entry.blockers),
+            context=once(entry.context),
+            unless=once(entry.unless),
+            also=tuple(once(group.phrases) for group in entry.also),
         )
 
 
@@ -303,7 +310,8 @@ class Composer:
             reach.setdefault(phrase[0], []).append(phrase)
         self._reach = {ch: tuple(sorted(ps, key=len, reverse=True)) for ch, ps in reach.items()}
         self._lists = _Lists.of(rules)
-        self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
+        shared: dict[frozenset[str], frozenset[str]] = {}
+        self._sets = tuple((entry, _EntrySets.of(entry, shared)) for entry in rules.entries)
         # Which part of which entry a phrase is: a message only visits the entries whose
         # every required part occurs in it (round 3: the entries keep growing, most
         # messages hit none; 2026-10-28: a head as common as 去 or 多少 visits its entry

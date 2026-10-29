@@ -14,6 +14,8 @@ import pytest
 
 from olivia.core.perception.lexicon import load_perception_lexicon
 from olivia.core.perception.rule_stub import RuleStub
+from olivia.core.safety import compose, crisis, reported
+from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.safety.matcher import Match, PhraseMatcher
 from olivia.core.taxonomy import load_taxonomy
 
@@ -99,6 +101,32 @@ def test_the_rule_stub_phrases_match_the_reference() -> None:
             assert compact.find_all(text) == reference.find_all(text)
         for phrase in list(phrases)[:: max(1, len(phrases) // 200)]:
             text = f"今天{phrase}了，{phrase}"
+            assert compact.find_all(text) == reference.find_all(text)
+
+
+def test_the_safety_index_phrases_match_the_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Round 6 (2026-10-30, preorder numbering): every phrase set the screen's index builds
+    # (cue phrases keyed by cue id, compositions, denial, reported speech ...), as built.
+    built: list[dict[str, str]] = []
+
+    class Recording(PhraseMatcher):
+        def __init__(self, phrases: Mapping[str, str]) -> None:
+            built.append(dict(phrases))
+            super().__init__(phrases)
+
+    for module in (crisis, compose, reported):
+        monkeypatch.setattr(module, "PhraseMatcher", Recording)
+    crisis._CueIndex(load_safety_lexicons(load_taxonomy()))
+    assert len(built) >= 5
+    rng = random.Random(11)
+    for phrases in built:
+        compact, reference = PhraseMatcher(phrases), _ReferenceMatcher(phrases)
+        pool = "".join(phrases) + "，。？的了我你他"
+        for _ in range(150):
+            text = "".join(rng.choice(pool) for _ in range(rng.randint(0, 160)))
+            assert compact.find_all(text) == reference.find_all(text)
+        for phrase in list(phrases)[:: max(1, len(phrases) // 150)]:
+            text = f"我{phrase}了，{phrase}吧"
             assert compact.find_all(text) == reference.find_all(text)
 
 
