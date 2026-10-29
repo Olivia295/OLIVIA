@@ -383,6 +383,7 @@ class RuleStub:
         self._minor_patterns = lexicon.minor_disclosure_patterns
         self._minor_past = lexicon.minor_past_patterns
         self._minor_other = lexicon.minor_other_patterns
+        self._minor_teacher = lexicon.minor_teacher_patterns
         self._advice_patterns = lexicon.advice_patterns
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
@@ -612,6 +613,9 @@ class RuleStub:
         near = body[before_start : after.start() if after is not None else len(body)]
         if _MINOR_NOW.search(own) is None and any(p.search(near) for p in self._minor_past):
             return False
+        rest = body[end : after.start() if after is not None else len(body)]
+        if any(p.search(rest) for p in self._minor_teacher):
+            return False  # round 6 follow-up (2026-10-30): a teacher's school year
         matched = body[start:end].lstrip(_MINOR_CLAUSE_MARKS)
         if matched.startswith(_MINOR_SELF):
             return True
