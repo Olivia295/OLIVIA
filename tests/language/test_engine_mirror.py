@@ -303,6 +303,13 @@ def test_mirror_invariants(user_text: str) -> None:
     assert not out.startswith(("你感到你", "你提到你")), (user_text, out)
 
 
+@pytest.mark.parametrize("user_text", ["觉得我他", "觉得我她总是不理"])
+def test_view_verb_before_me_keeps_one_frame(user_text: str) -> None:
+    out = mirror(user_text)
+    assert not out.startswith(("你感到你", "你提到你")), out
+    assert out.startswith("你觉得")
+
+
 def test_safe_mirror_hides_diagnosis_and_numbers(engine: LanguageEngine) -> None:
     assert engine.safe_mirror("我有抑郁症") == FALLBACK_MIRROR
     assert engine.safe_mirror("我的电话是13800138000") == FALLBACK_MIRROR

@@ -1216,7 +1216,9 @@ def _lead(clause: str, body: str, conflict: bool) -> str:
     view = next((v for v in _VIEW_VERBS if clause.startswith(v) and len(body) > len(v)), None)
     if view is not None:
         # "觉得好孤单" -> "你觉得好孤单"; "觉得他不爱我了" -> "你感到他不爱你了".
-        return _FEEL_PREFIX + body[len(view) :] if conflict and about_user else "你" + body
+        # A view whose next word is the user ("觉得我他…") keeps its own verb: never "你感到你…".
+        framed = conflict and about_user and not body[len(view) :].startswith("你")
+        return _FEEL_PREFIX + body[len(view) :] if framed else "你" + body
     if conflict:
         if about_user:
             return _FEEL_PREFIX + body
