@@ -65,7 +65,9 @@ QA_SENTENCES = [
     ("我已经想好了，这周末去楼顶跳下去", L.L3, False),
     ("我打算明天下班后去江边那座桥上往下跳", L.L3, False),
     ("我諗住今晚上天台跳落去", L.L3, False),
-    ("今晚想从窗台翻出去，不想再撑下去", L.L2, False),
+    # Round 6: 不想再撑下去 is now also the D3 cue ASK_INTENT_STOP_HOLDING_ON; the turn is
+    # L2 all the same, so it enters the crisis flow (an ask flag beside L2 changes nothing).
+    ("今晚想从窗台翻出去，不想再撑下去", L.L2, True),
     ("想爬到楼顶上去，往下一跳，什么都不用管", L.L2, False),
     ("有些晚上我会觉得，要是不在这世上就好", L.L2, False),
     ("我不太想继续活下去", L.L2, False),

@@ -53,6 +53,10 @@ SAME_IN_TRADITIONAL = frozenset(
     # 2026-10-28: dose questions and their pets and plants (仙人掌, 葡萄, 兔), PRD L1 wording
     # (心力交瘁, 身心俱疲, 努力), and the chores and fights that void 动手 (揍, 循环).
     "仙俱兔努嗑射巧循掌揍洋疲瘁皮菌萄葡指"
+    # Round 6 (2026-10-29): the frames by meaning (calamities, a voice, starving, wiping
+    # accounts, cuts) and their everyday exceptions (plants, places, chores, sport).
+    "京仇伏例偶催共冤削劈北古叫史啤圳城塔孔宇屏州左市帝幕廊徒恐承括挨援摔敢斑普晶栽椎治溺澡炎爽牙"
+    "牛狠猝疤痕癌砸碘祈票秀私科竟箭羞耳肚股肪脂腰航苗茉荷莉薄迎透逐速遇雷韭香鬼鼻嘻握攥裹雕勇孢材棵棺第肝螃蟹超跨"
 )
 
 

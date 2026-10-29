@@ -38,11 +38,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from olivia.core.language.data import RiskComponents, SubstanceCues
+from olivia.core.language.data import RiskComponents, RiskSemantics, SubstanceCues
 from olivia.core.safety.lexicon import Composition, SafetyLexicons
 from olivia.core.safety.normalize import normalize
 
 _RISK_SECTIONS: Final = frozenset({"stage1", "stage2"})
+_CONFIRM_SECTION: Final = "safety_confirm"
+# Dropped before a safety confirmation is read, as the crisis tracker does ("我现在是安全的").
+_CONFIRM_GAPS: Final = ("已经", "现在", "都")
 _FIGURATIVE: Final = "hyperbole"
 _EVERYDAY_SECTIONS: Final = frozenset({"hyperbole", "negation"})
 _MASK: Final = "\0"
@@ -138,8 +141,11 @@ class MirrorGuard:
         lexicons: SafetyLexicons | None,
         extra: Iterable[str] = (),
         components: RiskComponents | None = None,
+        semantic: RiskSemantics | None = None,
     ) -> None:
         phrases: set[str] = {normalize(w) for w in extra}
+        self._semantic = _Index(semantic.words if semantic is not None else ())
+        self._semantic_usual = _Index(semantic.everyday if semantic is not None else ())
         self._components = components
         self._kinds = (
             {name: _Index(words) for name, words in components.kinds.items()}
@@ -152,10 +158,13 @@ class MirrorGuard:
         everyday: set[str] = set()
         relaxed: list[_Relaxed] = []
         vetoes: tuple[str, ...] = ()
+        confirms: set[str] = set()
         if lexicons is not None:
             for cue in lexicons.risk.values():
                 if cue.section in _RISK_SECTIONS:
                     phrases.update(cue.patterns)
+                if cue.section == _CONFIRM_SECTION:
+                    confirms.update(cue.patterns)
                 if cue.section == _FIGURATIVE:
                     figurative.update(cue.patterns)
                 if cue.section in _EVERYDAY_SECTIONS:
@@ -175,6 +184,7 @@ class MirrorGuard:
                 self._by_word.setdefault(word, []).append(r)
         self._parts = _Index(w for r in relaxed for w in r.words())
         self._vetoes = _Index(vetoes)
+        self._confirms = _Index(confirms)
 
     def risky(self, text: str) -> bool:
         """``text`` holds a risk phrase or a loosely read composition, outside hyperbole."""
@@ -202,6 +212,24 @@ class MirrorGuard:
         if _LASTING in kinds and self._soft.found(folded):
             kinds.add(_ENDING)
         return kinds
+
+    def confirms_safety(self, text: str) -> bool:
+        """Round 6 (复测 q4 F18): ``text`` says the user is safe ("我现在是安全的"; the
+        lexicon's ``safety_confirm`` phrases). Said back it reads as the companion telling
+        the user they are safe ("我听见的是：你现在是安全的")."""
+        folded = normalize(text)
+        for gap in _CONFIRM_GAPS:
+            folded = folded.replace(gap, "")
+        return bool(self._confirms.found(folded))
+
+    def about_risk(self, text: str) -> bool:
+        """Round 6 (复测 q3): ``text`` is about dying, leaving for good, a means, the affairs
+        after a death, a height or starving (``guarded.semantic``), outside every everyday
+        word of that list ("死机", "跳绳", "开刀") and of ``guarded.components``. Not masked
+        by the screen's hyperbole or negation: what a message is about is not said back
+        whether or not the screen rates it."""
+        folded = self._semantic_usual.masked(self._usual.masked(normalize(text)))
+        return bool(self._semantic.found(folded))
 
     def flagged(self, text: str) -> bool:
         """``text`` holds a ``recall_cap`` risk word outside every everyday sense (round 4:

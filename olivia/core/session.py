@@ -579,7 +579,7 @@ from olivia.core.safety.crisis import (
 )
 from olivia.core.safety.intent_check import IntentAnswer, read_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
-from olivia.core.safety.normalize import normalize, shown_text
+from olivia.core.safety.normalize import bidi_readings, normalize, shown_text
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
@@ -1069,6 +1069,8 @@ class Session:
         # Round 5 (复测 q4 IN-4): the screen reads text with direction controls both as typed
         # and as shown; the rest of the turn sees it without them (``normalize.shown_text``).
         assessment = self._screen.assess(text)
+        # Round 6 (复测 q4 F17): text whose two orders differ is not said back in either.
+        self._engine.note_scrambled(len(bidi_readings(text)) > 1)
         text = shown_text(text)
         asking = self._asking
         try:

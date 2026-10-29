@@ -226,7 +226,9 @@ class LanguageEngine:
         self._data = data if data is not None else load_language_data(tax)
         self._gate = OutputGate(tax, self._data)
         said = self._data.utterances
-        self._guard = MirrorGuard(lexicons, said.extra_risk_words, said.components)
+        self._guard = MirrorGuard(
+            lexicons, said.extra_risk_words, said.components, semantic=said.semantic
+        )
         # The level the session gave this turn (note_risk) and the rule screen's own level
         # (round 4), and whether drinking came up this session (round 3).
         self._turn_level = CrisisLevel.L0
@@ -237,6 +239,8 @@ class LanguageEngine:
         self._last_ack: tuple[str, tuple[str, ...], str] | None = None
         self._drinking = False
         self._words_read: tuple[str, bool] | None = None
+        # Round 6: this turn's text came with direction controls that change its order.
+        self._scrambled = False
         self.last_gate: GateResult | None = None
         # The verdict on the last crisis reply with the user's safety plan in it (B10);
         # None when no plan block was offered.
@@ -407,12 +411,24 @@ class LanguageEngine:
             return True
         return self.risky_words(user_text)
 
+    def note_scrambled(self, scrambled: bool) -> None:
+        """Round 6 (复测 q4 F17): whether this turn's text came with direction controls that
+        make it read differently as typed and as shown ("最近老是<RLO>失眠<PDF>" is shown
+        as 眠失). Neither order is said back: the user meant one of them, and which one
+        cannot be told."""
+        self._scrambled = scrambled
+
     def risky_words(self, user_text: str) -> bool:
         """``user_text`` holds a risk phrase, a risk word or two kinds of risk component
-        (``guard.MirrorGuard``), whatever level the turn has."""
+        (``guard.MirrorGuard``), or (round 6) is about dying, leaving for good, a means, a
+        height or starving (:meth:`MirrorGuard.about_risk`), whatever level the turn has;
+        or the turn's text was scrambled by direction controls (:meth:`note_scrambled`)."""
+        if self._scrambled:
+            return True
         # A turn reads the same message more than once (a recomposed reply): read it once.
         if self._words_read is None or self._words_read[0] != user_text:
-            said = self._guard.risky(user_text) or self._guard.flagged(user_text)
+            guard = self._guard
+            said = guard.risky(user_text) or guard.flagged(user_text) or guard.about_risk(user_text)
             self._words_read = (user_text, said)
         return self._words_read[1]
 
@@ -463,9 +479,10 @@ class LanguageEngine:
         """
         kind = utterance_kind(user_text) if kind is None else kind
         acks = self._data.utterances.acks.get(kind.value, ())
-        if not instead and self.risky_words(user_text):
+        if not instead and (self.risky_words(user_text) or self._guard.confirms_safety(user_text)):
             # Round 4: risk words are never said back, wherever the mirror is used (the
-            # crisis flow's answer to new words too), whatever the turn's level.
+            # crisis flow's answer to new words too), whatever the turn's level. Round 6:
+            # nor a safety confirmation (复测 q4 F18: "我听见的是：你现在是安全的").
             instead = self._data.utterances.guarded_acks
         if instead:
             raw = self._pick_ack(instead, user_text)
