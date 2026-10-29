@@ -889,6 +889,8 @@ class Session:
         # Round 4: this turn reports someone else's words and every rule cue lies in them
         # (set by ``_reported_risk``; a model-only alarm on it asks, never the crisis flow).
         self._reported_words = False
+        # 负责人 2026-10-30 决定: this turn answers the age question with a no (set per turn).
+        self._minor_denial = False
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
         self._gentle_care = False
         # This session opened with the A3 check-in greeting (``care_greeting``).
@@ -1111,6 +1113,9 @@ class Session:
             # takes the minors' flow first (its emergency numbers lead), never the crisis
             # flow, whose question a "是" to the age question would answer.
             assessment = replace(assessment, level=CrisisLevel.L1)
+        # 负责人 2026-10-30 决定: a no to the question whether the user is under 18 ("不是，我打
+        # 错了，我都三十了") with only the model's alarm asks first, whatever the score.
+        self._minor_denial = self._minor_asking and reads_no(text)
         model_ask = self._model_only_alarm(assessment, answer, model_level, model_score)
         if model_ask:
             # Owner decisions 2026-10-26: the rules found nothing and the student is unsure,
@@ -2294,6 +2299,11 @@ class Session:
             # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
             # so the user is asked, whatever the score and however often, never put into
             # the crisis flow on the model's word alone ("我妈留言：累了就回家……").
+            return True
+        if self._minor_denial:
+            # 负责人 2026-10-30 决定 (round 6, re-test q2 F4-5): the turn answers whether the
+            # user is under 18 with a no and the rules find no risk cue in it; a sure model
+            # (score >= 0.6) asks first too, never the crisis flow on its word alone.
             return True
         return first and self._shared.lexicons.model_ask.asks_first(model_score)
 

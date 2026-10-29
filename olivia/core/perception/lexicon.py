@@ -121,6 +121,7 @@ _SECTIONS: Final = frozenset(
         "minor_disclosure_patterns",
         "minor_past_patterns",
         "minor_other_patterns",
+        "minor_teacher_patterns",
         "contraindicated_practices",
         "hotline_places",
         "local_emergency_places",
@@ -263,6 +264,8 @@ class PerceptionLexicon:
     """The past next to an age or school year ("那时", "以前"; round 6): no disclosure."""
     minor_other_patterns: tuple[re.Pattern[str], ...] = ()
     """Someone else named before a disclosure with no self word (round 6)."""
+    minor_teacher_patterns: tuple[re.Pattern[str], ...] = ()
+    """Teaching right after a school year in its clause ("在初中教数学"): no disclosure."""
     strain_cues: tuple[str, ...] = ()
     """Strain that is no crisis cue ("撑不了多久了"), read only after a crisis (第 11 条)."""
     imminent_times: tuple[str, ...] = ()
@@ -459,6 +462,9 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         ),
         minor_past_patterns=_patterns(doc.get("minor_past_patterns"), "minor_past_patterns"),
         minor_other_patterns=_patterns(doc.get("minor_other_patterns"), "minor_other_patterns"),
+        minor_teacher_patterns=_patterns(
+            doc.get("minor_teacher_patterns"), "minor_teacher_patterns"
+        ),
         strain_cues=phrases["strain_cues"],
         imminent_times=phrases["imminent_times"],
         imminent_means=phrases["imminent_means"],
