@@ -134,6 +134,11 @@ class DataDir:
     """Paths whose mode is not 0700 / 0600; None when not checked (Windows, or no dir)."""
     access: Access | None = None
     """Why the program cannot use the directory (:func:`access_problem`); None when it can."""
+    culprit: str | None = None
+    """Round 6 (QA q4 F12): the first path inside the directory behind ``access``, relative
+    and POSIX-style ("keys", "ledger/x.olv"); None for the directory itself."""
+    mismatched_example: str | None = None
+    """Round 6 (QA q4 F12): the first path whose mode is off, the same way."""
 
 
 @dataclass(frozen=True)
@@ -202,7 +207,9 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
         )
     except OSError:  # its parent cannot be searched: as good as unreadable
         kind = "dir"
-    access = access_problem(base)
+    detail = access_detail(base)
+    access = detail[0] if detail is not None else None
+    culprit = _relative(base, detail[1]) if detail is not None else None
     readable = kind == "dir" and access != "unreadable"
     found = keychain.probe()
     there = found in (keychain.Probe.READY, keychain.Probe.UNCHECKED)
@@ -238,8 +245,19 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
             opened = _guarded(functools.partial(_key_opens, vault, PROFILE_STORE))
             if opened is not StoreState.READY:
                 profile = replace(profile, state=opened)
+    if found is keychain.Probe.READY and StoreState.LOCKED in (profile.state, *stores.values()):
+        # Round 6 (QA q4 F6): the probe answered, but reading a master key did not.
+        found = keychain.Probe.UNAVAILABLE
+    off = _mismatched_paths(base) if readable else None
     return Report(
-        data_dir=DataDir(base, kind, _mismatched(base) if readable else None, access),
+        data_dir=DataDir(
+            base,
+            kind,
+            None if off is None else len(off),
+            access,
+            culprit=culprit,
+            mismatched_example=_relative(base, off[0]) if off else None,
+        ),
         keychain=found,
         profile=profile,
         stores=stores,
@@ -269,8 +287,16 @@ def misplaced(base: Path) -> tuple[str, ...]:
 
 
 def access_problem(base: Path) -> Access | None:
-    """Why this account cannot use the data directory ``base``, or None when it can (or
-    when there is no directory yet: the first visit makes it).
+    """Why this account cannot use the data directory ``base`` (:func:`access_detail`),
+    or None when it can."""
+    detail = access_detail(base)
+    return None if detail is None else detail[0]
+
+
+def access_detail(base: Path) -> tuple[Access, Path] | None:
+    """Why this account cannot use the data directory ``base``, and the first path behind
+    it (``base`` itself, or a directory or file in it; round 6, QA q4 F12), or None when it
+    can (or when there is no directory yet: the first visit makes it).
 
     ``"file"``: something that is not a directory is in its place. ``"unreadable"``: the
     directory, or a directory or file in it, cannot be read (or a directory not searched).
@@ -282,33 +308,59 @@ def access_problem(base: Path) -> Access | None:
         if not base.exists():
             return None
         if not base.is_dir():
-            return "file"
+            return "file", base
     except OSError:
-        return "unreadable"
+        return "unreadable", base
     if not os.access(base, os.R_OK | os.X_OK):
-        return "unreadable"
-    unwritable = not os.access(base, os.W_OK)
-    try:
-        inside = list(base.rglob("*"))
-    except OSError:
-        return "unreadable"
-    for path in inside:
+        return "unreadable", base
+    unwritable: Path | None = None if os.access(base, os.W_OK) else base
+    for path in _walk(base):
+        if path is None:
+            return "unreadable", base
         relative = path.relative_to(base).parts
         if relative and relative[0] == bundle.OVERRIDE_DIR_NAME:
             continue
         try:
             info = path.lstat()
         except OSError:
-            return "unreadable"
+            return "unreadable", path
         if stat.S_ISLNK(info.st_mode):
             continue
         if stat.S_ISDIR(info.st_mode):
             if not os.access(path, os.R_OK | os.X_OK):
-                return "unreadable"
-            unwritable = unwritable or not os.access(path, os.W_OK)
+                return "unreadable", path
+            if unwritable is None and not os.access(path, os.W_OK):
+                unwritable = path
         elif not os.access(path, os.R_OK):
-            return "unreadable"
-    return "unwritable" if unwritable else None
+            return "unreadable", path
+    return None if unwritable is None else ("unwritable", unwritable)
+
+
+def _walk(base: Path) -> list[Path | None]:
+    """Every path under ``base`` (sorted), with a None where a folder cannot be listed."""
+    out: list[Path | None] = []
+    try:
+        children = sorted(base.iterdir())
+    except OSError:
+        return [None]
+    for child in children:
+        out.append(child)
+        try:
+            is_dir = child.is_dir() and not child.is_symlink()
+        except OSError:
+            is_dir = False
+        if is_dir and os.access(child, os.R_OK | os.X_OK):
+            out.extend(_walk(child))
+    return out
+
+
+def _relative(base: Path, path: Path) -> str | None:
+    """``path`` relative to ``base`` in POSIX style; None for ``base`` itself."""
+    try:
+        relative = path.relative_to(base)
+    except ValueError:
+        return None
+    return None if not relative.parts else relative.as_posix()
 
 
 def _guarded(check: Callable[[], StoreState]) -> StoreState:
@@ -394,6 +446,10 @@ def _looks_sealed(path: Path) -> bool:
 def _sealed(base: Path, files: list[Path], store: str, keychain_there: bool) -> StoreState:
     if not files:
         return StoreState.ABSENT
+    keys = base / KEYS_DIRNAME
+    if keys.is_dir() and not os.access(keys, os.R_OK | os.X_OK):
+        # Round 6 (QA q4 F7): the keys cannot be read, which is no damage.
+        raise PermissionError(f"{KEYS_DIRNAME} cannot be read")
     intact = [_looks_sealed(path) for path in files]
     if not any(intact) or not key_file_intact(base, store):
         return StoreState.BROKEN
@@ -438,12 +494,13 @@ def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
     )
 
 
-def _mismatched(base: Path) -> int | None:
-    """How many paths are not 0700 (directories) / 0600 (files); None on Windows."""
+def _mismatched_paths(base: Path) -> list[Path] | None:
+    """The paths that are not 0700 (directories) / 0600 (files), in walk order; None on
+    Windows."""
     if os.name == "nt":
         return None
-    count = 0
-    for path in (base, *base.rglob("*")):
+    off: list[Path] = []
+    for path in (base, *(p for p in _walk(base) if p is not None)):
         relative = path.relative_to(base).parts
         if relative and relative[0] == bundle.OVERRIDE_DIR_NAME:
             continue  # placed there by the user, holds no personal data
@@ -454,8 +511,9 @@ def _mismatched(base: Path) -> int | None:
         if stat.S_ISLNK(info.st_mode):
             continue
         want = PRIVATE_DIR_MODE if stat.S_ISDIR(info.st_mode) else PRIVATE_FILE_MODE
-        count += stat.S_IMODE(info.st_mode) != want
-    return count
+        if stat.S_IMODE(info.st_mode) != want:
+            off.append(path)
+    return off
 
 
 def _hotlines(base: Path, today: date) -> HotlineFacts:

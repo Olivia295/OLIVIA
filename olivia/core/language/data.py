@@ -507,6 +507,11 @@ class RenderText:
     """A call does not get through: try later or another line, the emergency number."""
     hotline_emergency: tuple[str, ...] = ()
     """Leads the card when the police or ambulance number is asked for."""
+    # Round 6 (2026-10-29, re-test q2 第 5 节; drafts, G-0).
+    hotline_in_crisis: tuple[str, ...] = ()
+    """Leads the crisis reply when the user asks for a number in the crisis flow."""
+    hotline_call_script: tuple[str, ...] = ()
+    """What to say once a call gets through (where, what happened, how things are now)."""
     hotline_number_known: str = ""
     """Leads "number: what the data says it is" for a number asked about."""
     hotline_number_unknown: tuple[str, ...] = ()
@@ -649,6 +654,10 @@ class SubstanceCues:
     """Stopping on one's own, at once ("停掉", "一口都不碰", "停咗"): the withdrawal reminder."""
     stop_guided: tuple[str, ...] = ()
     """A taper the doctor leads ("医生让我慢慢减"): no reminder for the stop itself."""
+    # Round 6 (2026-10-29, re-test q2 第 6 节 / q3 第三节; draft, G-0).
+    stop_patterns: tuple[re.Pattern[str], ...] = ()
+    """Stopping as grammar, on the folded text ("一粒也不吃", "再也不喝", "全都不吃"):
+    read like ``stopping``."""
 
 
 def _no_feelings() -> Feelings:
@@ -1138,6 +1147,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         hotline_hours_from_data=texts["hotline_hours_from_data"],
         hotline_unreachable=crisis_lists["hotline_unreachable"],
         hotline_emergency=crisis_lists["hotline_emergency"],
+        hotline_in_crisis=crisis_lists["hotline_in_crisis"],
+        hotline_call_script=crisis_lists["hotline_call_script"],
         hotline_number_known=texts["hotline_number_known"],
         hotline_number_unknown=crisis_lists["hotline_number_unknown"],
         hotline_place_hint=crisis_lists["hotline_place_hint"],
@@ -1921,7 +1932,16 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     _keys(raw, {"signs", "severe", "questions"}, f"{where} withdrawal")
     v = {name: folded(data[name], f"{where} {name}") for name in lists}
     stop = _map(data["stopping"], f"{where} stopping")
-    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping")
+    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping", optional={"patterns"})
+    stop_patterns: list[re.Pattern[str]] = []
+    for raw_pattern in _strs(stop.get("patterns", []), f"{where} stopping.patterns"):
+        try:
+            compiled = re.compile(raw_pattern)
+        except re.error as exc:
+            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r}: {exc}") from exc
+        if compiled.fullmatch(""):
+            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r} matches empty")
+        stop_patterns.append(compiled)
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -1946,6 +1966,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_objects=folded(stop["objects"], f"{where} stopping.objects"),
         stopping=folded(stop["phrases"], f"{where} stopping.phrases"),
         stop_guided=folded(stop["guided"], f"{where} stopping.guided"),
+        stop_patterns=tuple(stop_patterns),
     )
 
 
@@ -2003,6 +2024,8 @@ _CRISIS_LISTS: Final = (
     "hotline_emergency",
     "hotline_number_unknown",
     "hotline_place_hint",
+    "hotline_in_crisis",
+    "hotline_call_script",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (

@@ -236,6 +236,9 @@ class SubstanceReading:
     stopping: bool = False
     """Round 5: stopping a drink or a medicine on one's own, at once ("药我自己停掉了",
     "从今晚起一口都不碰"); ``withdrawal`` too, and the words are not said back."""
+    symptoms: bool = False
+    """Round 6: a withdrawal sign in the body or a severe one ("手一直抖", "看见墙上有东西"):
+    the reply sends to a doctor and offers no practice card."""
 
     @property
     def any(self) -> bool:
@@ -252,10 +255,19 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         return NOTHING
     # Round 5 (复测 q3 第三节): stopping a drink or a medicine on one's own, at once, with
     # the drink or the medicine named in the message, and no doctor-led taper.
+    # Round 6 (复测 q2 第 6 节, q3 第三节): stopping as grammar too ("一粒也不吃", "再也
+    # 不喝"), and a taper is the doctor's only when not negated ("也不跟医生说" is none).
     stopping = (
         (_has(folded, cues.substances) or _has(folded, cues.stop_objects))
-        and _free(folded, cues.stopping, cues)
-        and not _has(folded, cues.stop_guided)
+        and (
+            _free(folded, cues.stopping, cues)
+            or any(
+                not _negated(folded, m.start(), cues)
+                for pattern in cues.stop_patterns
+                for m in pattern.finditer(folded)
+            )
+        )
+        and not _guided(folded, cues)
     )
     # "突然不喝会出问题吗" is about drinking unless it names something else to drink.
     asked = _has(folded, cues.questions)
@@ -268,7 +280,8 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     if not (context or mentioned or stopping):
         return NOTHING
     severe = _free(folded, cues.severe, cues)
-    withdrawal = severe or asked or stopping or _free(folded, cues.signs, cues)
+    symptoms = severe or _free(folded, cues.signs, cues)
+    withdrawal = symptoms or asked or stopping
     put_off = _has(folded, cues.later) and _has(folded, cues.put_off)
     drinks = _drinks(folded, cues)
     asks_to_drink = (
@@ -284,7 +297,14 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     )
     talks = _has(folded, cues.substances) or drinks or stopping
     return SubstanceReading(
-        mentioned, withdrawal, severe, asks_to_drink, craving, talks, stopping=stopping
+        mentioned,
+        withdrawal,
+        severe,
+        asks_to_drink,
+        craving,
+        talks,
+        stopping=stopping,
+        symptoms=symptoms,
     )
 
 
@@ -358,6 +378,33 @@ def _negated(text: str, start: int, cues: SubstanceCues) -> bool:
             plain = plain.replace(word, _MASK * len(word))
     head = plain[begin:start]
     return any(n in head for n in cues.negators)
+
+
+# Round 6: how far back in its clause a negator voids a doctor-led taper ("也不打算跟
+# 医生说" is none).
+_GUIDED_LOOKBACK: Final = 6
+_CLAUSE_MARKS: Final = frozenset(",.!?;:，。！？；：、~…\n")
+
+
+def _guided(text: str, cues: SubstanceCues) -> bool:
+    """A ``stop_guided`` phrase with no negator in the few characters of its clause before
+    it (round 6): "医生让我慢慢减" is a taper, "也不打算跟医生说" is not."""
+    plain = text
+    for word in cues.non_negators:
+        if word in plain:
+            plain = plain.replace(word, _MASK * len(word))
+    for phrase in cues.stop_guided:
+        start = text.find(phrase)
+        while start >= 0:
+            head = plain[max(0, start - _GUIDED_LOOKBACK) : start]
+            for i in range(len(head) - 1, -1, -1):
+                if head[i] in _CLAUSE_MARKS:
+                    head = head[i + 1 :]
+                    break
+            if not any(n in head for n in cues.negators):
+                return True
+            start = text.find(phrase, start + 1)
+    return False
 
 
 def _is_a_not_a(three: str, cues: SubstanceCues) -> bool:

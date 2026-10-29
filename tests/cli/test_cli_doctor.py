@@ -249,7 +249,10 @@ def test_loose_permissions_are_a_warning(doctor, data_home):
     (data_home / PROFILE_FILENAME).chmod(0o644)
     run = doctor()
     assert run.code == 0
-    assert _line(run, "数据目录的权限") == f"{WARN} " + cli.DOCTOR_PERMISSIONS_OFF.format(count=1)
+    # Round 6 (QA q4 F12): the path is named.
+    assert _line(run, "数据目录的权限") == f"{WARN} " + cli.DOCTOR_PERMISSIONS_OFF_AT.format(
+        count=1, name=PROFILE_FILENAME
+    )
 
 
 def test_a_signed_update_folder_does_not_count_against_permissions(doctor, data_home):
@@ -432,8 +435,9 @@ def _set_up(run_cli) -> None:
         ("", 0o000, cli.DOCTOR_DIR_UNREADABLE),
         ("", 0o300, cli.DOCTOR_DIR_UNREADABLE),
         ("", 0o500, cli.DOCTOR_DIR_UNWRITABLE),
-        ("keys", 0o000, cli.DOCTOR_DIR_UNREADABLE),
-        ("ledger", 0o500, cli.DOCTOR_DIR_UNWRITABLE),
+        # Round 6 (QA q4 F12): a path inside the data directory is named.
+        ("keys", 0o000, cli.DOCTOR_DIR_UNREADABLE_AT),
+        ("ledger", 0o500, cli.DOCTOR_DIR_UNWRITABLE_AT),
     ],
 )
 def test_a_directory_without_permissions_fails_and_says_how_to_fix_it(
@@ -450,8 +454,9 @@ def test_a_directory_without_permissions_fails_and_says_how_to_fix_it(
     assert run.lines[-1] == cli.DOCTOR_FOOTER
     assert cli.UNEXPECTED_ERROR not in run.out and cli.DATA_DIR_UNUSABLE not in run.out
     shown = cli._shown_location(data_home)
-    assert f"{FAIL} {text.format(location=shown)}" in run.lines
-    fix = run.lines[run.lines.index(f"{FAIL} {text.format(location=shown)}") + 1]
+    said = f"{FAIL} {text.format(location=shown, name=where)}"
+    assert said in run.lines
+    fix = run.lines[run.lines.index(said) + 1]
     assert fix == "  " + cli.DOCTOR_FIX_POSIX.format(path=cli._shell_path(data_home))
 
 
@@ -489,8 +494,11 @@ def test_a_file_in_place_of_the_data_directory_says_what_to_do(run_cli, data_hom
     assert run.code == 1 and run.lines[-1] == cli.DOCTOR_FOOTER
     line = _line(run, "数据目录：")
     assert line.startswith(FAIL) and "挪走" in line
-    for name in cli.DOCTOR_STORE_NAMES:
-        assert _line(run, _store(name)).endswith("：没有")
+    for name in cli.DOCTOR_STORE_NAMES:  # round 6 (QA q4 F12): not "✓ none"
+        line = _line(run, _store(name))
+        assert line == f"{WARN} " + cli.DOCTOR_STORE_UNCHECKED.format(
+            name=cli.DOCTOR_STORE_NAMES[name]
+        )
     assert "关于你的隐私" in run_cli(["privacy"]).out
     assert "999" in run_cli(["resources", "HK"]).out
 

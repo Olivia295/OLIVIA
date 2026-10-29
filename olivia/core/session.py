@@ -904,7 +904,9 @@ class Session:
         # S5 (2026-10-26): in full once per crisis, then one reminder line; the people of
         # section 4 also go into a crisis farewell.
         self._plan_block = crisis_block(safety_plan)
-        if safety_plan is None and safety_plan_unreadable:  # QA q4 FLT-3: never silent
+        # Round 6 (复测 q4 F20): the inspect panel tells the note apart from the plan.
+        self._plan_unreadable = safety_plan is None and safety_plan_unreadable
+        if self._plan_unreadable:  # QA q4 FLT-3: never silent
             self._plan_block = load_safety_plan_text().crisis_unreadable
         self._plan_reminder = crisis_reminder(safety_plan)
         self._plan_people = farewell_people(safety_plan)
@@ -1338,7 +1340,12 @@ class Session:
             open_turn
             and not minor_now
             and not third_now
-            and (signals.hotline_request or followup or signals.hotline_number is not None)
+            and (
+                signals.hotline_request
+                or followup
+                or signals.hotline_number is not None
+                or signals.hotline_call_script
+            )
         )
         transition = step(
             self._tax,
@@ -1515,7 +1522,14 @@ class Session:
                 rendered = self._crisis_waiting(text, status, now, signals, stage)
                 heard = True
             else:
-                rendered = self._crisis(status, now, confirmed=waiting, hint=hint)
+                # Round 6 (re-test q2 第 5 节): asked for the police or ambulance number, or
+                # how to talk on that call, the card puts the emergency numbers first.
+                emergency = signals.hotline_emergency or (
+                    signals.hotline_call_script and self._names_emergency(text)
+                )
+                rendered = self._crisis(
+                    status, now, confirmed=waiting, hint=hint, emergency=emergency
+                )
                 if hint:
                     self._confirm_hinted = True
                 if confirmed:
@@ -1649,6 +1663,9 @@ class Session:
             )
             and not transition.state.pure_listening_locked
             and feedback is None
+            # Round 6 (复测 q3 第三节): a withdrawal sign gets "see a doctor", never a
+            # breathing card after it.
+            and not self._engine.withdrawal_symptoms(text)
             # Round 4: a distress rating at the somatic line after an S_explore card gets
             # the stabilization whitelist again, not a mirror of the number.
             and not (
@@ -1755,8 +1772,11 @@ class Session:
                 rendered.reply = f"{boundary}\n\n{rendered.reply}"
         elif withdrawal := self._engine.withdrawal_line(text):
             # Round 4 (复测 q3): a withdrawal sign gets its reminder after the crisis card or
-            # the safety question too.
-            rendered.reply = f"{rendered.reply}\n\n{withdrawal}"
+            # the safety question too. Round 6 (复测 q2 第 6 节): before the numbers, after
+            # the opening line, so the card does not bury it.
+            parts = rendered.reply.split("\n\n")
+            at = 1 if len(parts) > 1 else len(parts)
+            rendered.reply = "\n\n".join([*parts[:at], withdrawal, *parts[at:]])
         cared = False
         if (
             (self._care_greeting or self._crisis_seen is not None)
@@ -1876,7 +1896,13 @@ class Session:
             "schema_mirror": mirror_status.value if mirror_status is not None else None,
             "externalize": naming_status.value if naming_status is not None else None,
             "externalize_name": self._externalize.name,
-            "safety_plan_shown": rendered.plan_shown,
+            "safety_plan_shown": rendered.plan_shown and not self._plan_unreadable,
+            # Round 6 (复测 q4 F20): only when a saved plan could not be opened.
+            **(
+                {"safety_plan_unreadable_said": rendered.plan_shown}
+                if self._plan_unreadable
+                else {}
+            ),
             "note_recall": recall.value if recall is not None else None,
         }
         return TurnResult(
@@ -1985,13 +2011,17 @@ class Session:
 
     # -- stages ---------------------------------------------------------------------------
 
-    def _crisis_card(self, level: CrisisLevel, now: datetime) -> tuple[ResourceCard, bool]:
+    def _crisis_card(
+        self, level: CrisisLevel, now: datetime, *, emergency: bool = False
+    ) -> tuple[ResourceCard, bool]:
         """The region's CRISIS card at ``level`` (the minors' lines only after the user said
         they are under 18 in this session, 第 5 条), and whether it is framed as urgent:
         below L3 after a capped model L3 (``_urgent``), the region's emergency numbers are
         added in front of every line of the card. A card whose emergency numbers already
         lead it (ZZ's L2) is left as it is; the mainland L2 card's trailing 120 (owner
-        decision 2026-10-28) is replaced by every emergency number in front."""
+        decision 2026-10-28) is replaced by every emergency number in front. Round 6:
+        ``emergency`` (the user asked for the police or ambulance number, or how to talk
+        on that call, in the crisis flow) frames it the same way for that turn."""
         card = resolve(
             self._shared.store,
             self._profile.region,
@@ -2001,7 +2031,7 @@ class Session:
             is_minor=self._minor,
         )
         leading = bool(card.emergency) and card.emergency_leads
-        if not self._urgent or level >= CrisisLevel.L3 or leading:
+        if not (self._urgent or emergency) or level >= CrisisLevel.L3 or leading:
             return card, False
         l3 = resolve(
             self._shared.store,
@@ -2021,12 +2051,18 @@ class Session:
         return urgent, True
 
     def _crisis(
-        self, status: CrisisStatus, now: datetime, *, confirmed: bool = False, hint: bool = False
+        self,
+        status: CrisisStatus,
+        now: datetime,
+        *,
+        confirmed: bool = False,
+        hint: bool = False,
+        emergency: bool = False,
     ) -> _Rendered:
         """The crisis reply; ``confirmed`` and ``hint`` pick the opening (F5b), the card is
-        the same either way."""
+        the same either way; ``emergency`` puts the emergency numbers first (round 6)."""
         level = max(CrisisLevel.L2, status.level, status.entry_level or CrisisLevel.L0)
-        card, urgent = self._crisis_card(level, now)
+        card, urgent = self._crisis_card(level, now, emergency=emergency)
         # S5: the plan in full once per crisis, then one line that points back at it.
         remind = self._plan_shown_in_crisis
         self._engine.last_gate = None
@@ -2059,6 +2095,11 @@ class Session:
         ``brief_heard`` line for anything else. Only for a turn with no rule risk cue (the
         callers check); None when the gate or a taboo topic rules it out."""
         render = self._engine.data.render
+        if signals.hotline_call_script and render.hotline_call_script:
+            # Round 6 (re-test q2 第 5 节): "打通了要怎么说" gets what to say on the line.
+            line = self._plain_line(render.hotline_call_script, stage)
+            if line is not None and not self._has_taboo(line[0], ""):
+                return line[0]
         named = self._named_numbers(text)
         if (signals.hotline_words or named or signals.hotline_unreachable) and (
             _asks(text) or signals.hotline_unreachable
@@ -2071,6 +2112,14 @@ class Session:
                 note = self._hotline_note(signals)
             if note is not None and not self._has_taboo(note, ""):
                 return note
+        if (
+            signals.hotline_request or signals.hotline_number is not None
+        ) and render.hotline_in_crisis:
+            # Round 6 (re-test q2 第 5 节): asking for a number in the crisis flow is
+            # answered as such, never with the generic "I heard your question".
+            line = self._plain_line(render.hotline_in_crisis, stage)
+            if line is not None and not self._has_taboo(line[0], ""):
+                return line[0]
         if signals.help_seeking and render.help_seeking:
             # Round 4 (re-test q2 n01, n08): school or university, in English too.
             school = signals.help_seeking_school and bool(render.help_seeking_school)
@@ -2720,6 +2769,8 @@ class Session:
                 head = render.hotline_emergency  # round 5: "报警电话是多少"
             if signals.hotline_unreachable and render.hotline_unreachable:
                 head = render.hotline_unreachable  # round 5: "一直占线怎么办"
+            if signals.hotline_call_script and render.hotline_call_script:
+                head = render.hotline_call_script  # round 6: "打通了该说什么"
             if card.region_used == UNKNOWN_COUNTRY and (
                 signals.hotline_request or signals.hotline_place is not None
             ):
@@ -2797,6 +2848,14 @@ class Session:
     def _region_card(self) -> ResourceCard:
         """The profile region's BROWSING card (every line and emergency number)."""
         return self._resource_card(CrisisLevel.L2, self._now(), mode=CardMode.BROWSING)
+
+    def _names_emergency(self, text: str) -> bool:
+        """The message names one of the region's emergency numbers ("110"; round 6)."""
+        runs = {r for r in _DIGIT_RUNS.findall(normalize(text)) if len(r) >= _MIN_NUMBER_DIGITS}
+        if not runs:
+            return False
+        card = self._resource_card(CrisisLevel.L3, self._now(), mode=CardMode.BROWSING)
+        return any(_digits(em.number) in runs for em in card.emergency)
 
     def _named_numbers(self, text: str) -> frozenset[str]:
         """The numbers of the region's card the message names ("12356 晚上几点还有人接";

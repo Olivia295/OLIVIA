@@ -202,6 +202,9 @@ class TurnSignals:
     """A call does not get through ("一直占线", "打唔通"; round 5)."""
     hotline_emergency: bool = False
     """The police or ambulance number is asked for ("报警电话是多少"; round 5)."""
+    hotline_call_script: bool = False
+    """How to talk once a call gets through ("打通了该说什么"; round 6): the reply leads
+    with what to say on the line."""
     hotline_place_hint: bool = False
     """An English place that is no known region ("in Brazil"; round 5): the reply says
     how to see another region's numbers."""

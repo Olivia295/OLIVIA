@@ -432,6 +432,16 @@ class LanguageEngine:
         self._drinking = context or reading.mentioned
         return reading
 
+    def withdrawal_symptoms(self, user_text: str) -> bool:
+        """Round 6 (复测 q3 第三节): ``user_text`` tells of a withdrawal sign in the body
+        (or a severe one) while drinking or a medicine is the context. Reads without
+        changing the session's drinking context. The session offers no practice card then:
+        the reminder says to see a doctor, and a breathing card after it would contradict
+        it."""
+        cues = self._data.substance
+        context = self._drinking or cues.image_topic in self._image_topics
+        return read_substance(cues, user_text, context=context).symptoms
+
     def note_image(self, text: str, image: str) -> None:
         """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""
         if image and image in text:

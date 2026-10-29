@@ -127,6 +127,7 @@ _COMMAND_KEYS: Final = (
     "section_full",
     "person_name",
     "name_too_long",
+    "phone_kept",
     "name_for_phone",
     "person_with_phone",
     "person_phone",
@@ -889,7 +890,9 @@ class _Command:
             if name and len(name) <= MAX_NAME_CHARS:
                 break
             if name:
-                self._say(_fill(cmd["name_too_long"], max_chars=MAX_NAME_CHARS))
+                # Round 6 (QA q4 F19): the number is said to be kept only when there is one.
+                too_long = _fill(cmd["name_too_long"], max_chars=MAX_NAME_CHARS)
+                self._say(f"{too_long}{cmd['phone_kept']}" if phone else too_long)
             else:
                 self._say(cmd["name_for_phone"])
             reply = " ".join(self._ask(Section.PEOPLE).split())
