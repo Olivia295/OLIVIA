@@ -92,7 +92,7 @@ from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import accumulate
-from typing import Final, Literal, Protocol
+from typing import Final, Literal, Protocol, TypeVar
 
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.compose import Composer, CompositionHit
@@ -234,6 +234,18 @@ def arbitrate(
     return level
 
 
+_REMEMBERED: Final = 4
+_T = TypeVar("_T")
+
+
+def _remember(memo: dict[str, _T], text: str, value: _T) -> _T:
+    """Keep ``value`` for ``text`` among the last ``_REMEMBERED`` texts."""
+    if len(memo) >= _REMEMBERED:
+        del memo[next(iter(memo))]
+    memo[text] = value
+    return value
+
+
 class _CueIndex:
     """One matcher over every stage1/stage2/hyperbole/negation phrase, keyed by cue id,
     and every pair-cue phrase, keyed by the phrase behind ``_PAIR_KEY``."""
@@ -260,6 +272,12 @@ class _CueIndex:
             _PAIR_KEY + phrase for pair in pairs for phrase in pair.anchors
         )
         self.composer = Composer(lexicons.compositions)
+        # Round 6 (2026-10-30): the last few scans, by normalized text. The rule screen and
+        # a model screen share this index, and in model mode both screen each message
+        # (the rule screen's level decides the mirror and the D3 answer): the second pass
+        # reuses the first one's matches. Results never change once the index is built.
+        self._scans: dict[str, tuple[Match, ...]] = {}
+        self._compositions: dict[str, tuple[CompositionHit, ...]] = {}
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
         self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
@@ -273,7 +291,10 @@ class _CueIndex:
         )
 
     def scan(self, text: str) -> list[Match]:
-        return self.matcher.find_all(text)
+        found = self._scans.get(text)
+        if found is None:
+            found = _remember(self._scans, text, tuple(self.matcher.find_all(text)))
+        return list(found)
 
     def figurative_only(self, matches: Sequence[Match]) -> bool:
         """At least one Stage 2 phrase matched and a hyperbole cue covers every one (F8a)."""
@@ -283,7 +304,10 @@ class _CueIndex:
         return bool(stage2) and all(cover.contains(m) for m in stage2)
 
     def compose(self, text: str) -> list[CompositionHit]:
-        return self.composer.find(text)
+        hits = self._compositions.get(text)
+        if hits is None:
+            hits = _remember(self._compositions, text, tuple(self.composer.find(text)))
+        return list(hits)
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
         """Pair cues with a request and an anchor that none of their exceptions contains."""

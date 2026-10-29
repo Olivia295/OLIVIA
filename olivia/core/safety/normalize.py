@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from typing import Final
@@ -177,6 +178,14 @@ def shown_text(text: str) -> str:
     return shown if closed else without_bidi(text)
 
 
+# Round 6 (2026-10-30): one turn folds the same message a dozen times (the screen, red
+# flags, reported speech, the mirror and the guard), and NFKC alone costs about 60 µs on
+# a 500-character message. The fold is a pure function of its argument, so its last
+# results are kept; the cache holds only strings, in memory, and is never written out.
+_FOLD_CACHE_SIZE: Final = 256
+
+
+@functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
 def normalize(text: str) -> str:
     """Fold text for matching: NFKC, casefold, Traditional -> Simplified, curly quotes
     -> "'", then drop all whitespace and invisible characters, and a single ASCII letter
