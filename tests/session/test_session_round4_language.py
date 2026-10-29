@@ -90,9 +90,12 @@ def test_the_reminder_follows_the_crisis_card() -> None:
     assert session.turn("我不想活了").in_crisis
     result = session.turn("手一直在抖，停不下来")
     assert result.in_crisis
-    assert result.reply.endswith(LINES["withdrawal"]), result.reply
+    # Round 6 (re-test q2 section 6): before the numbers, so the card does not bury it.
+    assert LINES["withdrawal"] in result.reply, result.reply
+    assert result.reply.index(LINES["withdrawal"]) < result.reply.index("12356")
     severe = session.turn("刚才抽了一下，倒在地上")
-    assert severe.reply.endswith(LINES["withdrawal_severe"]), severe.reply
+    assert LINES["withdrawal_severe"] in severe.reply, severe.reply
+    assert severe.reply.index(LINES["withdrawal_severe"]) < severe.reply.index("12356")
 
 
 def test_no_reminder_in_the_crisis_flow_without_a_sign() -> None:

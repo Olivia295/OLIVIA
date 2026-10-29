@@ -246,6 +246,13 @@ _QUESTION_PARTICLES: Final = frozenset({"吗", "么", "嘛"})
 _Tag = tuple[str, str]  # (group, label)
 _L = TypeVar("_L", bound=str)
 
+# Round 6: how a minor disclosure's clause is found, which of its words say now, and the
+# self words a disclosure may start with (the others carry the subject over).
+_MINOR_CLAUSE_MARKS: Final = ",.!?;:~、\n"
+_MINOR_CLAUSE: Final = re.compile(f"[{re.escape(_MINOR_CLAUSE_MARKS)}]+")
+_MINOR_NOW: Final = re.compile("现在|目前|今年|而家|宜家|now")
+_MINOR_SELF: Final = ("我", "本人", "俺", "咱", "i'm", "im", "iam")
+
 
 class EmpathyIntent(StrEnum):
     """The six support strategies of the annotation guide §4.1."""
@@ -370,9 +377,12 @@ class RuleStub:
         self._request_patterns = lexicon.direct_request_patterns
         self._hotline_patterns = lexicon.hotline_request_patterns
         self._number_patterns = lexicon.hotline_number_patterns
+        self._call_script_patterns = lexicon.hotline_call_script_patterns
         self._place_hint_patterns = lexicon.hotline_place_hint_patterns
         self._place_patterns = lexicon.hotline_place_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
+        self._minor_past = lexicon.minor_past_patterns
+        self._minor_other = lexicon.minor_other_patterns
         self._advice_patterns = lexicon.advice_patterns
         self._tags = {phrase: tuple(t) for phrase, t in tags.items()}
         self._matcher = PhraseMatcher({phrase: phrase for phrase in self._tags})
@@ -534,7 +544,7 @@ class RuleStub:
             hotline_request=not hits.get(_HOTLINE) and self._live(body, self._hotline_patterns),
             hotline_anonymous=bool(hits.get(_ANONYMOUS)),
             hotline_abroad=bool(hits.get(_ABROAD)),
-            minor_disclosure=any(p.search(body) for p in self._minor_patterns),
+            minor_disclosure=self._minor_in(body),
             strain=bool(hits.get(_STRAIN)),
             imminent=bool(hits.get(_IMMINENT_TIME)) and bool(hits.get(_IMMINENT_MEANS)),
             keep_secret=bool(hits.get(_SECRET)),
@@ -568,6 +578,7 @@ class RuleStub:
             hotline_number=self._number(body),
             hotline_unreachable=bool(hits.get(_UNREACHABLE_CALL)),
             hotline_emergency=bool(hits.get(_EMERGENCY_ASKED)),
+            hotline_call_script=self._live(body, self._call_script_patterns),
             hotline_place_hint=not hits.get(_PLACE)
             and self._raw_place(text) is None
             and any(p.search(text.casefold()) for p in self._place_hint_patterns),
@@ -578,8 +589,33 @@ class RuleStub:
         """The message says the user is under 18 (``TurnSignals.minor_disclosure``), read
         before the turn's perception (round 5: the minors' flow comes before a model-only
         alarm)."""
-        body = clip_for_perception(normalize(text))
-        return any(p.search(body) for p in self._minor_patterns)
+        return self._minor_in(clip_for_perception(normalize(text)))
+
+    def _minor_in(self, body: str) -> bool:
+        """A disclosure of the user's own age under 18 in ``body`` (folded).
+
+        Round 6: a match next to the past (its own clause or the one before speaks of the
+        past, and its own clause does not say now) does not count, nor does one with no
+        self word after someone else is named earlier in the message."""
+        for pattern in self._minor_patterns:
+            for match in pattern.finditer(body):
+                if self._minor_counts(body, match.start(), match.end()):
+                    return True
+        return False
+
+    def _minor_counts(self, body: str, start: int, end: int) -> bool:
+        clauses = [m.end() for m in _MINOR_CLAUSE.finditer(body, 0, start)]
+        own_start = clauses[-1] if clauses else 0
+        before_start = clauses[-2] if len(clauses) > 1 else 0
+        after = _MINOR_CLAUSE.search(body, end)
+        own = body[own_start : after.start() if after is not None else len(body)]
+        near = body[before_start : after.start() if after is not None else len(body)]
+        if _MINOR_NOW.search(own) is None and any(p.search(near) for p in self._minor_past):
+            return False
+        matched = body[start:end].lstrip(_MINOR_CLAUSE_MARKS)
+        if matched.startswith(_MINOR_SELF):
+            return True
+        return not any(p.search(body, 0, start) for p in self._minor_other)
 
     def _number(self, body: str) -> str | None:
         """The digits of a number the message asks about ("12356是干嘛的"; round 5)."""

@@ -277,6 +277,34 @@ _MISSING_RE: Final = re.compile(
 )
 _MISSED: Final = {"你": "对方", "您": "对方", "你们": "他们", "您们": "他们"}
 _LONGING: Final = "你盼了很久"
+# Round 6 (复测 q4 F18): after a time word, the weather or the calendar is nobody's doing
+# ("今天下雨了，有点闷"): it is reported ("你提到今天下雨了"), never "你今天下雨了".
+_IMPERSONAL: Final = (
+    "下雨",
+    "下雪",
+    "下大雨",
+    "下了",
+    "刮风",
+    "刮大风",
+    "刮台风",
+    "降温",
+    "升温",
+    "大降温",
+    "天气",
+    "阴天",
+    "晴天",
+    "放晴",
+    "起雾",
+    "有雾",
+    "打雷",
+    "台风",
+    "雾霾",
+    "是周",
+    "是星期",
+    "是礼拜",
+    "停电",
+    "停水",
+)
 _TIME_WORDS: Final = (
     "这段时间",
     "这阵子",
@@ -1173,7 +1201,8 @@ def _lead(clause: str, body: str, conflict: bool) -> str:
     if word is not None:
         rest = body[len(word) :]
         if not _speaks_first_person(clause[len(word) :]):
-            return "你" + body
+            plain = clause[len(word) :].lstrip("的又也都还就")
+            return (_SAID_PREFIX if plain.startswith(_IMPERSONAL) else "你") + body
         if rest.startswith("你") and not rest.startswith("你们"):
             return "你" + word + rest[1:]
     fronted = _front_subject(clause, body)

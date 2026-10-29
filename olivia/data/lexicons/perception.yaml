@@ -1576,6 +1576,16 @@ hotline_request_patterns:
   - "(?:^|[,.!?;~、]|把|这个|那个|求助|帮忙|援助|热线|心理|急救|报警|紧急|支援|咨询)的?(?:电话|号码)(?:号码)?(?:再|直接|快|赶紧)?(?:发|给|甩|告诉|俾|畀)(?:一下)?(?:我|过来|给我|一个|一下)"
   - "(?:报警|急救|救护车|救护|紧急|police|ambulance|emergency)(?:的|用的|要打的)?(?:电话|号码|热线|number)(?:是|系)?(?:多少|什么|啥|咩|哪个|几号|几多|来着|吗|呢|\\?)"
   - "(?:报警|急救|叫救护车|救护车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:哪个|什么|多少|几号|啥|咩|几多)"
+  # Round 6 (2026-10-29, re-test q2 第 5 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a hotline told to come over ("把心理热线发我", "热线直接甩过来"): 热线 / hotline is never
+  #   someone's own number; an optional 把 lets a negation before it void the match;
+  # - the police or ambulance number asked with a linking word between ("救护车是哪个号码",
+  #   "报警该打什么电话");
+  # - Cantonese giving or having words around 热线 / 电话 ("俾条热线我", "有冇啲电话可以打").
+  - "(?:把{C}{0,6}?)?(?:热线|hotline|helpline)(?:的)?(?:号码|电话)?(?:再|直接|快|赶紧|先|马上)?(?:发|给|甩|告诉|俾|畀|send)(?:一下|一个|个|下)?(?:我|过来|给我|me)(?!妈|爸|哥|姐|弟|妹|们|的|朋友|同|老|了|过)"
+  - "(?:报警|急救车|急救|救护车|police|ambulance)(?:的话|的|用的|要打的|是|系|要|该|得|应该|就|打|拨|叫|找){0,4}(?:哪个|哪一个|什么|多少|几|啥|咩|边个|几多)(?:号码|电话|号|热线|number)"
+  - "(?:俾|畀|给)(?:我)?(?:一?个|一?条|几个|啲|些)(?:能打的|可以打的|求助的)?{C}{0,4}?(?:热线|hotline|helpline)"
+  - "(?:有没有|有冇|有无|有什么|有啥|有咩)(?:啲|些|一些|几个|点)(?:能|可以|可)?(?:打的)?{C}{0,4}?(?:电话|号码|热线){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话|讲)"
 
 # What a number is ("12356是干嘛的"; round 5, 2026-10-29, re-test q2 第 5 节; 草稿：待 G-0):
 # group 1 is the number (at least three digits). The reply names what the signed hotline
@@ -1583,6 +1593,22 @@ hotline_request_patterns:
 hotline_number_patterns:
   - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:是|系)?(?:干嘛|干什么|干啥|做什么|做啥|做咩|做乜|什么|啥|咩|乜嘢|乜|边个|谁)(?!意思|梗|日子|节|时候|东西)"
   - "(?:what'?s|whatis|whatdoes|whois)(?:the)?(?:number)?(\\d{3,})"
+  # Round 6 (2026-10-29; 草稿：待 G-0): who a number is for ("12355是打给谁的", "这个号是帮
+  # 什么人的"): a giving or serving word, then a word for who.
+  - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:专门|主要)?(?:是|系)?(?:专门|主要)?(?:打给|拨给|给|让|供|帮|为|俾|畀|服务)(?:谁|什么人|哪些人|啥人|哪类人|边个|咩人|乜人)"
+
+# How to talk once a call gets through ("打通了该说什么"; round 6, 2026-10-29, re-test q2
+# 第 5 节; 草稿：待 G-0): a phone word, an emergency word or a number of three or more
+# digits, then a word for saying in the same clause. The reply leads with what to say on
+# the line (render.yaml crisis.hotline_call_script); in the crisis flow, the card puts the
+# emergency numbers first when an emergency word or number is named.
+hotline_call_script_patterns:
+  # a line or a number, then getting through: "热线接通以后要说啥"
+  - "(?:电话|热线|号码|报警|急救|救护车|\\d{3,})(?:打|拨|接)(?:通|过去|进去|上)?(?:了|以后|之后|后|的时候|时)?{C}{0,6}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|怎么开口|该说|要说|点讲|讲乜|讲咩|说些什么)"
+  # calling a hotline or a number: "拨热线的时候该说什么"
+  - "(?:打|拨|接)(?:通|过去|进|给)?(?:热线|\\d{3,})(?:以后|之后|后|的时候|时)?{C}{0,6}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|怎么开口|该说|要说|点讲|讲乜|讲咩|说些什么)"
+  # the emergency itself: "报警的时候要怎么说"
+  - "(?:报警|叫救护车|叫急救)(?:的时候|时|以后|之后)?{C}{0,4}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|该说|要说|点讲|讲乜|讲咩)"
 
 # A call that does not get through (round 5; 草稿：待 G-0): with a phone word, a question or a
 # resource card on screen, the reply says what to do (try later or another line, the local
@@ -1866,6 +1892,52 @@ minor_disclosure_patterns:
   - "(?:我|本人|俺|咱)(?:而家|现在|仲|还|才|今年)*(?:系|是|读|念|喺度读|在读)(?:紧)?(?:中一|中二|中三|中四|中五)(?:学生|生)?(?!病|青年|的时候|那|时|以前|之前|毕业|同学|老师|家长)"
   - "(?:我|本人|俺|咱)(?:中一|中二|中三|中四|中五)(?:学生|生)(?!的|那|时|家长)"
   - "我们(?:班|年级)?(?:初一|初二|初三|七年级|八年级|九年级|高一|高二|中一|中二|中三|中四|中五)的?(?:班主任|(?:数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学)?老师|同学|班)(?!那|时)"
+  # Round 6 (2026-10-29, re-test q2 第 4 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a school year of one's own with a verb (在读, 上, 念, 系, 读紧) or a present adverb
+  #   (今年, 现在, 先, 仲, 宜家), or alone at a clause's end ("我高三了"); the year list adds
+  #   高三, 高中, Hong Kong 中六, Taiwan 国一 to 国三 / 国中 (after folding 國) and 十 to 十二
+  #   年级; a school year followed by its teacher, class, graduation or a span of years is
+  #   no self-description ("我是初三的班主任", "我高中没毕业", "我高中三年");
+  # - an age with no 岁 right after a clause-opening self word and before a clause mark
+  #   ("我16，……"), never a loan or a date ("借我17", "我17号");
+  # - a clause opening with this year's age, no subject ("今年刚满十六，……");
+  # - turning 18 or grown up only later ("再过半年才满18", "明年才成年"), never a count of
+  #   months or days ("满18个月");
+  # - not yet grown up at a clause's start with no subject ("目前还没成年");
+  # - English: a high-school year (freshman to senior, "high school junior"), 6th to 12th
+  #   grade, middle school or junior high, of oneself (I'm / I am), never a teacher,
+  #   counsellor or the past ("I was", "used to").
+  # A match in a clause, or right after one, that speaks of the past (``minor_past_patterns``)
+  # does not count; one with no self word does not count after someone else is named
+  # (``minor_other_patterns``).
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|目前|其实|还|只|只是|也|就|都|先|仲|而家|宜家|刚|刚刚|已经|正|正在)*(?:在|喺度)?(?:上|读|念|系|是)紧?(?:初一|初二|初三|初中|七年级|八年级|九年级|十年级|十一年级|十二年级|高一|高二|高三|高中|中一|中二|中三|中四|中五|中六|国一|国二|国三|国中|小学|四年级|五年级|六年级)(?:学生党|学生|新生|生|党)?+(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|家长|病|青年|三年|阶段|生活|时代|期间|课|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学|班|当|教|生涯|没毕业|肄业)"
+  - "(?:我|本人|俺|咱)(?:才|今年|现在|目前|其实|还|只|只是|也|就|都|先|仲|而家|宜家|刚|刚刚|已经|正|正在)+(?:初一|初二|初三|初中|七年级|八年级|九年级|十年级|十一年级|十二年级|高一|高二|高三|高中|中一|中二|中三|中四|中五|中六|国一|国二|国三|国中|小学|四年级|五年级|六年级)(?:学生党|学生|新生|生|党)?+(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|家长|病|青年|三年|阶段|生活|时代|期间|课|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学|班|当|教|生涯|没毕业|肄业)"
+  - "(?:我|本人|俺|咱)(?:初一|初二|初三|初中|七年级|八年级|九年级|十年级|十一年级|十二年级|高一|高二|高三|高中|中一|中二|中三|中四|中五|中六|国一|国二|国三|国中|小学|四年级|五年级|六年级)(?:学生党|学生|新生|生|党)?+(?=[,.!?;:~、]|$|了)"
+  - "{S}(?:现在|目前|今年)?(?:在读|在上|读紧|读|念)?(?:初一|初二|初三|初中|七年级|八年级|九年级|十年级|十一年级|十二年级|高一|高二|高三|高中|中一|中二|中三|中四|中五|中六|国一|国二|国三|国中|小学|四年级|五年级|六年级)(?:刚|才|已经)?(?:开学|入学|住校|分班)"
+  - "{S}(?:现在|目前|今年)?(?:在读|在上|在念|读紧)(?:初一|初二|初三|初中|七年级|八年级|九年级|十年级|十一年级|十二年级|高一|高二|高三|高中|中一|中二|中三|中四|中五|中六|国一|国二|国三|国中|小学|四年级|五年级|六年级)(?:学生党|学生|新生|生|党)?+(?!的|那|时|以前|之前|毕业|同学|老师|班主任|教师|部|校|学校|家长|病|青年|三年|阶段|生活|时代|期间|课|数学|语文|英语|物理|化学|生物|历史|地理|政治|体育|音乐|美术|科学|班|当|教|生涯|没毕业|肄业)"
+  - "{S}(?:我|本人|俺|咱)(?:今年|现在|目前)?(?:1[0-7]|十[一二三四五六七])(?:岁|周岁)?(?=[,.!?;:~、]|$)"
+  - "{S}(?:今年|现在|目前)(?:才|刚|刚满|只有|也就|才刚)?(?:1[0-7]|十[一二三四五六七])(?:岁|周岁)?(?![0-9一二三四五六七八九十号点分次天年月个块元万的那时])"
+  - "(?:{S}|我|本人)(?:还|还要|要)?(?:下个月|下月|下周|下礼拜|明年|年底|过几天|过两天|再过[^,.!?;:~、]{1,4}|还有[^,.!?;:~、]{1,5}|还差[^,.!?;:~、]{1,5})(?:我)?(?:才|就|才能|就要|就能|就会)?(?:满(?:18|十八)|到(?:18|十八)|成年)(?:岁|周岁)?(?![0-9个年天周号小分万块元])"
+  - "{S}(?:我)?(?:现在|目前|其实)?(?:都|也)?还(?:没|未)有?(?:成年|满(?:18|十八))(?!的时候|时|那|以前|之前|就|的人|人|的孩子|的小孩|个月|天)"
+  - "(?:i'm|im|iam)(?:only|just|still|currently|now)?(?:a|in)?(?:highschool|hs)(?:freshman|sophomore|junior|senior|student|er)(?!teacher|counsel|coach|staff)"
+  - "(?:i'm|im|iam)(?:only|just|still|currently|now)?a(?:freshman|sophomore|junior|senior)(?:in|at)(?:highschool|hs|middleschool)"
+  - "(?:i'm|im|iam)(?:only|just|still|currently|now)?in(?:the)?(?:[6-9]|1[0-2]|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)(?:th|st|nd|rd)?grade"
+  - "(?:i'm|im|iam)(?:only|just|still|currently|now)?ingrade(?:[6-9]|1[0-2]|six|seven|eight|nine|ten|eleven|twelve)(?![0-9])"
+  - "(?:i'm|im|iam)(?:only|just|still|currently|now)?(?:in|a)(?:middleschool|juniorhigh|highschool)(?:er|student)?(?!teacher|counsel|coach|staff|admin|band|team|club)"
+  - "(?:i'm|im|iam)(?:only|just|still)?(?:a)?minor(?=$|[,.!?;:~)]|and|but|so|lol)"
+  - "(?:i'm|im|iam)(?:not|notyet|stillnot)(?:18|eighteen)(?:yet)?(?=$|[,.!?;:~)]|and|but|so)"
+  - "(?:i'm|im|iam)(?:still)?under(?:18|eighteen)"
+
+# Round 6 (2026-10-29; 草稿：待 G-0): the past next to a minor disclosure. A match in the same
+# clause or the clause before one of these does not count, unless its own clause says now
+# (现在, 目前, 今年, now).
+minor_past_patterns:
+  - "去年|前年|那时|当时|当年|以前|之前|小时候|那会|那阵|那年|曾经|上学时|wheniwas|backin|backwhen|iwas|iusedto|usedtobe"
+
+# Round 6: someone else named before a disclosure with no self word ("我女儿很乖，今年十六"):
+# the subject carried over is that person, so it does not count.
+minor_other_patterns:
+  - "儿子|女儿|孩子|小孩|弟|妹|侄|外甥|学生|他|她|老公|老婆|对象|朋友|同学|室友|同事|son|daughter|kid|brother|sister|nephew|niece|friend"
 
 # Strain that is not itself a crisis cue (问题单第 11 条, 2026-10-26; 草稿：待 G-0): "撑不了
 # 多久了". Read only for a user with a crisis history (a care marker or a crisis earlier in

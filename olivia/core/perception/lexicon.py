@@ -119,12 +119,15 @@ _SECTIONS: Final = frozenset(
         "advice_patterns",
         "hotline_request_patterns",
         "minor_disclosure_patterns",
+        "minor_past_patterns",
+        "minor_other_patterns",
         "contraindicated_practices",
         "hotline_places",
         "local_emergency_places",
         "third_party_says_fine_patterns",
         "suds_patterns",
         "hotline_number_patterns",
+        "hotline_call_script_patterns",
         "hotline_place_hint_patterns",
         "hotline_place_patterns",
         *_PHRASE_SECTIONS,
@@ -256,6 +259,10 @@ class PerceptionLexicon:
     """Calling from abroad ("国外", "打国内")."""
     minor_disclosure_patterns: tuple[re.Pattern[str], ...] = ()
     """The user's own age under 18 ("我才初二", "其实我14岁"; 问题单第 5 条)."""
+    minor_past_patterns: tuple[re.Pattern[str], ...] = ()
+    """The past next to an age or school year ("那时", "以前"; round 6): no disclosure."""
+    minor_other_patterns: tuple[re.Pattern[str], ...] = ()
+    """Someone else named before a disclosure with no self word (round 6)."""
     strain_cues: tuple[str, ...] = ()
     """Strain that is no crisis cue ("撑不了多久了"), read only after a crisis (第 11 条)."""
     imminent_times: tuple[str, ...] = ()
@@ -311,6 +318,8 @@ class PerceptionLexicon:
     # Round 5 (2026-10-29, re-test q2 第 5 节; draft, G-0).
     hotline_number_patterns: tuple[re.Pattern[str], ...] = ()
     """What a number is ("12356是干嘛的"); group 1 is the number."""
+    hotline_call_script_patterns: tuple[re.Pattern[str], ...] = ()
+    """How to talk once a call gets through ("打通了该说什么"; round 6, draft, G-0)."""
     hotline_unreachable: tuple[str, ...] = ()
     """A call that does not get through ("打不通", "一直占线")."""
     hotline_emergency: tuple[str, ...] = ()
@@ -448,6 +457,8 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         minor_disclosure_patterns=_patterns(
             doc.get("minor_disclosure_patterns"), "minor_disclosure_patterns"
         ),
+        minor_past_patterns=_patterns(doc.get("minor_past_patterns"), "minor_past_patterns"),
+        minor_other_patterns=_patterns(doc.get("minor_other_patterns"), "minor_other_patterns"),
         strain_cues=phrases["strain_cues"],
         imminent_times=phrases["imminent_times"],
         imminent_means=phrases["imminent_means"],
@@ -476,6 +487,9 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         suds_patterns=_patterns(doc.get("suds_patterns"), "suds_patterns"),
         hotline_number_patterns=_patterns(
             doc.get("hotline_number_patterns"), "hotline_number_patterns"
+        ),
+        hotline_call_script_patterns=_patterns(
+            doc.get("hotline_call_script_patterns"), "hotline_call_script_patterns"
         ),
         hotline_unreachable=phrases["hotline_unreachable"],
         hotline_emergency=phrases["hotline_emergency"],

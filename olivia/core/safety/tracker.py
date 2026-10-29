@@ -380,16 +380,21 @@ class CrisisTracker:
         text: str,
         valence: float | None = None,
         *,
+        confirmable: bool = True,
         confirm_on_entry: CrisisAssessment | None = None,
     ) -> CrisisStatus:
         """Track one user turn. ``valence`` is ``None`` when there is no emotion evidence.
+
+        ``confirmable=False`` (round 6): the turn answers another question the session asked
+        (whether the user is under 18), so a short yes in it is no safety confirmation; the
+        safety question is asked again. Everything else is tracked as usual.
 
         ``confirm_on_entry`` (round 6): the rule screen of an answer to the direct question;
         when this turn enters a crisis, an explicit confirmation in it counts."""
         if self._in_crisis and assessment.uncapped_level is not None:
             # The denial cap (F10) applies outside a crisis only.
             assessment = replace(assessment, level=assessment.uncapped_level)
-        rules_level = self._model_only_relapse(assessment, text)
+        rules_level = self._model_only_relapse(assessment, text) if confirmable else None
         assessed = assessment.level if rules_level is None else rules_level
         usable = valence if valence is not None and math.isfinite(valence) else None
         trend = assessed
@@ -440,7 +445,9 @@ class CrisisTracker:
             # L1 turns never lift later ones into a spurious escalation.
             self._reset_trend()
         elif self._in_crisis:
-            just_exited = self._observe_safe_candidate(level, text, assessment)
+            just_exited = self._observe_safe_candidate(
+                level, text, assessment, confirmable=confirmable
+            )
 
         return self._status(level, escalated, just_entered, just_exited)
 
@@ -518,14 +525,14 @@ class CrisisTracker:
         self._last_l1_valence = None
 
     def _observe_safe_candidate(
-        self, level: CrisisLevel, text: str, assessment: CrisisAssessment
+        self, level: CrisisLevel, text: str, assessment: CrisisAssessment, *, confirmable: bool
     ) -> bool:
         """Handle a turn at effective level <= L1 while in crisis; True when it exits."""
         entry = self._entry_level
         if entry is None:  # unreachable: in_crisis always has an entry level
             return False
         if not self._confirmed:
-            if self._is_explicit_confirmation(normalize(text), assessment):
+            if confirmable and self._is_explicit_confirmation(normalize(text), assessment):
                 self._confirmed = True
             return False
         # Only L0 counts as safe; an L1 turn pauses the count without resetting it.

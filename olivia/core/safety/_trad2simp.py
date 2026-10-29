@@ -116,6 +116,8 @@ _PAIRS: Final = (
     "儀仪 囑嘱 崗岗 積积 "
     # Cantonese finishing verbs of the 完咗佢 exceptions (fix F6a).
     "傾倾 執执 "
+    # Round 6 (2026-10-29): savings, Shenzhen / Xiamen-style place words, leaking.
+    "儲储 興兴 劉刘 廈厦 洩泄 "
 )
 
 TRAD_TO_SIMP: Final[dict[str, str]] = {pair[0]: pair[1] for pair in _PAIRS.split()}

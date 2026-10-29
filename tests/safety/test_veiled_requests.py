@@ -125,13 +125,17 @@ def test_everyday_look_alikes_do_not_ask(text: str) -> None:
     assert a.level < L.L2, text
 
 
-def test_a_bare_wish_to_vanish_stays_the_plain_l1_cue() -> None:
-    # 想消失 / 想永远消失 alone are L1_DISAPPEAR and ask nothing: the escalation cases in
-    # sessions.yaml read them as L1 runs. Only a request for a way makes them ask.
-    for text in ("我想消失", "好想永远消失", "我想消失一会儿，出去走走"):
+def test_a_bare_wish_to_vanish_asks_at_l1() -> None:
+    # Round 6 (复测 q3 R #7): 想消失 / 想永远消失 as a wish of one's own stay L1
+    # (L1_DISAPPEAR) but now ask the D3 question (ASK_INTENT_WISH_VANISH); the escalation
+    # cases in sessions.yaml still read them as L1 runs. A short break asks nothing.
+    for text in ("我想消失", "好想永远消失"):
         a = SCREEN.assess(text)
-        assert a.level is L.L1 and not a.asks_intent, text
-        assert a.cue_ids == ("L1_DISAPPEAR",), text
+        assert a.level is L.L1 and a.asks_intent, text
+        assert a.cue_ids == ("L1_DISAPPEAR", "ASK_INTENT_WISH_VANISH"), text
+    a = SCREEN.assess("我想消失一会儿，出去走走")
+    assert a.level is L.L1 and not a.asks_intent
+    assert a.cue_ids == ("L1_DISAPPEAR",)
 
 
 def test_known_limit_a_return_in_another_clause_still_asks() -> None:

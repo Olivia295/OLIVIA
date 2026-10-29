@@ -93,6 +93,17 @@ LOW_BATTERY: Final = 0.20
 """A battery at or below this is "very low": the haven threshold (``battery.thresholds``)."""
 MAX_SPECTRA: Final = 3
 EXIT_COMMAND: Final = "/exit"
+# Round 6 (QA q4 F16, q2 第 5 节): what ends the chat, whatever the case or width
+# ("/EXIT", "／ｅｘｉｔ"), and the two words people try first.
+_EXIT_WORDS: Final = frozenset({EXIT_COMMAND, "/quit", "/退出"})
+
+
+def is_exit_command(text: str) -> bool:
+    """``text`` is the command that ends the chat (``/exit``, any case or width, or
+    ``/quit`` / ``/退出``), spaces around it ignored."""
+    folded = unicodedata.normalize("NFKC", text).strip().casefold()
+    return folded in _EXIT_WORDS
+
 
 _FILE: Final = "journal.yaml"
 _PROMPT_KEYS: Final = ("rating", "offer", "helpful")
@@ -614,7 +625,7 @@ class ChatChecks:
         rating = parse_rating(answer)
         if rating is not None:
             return rating, Carry()
-        if answer.strip() == EXIT_COMMAND:
+        if is_exit_command(answer):
             return None, Carry(ended=True)
         return None, Carry(line=answer) if answer.strip() else Carry()
 
@@ -640,7 +651,7 @@ class ChatChecks:
         if choice is not True:
             _record(self._ledger, now, shown=False)
             stripped = answer.strip()
-            if stripped == EXIT_COMMAND:
+            if is_exit_command(stripped):
                 return Carry(ended=True)
             if choice is None and stripped:
                 return Carry(line=answer)

@@ -38,11 +38,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from olivia.core.language.data import RiskComponents, SubstanceCues
+from olivia.core.language.data import RiskComponents, RiskSemantics, SubstanceCues
 from olivia.core.safety.lexicon import Composition, SafetyLexicons
 from olivia.core.safety.normalize import normalize
 
 _RISK_SECTIONS: Final = frozenset({"stage1", "stage2"})
+_CONFIRM_SECTION: Final = "safety_confirm"
+# Dropped before a safety confirmation is read, as the crisis tracker does ("我现在是安全的").
+_CONFIRM_GAPS: Final = ("已经", "现在", "都")
 _FIGURATIVE: Final = "hyperbole"
 _EVERYDAY_SECTIONS: Final = frozenset({"hyperbole", "negation"})
 _MASK: Final = "\0"
@@ -138,8 +141,11 @@ class MirrorGuard:
         lexicons: SafetyLexicons | None,
         extra: Iterable[str] = (),
         components: RiskComponents | None = None,
+        semantic: RiskSemantics | None = None,
     ) -> None:
         phrases: set[str] = {normalize(w) for w in extra}
+        self._semantic = _Index(semantic.words if semantic is not None else ())
+        self._semantic_usual = _Index(semantic.everyday if semantic is not None else ())
         self._components = components
         self._kinds = (
             {name: _Index(words) for name, words in components.kinds.items()}
@@ -152,10 +158,13 @@ class MirrorGuard:
         everyday: set[str] = set()
         relaxed: list[_Relaxed] = []
         vetoes: tuple[str, ...] = ()
+        confirms: set[str] = set()
         if lexicons is not None:
             for cue in lexicons.risk.values():
                 if cue.section in _RISK_SECTIONS:
                     phrases.update(cue.patterns)
+                if cue.section == _CONFIRM_SECTION:
+                    confirms.update(cue.patterns)
                 if cue.section == _FIGURATIVE:
                     figurative.update(cue.patterns)
                 if cue.section in _EVERYDAY_SECTIONS:
@@ -175,6 +184,7 @@ class MirrorGuard:
                 self._by_word.setdefault(word, []).append(r)
         self._parts = _Index(w for r in relaxed for w in r.words())
         self._vetoes = _Index(vetoes)
+        self._confirms = _Index(confirms)
 
     def risky(self, text: str) -> bool:
         """``text`` holds a risk phrase or a loosely read composition, outside hyperbole."""
@@ -202,6 +212,24 @@ class MirrorGuard:
         if _LASTING in kinds and self._soft.found(folded):
             kinds.add(_ENDING)
         return kinds
+
+    def confirms_safety(self, text: str) -> bool:
+        """Round 6 (复测 q4 F18): ``text`` says the user is safe ("我现在是安全的"; the
+        lexicon's ``safety_confirm`` phrases). Said back it reads as the companion telling
+        the user they are safe ("我听见的是：你现在是安全的")."""
+        folded = normalize(text)
+        for gap in _CONFIRM_GAPS:
+            folded = folded.replace(gap, "")
+        return bool(self._confirms.found(folded))
+
+    def about_risk(self, text: str) -> bool:
+        """Round 6 (复测 q3): ``text`` is about dying, leaving for good, a means, the affairs
+        after a death, a height or starving (``guarded.semantic``), outside every everyday
+        word of that list ("死机", "跳绳", "开刀") and of ``guarded.components``. Not masked
+        by the screen's hyperbole or negation: what a message is about is not said back
+        whether or not the screen rates it."""
+        folded = self._semantic_usual.masked(self._usual.masked(normalize(text)))
+        return bool(self._semantic.found(folded))
 
     def flagged(self, text: str) -> bool:
         """``text`` holds a ``recall_cap`` risk word outside every everyday sense (round 4:
@@ -236,6 +264,9 @@ class SubstanceReading:
     stopping: bool = False
     """Round 5: stopping a drink or a medicine on one's own, at once ("药我自己停掉了",
     "从今晚起一口都不碰"); ``withdrawal`` too, and the words are not said back."""
+    symptoms: bool = False
+    """Round 6: a withdrawal sign in the body or a severe one ("手一直抖", "看见墙上有东西"):
+    the reply sends to a doctor and offers no practice card."""
 
     @property
     def any(self) -> bool:
@@ -252,10 +283,19 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         return NOTHING
     # Round 5 (复测 q3 第三节): stopping a drink or a medicine on one's own, at once, with
     # the drink or the medicine named in the message, and no doctor-led taper.
+    # Round 6 (复测 q2 第 6 节, q3 第三节): stopping as grammar too ("一粒也不吃", "再也
+    # 不喝"), and a taper is the doctor's only when not negated ("也不跟医生说" is none).
     stopping = (
         (_has(folded, cues.substances) or _has(folded, cues.stop_objects))
-        and _free(folded, cues.stopping, cues)
-        and not _has(folded, cues.stop_guided)
+        and (
+            _free(folded, cues.stopping, cues)
+            or any(
+                not _negated(folded, m.start(), cues)
+                for pattern in cues.stop_patterns
+                for m in pattern.finditer(folded)
+            )
+        )
+        and not _guided(folded, cues)
     )
     # "突然不喝会出问题吗" is about drinking unless it names something else to drink.
     asked = _has(folded, cues.questions)
@@ -268,7 +308,8 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     if not (context or mentioned or stopping):
         return NOTHING
     severe = _free(folded, cues.severe, cues)
-    withdrawal = severe or asked or stopping or _free(folded, cues.signs, cues)
+    symptoms = severe or _free(folded, cues.signs, cues)
+    withdrawal = symptoms or asked or stopping
     put_off = _has(folded, cues.later) and _has(folded, cues.put_off)
     drinks = _drinks(folded, cues)
     asks_to_drink = (
@@ -284,7 +325,14 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     )
     talks = _has(folded, cues.substances) or drinks or stopping
     return SubstanceReading(
-        mentioned, withdrawal, severe, asks_to_drink, craving, talks, stopping=stopping
+        mentioned,
+        withdrawal,
+        severe,
+        asks_to_drink,
+        craving,
+        talks,
+        stopping=stopping,
+        symptoms=symptoms,
     )
 
 
@@ -358,6 +406,33 @@ def _negated(text: str, start: int, cues: SubstanceCues) -> bool:
             plain = plain.replace(word, _MASK * len(word))
     head = plain[begin:start]
     return any(n in head for n in cues.negators)
+
+
+# Round 6: how far back in its clause a negator voids a doctor-led taper ("也不打算跟
+# 医生说" is none).
+_GUIDED_LOOKBACK: Final = 6
+_CLAUSE_MARKS: Final = frozenset(",.!?;:，。！？；：、~…\n")
+
+
+def _guided(text: str, cues: SubstanceCues) -> bool:
+    """A ``stop_guided`` phrase with no negator in the few characters of its clause before
+    it (round 6): "医生让我慢慢减" is a taper, "也不打算跟医生说" is not."""
+    plain = text
+    for word in cues.non_negators:
+        if word in plain:
+            plain = plain.replace(word, _MASK * len(word))
+    for phrase in cues.stop_guided:
+        start = text.find(phrase)
+        while start >= 0:
+            head = plain[max(0, start - _GUIDED_LOOKBACK) : start]
+            for i in range(len(head) - 1, -1, -1):
+                if head[i] in _CLAUSE_MARKS:
+                    head = head[i + 1 :]
+                    break
+            if not any(n in head for n in cues.negators):
+                return True
+            start = text.find(phrase, start + 1)
+    return False
 
 
 def _is_a_not_a(three: str, cues: SubstanceCues) -> bool:

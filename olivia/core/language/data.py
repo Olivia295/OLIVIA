@@ -510,6 +510,11 @@ class RenderText:
     """A call does not get through: try later or another line, the emergency number."""
     hotline_emergency: tuple[str, ...] = ()
     """Leads the card when the police or ambulance number is asked for."""
+    # Round 6 (2026-10-29, re-test q2 第 5 节; drafts, G-0).
+    hotline_in_crisis: tuple[str, ...] = ()
+    """Leads the crisis reply when the user asks for a number in the crisis flow."""
+    hotline_call_script: tuple[str, ...] = ()
+    """What to say once a call gets through (where, what happened, how things are now)."""
     hotline_number_known: str = ""
     """Leads "number: what the data says it is" for a number asked about."""
     hotline_number_unknown: tuple[str, ...] = ()
@@ -597,6 +602,10 @@ class Utterances:
     addressed_acks: tuple[str, ...] = ()
     """The mirror slot for a statement whose 你 is the companion ("我知道你不会同意"): the
     mirror would turn it into 对方 and talk about someone else."""
+    semantic: RiskSemantics | None = None
+    """Round 6: words of dying, leaving for good, a means, the affairs after a death, a
+    height or starving (``guarded.semantic``): a message holding one is not said back,
+    whatever the screen says of it."""
 
 
 @dataclass(frozen=True)
@@ -611,6 +620,18 @@ class RiskComponents:
     min_kinds: int
     kinds: Mapping[str, tuple[str, ...]]
     soft_ending: tuple[str, ...] = ()
+    everyday: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RiskSemantics:
+    """``utterances.yaml`` ``guarded.semantic`` (round 6; draft, G-0), folded.
+
+    A message holding one of ``words`` outside every ``everyday`` word ("死机", "跳绳",
+    "开刀") is not said back: the mirror's guard reads what the words are about, not the
+    screen's level or cue (复测 q3: a will, a knife under the pillow, "安心走了")."""
+
+    words: tuple[str, ...]
     everyday: tuple[str, ...] = ()
 
 
@@ -652,6 +673,10 @@ class SubstanceCues:
     """Stopping on one's own, at once ("停掉", "一口都不碰", "停咗"): the withdrawal reminder."""
     stop_guided: tuple[str, ...] = ()
     """A taper the doctor leads ("医生让我慢慢减"): no reminder for the stop itself."""
+    # Round 6 (2026-10-29, re-test q2 第 6 节 / q3 第三节; draft, G-0).
+    stop_patterns: tuple[re.Pattern[str], ...] = ()
+    """Stopping as grammar, on the folded text ("一粒也不吃", "再也不喝", "全都不吃"):
+    read like ``stopping``."""
 
 
 def _no_feelings() -> Feelings:
@@ -1142,6 +1167,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         hotline_hours_from_data=texts["hotline_hours_from_data"],
         hotline_unreachable=crisis_lists["hotline_unreachable"],
         hotline_emergency=crisis_lists["hotline_emergency"],
+        hotline_in_crisis=crisis_lists["hotline_in_crisis"],
+        hotline_call_script=crisis_lists["hotline_call_script"],
         hotline_number_known=texts["hotline_number_known"],
         hotline_number_unknown=crisis_lists["hotline_number_unknown"],
         hotline_place_hint=crisis_lists["hotline_place_hint"],
@@ -1745,6 +1772,14 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         if "addressed_acks" in extras
         else ()
     )
+    semantic: RiskSemantics | None = None
+    if "semantic" in extras:
+        node = _map(extras["semantic"], f"{here}.semantic")
+        _keys(node, {"words", "everyday"}, f"{here}.semantic")
+        semantic = RiskSemantics(
+            words=_folded(node["words"], f"{here}.semantic.words"),
+            everyday=_folded(node["everyday"], f"{here}.semantic.everyday"),
+        )
     for line in (*blame_acks, *addressed):
         if any(a in line for a in affirmations):
             raise LanguageDataError(f"{here}: {line!r} holds an affirmation")
@@ -1763,6 +1798,7 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         self_blame=blame_cues,
         self_blame_acks=blame_acks,
         addressed_acks=addressed,
+        semantic=semantic,
     )
 
 
@@ -1820,7 +1856,7 @@ def _parse_guarded(
         item,
         {"acks", "affirmations", "extra_risk_words"},
         here,
-        optional={"components", "self_blame", "addressed_acks"},
+        optional={"components", "self_blame", "addressed_acks", "semantic"},
     )
     acks = _mirror_lines(item["acks"], f"{here}.acks")
     affirmations = _unique(_strs(item["affirmations"], f"{here}.affirmations"), here)
@@ -1925,7 +1961,16 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     _keys(raw, {"signs", "severe", "questions"}, f"{where} withdrawal")
     v = {name: folded(data[name], f"{where} {name}") for name in lists}
     stop = _map(data["stopping"], f"{where} stopping")
-    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping")
+    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping", optional={"patterns"})
+    stop_patterns: list[re.Pattern[str]] = []
+    for raw_pattern in _strs(stop.get("patterns", []), f"{where} stopping.patterns"):
+        try:
+            compiled = re.compile(raw_pattern)
+        except re.error as exc:
+            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r}: {exc}") from exc
+        if compiled.fullmatch(""):
+            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r} matches empty")
+        stop_patterns.append(compiled)
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -1950,6 +1995,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_objects=folded(stop["objects"], f"{where} stopping.objects"),
         stopping=folded(stop["phrases"], f"{where} stopping.phrases"),
         stop_guided=folded(stop["guided"], f"{where} stopping.guided"),
+        stop_patterns=tuple(stop_patterns),
     )
 
 
@@ -2008,6 +2054,8 @@ _CRISIS_LISTS: Final = (
     "hotline_emergency",
     "hotline_number_unknown",
     "hotline_place_hint",
+    "hotline_in_crisis",
+    "hotline_call_script",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (
