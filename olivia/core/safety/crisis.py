@@ -69,6 +69,12 @@ L1 with ``ASK_INTENT_HYPERBOLE_DIE`` (a D3 cue: ``asks_intent``) instead of L2, 
 injected model counts at most as L1 (a model failure is still L2; its L3 is no plan
 evidence). Anything else keeps the frame's L2. The tracker raises it to L2 when the
 session already showed risk (``tracker.py``).
+Round 6 (2026-10-29, re-test q2 第 2 节): a run-of-days veto (天天, 总是, 每晚 ...) in another
+clause whose subject is someone else ("……练得想死，教练天天骂": the coach scolds every day)
+says how often that person acts, not how long the user has felt it, so it no longer vetoes
+the figure. The clause must name its own subject before the word (no self word, not only
+adverbs or a time, not an inner state such as 感觉 / 心里); a run of days in the figure's own
+clause, with no subject or with a self word ("天天都这样", "我每天都……") still vetoes.
 
 ``rule_clear`` (owner decision 2026-10-26) says the rules found no risk cue at all
 (:func:`rules_found_nothing`): the session then asks once before a crisis level that
@@ -372,9 +378,13 @@ class _FigureIndex:
             for m in matches
         ):
             return False
-        if self._vetoes is not None and self._vetoes.find_all(normalized):
+        hits = self._vetoes.find_all(normalized) if self._vetoes is not None else []
+        if any(normalized[h.start : h.end] not in _HABIT_WORDS for h in hits):
+            return False  # only a run of days can be someone else's (round 6)
+        frames = [*self._frames.find_all(normalized), *_repeated_frames(normalized)]
+        if any(not _someone_elses_habit(normalized, hit, frames) for hit in hits):
             return False
-        cover = _MaskCover([*self._frames.find_all(normalized), *_repeated_frames(normalized)])
+        cover = _MaskCover(frames)
         return all(cover.contains(m) for m in valid)
 
 
@@ -387,6 +397,36 @@ _REPEATED_FRAME: Final = re.compile(
     r"([\u4e00-\u9fff]{1,2})[\u4e00-\u9fff]{0,3}?\1(?:得|到)(?:我|人)?都?快?想死"
 )
 _NOT_EVERYDAY: Final = frozenset("觉感变想说记难活死痛苦哭逼折崩绝委煎疯恨怕伤")
+
+
+# Round 6: a run-of-days veto that may belong to someone else's clause, the clause ends
+# around it, and what may stand before it without naming a subject.
+_HABIT_WORDS: Final = frozenset(
+    {"每天", "天天", "一直", "总是", "老是", "经常", "整天", "每晚", "每次都"}
+)
+_CLAUSE_STOPS: Final = ",.!?;:。、~…"
+_NO_SUBJECT: Final = re.compile(
+    r"(?:最近|这几天|这阵子|近来|现在|如今|也|还|又|都|就|真|真的|简直|反正|而且|然后|再|总|老|"
+    r"每次|感觉|觉得|心里|脑子|脑袋|整个人|人|自己)*"
+)
+_SELF_WORDS: Final = ("我", "俺", "咱", "自己")
+
+
+def _someone_elses_habit(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:
+    """A run-of-days veto in a clause of its own whose subject is someone else (round 6)."""
+    if normalized[hit.start : hit.end] not in _HABIT_WORDS:
+        return False
+    start = max((normalized.rfind(c, 0, hit.start) for c in _CLAUSE_STOPS), default=-1) + 1
+    ends = [i for i in (normalized.find(c, hit.end) for c in _CLAUSE_STOPS) if i >= 0]
+    end = min(ends, default=len(normalized))
+    if any(start <= f.end and f.start <= end for f in frames):
+        return False  # the figure's own clause
+    before = normalized[start : hit.start]
+    return (
+        bool(before)
+        and not any(word in before for word in _SELF_WORDS)
+        and _NO_SUBJECT.fullmatch(before) is None
+    )
 
 
 def _repeated_frames(normalized: str) -> list[Match]:

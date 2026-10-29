@@ -127,7 +127,7 @@ _POSSESSIVE: Final = re.compile(
     r"(?:们)?(?:家|班|宿舍|寝室|公司|单位|学校|部门|组|群)?(?:里|上|中)?的?有?"
     r"(?:一个|一位|个|位|那个|这个|那位|这位)?(?:最好的|很好的|好|亲|新|老)?的?"
 )
-_KIN_POSSESSIVE: Final = re.compile(r"(?:的|家|们家)?亲?")
+_KIN_POSSESSIVE: Final = re.compile(r"(?:的|家|们家)?(?:亲|堂|表)?")  # round 6: 堂哥, 表妹
 # Clause chain: only a comma-like stop is crossed, never a sentence end.
 _CHAIN_STOPS: Final = frozenset(",、")
 _CHAIN_MAX: Final = 3
@@ -222,6 +222,58 @@ def farewell_strength(words: str) -> int:
     if any(w in words for w in _FAREWELL_STRONG):
         return 2
     return 1 if any(w in words for w in _FAREWELL_WEAK) else 0
+
+
+# Round 6 (2026-10-29, re-test q2 第 1 节): someone else's plan the rules miss ("……打算这周末
+# 去海边，药也攒好了"). The parts of a plan, each a closed grammar: an act of dying (a jump
+# from a height, a crash, a death word), a means made ready, a strong farewell, a weak one, a
+# time, a place to die from and something fixed in advance. The session reads them over the
+# whole message once it reports someone else's words with nothing of the user's own.
+_PLAN_ACT: Final = re.compile(
+    r"跳(?:下去|下来|楼|河|江|海|湖|桥|崖|轨)|(?:去|在|上|从)[^,.!?;:]{1,6}跳(?=$|[,.!?;:]|了)"
+    r"|(?:要|想|打算|准备|去|开车|骑车)[^,.!?;:]{0,4}(?:撞|冲下|冲进|开进)"
+    r"|卧轨|上吊|割腕|烧炭|喝农药|吞药|" + "|".join(_DEATH_WORDS)
+)
+_PLAN_MEANS: Final = re.compile(
+    r"(?:攒|囤|存|藏|备|买|准备|弄)(?:了|好|够|齐|到)?[^,.!?;:]{0,4}(?:药|绳|炭|刀|农药|煤气)"
+    r"|(?:药|绳子?|炭|刀片?|农药|煤气)[^,.!?;:]{0,4}(?:攒|囤|存|藏|备|买|准备)(?:了|好|够|齐|到)"
+)
+_PLAN_FAREWELL: Final = re.compile(r"遗书|遗言|绝笔|后事|" + "|".join(_FAREWELL_STRONG))
+_PLAN_GOODBYE: Final = re.compile(r"再见|告别|道别|" + "|".join(_FAREWELL_WEAK))
+_PLAN_TIME: Final = re.compile(
+    r"(?:今|明|后)(?:天|晚|夜|早)|(?:这|下|本)个?(?:周|礼拜|星期|月)[一二三四五六日天末]?"
+    r"|(?:周|星期|礼拜)[一二三四五六日天末]|\d+点|[一二三四五六七八九十两]+点|月底|月初|年底"
+    r"|(?:过|这)(?:两|几)天|马上|现在|此刻|待会|一会儿|放假前|开学前|考完|生日"
+)
+_PLAN_PLACE: Final = re.compile(
+    r"江边|河边|海边|湖边|桥上|大桥|桥边|楼顶|天台|顶楼|楼上|窗台|铁轨|悬崖|山顶|护栏|水库"
+)
+_PLAN_FIXED: Final = re.compile(
+    r"(?:圈|定|选|挑|写|买|准备|安排|想)好|攒够|(?:日子|时间|地方|日期)(?:都|也)?(?:定|圈|选)"
+)
+
+
+def names_plan(text: str) -> bool:
+    """Someone else's plan in the (normalized) message (round 6): an act, a means made ready
+    or a strong farewell with at least one more part of a plan, or a weak farewell with a
+    place or a means."""
+    strong = {
+        name
+        for name, pattern in (
+            ("act", _PLAN_ACT),
+            ("means", _PLAN_MEANS),
+            ("farewell", _PLAN_FAREWELL),
+        )
+        if pattern.search(text) is not None
+    }
+    more = {
+        name
+        for name, pattern in (("time", _PLAN_TIME), ("place", _PLAN_PLACE), ("fixed", _PLAN_FIXED))
+        if pattern.search(text) is not None
+    }
+    if strong and len(strong | more) >= 2:
+        return True
+    return _PLAN_GOODBYE.search(text) is not None and ("place" in more or "means" in strong)
 
 
 # -- English ------------------------------------------------------------------------------
@@ -605,19 +657,25 @@ class ReportedSpeech:
             and s.start not in recipient_ends
             and not (s.start > 0 and text[s.start - 1] in _PASSIVE)
         ]
+        kins: list[Match] = []
         for kin in found.get(_KIN, ()):
             if _covered(kin, candidates):
                 continue
             owner = [m for m in selves if m.end <= kin.start]
             if owner and _KIN_POSSESSIVE.fullmatch(text[owner[-1].end : kin.start]):
                 candidates.append(kin)
+                kins.append(kin)
         speakers: list[Match] = []
         for s in candidates:
             clause = self._clause_start(text, s.start)
             if any(clause <= r.start and r.end <= s.start for r in recipients):
                 continue
             before = [m for m in selves if clause <= m.start and m.end <= s.start]
-            if all(_POSSESSIVE.fullmatch(text[m.end : s.start]) for m in before):
+            if all(
+                _POSSESSIVE.fullmatch(text[m.end : s.start])
+                or (s in kins and _KIN_POSSESSIVE.fullmatch(text[m.end : s.start]))
+                for m in before
+            ):
                 speakers.append(s)
         return speakers
 
