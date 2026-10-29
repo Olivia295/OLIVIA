@@ -594,6 +594,10 @@ class Utterances:
     addressed_acks: tuple[str, ...] = ()
     """The mirror slot for a statement whose 你 is the companion ("我知道你不会同意"): the
     mirror would turn it into 对方 and talk about someone else."""
+    semantic: RiskSemantics | None = None
+    """Round 6: words of dying, leaving for good, a means, the affairs after a death, a
+    height or starving (``guarded.semantic``): a message holding one is not said back,
+    whatever the screen says of it."""
 
 
 @dataclass(frozen=True)
@@ -608,6 +612,18 @@ class RiskComponents:
     min_kinds: int
     kinds: Mapping[str, tuple[str, ...]]
     soft_ending: tuple[str, ...] = ()
+    everyday: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RiskSemantics:
+    """``utterances.yaml`` ``guarded.semantic`` (round 6; draft, G-0), folded.
+
+    A message holding one of ``words`` outside every ``everyday`` word ("死机", "跳绳",
+    "开刀") is not said back: the mirror's guard reads what the words are about, not the
+    screen's level or cue (复测 q3: a will, a knife under the pillow, "安心走了")."""
+
+    words: tuple[str, ...]
     everyday: tuple[str, ...] = ()
 
 
@@ -1741,6 +1757,14 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         if "addressed_acks" in extras
         else ()
     )
+    semantic: RiskSemantics | None = None
+    if "semantic" in extras:
+        node = _map(extras["semantic"], f"{here}.semantic")
+        _keys(node, {"words", "everyday"}, f"{here}.semantic")
+        semantic = RiskSemantics(
+            words=_folded(node["words"], f"{here}.semantic.words"),
+            everyday=_folded(node["everyday"], f"{here}.semantic.everyday"),
+        )
     for line in (*blame_acks, *addressed):
         if any(a in line for a in affirmations):
             raise LanguageDataError(f"{here}: {line!r} holds an affirmation")
@@ -1759,6 +1783,7 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         self_blame=blame_cues,
         self_blame_acks=blame_acks,
         addressed_acks=addressed,
+        semantic=semantic,
     )
 
 
@@ -1816,7 +1841,7 @@ def _parse_guarded(
         item,
         {"acks", "affirmations", "extra_risk_words"},
         here,
-        optional={"components", "self_blame", "addressed_acks"},
+        optional={"components", "self_blame", "addressed_acks", "semantic"},
     )
     acks = _mirror_lines(item["acks"], f"{here}.acks")
     affirmations = _unique(_strs(item["affirmations"], f"{here}.affirmations"), here)

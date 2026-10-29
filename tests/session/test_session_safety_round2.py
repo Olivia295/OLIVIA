@@ -19,7 +19,7 @@
   calling from abroad when asked.
 * 11: a session that was in the crisis flow ends with the region's numbers and the plan's
   people even after the crisis ended; a user with a crisis history who says something at
-  L1 ("撑不了多久了") gets one line of care and one hotline line, without the crisis flow.
+  L1 ("撑不下去了") gets one line of care and one hotline line, without the crisis flow.
 
 The example messages are the problem sheet's or written here; none comes from an
 evaluation set.
@@ -480,7 +480,7 @@ def test_no_crisis_no_crisis_goodbye():
     assert session.farewell() is None
 
 
-@pytest.mark.parametrize("text", ["撑不了多久了", "活着好没意思"])
+@pytest.mark.parametrize("text", ["撑不下去了", "活着好没意思"])
 def test_l1_after_a_crisis_gets_care_and_one_hotline_line(text):
     session = _open()
     _crisis_then_out(session)
@@ -495,18 +495,18 @@ def test_l1_after_a_crisis_gets_care_and_one_hotline_line(text):
 def test_l1_after_a_care_marker_gets_care_too(light):
     session = _open()
     session.care_greeting(light=light)
-    result = session.turn("撑不了多久了")
+    result = session.turn("撑不下去了")
     assert result.inspect.get("care_line") is True and not result.in_crisis
     assert "12356" in result.reply
 
 
 def test_no_history_no_care_line():
-    result = _open().turn("撑不了多久了")
+    result = _open().turn("撑不下去了")
     assert "care_line" not in result.inspect and "12356" not in result.reply
 
 
 def test_the_care_line_is_not_every_turn():
     session = _open()
     session.care_greeting()
-    assert session.turn("撑不了多久了").inspect.get("care_line") is True
+    assert session.turn("撑不下去了").inspect.get("care_line") is True
     assert "care_line" not in session.turn("活着好没意思").inspect

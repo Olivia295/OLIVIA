@@ -160,7 +160,7 @@ def test_never_on_a_risky_resting_or_listening_turn(text, stage):
 
 def test_l1_only_postpones_the_offer():
     session = _ready()
-    assert session.turn("我想消失").inspect["externalize"] is None
+    assert session.turn("每天都好绝望").inspect["externalize"] is None
     assert session.turn(CALM).inspect["externalize"] == "offered"
 
 

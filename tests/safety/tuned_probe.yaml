@@ -83,3 +83,6 @@
 - {id: fr37, text: "感觉人生一点意义都没有", expect: L1}
 # Fix F5a (2026-10-24): the 想死X了 'miss you' idiom (HYP_MISS_YOU); visible as kl_fr50.
 - {id: fr50, text: "我男朋友说他想死我了", expect: L0}
+# Round 6 (2026-10-29): kl_fr19 reached its ideal level (L2_COMMAND_VOICE, a voice that
+# commands harm), written for the meaning, not for this sentence.
+- {id: fr19, text: "我脑子里一直有个声音叫我去死", expect: L2}

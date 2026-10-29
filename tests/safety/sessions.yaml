@@ -30,7 +30,9 @@
 # An isolated L0 turn does not break the L1 run.
 - id: s03_isolated_l0_does_not_break_run
   turns:
-    - {text: "好想永远消失", expect_level: L1, expect_in_crisis: false}
+    # Round 6: 好想永远消失 now asks the D3 question (ASK_INTENT_WISH_VANISH), so the run
+    # starts with another plain L1 cue.
+    - {text: "真想人间蒸发", expect_level: L1, expect_in_crisis: false}
     - {text: "好想人间蒸发", expect_level: L1, expect_in_crisis: false}
     - {text: "中午吃了碗牛肉面", expect_level: L0, expect_in_crisis: false}
     - {text: "如果我不在了 会有人发现吗", expect_level: L2, expect_in_crisis: true}
@@ -43,8 +45,9 @@
     - {text: "下午去超市买了点水果", expect_level: L0, expect_in_crisis: false}
     - {text: "晚上看了部电影", expect_level: L0, expect_in_crisis: false}
     - {text: "明天要早起开会", expect_level: L0, expect_in_crisis: false}
-    - {text: "又想永远消失了", expect_level: L1, expect_in_crisis: false}
-    - {text: "想消失", expect_level: L1, expect_in_crisis: false}
+    # Round 6: 想消失 / 想永远消失 now ask the D3 question; plain L1 cues instead.
+    - {text: "又觉得生无可恋了", expect_level: L1, expect_in_crisis: false}
+    - {text: "看不到希望", expect_level: L1, expect_in_crisis: false}
 
 # L2 entry: confirmation, then two safe turns exit. The confirmation turn does not count.
 - id: s05_l2_exit_after_confirmation_and_two_safe_turns

@@ -286,7 +286,7 @@ def test_never_on_a_risky_or_resting_turn(text, stage):
 
 def test_an_l1_turn_only_postpones_the_mirror():
     session = _clarify_then_enable()
-    assert session.turn("我想消失").inspect["schema_mirror"] is None
+    assert session.turn("每天都好绝望").inspect["schema_mirror"] is None
     assert session.turn("今天外面下雨了").inspect["schema_mirror"] == "asked"
 
 

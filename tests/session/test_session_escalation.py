@@ -44,7 +44,6 @@ _BAND_L1 = (
 # s35, s38 lost that relapse; their first difference is now the score band's L1.
 MODEL_DIFFERS: dict[str, str] = {
     "s01_strong_l1_escalates_on_third_turn": _EARLY,
-    "s03_isolated_l0_does_not_break_run": _EARLY,
     "s04_three_l0_turns_clear_run": _EARLY,
     "s05_l2_exit_after_confirmation_and_two_safe_turns": _BAND_L1,
     "s09_relapse_to_l3_during_exit": _BAND_L1,
