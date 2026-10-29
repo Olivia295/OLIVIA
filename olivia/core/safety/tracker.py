@@ -44,6 +44,20 @@ confirm veto occurs in it; the exit rule after a confirmation is unchanged.
 Round 3 (2026-10-27, re-test r2 第 5 节): a promise not to harm oneself ("我答应你今晚不会
 做什么傻事", "我保证不会做傻事") confirms like a safe clause, under the same guards, and
 "I am safe now" is a short yes; the exit rule after a confirmation is unchanged.
+Round 6 (2026-10-29, re-test q2 第 3 节, q4 F4):
+
+* Cantonese 而家 / 宜家 / 依家 ("now") is a filler like 现在, and 好 is a degree before 安全
+  ("我而家好安全").
+* A status report confirms ("我好好的，人在家，什么都没做"): two or more of its clauses are
+  each a different kind of calm status (``_STATUS_KINDS``: being well, being at home or in
+  the dormitory, someone with the user, nothing done), under the safe clause's guards (no
+  rule risk cue, no F10 veto or contrast). One kind alone ("人在家，门锁着") is no
+  confirmation.
+* :meth:`CrisisTracker.observe` takes ``confirm_on_entry``: on the turn that enters a
+  crisis from the answer to the direct question, an explicit confirmation in that answer
+  ("我现在是安全的") counts, so the crisis reply does not ask for the very sentence the user
+  just said. The crisis flow is entered all the same and the exit rule is unchanged.
+
 The tracker keeps numbers and flags only; it never stores user text.
 """
 
@@ -73,7 +87,7 @@ _QUESTION_ENDINGS: Final[tuple[str, ...]] = ("吗", "么", "?")
 # Gap tolerance: these adverbs are dropped from both the message and the safety_confirm
 # phrases before matching, so "我已经联系上朋友了" matches "我联系上朋友了" and
 # "我现在是安全的" matches "我是安全的". Vetoes are still read on the whole message.
-_CONFIRM_FILLERS: Final[tuple[str, ...]] = ("已经", "现在", "都")
+_CONFIRM_FILLERS: Final[tuple[str, ...]] = ("已经", "现在", "都", "而家", "宜家", "依家")
 # Punctuation dropped before reading a short direct answer ("是的，安全的。").
 _ANSWER_PUNCTUATION: Final = str.maketrans("", "", ",.!~…、。！ ")
 # A short yes to the question every crisis reply asks until safety is confirmed
@@ -82,7 +96,7 @@ _ANSWER_PUNCTUATION: Final = str.maketrans("", "", ",.!~…、。！ ")
 # (的|了|啦)". It must contain 是, 对 or 安全, so a bare "嗯" (an acknowledgement, not an
 # answer) never counts. Anything with a negation, a hedge or a new cue does not match.
 _DIRECT_ANSWER: Final = re.compile(
-    r"(?:嗯+|恩+)?(?:(?:是|对)的?)?(?:我?(?:是|很|挺)?安全(?:的|了|啦)?)?(?:哦|呀|啊)?"
+    r"(?:嗯+|恩+)?(?:(?:是|对)的?)?(?:我?(?:是|很|挺|好)?安全(?:的|了|啦)?)?(?:哦|呀|啊)?"
 )
 _DIRECT_ANSWER_WORDS: Final[tuple[str, ...]] = ("是", "对", "安全")
 # S5 (2026-10-26): one clause of a longer message that says the user is safe ("我现在在家，
@@ -91,7 +105,7 @@ _DIRECT_ANSWER_WORDS: Final[tuple[str, ...]] = ("是", "对", "安全")
 # must carry no rule risk cue, no F10 denial veto or contrast and no confirm veto.
 _CLAUSE_SPLIT: Final = re.compile(r"[,.!?;:、。！？，；：~…\s]+")
 _SAFE_CLAUSE: Final = re.compile(
-    r"(?:嗯+|恩+)?(?:(?:是|对)的?)?我?(?:在家里?)?(?:是|很|挺)?安全(?:的|了|啦)?(?:哦|呀|啊|呢)?"
+    r"(?:嗯+|恩+)?(?:(?:是|对)的?)?我?(?:在家里?)?(?:是|很|挺|好)?安全(?:的|了|啦)?(?:哦|呀|啊|呢)?"
 )
 _DIRECT_ANSWER_ENGLISH: Final[frozenset[str]] = frozenset(
     {"yes", "yeah", "yep", "i'msafe", "iamsafe", "imsafe", "yesi'msafe", "yesiamsafe"}
@@ -187,6 +201,42 @@ _PHRASE_GUARD: Final = (
     "买好", "攒", "囤", "计划", "打算", "决定", "想好了", "下定决心", "一了百了", "解脱", "再见",
     "永别", "告别",
 )  # fmt: skip
+# Round 6: the clauses of a status report, each one kind of calm status, read on the
+# compacted clause (已经 / 现在 / 都 / 而家 dropped). Two different kinds confirm.
+_STATUS_END = r"(?:的|了|啦|呢|啊|呀|哦|嘅|喇|呀)*"
+# The people who can be with the user, a closed class (kin, partner, flatmate, friend).
+_PERSON = (
+    r"(?:我的?|我家)?(?:妈妈?|爸爸?|老妈|老爸|家人|家里人|屋企人|老公|老婆|爱人|伴侣|对象|男朋友|"
+    r"女朋友|室友|舍友|朋友|闺蜜|同学|同事|姐姐?|哥哥?|弟弟?|妹妹?|爷爷|奶奶|外婆|外公|阿妈|阿爸|"
+    r"老豆|老母|孩子|家里|一家人)(?:们|都|也)*"
+)
+_STATUS_KINDS: Final = (
+    (
+        "well",
+        re.compile(rf"我?(?:还|也|挺|很)?(?:好好|没事|冇事|冇嘢|挺好|很好)(?:的|地)?{_STATUS_END}"),
+    ),
+    (
+        "home",
+        re.compile(
+            rf"(?:我|人)?(?:就|也)?(?:在|喺|待在|呆在)(?:家|家里|屋里|屋企|宿舍|寝室|房间|自己房间)"
+            rf"(?:里|度)?{_STATUS_END}"
+        ),
+    ),
+    (
+        "company",
+        re.compile(
+            rf"{_PERSON}(?:在|喺)(?:旁边|身边|这|这里|这儿|度|家|家里|屋企)(?:陪着我|陪我)?{_STATUS_END}"
+            rf"|{_PERSON}(?:在|正)?陪着?我{_STATUS_END}"
+        ),
+    ),
+    (
+        "nothing",
+        re.compile(
+            rf"我?(?:什么|啥|乜|乜嘢)(?:也|都)?(?:没|没有|冇)(?:做|干|动)(?:过)?{_STATUS_END}"
+            rf"|我?(?:没|没有|冇)(?:做|干)(?:什么|啥|乜嘢|任何事)?{_STATUS_END}"
+        ),
+    ),
+)
 # An L0 turn with a known valence at or above this is calm: it resets the escalation count.
 _CALM_VALENCE: Final = 0.0
 # Valence must rise by more than this to count as an improvement (float noise guard).
@@ -247,6 +297,17 @@ def _scoped_spans(normalized: str) -> list[tuple[int, int]]:
 def _confirms_scoped(clause: str) -> bool:
     """A clause that confirms on its own (round 5): a timed safe clause or letting go."""
     return _TIMED_SAFE.fullmatch(clause) is not None or _LET_GO.fullmatch(clause) is not None
+
+
+def _status_kinds(clauses: list[str]) -> int:
+    """How many different kinds of calm status the clauses report (round 6)."""
+    kinds: set[str] = set()
+    for clause in clauses:
+        for kind, pattern in _STATUS_KINDS:
+            if pattern.fullmatch(clause) is not None:
+                kinds.add(kind)
+                break
+    return len(kinds)
 
 
 def _is_direct_answer(compact: str) -> bool:
@@ -320,12 +381,16 @@ class CrisisTracker:
         valence: float | None = None,
         *,
         confirmable: bool = True,
+        confirm_on_entry: CrisisAssessment | None = None,
     ) -> CrisisStatus:
         """Track one user turn. ``valence`` is ``None`` when there is no emotion evidence.
 
         ``confirmable=False`` (round 6): the turn answers another question the session asked
         (whether the user is under 18), so a short yes in it is no safety confirmation; the
-        safety question is asked again. Everything else is tracked as usual."""
+        safety question is asked again. Everything else is tracked as usual.
+
+        ``confirm_on_entry`` (round 6): the rule screen of an answer to the direct question;
+        when this turn enters a crisis, an explicit confirmation in it counts."""
         if self._in_crisis and assessment.uncapped_level is not None:
             # The denial cap (F10) applies outside a crisis only.
             assessment = replace(assessment, level=assessment.uncapped_level)
@@ -371,7 +436,10 @@ class CrisisTracker:
                 just_entered = True
             elif self._entry_level is not None:
                 self._entry_level = max(self._entry_level, level)
-            self._confirmed = False
+            self._confirmed = just_entered and (
+                confirm_on_entry is not None
+                and self._is_explicit_confirmation(normalize(text), confirm_on_entry)
+            )
             self._safe_turns = 0
             # The L1 escalation count starts afresh after any crisis-level turn, so earlier
             # L1 turns never lift later ones into a spurious escalation.
@@ -382,6 +450,12 @@ class CrisisTracker:
             )
 
         return self._status(level, escalated, just_entered, just_exited)
+
+    def confirms_safety(self, text: str, assessment: CrisisAssessment) -> bool:
+        """Whether ``text`` (screened as ``assessment`` by the rules) is an explicit safety
+        confirmation, read as in a crisis (负责人 2026-10-30 决定: the session reads the
+        answer to a model-only question with it). No state changes."""
+        return self._is_explicit_confirmation(normalize(text), assessment)
 
     def _model_only_relapse(self, assessment: CrisisAssessment, text: str) -> CrisisLevel | None:
         """The rules' level of an awaited explicit confirmation that only an injected model
@@ -535,6 +609,8 @@ class CrisisTracker:
         if not self._guard_clear(normalized):
             return False
         clauses = [c.translate(_ANSWER_PUNCTUATION) for c in _CLAUSE_SPLIT.split(compact)]
+        if _status_kinds(clauses) >= 2:
+            return True
         return any(
             c
             and (

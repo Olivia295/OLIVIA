@@ -477,6 +477,19 @@ crisis reply; on the next turn a short yes answers it and is passed to the track
 safety confirmation (``CrisisTracker.observe(confirmable=False)``), so the safety question
 is asked again; other words in the crisis leave the age question for a later reply.
 
+Session flows, round 6 (re-test 2026-10-29, q2/q3/q4; new wording 草稿：待 G-0):
+
+* A rhetorical or reassured no to the direct question is a no (``intent_check.py``), and
+  passes the F10 denial conditions on what follows it.
+* An unclear answer that is an explicit safety confirmation enters the crisis flow
+  confirmed (``CrisisTracker.observe(confirm_on_entry=...)``): no second request for it.
+* Someone else's plan the rules miss (``reported.names_plan``) gets the urgent card to pass
+  on; within a few turns of it any question about what to do or say is a follow-up.
+* A new request while an S_empower card waits ends the wait without feedback and is
+  answered in S_explore (``inspect["reason"]`` ``CARD_WAIT_LEFT``).
+* "别总问我感受" holds for the rest of the session: the listening lock, no feeling or need
+  named, and a ``crisis.no_feeling_prompts`` line in place of the closing question.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -581,6 +594,7 @@ from olivia.core.safety.intent_check import IntentAnswer, read_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
 from olivia.core.safety.normalize import bidi_readings, normalize, shown_text
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
+from olivia.core.safety.reported import names_plan
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
 from olivia.core.yaml_load import safe_load
@@ -621,6 +635,8 @@ MODEL_CHECK_CUE: Final = "MODEL_CHECK_L2"
 MODEL_CHECK: Final = "model"
 """``inspect["safety_check_by"]`` on the turn a model-only alarm asks and on its answer."""
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
+# Round 6: ``inspect["reason"]`` of a turn that left a waiting card for a new request.
+CARD_WAIT_LEFT: Final = "CARD_WAIT_LEFT"
 """``inspect["reason"]`` when new content after the closing ritual reopens S_explore."""
 DEGRADED: Final = "DEGRADED"
 """``inspect["reason"]`` of a reply from the SDD §10.1 fallback (``Session.turn``)."""
@@ -650,6 +666,15 @@ _THIRD_PARTY_WINDOW: Final = 3
 _JOINING: Final = re.compile(
     r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样)"
     r"|(?:跟|和|同)(?:他|她|ta|他们|她们)(?:一样|差不多)"
+)
+# Round 6 (re-test q2 第 1 节): the user wants to go along with the other person ("跟他一起
+# 走", "我们一起结束吧"): someone with them, together, then an act of dying ending its
+# clause; going together to get help ("一起去医院", "一起走出来") is none.
+_GO_ALONG: Final = re.compile(
+    r"(?:(?:跟|和|同|陪|随|跟着)(?:他|她|ta|他们|她们|对方)|我们俩?|咱们|咱俩|我俩)"
+    r"(?:一起|一块儿?|一道)[^,.!?;:]{0,2}?"
+    r"(?:去死|死|结束(?:这一切|生命|自己)?|了断|了结|解脱|离开这个世界|跳(?:下去|楼|河|江)?|走|去)"
+    r"(?=$|[,.!?;:~…]|了|吧|算了|好了|得了|的)"
 )
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
@@ -889,6 +914,12 @@ class Session:
         # Round 4: this turn reports someone else's words and every rule cue lies in them
         # (set by ``_reported_risk``; a model-only alarm on it asks, never the crisis flow).
         self._reported_words = False
+        # Round 6 (re-test q3 第四节): the user asked not to be asked about feelings; for the
+        # rest of this session a composed reply names no feeling or need and does not end
+        # by asking about feelings (``_compose``), and the listening lock is on.
+        self._no_feelings = False
+        # Round 6: the rule screen of this turn's answer to the question (or None).
+        self._answer_rules: CrisisAssessment | None = None
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
         self._gentle_care = False
         # This session opened with the A3 check-in greeting (``care_greeting``).
@@ -1138,8 +1169,16 @@ class Session:
         # 18 answers it; a short yes there ("嗯是") is that answer, never a confirmation of
         # safety in a crisis (the safety question is asked again).
         minor_yes = self._minor_asking and reads_yes(text)
+        # Round 6 (re-test q4 F4): an unclear answer to the question that is an explicit
+        # safety confirmation ("我现在是安全的") enters the crisis flow confirmed, so the
+        # crisis reply does not ask for that very sentence again.
+        entry_screen = self._answer_rules if answer is IntentAnswer.UNCLEAR else None
         status = self._tracker.observe(
-            tracked, text, perception.valence if evidence else None, confirmable=not minor_yes
+            tracked,
+            text,
+            perception.valence if evidence else None,
+            confirmable=not minor_yes,
+            confirm_on_entry=None if minor_yes else entry_screen,
         )
         self._last_status = status
         if status.in_crisis:
@@ -1173,7 +1212,7 @@ class Session:
             and before is not None
             and before.in_crisis
             and before.awaiting_confirmation
-        )
+        ) or (status.just_entered and not status.awaiting_confirmation)
         if not status.in_crisis:
             self._urgent = False
         elif model_level == CrisisLevel.L3.name:
@@ -1218,6 +1257,11 @@ class Session:
             signals = replace(signals, direct_request=False, answer=None)
         elif answer is not None:
             signals = replace(signals, answer=None)
+        if _NO_FEELING_ASK.search(normalize(text)) is not None:
+            # Round 6: "别总问我感受" holds for the rest of the session; it also turns on the
+            # listening lock (no unasked card, no schema mirror or naming offer).
+            self._no_feelings = True
+            signals = replace(signals, listening_lock_on=True, listening_lock_off=False)
         self._asking = ask
         # A turn calm enough for the schema mirror: no crisis, no L1 screen, below the
         # somatic line, not the D3 question or its answer. The L1 test is the rule screen's
@@ -1351,6 +1395,9 @@ class Session:
                 or signals.third_party_says_fine
                 or signals.third_party_far
                 or signals.third_party_stranger
+                # Round 6 (re-test q2 第 1 节): any question about what to do or say
+                # ("第一句说什么", "我可以点帮佢") is a follow-up too.
+                or _asks_what(text)
             )
         )
         third_now = open_turn and not minor_now and (reported is not None or third_follow)
@@ -1406,6 +1453,14 @@ class Session:
         ):
             transition = self._reopen(transition, perception)
             reason = CLOSING_REOPEN
+        elif self._new_request(text, transition, signals, pending, assessment, rules) and not (
+            ask or answer is not None or third_now or hotline_now or minor_now or help_now
+        ):
+            # Round 6 (re-test q3 第四节): a new request while a card waits ("你能帮我列一下
+            # 两边各要考虑什么吗") ends the wait without feedback and is answered in S_explore,
+            # instead of the card's /done prompt.
+            transition = self._reopen(transition, perception)
+            reason = CARD_WAIT_LEFT
         self._state = transition.state
         stage = transition.state.current_stage
         # The turn that leaves S_haven on the user's words (F10): the reply does not echo
@@ -1591,7 +1646,9 @@ class Session:
         elif minor_now and not leaving:
             rendered = self._minor_reply(stage, now, minor_answer)
         elif third_now:
-            rendered = self._third_party_reply(stage, now, reported, signals)
+            rendered = self._third_party_reply(
+                stage, now, reported, _third_party_ask(text, signals)
+            )
             self._third_party_turn = turn_no
         elif hotline_now:
             rendered = self._hotline_reply(stage, now, signals)
@@ -2390,10 +2447,12 @@ class Session:
         denial, no rule cue outside a denial), and it sets no gentle-care flag, so the next
         session does not open by asking about safety (I9).
         """
+        self._answer_rules = None
         if not self._asking:
             return assessment, None
         shared = self._shared.screen
         rules = assessment if self._screen is shared else shared.assess(text)
+        self._answer_rules = rules
         # Round 3: the D3 question also reads a first-person negated intent ("我没有想结束
         # 生命，只是……") with the rest of the message screened by the rules; the question a
         # model-only alarm asked keeps the stricter F10 no (owner decision 2026-10-26).
@@ -2405,9 +2464,24 @@ class Session:
         )
         answer = reading.answer
         if (
+            model
+            and answer is IntentAnswer.UNCLEAR
+            and rules.rule_clear
+            and self._tracker.confirms_safety(text, rules)
+            and shared.clear_denial(text)
+        ):
+            # 负责人 2026-10-30 决定 (re-test q4 F4): the question a model-only alarm asked,
+            # answered with an explicit safety confirmation ("我现在是安全的") that passes the
+            # F10 denial conditions, is a no: back to the ordinary chat. A hedge, a danger
+            # cue next to it, a question or any rule cue keeps it unclear (the crisis flow,
+            # entered confirmed); a "是的" to the question is a yes and never read here.
+            answer = IntentAnswer.DENIED
+        guarded = text if reading.guard_text is None else reading.guard_text
+        if (
             (model or reading.reason_split)
             and answer is IntentAnswer.DENIED
-            and not shared.clear_denial(text)
+            and guarded
+            and not shared.clear_denial(guarded)
         ):
             answer = IntentAnswer.UNCLEAR
         if answer is IntentAnswer.DENIED:
@@ -2514,6 +2588,11 @@ class Session:
             # words ("下周一考完试她就去死"), a strong farewell, or a weak one posted with a
             # place or a means ("大家再见了，谢谢你们" with a picture of a roof).
             return found
+        if names_plan(normalize(text)):
+            # Round 6 (re-test q2 第 1 节): parts of a plan the rules miss (a means made
+            # ready and a place, a jump and a fixed day, a farewell and a time): the card,
+            # urgent, as for the model's L3 class on the words.
+            return replace(found, plan=True)
         return None
 
     def _for_someone_else(self, assessment: CrisisAssessment) -> CrisisAssessment:
@@ -2593,17 +2672,23 @@ class Session:
         turns of the card for it, outside a crisis and not the answer to a question, a
         message with a risk cue of the user's own (rule level L1 or above) says 我也 / 我自己
         也 / 跟他一样 ("说实话我也差不多，真的撑不住了"). The other person's risk was serious
-        enough for the card, so the user's own words are read at its level (L2)."""
+        enough for the card, so the user's own words are read at its level (L2).
+
+        Round 6: wanting to go along with the other person (``_GO_ALONG``: "跟他一起走",
+        "我们一起结束吧") joins in too, with or without a rule cue of the user's own."""
         before = self._last_status
         rule = assessment.rule_level or CrisisLevel.L0
-        return (
+        if not (
             answer is None
             and not (before is not None and before.in_crisis)
             and assessment.level < CrisisLevel.L2
-            and rule >= CrisisLevel.L1
             and self._third_party_window()
-            and _JOINING.search(normalize(text)) is not None
-        )
+        ):
+            return False
+        normalized = normalize(text)
+        return (
+            rule >= CrisisLevel.L1 and _JOINING.search(normalized) is not None
+        ) or _GO_ALONG.search(normalized) is not None
 
     def _resource_card(
         self, level: CrisisLevel, now: datetime, *, mode: CardMode, minor: bool = False
@@ -3315,12 +3400,13 @@ class Session:
         """
         # The engine names the feeling only when there is one (F3): never the rule stub's
         # fallback emotion, and the user's own word first ("好累" -> 疲惫).
+        quiet = self._no_feelings and not card and stage in _NO_FEELING_STAGES
         slots = self._engine.build_slots(
             user_name=self._profile.user_name,
             agent_name=self._profile.agent_name,
             user_text=mirror_text,
-            emotion_id=perception.fine_grained_emotion,
-            yearning_id=perception.deep_yearning,
+            emotion_id=None if quiet else perception.fine_grained_emotion,
+            yearning_id=None if quiet else perception.deep_yearning,
             spectrum_id=spectrum,
             card_title=card_title,
             situations=self._context.situations,
@@ -3331,15 +3417,35 @@ class Session:
         self._engine.last_gate = None
         if short is None:
             short = bool(mirror_text) and is_short_input(mirror_text)
-        if stage is HelpStage.S_CLARIFY and (short or not self._need_due):
+        if stage is HelpStage.S_CLARIFY and (short or not self._need_due or quiet):
             # Not every S_clarify reply names a need, never one after "嗯" (dogfood I3).
             slots = replace(slots, need="")
         text = self._engine.compose(stage, slots, card=card, light=light, tips=tips, short=short)
         if not self._note_gate():
             return None
+        if quiet:
+            plain = self._without_feeling_question(text, stage)
+            if plain is None:
+                return None
+            text = plain
         if stage is HelpStage.S_CLARIFY and slots.need and slots.need in text:
             self._need_named = True
         return text, slots.mirror
+
+    def _without_feeling_question(self, text: str, stage: HelpStage) -> str | None:
+        """``text`` with its closing paragraph (the question) replaced by a
+        ``no_feeling_prompts`` line (round 6), through WILLOW and the gate."""
+        lines = self._engine.data.render.no_feeling_prompts
+        parts = text.split("\n\n")
+        if len(parts) < 2 or not lines:
+            return text
+        line = apply_willow(self._pick(lines), ContentKind.NORMAL, self._engine.data.willow)
+        parts[-1] = line
+        result = self._engine.gate.check("\n\n".join(parts), kind=ContentKind.NORMAL, stage=stage)
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text
 
     def _compose_mirror(
         self,
@@ -3770,6 +3876,42 @@ class Session:
         )
 
     @staticmethod
+    def _new_request(
+        text: str,
+        transition: Transition,
+        signals: TurnSignals,
+        pending: _Pending | None,
+        assessment: CrisisAssessment,
+        rules: CrisisAssessment,
+    ) -> bool:
+        """A new request while an S_empower card waits (round 6): the stage stays, the
+        message asks something or asks for help with something (``_NEW_REQUEST``) in words
+        of its own, it is no command, feedback, answer, request for a method or practice,
+        and it is not about the card ("这个练习要做几遍"); the turn screens L0 by the rules
+        and below L2 by any reading."""
+        return (
+            pending is not None
+            and pending.stage is HelpStage.S_EMPOWER
+            and transition.previous is HelpStage.S_EMPOWER
+            and transition.state.current_stage is HelpStage.S_EMPOWER
+            and transition.reason is Reason.STAY
+            and signals.command is None
+            and signals.feedback is None
+            and not signals.feedback_unclear
+            and signals.answer is None
+            and not signals.direct_request
+            and not signals.another_method
+            and signals.therapy_request is None
+            and signals.therapy_question is None
+            and not signals.kit_recall
+            and rules.level is CrisisLevel.L0
+            and assessment.level < CrisisLevel.L2
+            and _has_words(text)
+            and (_asks(text) or _NEW_REQUEST.search(normalize(text)) is not None)
+            and _ABOUT_CARD.search(normalize(text)) is None
+        )
+
+    @staticmethod
     def _reopen(transition: Transition, perception: PerceptionContext) -> Transition:
         """Back to listening: S_explore, entered on this turn."""
         state = replace(
@@ -3977,6 +4119,45 @@ _DIGIT_RUNS: Final = re.compile(r"\d+")
 _MIN_NUMBER_DIGITS: Final = 3
 
 
+# Round 6 (re-test q2 第 1 节): a question about what to do or what to say, read in the
+# turns after the card for someone else's risk. 点 asks only before a verb (Cantonese 点帮,
+# 点讲), never as 一点.
+_ASK_WHAT: Final = re.compile(
+    r"什么|啥|咩|乜|怎样|如何|点样|(?<!一)点(?=帮|做|讲|算|办|同|先|去|开口|劝|搞)|how(?:do|can|should)|what(?:do|can|should)"
+)
+_SAY_WHAT: Final = re.compile(
+    r"(?:说|讲|问|聊|开口|讲话)(?:些|点|啲|几句)?(?:什么|啥|咩|乜)|第一句|头一句|开场白"
+    r"|(?:怎么|怎样|如何|点样|点)(?:说|讲|问|开口|聊|劝)|what(?:do|should|can)isay"
+)
+
+
+def _asks_what(text: str) -> bool:
+    """A question (round 6): one :func:`_asks` reads, or a question word for what to do or
+    say."""
+    return _asks(text) or _ASK_WHAT.search(normalize(text)) is not None
+
+
+def _third_party_ask(text: str, signals: TurnSignals) -> TurnSignals:
+    """The turn's signals for the card for someone else's risk (round 6): when no follow-up
+    signal of its own fired, a question about what to say is how to ask and any other
+    question about what to do asks for advice."""
+    known = (
+        signals.keep_secret
+        or signals.advice_request
+        or signals.third_party_unreachable
+        or signals.third_party_question
+        or signals.third_party_how_to_ask
+        or signals.third_party_says_fine
+        or signals.third_party_far
+        or signals.third_party_stranger
+    )
+    if known or not _asks_what(text):
+        return signals
+    if _SAY_WHAT.search(normalize(text)) is not None:
+        return replace(signals, third_party_how_to_ask=True)
+    return replace(signals, advice_request=True)
+
+
 def _digits(number: str) -> str:
     return "".join(_DIGIT_RUNS.findall(number))
 
@@ -4030,6 +4211,26 @@ _LEAD_ACK: Final = re.compile(
     r"^(?:[嗯恩哦噢喔呃额诶哎啊好行对]|好的|好吧|知道了|ok|okay)+[\s,.!?~，。！？、…]*"
 )
 _WORD_CHAR: Final = re.compile(r"[\u4e00-\u9fffA-Za-z0-9]")
+
+
+# Round 6 (re-test q3 第四节): "别总问我感受", "不要再问我的感觉了", "我说了别问感受": the
+# user asks not to be asked about feelings. Read on the normalized message.
+_NO_FEELING_ASK: Final = re.compile(
+    r"(?:别|不要|不用|甭|少|别再|不要再|不用再)(?:总是?|老是?|一直|再|每次都?|又)?(?:问|追问)"
+    r"(?:我)?(?:的)?(?:什么|啥)?(?:感受|感觉|心情|情绪)"
+    r"|(?:不想|不愿意|不要)(?:聊|说|谈|讲)(?:我的)?(?:感受|感觉|心情|情绪)"
+    r"|(?:又|还|总|老)(?:是)?(?:问|追问)我(?:的)?(?:感受|感觉|心情)"
+)
+_NO_FEELING_STAGES: Final = frozenset({HelpStage.S_EXPLORE, HelpStage.S_CLARIFY})
+# Round 6: a request for help with something ("你能帮我……", "陪我想想……"), and words that
+# are about the card on screen (its steps, doing it, what happens while doing it).
+_NEW_REQUEST: Final = re.compile(
+    r"(?:帮|陪|教|替|给)我|你能|你可以|能不能|可不可以|能否|麻烦你|想请你|请你|helpme|canyou"
+)
+_ABOUT_CARD: Final = re.compile(
+    r"练习|这个方法|那个方法|这招|步骤|第[一二三四五六七八九十\d]+步|做完|做到|做几|走神|从头|"
+    r"刚才那个|这个卡|/"
+)
 
 
 def _has_words(text: str) -> bool:
