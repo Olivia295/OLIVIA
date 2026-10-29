@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from cli_support import L3_SENTENCE, NOW, save_profile
 
 from olivia.core.chang.safety_plan import (
@@ -268,3 +269,13 @@ def test_no_suggestion_without_a_keychain(run_cli, data_home, keychain):
     keychain.broken = NoKeychainError("none")
     chat = run_cli(["chat", "--rules"], ["今天上班好累", "给我一个方法吧", "/done"])
     assert chat.code == 0 and TEXT.suggestion not in chat.out
+
+
+@pytest.mark.parametrize("phone", ["", " 13600000000"])
+def test_a_long_name_says_the_phone_is_kept_only_when_there_is_one(run_cli, data_home, phone):
+    """Round 6 (QA q4 F19): no "the phone on the same line is kept" without a phone."""
+    long_name = "隔壁单元那位一直帮我取快递的大哥"
+    assert len(long_name) > MAX_NAME_CHARS
+    replies = [f"{long_name}{phone}", "大哥", *([] if phone else [""]), ""]
+    run = _people_only(run_cli, data_home, replies)
+    assert (CMD["phone_kept"] in run.out) is bool(phone)

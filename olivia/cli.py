@@ -209,7 +209,7 @@ from olivia import __version__, doctor
 from olivia.core.chang import onboarding
 from olivia.core.chang.care import CARE_FILENAME, CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
-from olivia.core.chang.journal import ChatChecks, load_journal_text
+from olivia.core.chang.journal import ChatChecks, is_exit_command, load_journal_text
 from olivia.core.chang.journal import run_command as run_journal
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
@@ -251,7 +251,7 @@ from olivia.core.chang.setup_screen import (
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
 from olivia.core.crypto.keychain import Probe
-from olivia.core.crypto.vault import KEYS_DIRNAME
+from olivia.core.crypto.vault import KEYS_DIRNAME, key_file_intact
 from olivia.core.datalock import DataDirBusyError, DataDirLock
 from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
@@ -263,7 +263,7 @@ from olivia.core.memory.forget import (
     run_forget,
     run_memory,
 )
-from olivia.core.memory.ledger import LEDGER_DIRNAME, Ledger
+from olivia.core.memory.ledger import LEDGER_DIRNAME, LEDGER_STORE, Ledger
 from olivia.core.memory.recorder import SessionRecorder
 from olivia.core.memory.state import STATE_FILENAME, StateRecorder, StateStore
 from olivia.core.models import (
@@ -342,6 +342,12 @@ PROFILE_LOCKED_NOW: Final = (
 PROFILE_KEYS_LOST: Final = (
     "加密保存的信息再也打不开了：解锁它的钥匙已经不在这台电脑的钥匙串里，或者钥匙文件坏了"
     "（可能被删掉了，或者这些文件是从别的电脑拷过来的）。你的文件我没有改动。"
+)
+# Round 6 (QA q4 F11; 草稿：待 G-0): only the profile is damaged: setting up again after
+# moving it aside keeps every other record, unlike ``forget --all``.
+PROFILE_MOVE_ASIDE: Final = (
+    "如果只是设置文件坏了，也可以先把它改个名字挪开（运行 olivia doctor 可以看到它在哪里），"
+    "再运行 olivia chat 重新设置；这样聊天记录和安全计划都会留着。"
 )
 PROFILE_START_OVER: Final = (
     "想从头开始的话，可以运行 olivia forget --all 清除这台电脑上的全部记录，"
@@ -423,6 +429,22 @@ CHAT_LEDGER_MISPLACED: Final = (
     "这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
     "运行 olivia doctor 可以看到是哪里不对、怎么修。"
 )
+# Round 6 (QA q4 F8, F13; 草稿：待 G-0): said before the chat, once: the keys folder is a
+# file or the ledger's key file is damaged (the summary cannot be saved), or only the safety
+# plan's file cannot be read (the summary is fine; the plan cannot be shown in a crisis).
+CHAT_KEYS_MISPLACED: Final = (
+    "数据目录里存放钥匙的 keys 文件夹被换成了一个同名文件，"
+    "这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+CHAT_LEDGER_KEY_DAMAGED: Final = (
+    "保存聊天小结用的钥匙文件坏了，这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+CHAT_PLAN_UNREADABLE: Final = (
+    "你的安全计划文件现在读不了（可能是权限不对），难受的时候我没办法把它拿给你看；"
+    "聊天本身照常，热线也照常会给。运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
 CHAT_MASTER_LOST: Final = (
     "系统钥匙串里找不到加密用的主钥匙，之前加密保存的内容（比如聊天记录和安全计划）现在打不开，"
     "这次聊天的小结也存不下来；聊天本身照常。"
@@ -435,7 +457,7 @@ UNEXPECTED_ERROR: Final = (
 # QA 2026-10-26 #4 (草稿：待 G-0): a crisis sentence typed while setting up (onboarding,
 # profile, health, safety-plan) is not taken as an answer; the numbers come first.
 SETUP_CRISIS: Final = (
-    "你刚才写的这句话，让我有点担心你。设置可以先放一放，你的安全更要紧："
+    "你刚才写的这句话，让我有点担心你。这里要填的可以先放一放，你的安全更要紧："
     "如果你现在很难受，或者有伤害自己的念头，请联系下面的电话，或者叫一位身边信任的人过来陪着你。"
 )
 SETUP_CHOICE: Final = "想继续，还是先退出？"
@@ -576,7 +598,7 @@ DOCTOR_DIR: Final = "数据目录：{location}"
 DOCTOR_DIR_ABSENT: Final = "数据目录：还没有（{location}，第一次设置时会建立）"
 DOCTOR_DIR_NOT_DIR: Final = (
     "数据目录：{location} 是一个文件，不是文件夹，程序没办法在这里保存。"
-    "可以把这个文件改个名字或者挪走（里面有要留的东西就先备份），再运行 olivia chat"
+    "可以把这个文件改个名字或者挪走（里面有要留的东西就先备份），再运行一次 olivia doctor"
 )
 # QA r3 (草稿：待 G-0): a data directory this account cannot read or write, and how to fix it.
 DOCTOR_DIR_UNREADABLE: Final = (
@@ -584,6 +606,13 @@ DOCTOR_DIR_UNREADABLE: Final = (
 )
 DOCTOR_DIR_UNWRITABLE: Final = (
     "数据目录写不了：{location} 或者里面的文件夹没有写入权限，设置和记录都没办法保存"
+)
+# Round 6 (QA q4 F12; 草稿：待 G-0): the path inside the data directory that is the problem.
+DOCTOR_DIR_UNREADABLE_AT: Final = (
+    "数据目录读不了：{location} 里的 {name} 没有读取权限，程序读不了它"
+)
+DOCTOR_DIR_UNWRITABLE_AT: Final = (
+    "数据目录写不了：{location} 里的 {name} 文件夹没有写入权限，放在里面的内容没办法保存"
 )
 DOCTOR_FIX_POSIX: Final = (
     "怎么修：在终端里运行 chmod -R u+rwX {path}，把读写权限还给自己，再运行一次 olivia doctor"
@@ -594,6 +623,29 @@ DOCTOR_FIX_WINDOWS: Final = (
 )
 DOCTOR_PERMISSIONS_OK: Final = "数据目录的权限：只有你自己能读写"
 DOCTOR_PERMISSIONS_OFF: Final = "数据目录的权限：有 {count} 处和应有的不一样，应当只有你自己能读写"
+# Round 6 (QA q4 F12; 草稿：待 G-0): which one, and how to put it back.
+DOCTOR_PERMISSIONS_OFF_AT: Final = (
+    "数据目录的权限：有 {count} 处和应有的不一样（比如 {name}），应当只有你自己能读写"
+)
+DOCTOR_PERMISSIONS_FIX_POSIX: Final = (
+    "怎么修：在终端里运行 chmod -R u=rwX,go= {path}，只留给自己读写，再运行一次 olivia doctor"
+)
+# Round 6 (QA q4 F12; 草稿：待 G-0): nothing in a data directory that is a file is checked.
+DOCTOR_STORE_UNCHECKED: Final = "{name}：没有检查，因为数据目录现在用不了（见上面一行）"
+# Round 6 (QA q4 F9; 草稿：待 G-0): how to fix a store that cannot be opened.
+DOCTOR_PROFILE_DAMAGED_PLAIN: Final = "{name}：打不开，文件内容坏了，也没有能用的自动备份"
+DOCTOR_PROFILE_FIX: Final = (
+    "怎么修：设置文件坏了，程序没办法修复。可以先把 {path} 改个名字挪开（想留着就别删），"
+    "再运行 olivia chat 重新设置；改名不会动到其他记录"
+)
+DOCTOR_STORE_FIX: Final = (
+    "怎么修：这份{name}的文件或者它的钥匙文件坏了，程序没办法修复。有备份的话可以放回原处；"
+    "不需要的话，运行 olivia forget {flag} 把它删掉，以后会重新开始记"
+)
+DOCTOR_CARE_FIX: Final = (
+    "怎么修：关心提醒的文件或者它的钥匙文件坏了，程序没办法修复。它只记着下次聊天时要不要先问候你，"
+    "不影响其他记录；要清掉它，只能运行 olivia forget --all 从头开始（会删掉全部记录）"
+)
 DOCTOR_PERMISSIONS_WINDOWS: Final = "数据目录的权限：Windows 上不做这项检查"
 DOCTOR_KEYCHAIN_READY: Final = "系统钥匙串：可以使用（没有改动里面的任何条目）"
 DOCTOR_KEYCHAIN_NONE: Final = (
@@ -722,6 +774,15 @@ DOCTOR_TEXTS: Final = (
     DOCTOR_ONBOARDED_NO_DIR,
     *DOCTOR_STORE_NAMES.values(),
     *(text for _, text in DOCTOR_STORE_STATES.values()),
+    DOCTOR_DIR_UNREADABLE_AT,
+    DOCTOR_DIR_UNWRITABLE_AT,
+    DOCTOR_PERMISSIONS_OFF_AT,
+    DOCTOR_PERMISSIONS_FIX_POSIX,
+    DOCTOR_STORE_UNCHECKED,
+    DOCTOR_PROFILE_DAMAGED_PLAIN,
+    DOCTOR_PROFILE_FIX,
+    DOCTOR_STORE_FIX,
+    DOCTOR_CARE_FIX,
     DOCTOR_KIND_FILE,
     DOCTOR_KIND_FOLDER,
     DOCTOR_MISPLACED_FIX,
@@ -774,11 +835,15 @@ USER_TEXTS: Final = (
     CHAT_RECORDS_UNSAVED,
     CHAT_LEDGER_MISPLACED,
     CHAT_MASTER_LOST,
+    CHAT_KEYS_MISPLACED,
+    CHAT_LEDGER_KEY_DAMAGED,
+    CHAT_PLAN_UNREADABLE,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     PROFILE_LOCKED_NOW,
     PROFILE_KEYS_LOST,
     PROFILE_START_OVER,
+    PROFILE_MOVE_ASIDE,
     CHAT_CANNOT_START,
     RESOURCES_REGION_UNREADABLE,
     CHAT_DATA_DAMAGED,
@@ -1339,6 +1404,12 @@ def inspect_panel(result: TurnResult) -> list[str]:
         # 2026-10-26: the question a model-only alarm asked, not a rule cue (display only).
         + ("（只有模型报警）" if check and data.get("safety_check_by") == "model" else "")
         + (" · 安全计划 已展示" if data.get("safety_plan_shown") is True else "")
+        # Round 6 (复测 q4 F20): a plan that could not be opened is never "shown".
+        + (
+            " · 安全计划 读不出（已说明）"
+            if data.get("safety_plan_unreadable_said") is True
+            else ""
+        )
         + (" · 安全计划 一句提醒" if data.get("safety_plan_reminded") is True else "")
         + (" · 联系身边人 已肯定" if data.get("reach_out") is True else "")
         + (f" · 调出笔记 {_fmt(recall)}（{_fmt(recalled)}）" if recall else ""),
@@ -1401,7 +1472,9 @@ def _chat(
         saved, lambda x: plan_screen.alarms(x) or plan_screen.risky_words(x)
     )
     # QA q4 FLT-3: a plan that is there but cannot be opened is said so in a crisis reply.
-    plan_unreadable = saved is None and plan_store.exists()
+    # Round 6 (复测 q4 F1): a folder (or anything else) where the plan's file should be
+    # is a plan that cannot be opened too, never "no plan".
+    plan_unreadable = saved is None and (plan_store.path.exists() or plan_store.path.is_symlink())
     try:
         session = Session.open(
             tax,
@@ -1459,9 +1532,9 @@ def _chat(
             pending = None
             if line is None:
                 break
-            if line.strip() == EXIT_COMMAND:
+            if is_exit_command(line):  # round 6 (QA q4 F16): any case, /quit, /退出
                 carry = checks.at_exit(session.state)
-                if carry.line is None or carry.line.strip() == EXIT_COMMAND:
+                if carry.line is None or is_exit_command(carry.line):
                     break
                 pending = carry.line  # text typed at the rating: the chat goes on
                 continue
@@ -1528,9 +1601,20 @@ def _records_blocked(base: Path, store: ProfileStore) -> str | None:
     if store.vault.master_lost():
         return CHAT_MASTER_LOST
     try:
-        if LEDGER_DIRNAME in doctor.misplaced(base):
+        wrong = doctor.misplaced(base)
+        if LEDGER_DIRNAME in wrong:
             return CHAT_LEDGER_MISPLACED
-        return None if doctor.access_problem(base) is None else CHAT_RECORDS_UNSAVED
+        if KEYS_DIRNAME in wrong:  # round 6 (QA q4 F8)
+            return CHAT_KEYS_MISPLACED
+        key = base / KEYS_DIRNAME / f"{LEDGER_STORE}.key"
+        if key.exists() and not key_file_intact(base, LEDGER_STORE):
+            return CHAT_LEDGER_KEY_DAMAGED
+        detail = doctor.access_detail(base)
+        if detail is None:
+            return None
+        if detail == ("unreadable", base / SAFETY_PLAN_FILENAME):  # round 6 (QA q4 F13)
+            return CHAT_PLAN_UNREADABLE
+        return CHAT_RECORDS_UNSAVED
     except OSError:
         return CHAT_RECORDS_UNSAVED
 
@@ -1651,7 +1735,7 @@ def _unreadable_profile(exc: ProfileCorruptError | ProfileLockedError) -> tuple[
     if isinstance(exc, ProfileUnreadableError):
         # QA q4 P7: the data directory itself may be the file in the way.
         return (DATA_DIR_IS_FILE,) if _data_dir_is_file() else (PROFILE_UNREADABLE,)
-    return (PROFILE_CORRUPT, PROFILE_START_OVER)
+    return (PROFILE_CORRUPT, PROFILE_MOVE_ASIDE, PROFILE_START_OVER)
 
 
 def _data_dir_is_file() -> bool:
@@ -2188,21 +2272,35 @@ def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
         return [(DOCTOR_OK, DOCTOR_DIR_ABSENT.format(location=where))]
     if found.kind == "other" or found.access == "file":
         return [(DOCTOR_FAIL, DOCTOR_DIR_NOT_DIR.format(location=where))]
+    name = found.culprit
     if found.access == "unreadable":
-        return [
-            (DOCTOR_FAIL, DOCTOR_DIR_UNREADABLE.format(location=where)),
-            _doctor_fix(found.location),
-        ]
+        text = (
+            DOCTOR_DIR_UNREADABLE_AT.format(location=where, name=name)
+            if name
+            else DOCTOR_DIR_UNREADABLE.format(location=where)
+        )
+        return [(DOCTOR_FAIL, text), _doctor_fix(found.location)]
     rows = [(DOCTOR_OK, DOCTOR_DIR.format(location=where))]
     if found.access == "unwritable":
-        rows = [
-            (DOCTOR_FAIL, DOCTOR_DIR_UNWRITABLE.format(location=where)),
-            _doctor_fix(found.location),
-        ]
+        text = (
+            DOCTOR_DIR_UNWRITABLE_AT.format(location=where, name=name)
+            if name
+            else DOCTOR_DIR_UNWRITABLE.format(location=where)
+        )
+        rows = [(DOCTOR_FAIL, text), _doctor_fix(found.location)]
     if found.mismatched is None:
         rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_WINDOWS))
     elif found.mismatched:
-        rows.append((DOCTOR_WARN, DOCTOR_PERMISSIONS_OFF.format(count=found.mismatched)))
+        example = found.mismatched_example
+        rows.append(
+            (
+                DOCTOR_WARN,
+                DOCTOR_PERMISSIONS_OFF_AT.format(count=found.mismatched, name=example)
+                if example
+                else DOCTOR_PERMISSIONS_OFF.format(count=found.mismatched),
+            )
+        )
+        rows.append(("", DOCTOR_PERMISSIONS_FIX_POSIX.format(path=_shell_path(found.location))))
     else:
         rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_OK))
     return rows
@@ -2230,12 +2328,20 @@ def _doctor_store_rows(report: doctor.Report) -> list[Row]:
     states = {"profile": profile.state, **report.stores}
     base = report.data_dir.location
     for name, label in DOCTOR_STORE_NAMES.items():
-        mark, template = DOCTOR_STORE_STATES[states[name]]
+        if report.data_dir.kind == "other":  # round 6 (QA q4 F12): nothing was looked at
+            rows.append((DOCTOR_WARN, DOCTOR_STORE_UNCHECKED.format(name=label)))
+            continue
+        state = states[name]
+        mark, template = DOCTOR_STORE_STATES[state]
         file = _DOCTOR_STORE_PATHS[name]
         kind = DOCTOR_KIND_FILE if file == LEDGER_DIRNAME else DOCTOR_KIND_FOLDER
+        if name == "profile" and state is StoreState.BROKEN and not profile.sealed:
+            template = DOCTOR_PROFILE_DAMAGED_PLAIN  # round 6 (F9): no key is involved
         rows.append((mark, template.format(name=label, file=file, kind=kind)))
-        if states[name] is StoreState.MISPLACED:  # QA q4 DOC-10, DOC-19: what and how
+        if state is StoreState.MISPLACED:  # QA q4 DOC-10, DOC-19: what and how
             rows.append(("", DOCTOR_MISPLACED_FIX.format(path=_shell_path(base / file))))
+        elif state in (StoreState.BROKEN, StoreState.PARTLY):  # round 6 (QA q4 F9)
+            rows.append(("", _doctor_store_fix(name, label, base)))
     if KEYS_DIRNAME in report.misplaced:  # QA q4 DOC-09
         rows.append((DOCTOR_FAIL, DOCTOR_KEYS_MISPLACED))
         rows.append(("", DOCTOR_KEYS_FIX.format(path=_shell_path(base / KEYS_DIRNAME))))
@@ -2243,6 +2349,23 @@ def _doctor_store_rows(report: doctor.Report) -> list[Row]:
         rows.append(("", DOCTOR_MASTER_FIX))
     rows.append(("", DOCTOR_STORES_NOTE))
     return rows
+
+
+_DOCTOR_FORGET_FLAGS: Final = {
+    "ledger": "--ledger",
+    "state": "--kit",
+    "safety_plan": "--safety-plan",
+}
+
+
+def _doctor_store_fix(name: str, label: str, base: Path) -> str:
+    """How to fix a store that cannot be opened (round 6, QA q4 F9)."""
+    if name == "profile":
+        return DOCTOR_PROFILE_FIX.format(path=_shell_path(base / PROFILE_FILENAME))
+    flag = _DOCTOR_FORGET_FLAGS.get(name)
+    if flag is None:
+        return DOCTOR_CARE_FIX
+    return DOCTOR_STORE_FIX.format(name=label, flag=flag)
 
 
 def _doctor_activity_rows(found: doctor.Activity) -> list[Row]:

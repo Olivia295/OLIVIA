@@ -1576,6 +1576,16 @@ hotline_request_patterns:
   - "(?:^|[,.!?;~、]|把|这个|那个|求助|帮忙|援助|热线|心理|急救|报警|紧急|支援|咨询)的?(?:电话|号码)(?:号码)?(?:再|直接|快|赶紧)?(?:发|给|甩|告诉|俾|畀)(?:一下)?(?:我|过来|给我|一个|一下)"
   - "(?:报警|急救|救护车|救护|紧急|police|ambulance|emergency)(?:的|用的|要打的)?(?:电话|号码|热线|number)(?:是|系)?(?:多少|什么|啥|咩|哪个|几号|几多|来着|吗|呢|\\?)"
   - "(?:报警|急救|叫救护车|救护车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:哪个|什么|多少|几号|啥|咩|几多)"
+  # Round 6 (2026-10-29, re-test q2 第 5 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a hotline told to come over ("把心理热线发我", "热线直接甩过来"): 热线 / hotline is never
+  #   someone's own number; an optional 把 lets a negation before it void the match;
+  # - the police or ambulance number asked with a linking word between ("救护车是哪个号码",
+  #   "报警该打什么电话");
+  # - Cantonese giving or having words around 热线 / 电话 ("俾条热线我", "有冇啲电话可以打").
+  - "(?:把{C}{0,6}?)?(?:热线|hotline|helpline)(?:的)?(?:号码|电话)?(?:再|直接|快|赶紧|先|马上)?(?:发|给|甩|告诉|俾|畀|send)(?:一下|一个|个|下)?(?:我|过来|给我|me)(?!妈|爸|哥|姐|弟|妹|们|的|朋友|同|老|了|过)"
+  - "(?:报警|急救车|急救|救护车|police|ambulance)(?:的话|的|用的|要打的|是|系|要|该|得|应该|就|打|拨|叫|找){0,4}(?:哪个|哪一个|什么|多少|几|啥|咩|边个|几多)(?:号码|电话|号|热线|number)"
+  - "(?:俾|畀|给)(?:我)?(?:一?个|一?条|几个|啲|些)(?:能打的|可以打的|求助的)?{C}{0,4}?(?:热线|hotline|helpline)"
+  - "(?:有没有|有冇|有无|有什么|有啥|有咩)(?:啲|些|一些|几个|点)(?:能|可以|可)?(?:打的)?{C}{0,4}?(?:电话|号码|热线){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话|讲)"
 
 # What a number is ("12356是干嘛的"; round 5, 2026-10-29, re-test q2 第 5 节; 草稿：待 G-0):
 # group 1 is the number (at least three digits). The reply names what the signed hotline
@@ -1583,6 +1593,22 @@ hotline_request_patterns:
 hotline_number_patterns:
   - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:是|系)?(?:干嘛|干什么|干啥|做什么|做啥|做咩|做乜|什么|啥|咩|乜嘢|乜|边个|谁)(?!意思|梗|日子|节|时候|东西)"
   - "(?:what'?s|whatis|whatdoes|whois)(?:the)?(?:number)?(\\d{3,})"
+  # Round 6 (2026-10-29; 草稿：待 G-0): who a number is for ("12355是打给谁的", "这个号是帮
+  # 什么人的"): a giving or serving word, then a word for who.
+  - "(\\d[\\d-]{1,14}\\d)(?:这个|这|那个)?(?:号码|电话|热线|号)?(?:专门|主要)?(?:是|系)?(?:专门|主要)?(?:打给|拨给|给|让|供|帮|为|俾|畀|服务)(?:谁|什么人|哪些人|啥人|哪类人|边个|咩人|乜人)"
+
+# How to talk once a call gets through ("打通了该说什么"; round 6, 2026-10-29, re-test q2
+# 第 5 节; 草稿：待 G-0): a phone word, an emergency word or a number of three or more
+# digits, then a word for saying in the same clause. The reply leads with what to say on
+# the line (render.yaml crisis.hotline_call_script); in the crisis flow, the card puts the
+# emergency numbers first when an emergency word or number is named.
+hotline_call_script_patterns:
+  # a line or a number, then getting through: "热线接通以后要说啥"
+  - "(?:电话|热线|号码|报警|急救|救护车|\\d{3,})(?:打|拨|接)(?:通|过去|进去|上)?(?:了|以后|之后|后|的时候|时)?{C}{0,6}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|怎么开口|该说|要说|点讲|讲乜|讲咩|说些什么)"
+  # calling a hotline or a number: "拨热线的时候该说什么"
+  - "(?:打|拨|接)(?:通|过去|进|给)?(?:热线|\\d{3,})(?:以后|之后|后|的时候|时)?{C}{0,6}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|怎么开口|该说|要说|点讲|讲乜|讲咩|说些什么)"
+  # the emergency itself: "报警的时候要怎么说"
+  - "(?:报警|叫救护车|叫急救)(?:的时候|时|以后|之后)?{C}{0,4}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|该说|要说|点讲|讲乜|讲咩)"
 
 # A call that does not get through (round 5; 草稿：待 G-0): with a phone word, a question or a
 # resource card on screen, the reply says what to do (try later or another line, the local

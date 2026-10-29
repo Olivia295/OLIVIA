@@ -370,6 +370,7 @@ class RuleStub:
         self._request_patterns = lexicon.direct_request_patterns
         self._hotline_patterns = lexicon.hotline_request_patterns
         self._number_patterns = lexicon.hotline_number_patterns
+        self._call_script_patterns = lexicon.hotline_call_script_patterns
         self._place_hint_patterns = lexicon.hotline_place_hint_patterns
         self._place_patterns = lexicon.hotline_place_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
@@ -568,6 +569,7 @@ class RuleStub:
             hotline_number=self._number(body),
             hotline_unreachable=bool(hits.get(_UNREACHABLE_CALL)),
             hotline_emergency=bool(hits.get(_EMERGENCY_ASKED)),
+            hotline_call_script=self._live(body, self._call_script_patterns),
             hotline_place_hint=not hits.get(_PLACE)
             and self._raw_place(text) is None
             and any(p.search(text.casefold()) for p in self._place_hint_patterns),
