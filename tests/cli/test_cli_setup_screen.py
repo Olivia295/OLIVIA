@@ -243,9 +243,9 @@ def test_the_safety_plan_keeps_a_warning_sign_after_the_numbers(run_cli, data_ho
     save_profile(data_home)
     lines = ["我想死的念头又来了", GO_ON, "开始想死的时候", GO_ON, "", "", "", ""]
     # QA q4 P3: putting the pills away is what section 5 asks for; only the student alarms
-    # on it, unsure (0.35), so it asks first and a yes keeps it without the card (owner
-    # decisions 2026-10-26/28).
-    lines += ["把那盒安眠药交给室友保管", "1", "我打算把攒的药都吞了", GO_ON, ""]
+    # on it, unsure (0.35). Round 5 (复测 q4 SP-1): a protective step is no longer asked
+    # about at all; it is kept without the card.
+    lines += ["把那盒安眠药交给室友保管", "我打算把攒的药都吞了", GO_ON, ""]
     run = run_cli(["safety-plan"], lines)
     assert run.code == 0
     assert run.out.count(cli.SETUP_CRISIS) == run.out.count(cli.SETUP_CHOICE) == 3

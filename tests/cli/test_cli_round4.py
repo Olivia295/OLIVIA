@@ -256,9 +256,10 @@ def test_a_crisis_sentence_for_a_person_repeats_only_the_question(run_cli, data_
     assert plan is not None and plan.people == (Contact("表姐", "13800000000"),)
 
 
+# Round 5 (复测 q4 SP-1): "屋里的刀和剪子都让室友收走" puts a means away, so section 5 no
+# longer asks about it (tests/cli/test_cli_round5.py).
 UNSURE_ENTRIES = [
     (["", "", "", ""], "把家里的酒都送人", Section.ENVIRONMENT),
-    (["", "", "", ""], "屋里的刀和剪子都让室友收走", Section.ENVIRONMENT),
     ([""], "去河边散散步", Section.COPING),
 ]
 

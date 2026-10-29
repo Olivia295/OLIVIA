@@ -231,7 +231,10 @@ def test_no_direction_control_or_escape_reaches_a_reply(run_cli):
         ["chat", "--rules"],
         ["", "我好累\u202e想哭\u2066了", "\x1b[31m红色\x1b[0m的心情", "/exit", ""],
     )
-    assert done.texts == ["我好累想哭了", "红色的心情"]
+    # Round 5 (复测 q4 IN-4): the session gets the direction controls for its crisis screen,
+    # which reads the text both as typed and as shown; nothing else sees them.
+    assert [cli.strip_controls(text) for text in done.texts] == ["我好累想哭了", "红色的心情"]
+    assert "\x1b" not in "".join(done.texts)
     assert not set(done.out) & set(DIRECTION_CONTROLS + "\x1b")
     assert "[31m" not in done.out
 

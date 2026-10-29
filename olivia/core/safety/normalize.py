@@ -80,6 +80,103 @@ def _drop_stray_letters(folded: str) -> str:
 _FOLD_KEEP_SPACES: Final[dict[int, str | None]] = {**_FOLD, ord(" "): " "}
 
 
+# Round 5 (复测 q4 IN-4): the Unicode direction controls. "我想<RLO>杀自<PDF>" is shown as
+# 我想自杀, but dropping the controls alone leaves 我想杀自 for the screen and the mirror.
+# :func:`display_order` reads the characters in the order they are shown; the screen reads
+# both orders (:func:`bidi_readings`, ``crisis.SafetyScreen.assess``) and the text kept is
+# :func:`shown_text`.
+_LRE, _RLE, _PDF, _LRO, _RLO = "\u202a", "\u202b", "\u202c", "\u202d", "\u202e"
+_LRI, _RLI, _FSI, _PDI = "\u2066", "\u2067", "\u2068", "\u2069"
+_OPENERS: Final = {_LRE: (False, None), _RLE: (True, None), _LRO: (False, "L"), _RLO: (True, "R")}
+_ISOLATES: Final = {_LRI: False, _FSI: False, _RLI: True}
+_BIDI_MARKS: Final = frozenset("\u200e\u200f\u061c")
+BIDI_CONTROLS: Final = frozenset((*_OPENERS, *_ISOLATES, _PDF, _PDI, *_BIDI_MARKS))
+_MAX_DEPTH: Final = 125  # UAX #9 max_depth
+
+
+def display_order(text: str) -> str:
+    """``text`` in the order a terminal shows it, without its direction controls.
+
+    A simplified UAX #9 (rules X1-X10, W/N folded, L2): embeddings, overrides and isolates
+    set each character's level; under an override every character takes its direction, and
+    otherwise Hebrew and Arabic letters are right-to-left and everything else left-to-right
+    (Chinese has no other letters). Runs are then reversed from the highest level down, so
+    "我想<RLO>杀自<PDF>" becomes 我想自杀. Text without a direction control is returned as
+    it is. An unclosed control runs to the end of the text, as it does on screen.
+    """
+    return _reorder(text)[0]
+
+
+def _reorder(text: str) -> tuple[str, bool]:
+    """:func:`display_order` and whether every embedding, override and isolate was closed."""
+    if BIDI_CONTROLS.isdisjoint(text):
+        return text, True
+    # Stack entries: (level, override, isolate).
+    stack: list[tuple[int, str | None, bool]] = [(0, None, False)]
+    chars: list[str] = []
+    levels: list[int] = []
+    for ch in text:
+        level, override, _ = stack[-1]
+        if ch in _OPENERS or ch in _ISOLATES:
+            rtl, new_override = _OPENERS[ch] if ch in _OPENERS else (_ISOLATES[ch], None)
+            new_level = level + 1 if rtl == (level % 2 == 0) else level + 2
+            if new_level <= _MAX_DEPTH:
+                stack.append((new_level, new_override, ch in _ISOLATES))
+            continue
+        if ch == _PDF:
+            if len(stack) > 1 and not stack[-1][2]:
+                stack.pop()
+            continue
+        if ch == _PDI:
+            while len(stack) > 1:
+                if stack.pop()[2]:
+                    break
+            continue
+        if ch in _BIDI_MARKS:
+            continue
+        kind = override or ("R" if unicodedata.bidirectional(ch) in ("R", "AL") else "L")
+        chars.append(ch)
+        levels.append(level + 1 if (kind == "R") != (level % 2 == 1) else level)
+    for lowest in range(max(levels, default=0), 0, -1):
+        i = 0
+        while i < len(chars):
+            if levels[i] < lowest:
+                i += 1
+                continue
+            j = i
+            while j < len(chars) and levels[j] >= lowest:
+                j += 1
+            chars[i:j] = chars[i:j][::-1]
+            levels[i:j] = levels[i:j][::-1]
+            i = j
+    return "".join(chars), len(stack) == 1
+
+
+def without_bidi(text: str) -> str:
+    """``text`` with its direction controls dropped, in the order it was typed."""
+    if BIDI_CONTROLS.isdisjoint(text):
+        return text
+    return "".join(ch for ch in text if ch not in BIDI_CONTROLS)
+
+
+def bidi_readings(text: str) -> tuple[str, ...]:
+    """The ways ``text`` can be read: as typed without its direction controls and, when it
+    differs, as shown (:func:`display_order`). The crisis screen reads both and keeps the
+    higher level, so neither a reversed run nor a stray control hides a crisis sentence."""
+    typed = without_bidi(text)
+    shown = display_order(text)
+    return (typed,) if shown == typed else (typed, shown)
+
+
+def shown_text(text: str) -> str:
+    """The text kept and said back: as shown when the controls were all closed again (a
+    run written to be seen reversed, "我想<RLO>杀自<PDF>"), as typed when one was left open
+    (a stray U+202E that would reverse everything after it), without the controls either
+    way."""
+    shown, closed = _reorder(text)
+    return shown if closed else without_bidi(text)
+
+
 def normalize(text: str) -> str:
     """Fold text for matching: NFKC, casefold, Traditional -> Simplified, curly quotes
     -> "'", then drop all whitespace and invisible characters, and a single ASCII letter

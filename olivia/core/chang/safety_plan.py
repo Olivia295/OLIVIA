@@ -26,7 +26,18 @@ away are written in those words. Sections 2, 3 and 4 never keep one, since a cri
 reads them back to the user ("能让我分心的人或地方：· 我打算去楼顶待着，然后就结束"): the
 user is told why and asked to write it another way or to press Enter to skip. Leaving there
 keeps what was written before that reply. :func:`without_crisis_entries` drops such entries
-from a plan saved before this check. After the numbers only the question itself comes
+from a plan saved before this check (round 5: the chat also drops entries naming a place or
+a means, ``setup_screen.SetupScreen.risky_words``).
+
+Protective steps in section 5 (round 5, 复测 q4 SP-1): "把多余的药交给室友保管" is what
+section 5 asks for, yet the student alone was unsure about it and the user was asked
+whether they are safe now. A section 5 reply that :func:`protective` reads as putting a
+means away (handing it over, locking it up, throwing it out, keeping away from a place) and
+that holds nothing of keeping it close (藏, 自己留着, 以防万一, 随时) goes through
+``protective_screen`` instead: the CLI then takes an unsure student-only alarm as clear.
+Structural narrowing, not a word list: a rule cue, a model failure or a sure student
+still bring the numbers, and the entry stays in section 5, which a crisis reply never
+shows. After the numbers only the question itself comes
 again (QA q4): a menu's lines, or the one line asking for a person; never a section
 heading or a line said about the entry before ("已经写满 5 条了", "表姐和电话都记下了").
 
@@ -531,6 +542,24 @@ class Screened(StrEnum):
 
 Screen = Callable[[str], Screened]
 
+# Round 5 (复测 q4 SP-1): what puts a means out of reach, and what keeps it close.
+_PROTECTIVE: Final = re.compile(
+    r"交给|交出|上交|保管|收走|拿走|锁起来|锁上|锁好|上锁|锁进|扔掉|扔了|扔进|丢掉|丢了|丢进|倒掉|冲掉|"
+    r"还给|退掉|退货|取消|删掉|不放在|不留在|不囤|不攒|不存|不买|远离|不去|不一个人去|不靠近|按天领|每次只拿"
+)
+_KEEPS_CLOSE: Final = re.compile(
+    r"藏|自己留|自己保管|自己收|只有我|偷偷|随时|以防万一|万一用|备着|带在身上|放在身边|放在床头|枕头|不告诉|"
+    r"多攒|多买|再买|继续"
+)
+
+
+def protective(text: str) -> bool:
+    """Whether a section 5 reply puts a means away (module docstring, round 5): a step
+    that hands it over, locks it up, throws it out or keeps away from a place, with nothing
+    of keeping it close."""
+    folded = _fold(text)
+    return bool(_PROTECTIVE.search(folded)) and not _KEEPS_CLOSE.search(folded)
+
 
 class _EndOfInput(Exception):
     """The input ended mid-exchange, or Ctrl-C was pressed (``interrupted``); ``partial``
@@ -595,6 +624,7 @@ class _Command:
         store: SafetyPlanStore,
         text: SafetyPlanText,
         screen: Screen | None = None,
+        protective_screen: Screen | None = None,
     ) -> None:
         self._ask_raw = ask
         self._say_raw = say
@@ -602,6 +632,7 @@ class _Command:
         self._text = text
         self._cmd = text.command
         self._screen = screen
+        self._protective_screen = screen if protective_screen is None else protective_screen
         self._since_ask: list[str] = []
         """What was said since the question began (:meth:`_question`), to ask it again."""
         self._saved_any = False
@@ -911,8 +942,11 @@ class _Command:
                 raise _EndOfInput(interrupted=True) from None
             if reply is None:
                 raise _EndOfInput
+            screen = self._screen
+            if section is Section.ENVIRONMENT and protective(reply):
+                screen = self._protective_screen
             try:
-                verdict = Screened.CLEAR if self._screen is None else self._screen(reply)
+                verdict = Screened.CLEAR if screen is None else screen(reply)
             except KeyboardInterrupt:  # at the crisis choice: as when the input ends there
                 raise _Left from None
             if verdict is Screened.CLEAR:
@@ -948,11 +982,13 @@ def run_command(
     text: SafetyPlanText | None = None,
     *,
     screen: Screen | None = None,
+    protective_screen: Screen | None = None,
 ) -> int:
     """``olivia safety-plan`` for an adult profile: fill a new plan, or show the saved one
     and offer to edit a section or clear it. ``ask`` returns one reply line (None at end
     of input); ``say`` prints one block; ``screen`` (the CLI's crisis screen: it shows the
-    numbers and asks whether to go on) sees every reply first (module docstring). Returns
-    the exit status (1: no keychain, or the saved plan cannot be opened now)."""
+    numbers and asks whether to go on) sees every reply first (module docstring), except a
+    protective section 5 reply, which ``protective_screen`` sees when given (round 5).
+    Returns the exit status (1: no keychain, or the saved plan cannot be opened now)."""
     wording = load_safety_plan_text() if text is None else text
-    return _Command(ask, say, store, wording, screen).run()
+    return _Command(ask, say, store, wording, screen, protective_screen).run()

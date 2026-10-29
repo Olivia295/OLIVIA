@@ -40,6 +40,13 @@ QA q4 (2026-10-28):
   a yes) instead of the crisis card for "把家里的酒都送人" or "去河边散散步" (0.45-0.51).
   It is never silent: a real crisis sentence the student is unsure about is still asked
   about. A rule cue, a model failure or a sure student still bring the numbers at once.
+
+Round 5 (复测 q4 SP-10, 2026-10-29): :meth:`SetupScreen.risky_words` reads a reply for the
+words a reply never says back (``language/guard.py``: a risk phrase, a death, place or
+means word, two kinds of risk component). A crisis reply reads safety-plan sections 2-4
+back, so the chat leaves out an entry with such words ("去天台上一个人待着吹风") even when
+the screen let it through. It only leaves entries out of that block; nothing is screened
+less.
 """
 
 from __future__ import annotations
@@ -50,6 +57,8 @@ from enum import StrEnum
 from typing import Final
 
 from olivia.core.chang.onboarding import parse_taboo
+from olivia.core.language.data import load_language_data
+from olivia.core.language.guard import MirrorGuard
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import MODEL_FAILURE, CrisisAssessment, SafetyScreen
 from olivia.core.safety.lexicon import ModelAskRules, load_safety_lexicons
@@ -127,6 +136,16 @@ class SetupScreen:
         self._screen = screen
         self._take_turn: Callable[[], tuple[str | None, float | None]] = lambda: (None, None)
         self._model_ask = ModelAskRules()
+        self._guard: MirrorGuard | None = None
+
+    def risky_words(self, text: str) -> bool:
+        """Whether ``text`` holds words a reply never says back (module docstring, round 5):
+        a risk phrase, a death, place or means word, or two kinds of risk component."""
+        if self._guard is None:
+            said = load_language_data(self._tax).utterances
+            lexicons = load_safety_lexicons(self._tax)
+            self._guard = MirrorGuard(lexicons, said.extra_risk_words, said.components)
+        return self._guard.risky(text) or self._guard.flagged(text)
 
     def alarms(self, text: str) -> bool:
         """Whether ``text`` screens at L2 or above (a screen that fails counts as yes)."""

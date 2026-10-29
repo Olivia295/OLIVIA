@@ -570,7 +570,7 @@ from olivia.core.safety.crisis import (
 )
 from olivia.core.safety.intent_check import IntentAnswer, read_answer
 from olivia.core.safety.lexicon import SafetyLexicons, load_safety_lexicons
-from olivia.core.safety.normalize import normalize
+from olivia.core.safety.normalize import normalize, shown_text
 from olivia.core.safety.red_flags import RedFlagDetector, SessionRedFlags
 from olivia.core.safety.tracker import CrisisStatus, CrisisTracker
 from olivia.core.taxonomy import Taxonomy
@@ -1052,8 +1052,10 @@ class Session:
         now = self._now()
         self._gate_notes = []
         self._utterance = None
-
+        # Round 5 (复测 q4 IN-4): the screen reads text with direction controls both as typed
+        # and as shown; the rest of the turn sees it without them (``normalize.shown_text``).
         assessment = self._screen.assess(text)
+        text = shown_text(text)
         asking = self._asking
         try:
             return self._turn(text, now, assessment)

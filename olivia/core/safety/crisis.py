@@ -101,7 +101,7 @@ from olivia.core.safety.lexicon import (
     SafetyLexicons,
 )
 from olivia.core.safety.matcher import Match, PhraseMatcher
-from olivia.core.safety.normalize import normalize
+from olivia.core.safety.normalize import bidi_readings, normalize
 from olivia.core.safety.reported import ReportedSpeech, farewell_strength, names_death
 from olivia.core.taxonomy import Taxonomy
 
@@ -619,7 +619,18 @@ class SafetyScreen:
         )
 
     def assess(self, text: str) -> CrisisAssessment:
-        return self._assess(text)[0]
+        """Round 5 (复测 q4 IN-4): text whose direction controls change the order it is shown
+        in is read both as typed and as shown (``normalize.bidi_readings``), and the higher
+        level is kept. The kept reading is assessed last, so an injected model's last
+        prediction (what the session reads after the turn) is the one for it."""
+        readings = bidi_readings(text)
+        if len(readings) == 1:
+            return self._assess(text)[0]
+        results = [self._assess(reading)[0] for reading in readings]
+        best = max(range(len(results)), key=lambda i: (results[i].level, -i))
+        if best != len(results) - 1:
+            return self._assess(readings[best])[0]
+        return results[best]
 
     def reported_risk(self, text: str) -> ReportedRisk | None:
         """Someone else's reported words and their own level (问题单第 6 条, 2026-10-26).
