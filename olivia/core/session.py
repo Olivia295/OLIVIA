@@ -2463,6 +2463,19 @@ class Session:
             None if model else shared.assess,
         )
         answer = reading.answer
+        if (
+            model
+            and answer is IntentAnswer.UNCLEAR
+            and rules.rule_clear
+            and self._tracker.confirms_safety(text, rules)
+            and shared.clear_denial(text)
+        ):
+            # 负责人 2026-10-30 决定 (re-test q4 F4): the question a model-only alarm asked,
+            # answered with an explicit safety confirmation ("我现在是安全的") that passes the
+            # F10 denial conditions, is a no: back to the ordinary chat. A hedge, a danger
+            # cue next to it, a question or any rule cue keeps it unclear (the crisis flow,
+            # entered confirmed); a "是的" to the question is a yes and never read here.
+            answer = IntentAnswer.DENIED
         guarded = text if reading.guard_text is None else reading.guard_text
         if (
             (model or reading.reason_split)

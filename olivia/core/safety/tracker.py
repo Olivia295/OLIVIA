@@ -451,6 +451,12 @@ class CrisisTracker:
 
         return self._status(level, escalated, just_entered, just_exited)
 
+    def confirms_safety(self, text: str, assessment: CrisisAssessment) -> bool:
+        """Whether ``text`` (screened as ``assessment`` by the rules) is an explicit safety
+        confirmation, read as in a crisis (负责人 2026-10-30 决定: the session reads the
+        answer to a model-only question with it). No state changes."""
+        return self._is_explicit_confirmation(normalize(text), assessment)
+
     def _model_only_relapse(self, assessment: CrisisAssessment, text: str) -> CrisisLevel | None:
         """The rules' level of an awaited explicit confirmation that only an injected model
         puts at L2 or above (F8a), else None."""

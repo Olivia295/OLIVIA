@@ -200,18 +200,37 @@ def test_one_status_or_a_danger_cue_is_no_confirmation(text: str) -> None:
     assert not _tracker_confirms(text)
 
 
-def test_a_confirmation_as_the_answer_enters_the_crisis_flow_confirmed() -> None:
-    opener = "要不我干脆找个没人的地方待着算了"
-    session = _open(model=Scripted({opener: (CrisisLevel.L2, 0.4)}))
-    asked = session.turn(opener)
+_MODEL_OPENER = "要不我干脆找个没人的地方待着算了"
+
+
+def _model_asked() -> Session:
+    session = _open(model=Scripted({_MODEL_OPENER: (CrisisLevel.L2, 0.4)}))
+    asked = session.turn(_MODEL_OPENER)
     assert asked.inspect["safety_check"] == "asked"
-    answer = session.turn("我现在是安全的")
-    assert answer.in_crisis
-    status = session._last_status
-    assert status is not None and not status.awaiting_confirmation
-    assert "我现在是安全的」" not in answer.reply
-    nxt = session.turn("今天下午去超市买了点水果")
-    assert "我现在是安全的」" not in nxt.reply
+    assert RULES.assess(_MODEL_OPENER).rule_clear  # the alarm is the model's alone
+    return session
+
+
+@pytest.mark.parametrize(
+    "text", ["我现在是安全的", "放心，我挺安全的，在宿舍呢", "我好好的，在家，我妈也在"]
+)
+def test_a_confirmation_to_a_model_only_question_is_a_no(text: str) -> None:
+    """负责人 2026-10-30 决定: the question a model-only alarm asked, answered with an
+    explicit safety confirmation that passes the F10 denial conditions, is a no: back to
+    the ordinary chat."""
+    session = _model_asked()
+    answer = session.turn(text)
+    assert answer.inspect["safety_check"] == "denied"
+    assert not answer.in_crisis
+    assert answer.reply_kind is not ReplyKind.CRISIS
+
+
+@pytest.mark.parametrize(
+    "text", ["我是安全的，可是药还在", "暂时是安全的吧", "是的，我很安全", "安全吗？"]
+)
+def test_a_doubtful_or_risky_confirmation_still_enters_the_crisis_flow(text: str) -> None:
+    session = _model_asked()
+    assert session.turn(text).in_crisis
 
 
 def test_a_rules_question_answered_with_a_confirmation_is_also_counted() -> None:
