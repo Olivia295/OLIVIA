@@ -335,3 +335,45 @@ def test_no_more_feeling_questions_once_asked_not_to() -> None:
         closing = result.reply.split("\n\n")[-1]
         assert not any(word in closing for word in _FEELING_QUESTIONS), result.reply
         assert result.inspect["lock"] is True
+
+
+# -- q2 第 1 节: joining someone else's plan ----------------------------------------------
+
+_REPORT = "我表哥跟我说他把安眠药都囤好了，这周六就吃"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "其实我也挺想跟他一起结束的",
+        "那我和他一块儿走好了",
+        "我们俩一起去死吧",
+        "我也想陪他一起了断",
+        "要不我同他一起解脱算了",
+    ],
+)
+def test_wanting_to_go_along_with_them_enters_the_crisis_flow(text: str) -> None:
+    session = _open()
+    assert session.turn(_REPORT).inspect.get("resources_reply") == "third_party"
+    result = session.turn(text)
+    assert result.in_crisis
+    assert result.reply_kind is ReplyKind.CRISIS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我想陪他一起去挂个急诊",
+        "我和他一起把药扔掉了",
+        "我们一起走出这段日子",
+        "我跟他一起去散会儿步",
+    ],
+)
+def test_going_along_to_get_help_is_no_crisis(text: str) -> None:
+    session = _open()
+    assert session.turn(_REPORT).inspect.get("resources_reply") == "third_party"
+    assert not session.turn(text).in_crisis
+
+
+def test_going_along_counts_only_after_the_card() -> None:
+    assert not _open().turn("周末我想跟他一起走走").in_crisis

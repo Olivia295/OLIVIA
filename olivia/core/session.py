@@ -658,6 +658,15 @@ _JOINING: Final = re.compile(
     r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样)"
     r"|(?:跟|和|同)(?:他|她|ta|他们|她们)(?:一样|差不多)"
 )
+# Round 6 (re-test q2 第 1 节): the user wants to go along with the other person ("跟他一起
+# 走", "我们一起结束吧"): someone with them, together, then an act of dying ending its
+# clause; going together to get help ("一起去医院", "一起走出来") is none.
+_GO_ALONG: Final = re.compile(
+    r"(?:(?:跟|和|同|陪|随|跟着)(?:他|她|ta|他们|她们|对方)|我们俩?|咱们|咱俩|我俩)"
+    r"(?:一起|一块儿?|一道)[^,.!?;:]{0,2}?"
+    r"(?:去死|死|结束(?:这一切|生命|自己)?|了断|了结|解脱|离开这个世界|跳(?:下去|楼|河|江)?|走|去)"
+    r"(?=$|[,.!?;:~…]|了|吧|算了|好了|得了|的)"
+)
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
 # Round 4 (SDD §4.4): Arousal = SUDS / 10.
@@ -2566,17 +2575,23 @@ class Session:
         turns of the card for it, outside a crisis and not the answer to a question, a
         message with a risk cue of the user's own (rule level L1 or above) says 我也 / 我自己
         也 / 跟他一样 ("说实话我也差不多，真的撑不住了"). The other person's risk was serious
-        enough for the card, so the user's own words are read at its level (L2)."""
+        enough for the card, so the user's own words are read at its level (L2).
+
+        Round 6: wanting to go along with the other person (``_GO_ALONG``: "跟他一起走",
+        "我们一起结束吧") joins in too, with or without a rule cue of the user's own."""
         before = self._last_status
         rule = assessment.rule_level or CrisisLevel.L0
-        return (
+        if not (
             answer is None
             and not (before is not None and before.in_crisis)
             and assessment.level < CrisisLevel.L2
-            and rule >= CrisisLevel.L1
             and self._third_party_window()
-            and _JOINING.search(normalize(text)) is not None
-        )
+        ):
+            return False
+        normalized = normalize(text)
+        return (
+            rule >= CrisisLevel.L1 and _JOINING.search(normalized) is not None
+        ) or _GO_ALONG.search(normalized) is not None
 
     def _resource_card(
         self, level: CrisisLevel, now: datetime, *, mode: CardMode, minor: bool = False
