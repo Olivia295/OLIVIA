@@ -57,6 +57,8 @@ SAME_IN_TRADITIONAL = frozenset(
     # accounts, cuts) and their everyday exceptions (plants, places, chores, sport).
     "京仇伏例偶催共冤削劈北古叫史啤圳城塔孔宇屏州左市帝幕廊徒恐承括挨援摔敢斑普晶栽椎治溺澡炎爽牙"
     "牛狠猝疤痕癌砸碘祈票秀私科竟箭羞耳肚股肪脂腰航苗茉荷莉薄迎透逐速遇雷韭香鬼鼻嘻握攥裹雕勇孢材棵棺第肝螃蟹超跨"
+    # 负责人 2026-10-30 决定: the everyday injuries that void S1_BLEEDING_UNSTOPPED.
+    "碰"
 )
 
 

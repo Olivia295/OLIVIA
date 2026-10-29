@@ -40,7 +40,7 @@ stage1:
                "跳下去就解脱", "跳下去就一了百了", "跳下去不想活", "就卧轨", "准备卧轨", "躺在铁轨上",
                "没人的地方烧炭", "就从阳台跳下去", "就从公司楼顶跳", "就从楼顶跳"]
   - id: S1_ACT_IN_PROGRESS
-    patterns: ["已经吞了药", "吃了一整瓶药", "已经割了", "正在割腕", "血止不住",
+    patterns: ["已经吞了药", "吃了一整瓶药", "已经割了", "正在割腕",
                "吞了一把药", "吞了半瓶药", "吞了好多片安眠药", "吃了一瓶安眠药", "吃了一整瓶安眠药",
                "吃了一盒安眠药", "吃了一整盒安眠药", "吃了二十片安眠药", "吃了三十片安眠药",
                "吃了四十片安眠药", "吃了五十片安眠药", "吃了几十片安眠药", "吃了一百片安眠药",
@@ -2537,7 +2537,9 @@ compositions:
               "就跳下去", "就去跳楼", "就跳楼", "就去跳河", "就跳河", "就去跳江", "就跳江", "就去跳海", "就跳海",
               "就去卧轨", "就去上吊", "去死给", "死给他们看", "死给你看", "就从楼上跳", "就把药全吃", "就把药都吃",
               "就去寻死", "就离开这个世界"]
-      exceptions: ["就跳下去游", "就跳下去捡", "就跳下去救"]
+      # 负责人 2026-10-30 决定: 结束这一切的 + a noun (就结束这一切的拖延) ends a thing, not
+      # one's life, as act_exceptions already reads it; 就结束这一切 alone stays L2.
+      exceptions: ["就跳下去游", "就跳下去捡", "就跳下去救", "就结束这一切的"]
       unless: ["@jump_everyday", "@fiction", "笑", "热", "冷", "累", "困", "饿", "渴", "撑", "晒", "冻", "辣",
                "尴尬", "社死", "丢人", "丢脸", "可爱", "好看", "帅", "哈哈", "游泳", "泳池", "蹦极", "跳水", "开玩笑"]
       unless_window: 12
@@ -2747,6 +2749,16 @@ compositions:
               "用它一了百了"]
       trailing: ["@particles", "自己", "我自己", "这一切", "一切", "生命", "这条命", "掉自己", "算了"]
       unless: ["@fiction", "游戏", "项目", "比赛", "会议", "争论", "关系", "这段"]
+      unless_window: 16
+    # Bleeding that will not stop (血止不住): Stage 1 as the phrase was, but an everyday
+    # injury in the same clause (切菜切到手血止不住, 摔了一跤血止不住) voids it (负责人
+    # 2026-10-30 决定). Said alone or after an act on oneself it stays L3.
+    - id: S1_BLEEDING_UNSTOPPED
+      level: L3
+      heads: ["血止不住"]
+      unless: ["切菜", "切到", "做饭", "削", "摔", "磕", "刮", "骑车", "拔牙", "拔完牙", "牙", "鼻血", "例假", "月经",
+               "生理期", "献血", "抽血", "打针", "蚊子", "指甲", "玻璃", "钉子", "猫", "狗", "抓伤", "车祸", "碰到",
+               "撞到", "划到"]
       unless_window: 16
     # Pills made ready with a time or a going nearby (药准备好了，今晚就走): L2. Trips,
     # errands, children, pets and a doctor's care void it.
