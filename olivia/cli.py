@@ -257,6 +257,7 @@ from olivia.core.language.data import load_language_data
 from olivia.core.memory.forget import (
     DataStores,
     Target,
+    forget_all,
     forget_all_unfinished,
     load_forget_text,
     run_edit,
@@ -1451,6 +1452,9 @@ def _chat(
         persona=profile.persona_spectrum,
     )
     interrupted = False
+    # Round 6 (re-test q4 F5): the user confirmed in the chat that they are under 18 and
+    # the refusal record was written; everything else here is removed when the chat ends.
+    minor_recorded = False
     try:
         carry = checks.opening(local()) if marker is None else None
         pending = carry.line if carry is not None else None
@@ -1473,12 +1477,18 @@ def _chat(
                 console.say(_failed_turn_reply(tax, profile, local().date()))
                 console.say()
                 continue
+            if session.minor_disclosed and recorder.enabled:
+                # Round 6 (re-test q4 F5): no summary of a chat in which the user said they
+                # are under 18 (PRD ruling 22: nothing kept about a minor).
+                recorder.discard()
             result = recorder.observe(line, turned)
             checks.observe(result)
             # The reply (a crisis card included) is on screen before any keychain access.
             console.say(f"{profile.agent_name}：{result.reply}")
-            care_recorder.observe(result, session.snapshot())
-            state_recorder.observe(session.carried_state())  # feedback survives a crash
+            if not minor_recorded:  # the care marker stays a crisis follow-up for anyone else
+                care_recorder.observe(result, session.snapshot())
+            if not session.minor_disclosed:
+                state_recorder.observe(session.carried_state())  # feedback survives a crash
             if session.safety_plan_suggested:
                 plan_store.mark_suggested()
             if session.take_minor_record():
@@ -1486,7 +1496,7 @@ def _chat(
                 # same refusal record as the first visit (no age, no words), so the next
                 # ``olivia chat`` shows the refusal.
                 moment = clock()
-                _save_profile(
+                minor_recorded = _save_profile(
                     console,
                     PersonaProfile(
                         age_confirmed_18_plus=False,
@@ -1504,9 +1514,17 @@ def _chat(
     except KeyboardInterrupt:  # Ctrl-C ends the chat like /exit, with the same goodbye
         interrupted = True
     finally:
-        if not recorder.close():
+        if session.minor_disclosed:
+            recorder.discard()
+        elif not recorder.close():
             console.say(ledger.text.replies["summary_not_saved"])
-        state_recorder.observe(session.carried_state())
+        if not session.minor_disclosed:
+            state_recorder.observe(session.carried_state())
+        if minor_recorded:
+            # PRD ruling 22 (NG-3): a declared minor leaves only the refusal record, which
+            # holds no personal data; the earlier profile's snapshots, the ledger, the kit,
+            # the safety plan and the care marker go, as ``forget --all`` removes them.
+            _forget_for_minor()
     if interrupted:
         console.say()
     # S5: ending in the crisis flow (or with a safety question unanswered) leaves the
@@ -1516,8 +1534,17 @@ def _chat(
         console.say(GOODBYE)
         return 0
     console.say(f"{profile.agent_name}：{farewell.text}")
-    care_recorder.observe_level(farewell.level)
+    if not minor_recorded:
+        care_recorder.observe_level(farewell.level)
     return 0
+
+
+def _forget_for_minor() -> None:
+    """Remove every file but the age-gate refusal record just written (round 6, re-test q4
+    F5), quietly: the reply already said what is kept. A keychain that does not answer
+    leaves its item; the files are gone either way."""
+    stores = _data_stores(None)
+    forget_all(stores, keep=frozenset({stores.profile.path}))
 
 
 def _records_blocked(base: Path, store: ProfileStore) -> str | None:

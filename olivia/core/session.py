@@ -469,6 +469,14 @@ never on a crisis turn and never changing the crisis flow:
   plan (a card or m0, as the solver requires), not on the first turn of every session;
   a flag the conversation brings up is referred on that turn, as before.
 
+Minors, round 6 (re-test q2 第 4 节; new wording 草稿：待 G-0): the answer to whether the
+user is under 18 is read by its own grammar (``perception/minor_answer.py``: "嗯是", "係呀",
+"yeah I am"; a correction or an adult age is a no). An age said in the crisis flow keeps the
+flow, the card carries the minors' lines, and the question comes once at the end of a
+crisis reply; on the next turn a short yes answers it and is passed to the tracker as no
+safety confirmation (``CrisisTracker.observe(confirmable=False)``), so the safety question
+is asked again; other words in the crisis leave the age question for a later reply.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -552,6 +560,7 @@ from olivia.core.perception.introspector import (
     load_mirror_lines,
 )
 from olivia.core.perception.lexicon import load_perception_lexicon
+from olivia.core.perception.minor_answer import reads_no, reads_yes
 from olivia.core.perception.model_heads import ModelHeads
 from olivia.core.perception.rule_stub import FALLBACK_EMOTION, RuleStub, dominant_spectrum
 from olivia.core.perception.signals import Answer, Command, NoteRecall, TurnSignals
@@ -867,6 +876,9 @@ class Session:
         # (the next turn is the answer); a yes leaves the record due for the caller.
         self._minor_asking = False
         self._minor_record_due = False
+        # Round 6: the question has been asked (in the minors' reply or at the end of a
+        # crisis reply) and needs no asking again; cleared when a crisis turn left it open.
+        self._minor_asked = False
         self._crisis_seen: CrisisLevel | None = None
         self._third_party_turn: int | None = None
         # Round 3: the last report of someone else's risk was urgent (its follow-ups keep
@@ -1118,18 +1130,36 @@ class Session:
             # 负责人 2026-10-29 决定: after a confirmation, an L1 only the model's score band
             # gives (rules L0, the model's own class L0) is a safe turn, not a pause.
             tracked = replace(tracked, level=CrisisLevel.L0, uncapped_level=None)
-        status = self._tracker.observe(tracked, text, perception.valence if evidence else None)
+        # Round 6 (re-test q2 第 4 节): the turn after the question whether the user is under
+        # 18 answers it; a short yes there ("嗯是") is that answer, never a confirmation of
+        # safety in a crisis (the safety question is asked again).
+        minor_yes = self._minor_asking and reads_yes(text)
+        status = self._tracker.observe(
+            tracked, text, perception.valence if evidence else None, confirmable=not minor_yes
+        )
         self._last_status = status
         if status.in_crisis:
             entry = max(CrisisLevel.L2, status.entry_level or CrisisLevel.L2)
             self._crisis_seen = max(entry, self._crisis_seen or entry)
         # Round 4: the turn after the question about recording the age is its answer: a yes
         # (or saying the age again) confirms; anything else keeps it to this session.
+        # Round 6: in a crisis only a clear yes or no answers it; other words leave it for a
+        # later reply to ask again.
         minor_answer: bool | None = None
-        if self._minor_asking and not status.in_crisis:
+        if self._minor_asking:
             self._minor_asking = False
-            minor_answer = signals.answer is Answer.AFFIRM or signals.minor_disclosure
-            self._minor_record_due = minor_answer
+            yes = minor_yes or (
+                not reads_no(text)
+                and (
+                    signals.minor_disclosure
+                    or (not status.in_crisis and signals.answer is Answer.AFFIRM)
+                )
+            )
+            if yes or not status.in_crisis or reads_no(text):
+                minor_answer = yes
+                self._minor_record_due = yes
+            else:
+                self._minor_asked = False
         if signals.minor_disclosure:
             self._minor = True
         # The tracker heard an explicit safety confirmation on this crisis turn.
@@ -1529,10 +1559,11 @@ class Session:
                 elif helping:
                     help_text = self._engine.data.render.chat_help
                     self._add_line(rendered, (help_text,), stage, first=True)
-                elif calm_words:
+                elif calm_words and minor_answer is None:
                     # Round 3: new words in the crisis flow are answered first (re-test r4:
                     # "我明天想去学校的心理中心看看" got only the card).
                     heard = self._lead_with_heard(rendered, text, signals, stage)
+            self._minor_in_crisis(rendered, status, minor_answer)
         elif ask:
             rendered = self._safety_check(stage, now)
         elif help_now:
@@ -2597,19 +2628,37 @@ class Session:
         tail: list[str] = []
         if self._minor_told:
             lead = [self._pick(render.minor_again)]
-            # Round 4 (ruling 22): the answer to whether to record the age, said first.
-            said = render.minor_recorded if answer else render.minor_session_only
-            if answer is not None and said:
-                lead.insert(0, said)
         else:
             lead = [self._pick(render.minor), render.minor_trusted_adult]
             self._minor_told = True
-            if render.minor_confirm:
+            if render.minor_confirm and not self._minor_asked:
                 # Round 4 (ruling 22): ask gently whether to record it, after the numbers.
                 tail = [render.minor_confirm]
                 self._minor_asking = True
+                self._minor_asked = True
+        # Round 4 (ruling 22): the answer to whether to record the age, said first.
+        said = render.minor_recorded if answer else render.minor_session_only
+        if answer is not None and said:
+            lead.insert(0, said)
         self._pending = None
         return self._resource_reply(card, lead, stage, tail=tail)
+
+    def _minor_in_crisis(
+        self, rendered: _Rendered, status: CrisisStatus, answer: bool | None
+    ) -> None:
+        """A crisis reply after the user said they are under 18 (round 6, re-test q2 第 4
+        节): the answer to whether to record it said first, and the question asked once at
+        the end, after the card (which carries the minors' lines). The crisis is unchanged."""
+        if not status.in_crisis:
+            return
+        render = self._engine.data.render
+        said = render.minor_recorded if answer else render.minor_session_only
+        if answer is not None and said:
+            rendered.reply = f"{said}\n\n{rendered.reply}"
+        if self._minor and not self._minor_asked and render.minor_confirm:
+            rendered.reply = f"{rendered.reply}\n\n{render.minor_confirm}"
+            self._minor_asking = True
+            self._minor_asked = True
 
     def _third_party_reply(
         self,
