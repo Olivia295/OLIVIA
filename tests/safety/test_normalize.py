@@ -59,6 +59,8 @@ SAME_IN_TRADITIONAL = frozenset(
     "牛狠猝疤痕癌砸碘祈票秀私科竟箭羞耳肚股肪脂腰航苗茉荷莉薄迎透逐速遇雷韭香鬼鼻嘻握攥裹雕勇孢材棵棺第肝螃蟹超跨"
     # 负责人 2026-10-30 决定: the everyday injuries that void S1_BLEEDING_UNSTOPPED.
     "碰"
+    # 2026-10-30: the illnesses and preparations that void ASK_INTENT_PILLS_READY.
+    "南咳嗽炸煎睛腹膏"
 )
 
 

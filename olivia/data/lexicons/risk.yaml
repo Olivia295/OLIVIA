@@ -2772,6 +2772,24 @@ compositions:
                "飞机", "上班", "上学", "猫", "狗", "复诊", "看病", "带上", "带着"]
       unless_window: 24
       unless_across: true
+    # Pills made ready with no drug named (药我都准备好了, 我把药都拿出来了; 2026-10-30, more
+    # sensitive): the question, L2 with a risk cue of the user's own. A named illness, the
+    # person or pet it is for, a trip, a dose routine or a doctor voids it.
+    - id: ASK_INTENT_PILLS_READY
+      level: ASK
+      raise_with_risk: true
+      heads: ["药"]
+      tails: ["准备好", "都准备好", "全准备好", "全都准备好", "备好", "都备好", "全都备好", "备齐", "放好", "摆好", "拿出来",
+              "倒出来", "数好", "凑齐", "收集齐", "攒齐"]
+      max_gap: 6
+      exceptions: ["@pill_exceptions", "火药", "炸药", "弹药", "药膏", "药水", "眼药", "药妆", "农药", "药盒", "药包",
+                   "药品"]
+      unless: ["@pill_everyday", "@ready_everyday", "带上", "带着", "行李", "出门", "出发", "按时", "每天", "一天", "饭后",
+               "饭前", "睡前", "提醒", "复诊", "胃", "晕车", "咳嗽", "鼻炎", "驱虫", "中药", "熬", "煎", "急救", "创可贴",
+               "女儿", "儿子", "老公", "老婆", "病人", "一周的量", "分好", "疫苗", "牙", "皮肤", "眼睛", "痛经", "止疼",
+               "头疼", "头痛", "拉肚子", "腹泻", "消炎", "云南", "旅游", "露营", "野营"]
+      unless_window: 24
+      unless_across: true
     # A knife kept where one sleeps or right at hand (刀压在枕头底下, 刀就在手边): the
     # question. Kitchen work, fish, fruit and parcels void it; a plain 刀 with any storage
     # word is too everyday for ASK_INTENT_MEANS_OBTAINED.
