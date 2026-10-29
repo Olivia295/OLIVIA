@@ -73,7 +73,7 @@ _PARTICLES: Final = "啦啊呀哦喔的呢嘛哈噢滴喎"
 # optionally followed by punctuation or a space. Dropped from the front again and again.
 _INTERJECTION: Final = re.compile(
     r"(?:(?:哈|呵|嘿|嘻|嗨|hh)+|[嗯恩呃额哦噢喔诶欸哎啊害咦哇呀嗐哟呦唷]+|哎呀|唉|哎哟|天哪|天啊|拜托|"
-    r"你?想啥呢|你?想什么呢|你?在想啥|怎么可能|当然|肯定|"
+    r"你?想啥呢|你?想什么呢|你?在想啥|当然|肯定|"
     r"(?:lol|lmao|haha\w*|hah|ha|hmm+|um+|uh+|oh|ah|well|lmfao)\b)"
     r"[\s,.!?;:。、~…\"“”]*"
 )
@@ -85,6 +85,16 @@ _JUST_BUT: Final = re.compile(r"只不过")
 _DEGREE: Final = re.compile(r"有一?点(?=[^\W想会要打准念吧呢啊了么嘛])")
 # Round 5 (re-test q2 第 2 节): where a no typed without punctuation gives its reason.
 _JUST_AFTER_NO: Final = re.compile(r"(?<=.)(?:只是|就是|只不过|主要是|单纯是|纯粹是)")
+# Round 6: a rhetorical no, the whole first clause ("怎么可能，我好着呢").
+_RHETORICAL_NO: Final = re.compile(
+    r"(?:怎么可能|不可能|开什么玩笑|开玩笑|怎么会呢?|哪能呢?)(?:的|啦|呀|啊|嘛|哦|喔)*"
+)
+# Round 6: a reassurance after a no in the same clause ("不会的放心", "没有你放心").
+_REASSURE: Final = re.compile(
+    r"(?<=.)(?:你|您)?(?:放心|别担心|不用担心|甭担心|别多想|别瞎想|别乱想)(?:吧|啦|好了|哈|哦)*$"
+)
+# Round 6: what a later clause may start with before a yes ("我当然想过").
+_YES_LEAD: Final = re.compile(r"^(?:我|俺)?(?:当然|肯定|其实|确实|真的|也)*")
 # A no that means yes.
 _SARCASM: Final = ("才怪", "就怪了")
 # Round 3: a first clause that negates an intent in the first person (我绝对没有想……). Only
@@ -127,6 +137,10 @@ class IntentReading:
     """Round 5: the no ran straight into "只是 / 就是" with no punctuation and was split
     there; the caller then also checks the F10 denial conditions (a means or a plan word
     after it, "没有啊只是药准备好了", is no no)."""
+    guard_text: str | None = None
+    """Round 6: with ``reason_split``, the text the caller checks the F10 denial conditions
+    on, when it is not the whole message: what follows a rhetorical no (怎么可能 holds the
+    F10 hedge 可能); an empty text needs no check."""
 
 
 def read_intent_answer(
@@ -159,6 +173,11 @@ def read_answer(
     sarcastic = any(word in folded for word in _SARCASM)
     living = any(word in clause for word in _NEGATED_VETOES)
     plain = clause.rstrip(_PARTICLES)
+    # Round 6: a no and a reassurance in one clause ("不会的放心") is the no.
+    reassured = _REASSURE.search(plain)
+    if reassured is not None and plain[: reassured.start()].rstrip(_PARTICLES):
+        plain = plain[: reassured.start()].rstrip(_PARTICLES)
+    rhetorical = _RHETORICAL_NO.fullmatch(plain) is not None and not _yes_later(answers, rest)
     # A no said twice, with or without spaces between ("没有没有", "no no").
     repeated = _REPEATED.fullmatch(plain.replace(" ", ""))
     base = repeated.group(1) if repeated is not None else plain
@@ -166,9 +185,17 @@ def read_answer(
     whole_no = base in wholes or (
         repeated is not None and base in {p.replace(" ", "") for p in wholes}
     )
-    denies = not sarcastic and not living and (whole_no or _starts(clause, answers.deny_start))
+    denies = (
+        not sarcastic
+        and not living
+        and (whole_no or rhetorical or _starts(clause, answers.deny_start))
+    )
     # Unsure words are looked for in the no as said once and in what follows it.
     said = folded if repeated is None else f"{base}{clause[len(plain) :]},{rest}"
+    if rhetorical:
+        said = rest  # 怎么可能 holds the unsure 可能; the rhetorical no is the whole clause
+    elif reassured is not None and repeated is None:
+        said = f"{plain},{rest}"  # 放心吧 holds the unsure 吧
     said = _DEGREE.sub("", _JUST_BUT.sub("只是", said))
     unsure = any(_contains(said, phrase) for phrase in answers.unsure)
     negated = (
@@ -186,11 +213,27 @@ def read_answer(
             return IntentReading(IntentAnswer.UNCLEAR)
     calm = assessment.level is CrisisLevel.L0 and not assessment.asks_intent
     if calm and not unsure:
-        return IntentReading(IntentAnswer.DENIED, reason_split=split)
+        # Round 6: a rhetorical or reassured no also passes the F10 denial conditions in the
+        # session, as a split one does ("没有你放心，反正药都备好了" is no no).
+        checked = split or rhetorical or reassured is not None
+        guard = rest.strip() if rhetorical else None
+        return IntentReading(IntentAnswer.DENIED, reason_split=checked, guard_text=guard)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
     if negated and not unsure and not plan and rest_screen is not None:
         return IntentReading(IntentAnswer.DENIED, negated=True)
     return IntentReading(IntentAnswer.UNCLEAR)
+
+
+def _yes_later(answers: IntentAnswers, rest: str) -> bool:
+    """A later clause starts like a yes ("怎么可能，我当然想过"; round 6): a degree before a
+    feeling ("有点烦") is no yes."""
+    for part in _CLAUSE_END.split(rest):
+        body = _drop_interjections(part.strip())
+        lead = _YES_LEAD.match(body)
+        body = _DEGREE.sub("", body[lead.end() if lead is not None else 0 :])
+        if body and _starts(body, answers.affirm_start):
+            return True
+    return False
 
 
 def _following(clause: str, rest: str) -> str:

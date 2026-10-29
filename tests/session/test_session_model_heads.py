@@ -134,9 +134,9 @@ def test_the_crisis_tracker_keeps_the_rule_valence(monkeypatch):
     seen: list[float | None] = []
     real = CrisisTracker.observe
 
-    def spy(self, assessment, text, valence=None):  # type: ignore[no-untyped-def]
+    def spy(self, assessment, text, valence=None, **kwargs):  # type: ignore[no-untyped-def]
         seen.append(valence)
-        return real(self, assessment, text, valence)
+        return real(self, assessment, text, valence, **kwargs)
 
     monkeypatch.setattr(CrisisTracker, "observe", spy)
     session = _open(student=True)

@@ -486,6 +486,9 @@ class RenderText:
     """After that card: the user is far from the other person; what to do from afar."""
     third_party_stranger: tuple[str, ...] = ()
     """After that card: the user does not know the other person; what one can still do."""
+    # Round 6 (2026-10-29; drafts, G-0).
+    no_feeling_prompts: tuple[str, ...] = ()
+    """The closing line of a reply after the user asked not to be asked about feelings."""
     help_seeking_school: tuple[str, ...] = ()
     """The user means to go to the school's counselling centre (in place of help_seeking)."""
     suds_heard: tuple[str, ...] = ()
@@ -1128,6 +1131,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         third_party_says_fine=crisis_lists["third_party_says_fine"],
         third_party_far=crisis_lists["third_party_far"],
         third_party_stranger=crisis_lists["third_party_stranger"],
+        no_feeling_prompts=crisis_lists["no_feeling_prompts"],
         help_seeking_school=crisis_lists["help_seeking_school"],
         suds_heard=crisis_lists["suds_heard"],
         suds_high=crisis_lists["suds_high"],
@@ -1996,6 +2000,7 @@ _CRISIS_LISTS: Final = (
     "third_party_says_fine",
     "third_party_far",
     "third_party_stranger",
+    "no_feeling_prompts",
     "help_seeking_school",
     "suds_heard",
     "suds_high",
