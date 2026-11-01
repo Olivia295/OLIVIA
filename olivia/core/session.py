@@ -920,6 +920,9 @@ class Session:
         # rest of this session a composed reply names no feeling or need and does not end
         # by asking about feelings (``_compose``), and the listening lock is on.
         self._no_feelings = False
+        # Round 7 (re-test q3 第四节): the last reply was the waiting card's /done prompt; a
+        # second message with words of its own then leaves the wait (``_new_request``).
+        self._card_reminded = False
         # Round 6: the rule screen of this turn's answer to the question (or None).
         self._answer_rules: CrisisAssessment | None = None
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
@@ -1267,6 +1270,10 @@ class Session:
             # listening lock (no unasked card, no schema mirror or naming offer).
             self._no_feelings = True
             signals = replace(signals, listening_lock_on=True, listening_lock_off=False)
+        elif _LISTEN_ONLY.search(normalize(text)) is not None:
+            # Round 7 (re-test q3 第四节): "别跟我讲道理", "不想做什么练习", "就想有人听我
+            # 说说": the listening lock, as the lexicon's own lock phrases turn it on.
+            signals = replace(signals, listening_lock_on=True, listening_lock_off=False)
         self._asking = ask
         # A turn calm enough for the schema mirror: no crisis, no L1 screen, below the
         # somatic line, not the D3 question or its answer. The L1 test is the rule screen's
@@ -1299,6 +1306,7 @@ class Session:
             perception.detected_schemas, perception.detected_distortions, counts=calm
         )
         pending = self._pending
+        reminded, self._card_reminded = self._card_reminded, False
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
         before_turns = self._state.global_turn_count
@@ -1458,9 +1466,9 @@ class Session:
         ):
             transition = self._reopen(transition, perception)
             reason = CLOSING_REOPEN
-        elif self._new_request(text, transition, signals, pending, assessment, rules) and not (
-            ask or answer is not None or third_now or hotline_now or minor_now or help_now
-        ):
+        elif self._new_request(
+            text, transition, signals, pending, assessment, rules, reminded=reminded
+        ) and not (ask or answer is not None or third_now or hotline_now or minor_now or help_now):
             # Round 6 (re-test q3 第四节): a new request while a card waits ("你能帮我列一下
             # 两边各要考虑什么吗") ends the wait without feedback and is answered in S_explore,
             # instead of the card's /done prompt.
@@ -1471,7 +1479,12 @@ class Session:
         # The turn that leaves S_haven on the user's words (F10): the reply does not echo
         # "换个话题吧" back; its mirror slot is a gentle ``HAVEN_EXIT`` acknowledgement.
         self._utterance = (
-            Utterance.HAVEN_EXIT if transition.reason is Reason.HAVEN_EXIT_ASKED else None
+            Utterance.HAVEN_EXIT
+            if transition.reason is Reason.HAVEN_EXIT_ASKED
+            # Round 7 (QA q4 P6): a rating is acknowledged as one, not as "another language".
+            else Utterance.RATING
+            if suds is not None
+            else None
         )
         feedback = self._feedback_for(pending, transition, signals)
         # A request for another method, or for a named practice, while a card waits (F16b):
@@ -1705,6 +1718,7 @@ class Session:
             if pending is not None and awaiting:
                 rendered = self._with_taboo_filter(self._after_card_prompt, stage)
                 rendered.pending = replace(pending, stage=HelpStage.S_EMPOWER)
+                self._card_reminded = True
                 # Round 3 (re-test r4): the user's words are answered before the prompt,
                 # and so is a clear no to a safety question asked while the card waited.
                 if answer is IntentAnswer.DENIED:
@@ -2930,7 +2944,7 @@ class Session:
                 (signals.hotline_abroad and not elsewhere, render.hotline_abroad),
                 (signals.hotline_fee, render.hotline_fee),
                 (signals.hotline_hours, render.hotline_hours),
-                (signals.hotline_language, render.hotline_language),
+                (signals.hotline_language, self._language_lines()),
                 (signals.hotline_real, render.hotline_real),
                 (signals.hotline_more, render.hotline_more),
                 # Round 5: "the hotline in Brazil" names no region known here.
@@ -3062,6 +3076,15 @@ class Session:
             return None
         return result.text
 
+    def _language_lines(self) -> tuple[str, ...]:
+        """Round 7 (QA q4 P12): the answer about the lines' language, a plain yes for
+        mainland China (every line there answers in Mandarin), else the general one."""
+        render = self._engine.data.render
+        region = self._profile.region
+        if region is not None and region.country_code == "CN" and render.hotline_language_cn:
+            return render.hotline_language_cn
+        return render.hotline_language
+
     def _hotline_note(self, signals: TurnSignals) -> str | None:
         """The first true line for a follow-up about the numbers on screen (round 3), for a
         crisis turn or a turn while a card waits; None when the message asks none."""
@@ -3071,7 +3094,7 @@ class Session:
             (signals.hotline_more, render.hotline_more),
             (signals.hotline_hours, render.hotline_hours),
             (signals.hotline_fee, render.hotline_fee),
-            (signals.hotline_language, render.hotline_language),
+            (signals.hotline_language, self._language_lines()),
             (signals.hotline_real, render.hotline_real),
             (signals.hotline_anonymous, render.hotline_anonymous),
         ):
@@ -3430,6 +3453,8 @@ class Session:
         if stage is HelpStage.S_CLARIFY and (short or not self._need_due or quiet):
             # Not every S_clarify reply names a need, never one after "嗯" (dogfood I3).
             slots = replace(slots, need="")
+        if quiet:  # round 7 (re-test q3 第四节): no sentence about feelings either
+            slots = replace(slots, quiet=True)
         text = self._engine.compose(stage, slots, card=card, light=light, tips=tips, short=short)
         if not self._note_gate():
             return None
@@ -3893,12 +3918,19 @@ class Session:
         pending: _Pending | None,
         assessment: CrisisAssessment,
         rules: CrisisAssessment,
+        *,
+        reminded: bool = False,
     ) -> bool:
         """A new request while an S_empower card waits (round 6): the stage stays, the
         message asks something or asks for help with something (``_NEW_REQUEST``) in words
         of its own, it is no command, feedback, answer, request for a method or practice,
         and it is not about the card ("这个练习要做几遍"); the turn screens L0 by the rules
-        and below L2 by any reading."""
+        and below L2 by any reading.
+
+        Round 7 (re-test q3 第四节): a question about what to do or think counts as asking
+        (``_asks_what``: "你有什么想法"), and so does any message with words of its own
+        after the card's prompt was already said once (``reminded``): the user has moved
+        on, and a second /done prompt would leave them unanswered."""
         return (
             pending is not None
             and pending.stage is HelpStage.S_EMPOWER
@@ -3917,7 +3949,7 @@ class Session:
             and rules.level is CrisisLevel.L0
             and assessment.level < CrisisLevel.L2
             and _has_words(text)
-            and (_asks(text) or _NEW_REQUEST.search(normalize(text)) is not None)
+            and (reminded or _asks_what(text) or _NEW_REQUEST.search(normalize(text)) is not None)
             and _ABOUT_CARD.search(normalize(text)) is None
         )
 
@@ -4232,6 +4264,15 @@ _NO_FEELING_ASK: Final = re.compile(
     r"|(?:又|还|总|老)(?:是)?(?:问|追问)我(?:的)?(?:感受|感觉|心情)"
 )
 _NO_FEELING_STAGES: Final = frozenset({HelpStage.S_EXPLORE, HelpStage.S_CLARIFY})
+# Round 7 (re-test q3 第四节): the user asks for no reasoning, no practice, only to be
+# heard, in words the lexicon's ``lock_on`` phrases do not hold as they stand (a 跟我 /
+# 给我 between, a kind of practice named, someone to listen). Read on the normalized text.
+_LISTEN_ONLY: Final = re.compile(
+    r"(?:别|不要|不用|甭|少|别再|不要再)(?:跟我|给我|和我|对我|同我|帮我)?(?:讲|说|摆|扯)(?:什么|啥|大)?道理"
+    r"|(?:不想|不要|不用|别|甭|不需要)(?:再)?(?:给我|让我|跟我|帮我|带我)?"
+    r"(?:做|练|推|推荐|安排|布置|来|弄|发)?(?:什么|啥|任何|那些|这些|这种|那种)?(?:的)?(?:情绪|放松|呼吸|心理|正念|冥想|小)?练习"
+    r"|(?:只|就|只是)(?:想|希望)(?:有个?人|你)?(?:听我|陪我)(?:说|聊|讲|倾诉)"
+)
 # Round 6: a request for help with something ("你能帮我……", "陪我想想……"), and words that
 # are about the card on screen (its steps, doing it, what happens while doing it).
 _NEW_REQUEST: Final = re.compile(

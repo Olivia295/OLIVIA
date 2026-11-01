@@ -66,6 +66,7 @@ is in ``olivia/data/templates/forget.yaml`` (G-0 draft). Nothing here logs.
 from __future__ import annotations
 
 import contextlib
+import os
 import re
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping
@@ -96,8 +97,13 @@ from olivia.core.chang.safety_plan import (
     SafetyPlanDamagedError,
     SafetyPlanStore,
 )
-from olivia.core.crypto.errors import KeychainUnavailableError, NoKeychainError
-from olivia.core.crypto.vault import KEYS_DIRNAME, Vault
+from olivia.core.crypto.errors import (
+    DecryptionError,
+    KeychainUnavailableError,
+    KeyMissingError,
+    NoKeychainError,
+)
+from olivia.core.crypto.vault import KEYS_DIRNAME, Vault, key_file_intact
 from olivia.core.memory.ledger import (
     LEDGER_DIRNAME,
     LEDGER_STORE,
@@ -105,6 +111,7 @@ from olivia.core.memory.ledger import (
     Ledger,
     LedgerEntry,
     LedgerUnavailableError,
+    LedgerUnreadableError,
     NoteEntry,
 )
 from olivia.core.memory.preferences import (
@@ -176,6 +183,9 @@ _MEMORY_KEYS: Final = (
     "no_keychain",
     "locked",
     "adults_only",
+    "unreadable_fixable",
+    "ledger_unreadable",
+    "edit_confirm",
 )
 _FORGET_KEYS: Final = (
     "menu",
@@ -221,6 +231,10 @@ _FORGET_KEYS: Final = (
     "about_all_minor",
     "done_all_minor",
     "kept_minor",
+    "ledger_unreadable",
+    "about_care",
+    "done_care",
+    "nothing_care",
 )
 
 Ask = Callable[[], str | None]
@@ -236,9 +250,12 @@ class Target(StrEnum):
     KIT = "kit"
     SAFETY_PLAN = "safety_plan"
     ALL = "all"
+    CARE = "care"
+    """Round 7 (QA q4 P4): only the care marker (``olivia forget --care``), for a marker
+    file that is damaged; not in the menu (``ledger`` removes it with the chat records)."""
 
 
-MENU: Final = tuple(Target)
+MENU: Final = tuple(t for t in Target if t is not Target.CARE)
 
 
 # -- wording ----------------------------------------------------------------------------------
@@ -445,7 +462,7 @@ def _other_lines(
         found.append("- " + _fill(m["taboo"], count=len(profile.taboo_topics)))
     if profile is not None and (profile.clinical_history or profile.contraindications):
         found.append(f"- {m['health']}")
-    if stores.plan.exists():
+    if stores.plan.path.exists():  # round 7 (QA q4 P3): a folder in its place counts too
         found.append(f"- {m[_plan_key(stores.plan)]}")
     state, preferences = _preferences(stores, now)
     if state is not None:
@@ -488,6 +505,7 @@ def run_memory(
         say(m["locked"])
         return 1
     entries: tuple[LedgerEntry, ...] = ()
+    failed = False
     if keychain is _Keychain.NONE:
         say(m["no_keychain"])
         say("")
@@ -495,6 +513,10 @@ def run_memory(
     else:
         try:
             entries = stores.ledger.entries()
+        except LedgerUnreadableError:  # round 7 (QA q4 B1): permissions, nothing is lost
+            say(m["ledger_unreadable"])
+            say("")
+            failed = True
         except LedgerUnavailableError:
             say(m["locked"])
             return 1
@@ -509,7 +531,10 @@ def run_memory(
                 say(line)
             say("")
     if unreadable:
-        say(_fill(m["unreadable"], count=unreadable))
+        # Round 7 (QA q4 B3): entries that do not open because of keys or permissions
+        # that can be put right are never called damaged, nor offered for deletion.
+        key = "unreadable_fixable" if ledger_fixable(stores) else "unreadable"
+        say(_fill(m[key], count=unreadable))
         say("")
     others = _other_lines(stores, profile, profile_exists, t, moment)
     if others:
@@ -521,7 +546,30 @@ def run_memory(
     if entries or unreadable or others:
         say("")
         say(m["hint"])
-    return 0
+    return 1 if failed else 0
+
+
+def ledger_fixable(stores: DataStores) -> bool:
+    """Round 7 (QA q4 B3): whether ledger entries that do not open have a cause that can
+    be put right, so deleting them would lose what a fix brings back: a file where the
+    ``keys/`` folder should be or a ``keys/`` folder that cannot be read, a master key the
+    keychain no longer holds or one that does not unwrap the ledger's intact key file (a
+    changed keychain value), or an entry file this account may not read. Read-only."""
+    keys = stores.base / KEYS_DIRNAME
+    try:
+        if keys.exists() and (not keys.is_dir() or not os.access(keys, os.R_OK | os.X_OK)):
+            return True
+        if any(not os.access(path, os.R_OK) for path in stores.ledger.entry_paths()):
+            return True
+        if stores.vault.master_lost():
+            return True
+        if stores.vault.has_data_key(LEDGER_STORE) and key_file_intact(stores.base, LEDGER_STORE):
+            stores.vault.check_data_key(LEDGER_STORE)
+    except (KeyMissingError, DecryptionError, OSError):
+        return True
+    except KeychainUnavailableError:
+        return False
+    return False
 
 
 # -- forgetting -------------------------------------------------------------------------------
@@ -548,6 +596,12 @@ def forget_ledger(stores: DataStores) -> None:
 def forget_kit(stores: DataStores) -> None:
     """The kit and the method preferences, crypto-shredded."""
     _quietly(stores.state.shred)
+
+
+def forget_care(stores: DataStores) -> None:
+    """Round 7 (QA q4 P4): only the care marker, crypto-shredded; a folder in place of its
+    file is not touched (``olivia doctor`` names it)."""
+    _quietly(stores.care.shred)
 
 
 def forget_safety_plan(stores: DataStores) -> None:
@@ -625,6 +679,8 @@ def _has_any(stores: DataStores, target: Target) -> bool:
         )
     if target is Target.SAFETY_PLAN:
         return stores.plan.exists() or stores.vault.has_data_key(SAFETY_PLAN_STORE)
+    if target is Target.CARE:
+        return stores.care.path.exists() or stores.vault.has_data_key(CARE_STORE)
     return any(path.exists() for path in _owned_paths(stores.base))
 
 
@@ -679,6 +735,8 @@ class _Command:
             forget_ledger(self.stores)
         elif target is Target.KIT:
             forget_kit(self.stores)
+        elif target is Target.CARE:
+            forget_care(self.stores)
         else:
             forget_safety_plan(self.stores)
         self.say(self.f[f"done_{target.value}"])
@@ -721,6 +779,9 @@ class _Command:
         wrong value (exit 2, README "退出码"); one typed at the prompt is exit 1."""
         try:
             entries = self.stores.ledger.entries()
+        except LedgerUnreadableError:  # round 7 (QA q4 B1)
+            self.say(self.f["ledger_unreadable"])
+            return 1
         except LedgerUnavailableError as exc:
             if not exc.permanent:
                 self.say(self.f["locked"])
@@ -753,6 +814,9 @@ class _Command:
             return 0
         try:
             dropped = self.stores.ledger.forget_entry(chosen.entry_id)
+        except LedgerUnreadableError:
+            self.say(self.f["ledger_unreadable"])
+            return 1
         except LedgerUnavailableError:
             self.say(self.f["locked"])
             return 1
@@ -902,6 +966,9 @@ def run_edit(
         return 1
     try:
         entries = stores.ledger.entries()
+    except LedgerUnreadableError:  # round 7 (QA q4 B1)
+        say(f["ledger_unreadable"])
+        return 1
     except LedgerUnavailableError:
         say(m["locked"])
         return 1
@@ -924,7 +991,9 @@ def run_edit(
         say(m["edit_unchanged"])
         return 0
     say(_fill(m["edit_about"], n=number))
-    if not _typed_confirmation(ask, say, f):
+    # Round 7 (QA q4 P9): an edit is confirmed and cancelled in its own words, not "删".
+    wording = {**f, "confirm": m["edit_confirm"], "cancelled": m["edit_unchanged"]}
+    if not _typed_confirmation(ask, say, wording):
         return 0
     try:
         dropped = stores.ledger.edit_note(entry.entry_id, new_text)

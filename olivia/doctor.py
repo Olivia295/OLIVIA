@@ -124,6 +124,10 @@ class StoreState(StrEnum):
     """There is data, but a file stands where the ``keys/`` folder should be."""
     NO_MASTER = "no_master"
     """Its data key names a master key the keychain no longer holds."""
+    WRONG_MASTER = "wrong_master"
+    """Round 7 (QA q4 B3): its key file looks intact and names the master key the keychain
+    holds, but that master key does not unwrap it: most likely the keychain item's value
+    was changed (or the key file was altered in a way its shape does not show)."""
 
 
 @dataclass(frozen=True)
@@ -248,7 +252,7 @@ def examine(base: Path, *, today: date, host: Callable[[], Host]) -> Report:
     if found is keychain.Probe.READY and StoreState.LOCKED in (profile.state, *stores.values()):
         # Round 6 (QA q4 F6): the probe answered, but reading a master key did not.
         found = keychain.Probe.UNAVAILABLE
-    off = _mismatched_paths(base) if readable else None
+    off = _mismatched_paths(base, skip=wrong) if readable else None
     return Report(
         data_dir=DataDir(
             base,
@@ -378,7 +382,9 @@ def _key_opens(vault: ReadOnlyVault, store: str) -> StoreState:
     except KeyMissingError:
         return StoreState.NO_MASTER
     except DecryptionError:
-        return StoreState.BROKEN
+        # Only asked of a store whose key file looks intact (``_sealed``): the master key
+        # is the likelier cause, and it can be put back (round 7, QA q4 B3).
+        return StoreState.WRONG_MASTER
     except KeychainUnavailableError:  # locked, or it stopped answering
         return StoreState.LOCKED
     return StoreState.READY
@@ -494,9 +500,11 @@ def _profile(base: Path, keychain_there: bool) -> ProfileFacts:
     )
 
 
-def _mismatched_paths(base: Path) -> list[Path] | None:
+def _mismatched_paths(base: Path, *, skip: tuple[str, ...] = ()) -> list[Path] | None:
     """The paths that are not 0700 (directories) / 0600 (files), in walk order; None on
-    Windows."""
+    Windows. ``skip``: names of the wrong kind (:func:`misplaced`), already named with how
+    to fix them; a folder where a file should be is not also "the wrong mode" (round 7,
+    QA q4 P5)."""
     if os.name == "nt":
         return None
     off: list[Path] = []
@@ -504,6 +512,8 @@ def _mismatched_paths(base: Path) -> list[Path] | None:
         relative = path.relative_to(base).parts
         if relative and relative[0] == bundle.OVERRIDE_DIR_NAME:
             continue  # placed there by the user, holds no personal data
+        if relative and relative[0] in skip:
+            continue
         try:
             info = path.lstat()
         except OSError:

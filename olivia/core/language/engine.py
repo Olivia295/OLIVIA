@@ -162,9 +162,28 @@ class Slots:
     guarded: bool = False
     """The turn's words are not said back (round 3): no template variant holding a
     ``guarded.affirmations`` marker is used. Not a template slot."""
+    quiet: bool = False
+    """Round 7 (re-test q3 第四节): the user asked not to be asked about feelings; every
+    sentence of a variant that talks about feelings is left out (:func:`without_feeling_talk`).
+    Not a template slot."""
 
     def values(self) -> dict[str, str]:
-        return {f.name: getattr(self, f.name) for f in fields(self) if f.name != "guarded"}
+        return {f.name: getattr(self, f.name) for f in fields(self) if f.name not in _NOT_SLOTS}
+
+
+_NOT_SLOTS: Final = frozenset({"guarded", "quiet"})
+# Round 7: words of a sentence that talks about feelings ("你此刻的感受是有来由的",
+# "不管此刻心里是什么滋味").
+_FEELING_TALK: Final = re.compile(r"感受|感觉|滋味|心情|情绪|心里|心事")
+_SENTENCE_END: Final = re.compile(r"(?<=[。？！])")
+
+
+def without_feeling_talk(variant: str) -> str:
+    """``variant`` without its sentences that talk about feelings (round 7); unchanged
+    when every sentence does."""
+    sentences = [x for x in _SENTENCE_END.split(variant) if x]
+    kept = [x for x in sentences if _FEELING_TALK.search(x) is None]
+    return "".join(kept) if kept else variant
 
 
 def count_all(text: str) -> int:
@@ -744,6 +763,8 @@ class LanguageEngine:
             usable = [
                 [v for v in pool if not any(m in v for m in marks)] or pool for pool in usable
             ]
+        if slots.quiet:
+            usable = [list(dict.fromkeys(without_feeling_talk(v) for v in pool)) for pool in usable]
         if any(not pool for pool in usable):
             raise ValueError(f"{stage}: no template variant can be filled from these slots")
         combos = list(itertools.product(*usable))
