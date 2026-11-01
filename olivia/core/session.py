@@ -664,7 +664,7 @@ _AFTER_LOSS_NO_LENS: Final = frozenset({"06", "07"})
 _THIRD_PARTY_WINDOW: Final = 3
 # Round 5: the user joins in the other person's risk ("我也", "我自己也", "跟她一样").
 _JOINING: Final = re.compile(
-    r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样)"
+    r"(?:我|俺)(?:自己)?(?:其实|说实话|真的)?(?:也|同样|一样|都)"
     r"|(?:跟|和|同)(?:他|她|ta|他们|她们)(?:一样|差不多)"
 )
 # Round 6 (re-test q2 第 1 节): the user wants to go along with the other person ("跟他一起
@@ -673,9 +673,13 @@ _JOINING: Final = re.compile(
 _GO_ALONG: Final = re.compile(
     r"(?:(?:跟|和|同|陪|随|跟着)(?:他|她|ta|他们|她们|对方)|我们俩?|咱们|咱俩|我俩)"
     r"(?:一起|一块儿?|一道)[^,.!?;:]{0,2}?"
-    r"(?:去死|死|结束(?:这一切|生命|自己)?|了断|了结|解脱|离开这个世界|跳(?:下去|楼|河|江)?|走|去)"
+    r"(?:去死|死|结束(?:这一切|生命|自己)?|了断|了结|解脱|离开这个世界|跳(?:下去|楼|河|江)?|走|去|算了)"
     r"(?=$|[,.!?;:~…]|了|吧|算了|好了|得了|的)"
 )
+# 负责人 2026-11-01 决定 (A): model-only questions per session, and the turns that must lie
+# between an accepted no and the next one.
+_MODEL_ASKS_MAX: Final = 2
+_MODEL_ASK_GAP: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
 # Round 4 (SDD §4.4): Arousal = SUDS / 10.
@@ -890,6 +894,10 @@ class Session:
         # marks the pending question as that one.
         self._model_asked = False
         self._asking_model = False
+        # 负责人 2026-11-01 决定 (A): the turn of the last accepted no to a model-only question
+        # and how many such questions this session asked (at most two).
+        self._model_denied_turn: int | None = None
+        self._model_ask_count = 0
         # Safety replies round 2 (2026-10-26): the user said they are under 18 in this
         # session (第 5 条; never written anywhere) and was told so once; the highest crisis
         # entry level of this session (第 11 条); the turn count when the user last reported
@@ -1429,6 +1437,8 @@ class Session:
                 # Round 6 (re-test q2 第 1 节): any question about what to do or say
                 # ("第一句说什么", "我可以点帮佢") is a follow-up too.
                 or _asks_what(text)
+                # Round 7: the police, or whether it is a warning sign.
+                or _third_party_topic(text) is not None
             )
         )
         third_now = open_turn and not minor_now and (reported is not None or third_follow)
@@ -1676,6 +1686,11 @@ class Session:
                 elif helping:
                     help_text = self._engine.data.render.chat_help
                     self._add_line(rendered, (help_text,), stage, first=True)
+                elif (line := self._third_party_line(text, signals, rules)) is not None:
+                    # Round 7 (re-test q2 第 1 节): a question about the other person a few
+                    # turns after their card is answered first in the crisis flow too.
+                    self._add_line(rendered, (line,), stage, first=True)
+                    heard = True
                 elif calm_words and minor_answer is None:
                     # Round 3: new words in the crisis flow are answered first (re-test r4:
                     # "我明天想去学校的心理中心看看" got only the card).
@@ -1693,7 +1708,7 @@ class Session:
             rendered = self._minor_reply(stage, now, minor_answer)
         elif third_now:
             rendered = self._third_party_reply(
-                stage, now, reported, _third_party_ask(text, signals)
+                stage, now, reported, _third_party_ask(text, signals), _third_party_topic(text)
             )
             self._third_party_turn = turn_no
         elif hotline_now:
@@ -2477,7 +2492,20 @@ class Session:
             # user is under 18 with a no and the rules find no risk cue in it; a sure model
             # (score >= 0.6) asks first too, never the crisis flow on its word alone.
             return True
-        return first and self._shared.lexicons.model_ask.asks_first(model_score)
+        # 负责人 2026-11-01 决定 (A): after an accepted no (it passed F10), a later unsure alarm
+        # with no rule cue asks once more when at least 3 turns lie between; at most two
+        # such questions per session.
+        denied = self._model_denied_turn
+        again = (
+            denied is not None
+            and self._model_ask_count < _MODEL_ASKS_MAX
+            and self._state.global_turn_count - denied > _MODEL_ASK_GAP
+        )
+        if not (first or again) or not self._shared.lexicons.model_ask.asks_first(model_score):
+            return False
+        self._model_ask_count += 1
+        self._model_denied_turn = None
+        return True
 
     def _score_band_safe(self, assessment: CrisisAssessment, model_level: str | None) -> bool:
         """负责人 2026-10-29 决定 (round 5, re-test q2 第 3 节, E03): in the crisis flow with an
@@ -2612,6 +2640,8 @@ class Session:
         if answer is IntentAnswer.DENIED:
             if not model:
                 self._gentle_care = True
+            else:
+                self._model_denied_turn = self._state.global_turn_count
             if reading.negated:
                 return self._negation_capped(assessment), answer
             return self._denial_capped(text, assessment, rules), answer
@@ -2695,10 +2725,15 @@ class Session:
         if found is None or not found.user_clear:
             return None
         # Round 4: the message reports someone else's words and every rule cue lies in them.
-        self._reported_words = True
+        # Round 7 (re-test: "他要是不回来，我就死给他看"): not when the user also speaks of
+        # themselves outside those words; a model's alarm then follows the 0.6 rule.
+        self._reported_words = not found.user_speaks
         if found.rule_risk or found.plan:
             # Round 3: the model's own L3 class for the words alone (a plan) opens the card
             # too ("说他今晚就吃药走了"), as it put the user into the crisis flow before.
+            # Round 7: parts of a plan next to risk the rules find make the card urgent.
+            if not found.plan and names_plan(normalize(text)):
+                return replace(found, plan=True)
             return found
         _, probe = self._shared.stub.perceive(text, assessment)
         near = probe.imminent_time or probe.imminent_means
@@ -2737,6 +2772,28 @@ class Session:
             uncapped_level=None,
             rule_clear=False,
         )
+
+    def _third_party_line(
+        self, text: str, signals: TurnSignals, rules: CrisisAssessment
+    ) -> str | None:
+        """In the crisis flow, a few turns after the card for someone else's risk, the line
+        that answers a question about that person (round 7): the police, a warning sign, an
+        unreachable person or how to start the talk; None otherwise or with a rule cue."""
+        if rules.level is not CrisisLevel.L0 or not self._third_party_window():
+            return None
+        render = self._engine.data.render
+        topic = _third_party_topic(text)
+        signals = _third_party_ask(text, signals)
+        pools: tuple[tuple[bool, tuple[str, ...]], ...] = (
+            (topic == "police", render.third_party_police),
+            (topic == "signs", render.third_party_signs),
+            (signals.third_party_unreachable, render.third_party_unreachable),
+            (signals.third_party_how_to_ask, render.third_party_how_to_ask),
+        )
+        for wanted, pool in pools:
+            if wanted and pool:
+                return self._pick(pool)
+        return None
 
     def _third_party_window(self) -> bool:
         """Within a few turns of the card for someone else's risk."""
@@ -2780,10 +2837,14 @@ class Session:
             and assessment.level >= CrisisLevel.L2
             and assessment.rule_clear
             and MODEL_FAILURE not in assessment.cue_ids
-            and self._shared.screen.about_others(text)
         )
         if not alarm:
             return False, None
+        if not self._shared.screen.about_others(text):
+            # Round 7 (re-test q2 T03): a question about what to do, a few turns after the
+            # card, with no rule cue ("我要不要现在就报警") is about that person too.
+            window = self._third_party_window()
+            return window and (_asks_what(text) or _third_party_topic(text) is not None), None
         if self._third_party_window():
             return True, None
 
@@ -2927,6 +2988,7 @@ class Session:
         now: datetime,
         reported: ReportedRisk | None,
         signals: TurnSignals,
+        topic: str | None = None,
     ) -> _Rendered:
         """The card for someone else's reported risk (问题单第 6 条, 2026-10-26, draft, G-0):
         one serious line that asks the user nothing about their own safety, the region's
@@ -2943,7 +3005,10 @@ class Session:
         ``reported`` is None on a follow-up a few turns later (round 3): the user cannot
         reach the other person ("我联系不上他": an emergency, so the L3 card with what to
         do), asks what to do (urgent: what to do in an emergency; otherwise how to be with
-        them) or says it is a secret. Never an ordinary mirror."""
+        them) or says it is a secret. Never an ordinary mirror.
+
+        Round 7: ``topic`` (``_third_party_topic``) answers whether to call the police (the
+        emergency numbers lead the card) or whether the words are a warning sign, first."""
         render = self._engine.data.render
         pool = render.third_party_secret if signals.keep_secret else render.third_party_support
         if reported is not None:
@@ -2967,7 +3032,14 @@ class Session:
             # own concrete lines; an urgent report keeps what to do in an emergency first.
             asking = signals.third_party_how_to_ask or signals.advice_request
             tail = []
-            if signals.third_party_unreachable:
+            if topic == "police" and render.third_party_police:
+                lead = [self._pick(render.third_party_police)]
+                urgent = True
+            elif topic == "signs" and render.third_party_signs:
+                lead = [self._pick(render.third_party_signs)]
+                if asking and render.third_party_how_to_ask:
+                    tail = [self._pick(render.third_party_how_to_ask)]
+            elif signals.third_party_unreachable:
                 lead = [self._pick(render.third_party_unreachable)]
             elif far:
                 lead = [self._pick(render.third_party_far)]
@@ -4312,6 +4384,27 @@ _SAY_WHAT: Final = re.compile(
     r"(?:说|讲|问|聊|开口|讲话)(?:些|点|啲|几句)?(?:什么|啥|咩|乜)|第一句|头一句|开场白"
     r"|(?:怎么|怎样|如何|点样|点)(?:说|讲|问|开口|聊|劝)|what(?:do|should|can)isay"
 )
+
+
+# Round 7 (re-test q2 第 1 节, I1-I2): two follow-ups about someone else's risk with an answer
+# of their own: whether to call the police, and whether the words are a warning sign.
+_POLICE_ASK: Final = re.compile(
+    r"报警|打110|叫警察|找警察|报唔报警|callthepolice|callpolice|call911|call999"
+)
+_SIGNS_ASK: Final = re.compile(
+    r"危险信号|预警信号|危险的信号|(?:算不算|是不是|算是|是否|会不会|系唔系)(?:很|好)?(?:危险|严重|征兆|信号)"
+    r"|warningsign|redflag"
+)
+
+
+def _third_party_topic(text: str) -> str | None:
+    """``police`` or ``signs`` for those two follow-ups (round 7), else None."""
+    normalized = normalize(text)
+    if _POLICE_ASK.search(normalized) is not None:
+        return "police"
+    if _SIGNS_ASK.search(normalized) is not None:
+        return "signs"
+    return None
 
 
 def _asks_what(text: str) -> bool:

@@ -106,6 +106,8 @@ _DIRECT_ANSWER_WORDS: Final[tuple[str, ...]] = ("是", "对", "安全")
 _CLAUSE_SPLIT: Final = re.compile(r"[,.!?;:、。！？，；：~…\s]+")
 _SAFE_CLAUSE: Final = re.compile(
     r"(?:嗯+|恩+)?(?:(?:是|对)的?)?我?(?:在家里?)?(?:是|很|挺|好)?安全(?:的|了|啦)?(?:哦|呀|啊|呢)?"
+    # Round 7 (re-test q2 I4): the Cantonese particles ("安全㗎", "安全嘅", "安全喇").
+    r"(?:㗎|嘅|喇|啰|囉|噃|架)*"
 )
 _DIRECT_ANSWER_ENGLISH: Final[frozenset[str]] = frozenset(
     {"yes", "yeah", "yep", "i'msafe", "iamsafe", "imsafe", "yesi'msafe", "yesiamsafe"}
@@ -148,6 +150,17 @@ _PROMISE: Final = re.compile(
 # Round 4 (re-test q2 x06: "我已经从天台下来了，现在在家，安全的"): a place the user has come
 # down from or left is no means or place veto. Only these spans are dropped before the F10
 # guard reads the message; "我在天台上，挺安全的" and "从楼顶下来了，但明天还会上去" keep it.
+# Round 7 (re-test q2 I4): going to bed or washing, said next to a safe clause ("准备睡了",
+# "打算去洗澡"), is no plan word for the guard; only these spans are dropped before it.
+_BEDTIME: Final = re.compile(
+    r"(?:准备|打算|要)(?:去)?(?:睡|睡觉|睡了|休息|上床|洗澡|洗漱|吃饭)(?:了|啦|咯)?(?=$|[,.!?;:、。~…\s])"
+)
+# Round 7 follow-up: things made ready next to a confirmation ("我是安全的，都准备好了", "事情都
+# 安排好了") void it, as a plan word does; going to bed or washing (``_BEDTIME``) does not.
+_READY: Final = re.compile(
+    r"(?:准备|弄|安排|搞|收拾|处理|交代|备|打点|整理|料理)(?:得)?(?:好|妥|完|妥当|妥了|就绪)"
+    r"|准备就绪|就差最后一步|万事俱备"
+)
 _LEFT_PLACE: Final = re.compile(
     r"从(?:天台|楼顶|顶楼|阳台|窗台|桥上|桥边|大桥上|江边|河边|湖边|海边|铁轨边?)上?"
     r"(?:下来|回来|走下来|撤下来|走开|回到家|回家)(?:了|啦)"
@@ -593,6 +606,8 @@ class CrisisTracker:
         hedge or a crisis cue, so it is read whatever level a risk model gave the turn;
         vetoes, a question and a negation in front of a phrase still win over both paths.
         """
+        if _READY.search(_BEDTIME.sub("", normalized)) is not None:
+            return False
         promised = _promise_spans(normalized)
         scoped = _scoped_spans(normalized)
         exempted = False
@@ -625,7 +640,7 @@ class CrisisTracker:
         Only when the screen found no rule risk cue in the message
         (``CrisisAssessment.rule_clear``) and no F10 denial veto or contrast occurs in it,
         so "我是安全的，可是药还在" or "我现在安全，就是今晚不想睡" never counts."""
-        if not assessment.rule_clear:
+        if not (assessment.rule_clear or assessment.reassured):
             return False
         # Round 3: a message that is nothing but a promise ("我答应你，今晚不会做什么"): its
         # time word is the promise's own scope, so the F10 time vetoes do not apply to it.
@@ -657,7 +672,7 @@ class CrisisTracker:
         matcher = self._clause_guard if guard is None else guard
         if matcher is None:
             return True
-        guarded = _MEANS_GONE.sub("", _LEFT_PLACE.sub("", normalized))
+        guarded = _BEDTIME.sub("", _MEANS_GONE.sub("", _LEFT_PLACE.sub("", normalized)))
         promised = _promise_spans(guarded)
         scoped = _scoped_spans(guarded)
         for hit in matcher.find_all(guarded):
