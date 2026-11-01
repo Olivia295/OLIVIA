@@ -102,7 +102,7 @@ from olivia.core.language.data import (
 from olivia.core.language.dossiers import situation_images
 from olivia.core.language.filters import apply_willow
 from olivia.core.language.gate import GateResult, OutputGate, phone_like_runs
-from olivia.core.language.guard import MirrorGuard, SubstanceReading, read_substance
+from olivia.core.language.guard import SubstanceReading, read_substance, shared_guard
 from olivia.core.language.mirror import FALLBACK_MIRROR, Utterance, mirror, utterance_kind
 from olivia.core.language.spacing import fill as spaced_fill
 from olivia.core.models import ActionSkeleton, ActionType, CrisisLevel, HelpStage, SafetyGrade
@@ -245,9 +245,7 @@ class LanguageEngine:
         self._data = data if data is not None else load_language_data(tax)
         self._gate = OutputGate(tax, self._data)
         said = self._data.utterances
-        self._guard = MirrorGuard(
-            lexicons, said.extra_risk_words, said.components, semantic=said.semantic
-        )
+        self._guard = shared_guard(lexicons, said)
         # The level the session gave this turn (note_risk) and the rule screen's own level
         # (round 4), and whether drinking came up this session (round 3).
         self._turn_level = CrisisLevel.L0
