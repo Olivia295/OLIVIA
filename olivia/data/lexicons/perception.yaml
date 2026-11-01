@@ -1927,6 +1927,15 @@ minor_disclosure_patterns:
   - "(?:i'm|im|iam)(?:only|just|still)?(?:a)?minor(?=$|[,.!?;:~)]|and|but|so|lol)"
   - "(?:i'm|im|iam)(?:not|notyet|stillnot)(?:18|eighteen)(?:yet)?(?=$|[,.!?;:~)]|and|but|so)"
   - "(?:i'm|im|iam)(?:still)?under(?:18|eighteen)"
+  # Round 7 (2026-11-01, re-test q2 第 4 节; 草稿：待 G-0). Grammar, not example sentences:
+  # - a clause that opens with an age under 18 and an "only" adverb, no subject ("才十五岁，
+  #   就……"), never someone's age ("才十五岁的孩子");
+  # - a school move of one's own still ahead: going up to junior or senior high, or the
+  #   entrance exam for it, after a self word or a time that opens the clause, with a word
+  #   that says it is coming ("我下学期就要小升初了", "明年我中考"), never the past.
+  - "{S}(?:才|只有|也就|才刚|刚满|刚刚满|才满)(?:1[0-7]|十[一二三四五六七])(?:岁|周岁)(?!的|那|时|以前|之前|左右|多)"
+  - "(?:{S}|我|本人|俺|咱)(?:我)?(?:今年|明年|下学期|这学期|下半年|马上|快|快要|就快|眼看)+(?:我)?(?:就|就要|要|也要|也|还要)?(?:小升初|升初中|升初一|上初中|上初一|中考|升高中|考高中)(?!的时候|时|那|以前|之前|老师|家长|的孩子|的学生|生的)"
+  - "(?:我|本人|俺|咱)(?:就|就要|要|快要|快|马上|马上就|正在|在)+(?:准备)?(?:小升初|升初中|升初一|中考|升高中|考高中)(?!的时候|时|那|以前|之前|老师|家长|的孩子|的学生|生的)"
 
 # Round 6 (2026-10-29; 草稿：待 G-0): the past next to a minor disclosure. A match in the same
 # clause or the clause before one of these does not count, unless its own clause says now

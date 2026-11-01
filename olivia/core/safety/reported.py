@@ -91,6 +91,11 @@ _EXTRA_SPEAKERS: Final = (
     "师弟", "师妹", "同桌", "发小", "老乡", "闺女", "媳妇", "丈夫", "妻子", "爱人", "婆婆",
     "公公", "岳母", "丈母娘", "嫂子", "姐夫", "妹夫", "侄子", "侄女", "外甥", "外甥女",
     "孙子", "孙女", "继父", "继母", "后妈", "来访者", "病友", "好友", "朋友们", "同学们",
+    # Round 7 (re-test q2 第 1 节): Cantonese kin and people.
+    "阿妈", "阿爸", "老豆", "老母", "阿婆", "阿公", "阿嫲", "阿爷", "家姐", "细佬", "细妹", "老公",
+    "老婆", "女朋友", "男朋友", "同事", "朋友仔",
+    # Round 7: someone known online.
+    "网友", "群友", "粉丝", "博主", "up主",
 )  # fmt: skip
 # Kinship words that name a speaker only after a possessive self word (我哥, 我亲姐).
 _KIN_WORDS: Final = ("哥", "姐", "弟", "妹", "舅", "姨", "叔", "婶", "嫂")
@@ -99,6 +104,8 @@ _EXTRA_VERBS: Final = (
     "写", "写了", "写着", "写下", "写过", "写的是", "发了", "发了条", "发了一条", "私信",
     "发短信", "发微信", "发语音", "打电话", "留了言", "提起", "透露", "坦白", "承认", "吐槽",
     "哭诉", "扬言", "威胁", "嚷嚷", "说过", "总说", "老说",
+    # Round 7 (re-test q2 第 1 节): the caption of a post ("配字说……").
+    "配字", "配文", "配了一句", "配的字",
 )  # fmt: skip
 # A 写 or 发 that is no report of words (写好遗书 is read as an intent instead).
 _EXTRA_VERB_EXCEPTIONS: Final = (
@@ -111,6 +118,9 @@ _INTENT_VERBS: Final = (
     # Round 4 (2026-10-28): someone else's self-injury told in the third person ("我弟又开始
     # 伤害自己了"); the words are rated as the user's own, so only real risk opens the card.
     "开始", "伤害", "自残", "割", "烫",
+    # Round 7 (re-test q2 第 1 节): someone else looking something up ("我室友一直在搜……");
+    # the words are rated as the user's own, so only real risk opens the card.
+    "查了", "查过", "在查", "搜了", "搜过", "在搜", "一直在搜", "一直在查",
 )  # fmt: skip
 # Generic speakers that name nobody in particular: never the subject of an intent clause
 # ("有人想死吗" may be the user asking about themselves).
@@ -164,7 +174,10 @@ _OBJECT_BEFORE: Final = (
     "了", "找", "问", "叫", "喊", "求", "骂", "怪", "缠", "拖累", "连累", "麻烦", "烦", "打",
     "陪", "帮", "给", "对", "跟", "和", "告诉", "嘱咐", "交给", "托付", "回", "发", "劝", "安慰",
     "哄", "通知", "提醒",
+    # Round 7: a time clause inside the words ("她说等我考完试……"): 等 + me is no subject.
+    "等",
 )  # fmt: skip
+_TIME_OBJECT: Final = ("等", "等到")
 # Words after a colon run to the end of the sentence.
 _SENTENCE_END: Final = frozenset("。!?;")
 # A self word right before or after these is no subject of the speech: a place or an
@@ -191,6 +204,13 @@ _HELPLESS: Final = (
     "好慌", "挺担心", "特别担心", "非常担心",
 )  # fmt: skip
 _HELPLESS_LEAD: Final = ("真的", "实在", "完全", "都", "有点", "有些", "也", "就")
+# Round 7: what the user may add about the other person after a self word without saying
+# anything of their own risk: asking what to do, going to them, wanting to help.
+_WORRY_REST: Final = (
+    "怎么办", "怎么做", "怎么帮", "怎么劝", "怎么跟", "怎么说", "做什么", "做点什么", "要不要",
+    "想帮", "帮", "想劝", "劝", "去找", "去看", "陪", "想知道", "问", "放心不下", "睡不着", "心疼",
+    "难受", "不放心", "联系不上", "找不到", "打不通", "点算", "唔知",
+)  # fmt: skip
 # Death words the session reads as someone else's risk next to a time or a means even when
 # the rules miss the reported words (round 4: "下周一考完试她就去死"). A closed class of
 # words for dying by one's own hand; no figure of speech ("累死了") is one.
@@ -198,6 +218,10 @@ _DEATH_WORDS: Final = (
     "去死", "死掉", "寻死", "自杀", "轻生", "自尽", "了结", "结束生命", "结束自己", "不想活",
     "不活了", "活不下去", "跳楼", "跳河", "跳江", "跳桥", "上吊", "割腕", "烧炭", "killmyself",
     "endmylife",
+    # Round 7 (re-test q2 第 1 节): leaving life said gently ("……就能安心走了"), better off
+    # dead, and the Cantonese forms ("死咗好过").
+    "安心走了", "放心走了", "安心地走", "放心地走", "死了算了", "死了好过", "死了更好", "死了倒好",
+    "不如死了", "死咗好过", "死咗算", "死咗仲好", "唔想活", "唔想再活",
 )  # fmt: skip
 # Farewells: a strong one is someone else's risk alone ("永别了"); a weak one only with a
 # means or a place in the message ("大家再见了，谢谢你们" posted with a picture of a roof).
@@ -208,6 +232,9 @@ _FAREWELL_STRONG: Final = (
 _FAREWELL_WEAK: Final = (
     "大家再见", "再见了大家", "各位再见", "再见了各位", "你们好好的", "你们要好好的", "别找我",
     "不要找我", "谢谢大家这些年", "goodbyeeveryone",
+    # Round 7 (re-test q2 第 1 节, q4 S1): not coming back, never to be seen again.
+    "就不回来了", "再也不回来", "不会再回来", "再也见不到", "以后见不到", "再也不会见",
+    "就不上线了", "再也不上线", "唔会再返嚟", "唔返嚟",
 )  # fmt: skip
 
 
@@ -232,21 +259,39 @@ def farewell_strength(words: str) -> int:
 _PLAN_ACT: Final = re.compile(
     r"跳(?:下去|下来|楼|河|江|海|湖|桥|崖|轨)|(?:去|在|上|从)[^,.!?;:]{1,6}跳(?=$|[,.!?;:]|了)"
     r"|(?:要|想|打算|准备|去|开车|骑车)[^,.!?;:]{0,4}(?:撞|冲下|冲进|开进)"
+    # Round 7 (q4 S1): going down from a height ("要从公司天台下去").
+    r"|从[^,.!?;:]{0,8}(?:天台|楼顶|顶楼|楼上|窗台|窗户|阳台|桥上|大桥|悬崖|楼顶上|天台上)[^,.!?;:]{0,2}"
+    r"(?:下去|落去|往下)"
     r"|卧轨|上吊|割腕|烧炭|喝农药|吞药|" + "|".join(_DEATH_WORDS)
 )
 _PLAN_MEANS: Final = re.compile(
-    r"(?:攒|囤|存|藏|备|买|准备|弄)(?:了|好|够|齐|到)?[^,.!?;:]{0,4}(?:药|绳|炭|刀|农药|煤气)"
-    r"|(?:药|绳子?|炭|刀片?|农药|煤气)[^,.!?;:]{0,4}(?:攒|囤|存|藏|备|买|准备)(?:了|好|够|齐|到)"
+    r"(?:攒|囤|存|藏|备|买|准备|弄|储)(?:了|好|够|齐|到|咗|埋)?[^,.!?;:]{0,4}(?:药|绳|炭|刀|农药|煤气)"
+    r"|(?:药|绳子?|炭|刀片?|农药|煤气)[^,.!?;:]{0,4}(?:攒|囤|存|藏|备|买|准备|储)(?:了|好|够|齐|到|咗)"
 )
+# Round 7 (re-test q2 第 1 节): someone else looking for a way to die without pain ("在查怎么
+# 走得不痛苦"): a plan on its own, as the same request is for the user (SDD §8.2 R-MS).
+_PLAN_METHOD: Final = re.compile(
+    r"(?:怎么|怎样|如何|点样)(?:才能|可以|能)?(?:走|死|离开|结束)(?:得|才|地)?[^,.!?;:]{0,3}"
+    r"(?:不痛|不疼|没有痛苦|不痛苦|不那么痛|无痛|唔痛|快一点|最快)"
+    r"|(?:无痛|不痛|没有痛苦)(?:地|的)?(?:死|走|离开|自杀)|(?:哪种|什么)死法"
+)
+# Round 7 (re-test q2 第 1 节): release ("就解脱了") is a plan only next to a place to die
+# from and a time; alone it is everyday relief ("考完就解脱了").
+_PLAN_RELEASE: Final = re.compile(r"解脱|一了百了|结束这一切")
+# Round 7 (re-test q2 第 1 节): affairs handed over before going ("把猫托付给我").
+_PLAN_AFFAIRS: Final = re.compile(r"托付|交给你|交给我|送给我|送人|照顾好(?:他|她)的|帮(?:他|她)养")
 _PLAN_FAREWELL: Final = re.compile(r"遗书|遗言|绝笔|后事|" + "|".join(_FAREWELL_STRONG))
 _PLAN_GOODBYE: Final = re.compile(r"再见|告别|道别|" + "|".join(_FAREWELL_WEAK))
 _PLAN_TIME: Final = re.compile(
     r"(?:今|明|后)(?:天|晚|夜|早)|(?:这|下|本)个?(?:周|礼拜|星期|月)[一二三四五六日天末]?"
     r"|(?:周|星期|礼拜)[一二三四五六日天末]|\d+点|[一二三四五六七八九十两]+点|月底|月初|年底"
     r"|(?:过|这)(?:两|几)天|马上|现在|此刻|待会|一会儿|放假前|开学前|考完|生日"
+    # Round 7: a time set by an event ("等我毕业", "等过完年").
+    r"|等[^,.!?;:]{1,8}(?:完|后|以后|之后|毕业|结婚|长大|出院|走了)"
 )
 _PLAN_PLACE: Final = re.compile(
     r"江边|河边|海边|湖边|桥上|大桥|桥边|楼顶|天台|顶楼|楼上|窗台|铁轨|悬崖|山顶|护栏|水库"
+    r"|进山|深山|山里"
 )
 _PLAN_FIXED: Final = re.compile(
     r"(?:圈|定|选|挑|写|买|准备|安排|想)好|攒够|(?:日子|时间|地方|日期)(?:都|也)?(?:定|圈|选)"
@@ -256,7 +301,12 @@ _PLAN_FIXED: Final = re.compile(
 def names_plan(text: str) -> bool:
     """Someone else's plan in the (normalized) message (round 6): an act, a means made ready
     or a strong farewell with at least one more part of a plan, or a weak farewell with a
-    place or a means."""
+    place or a means.
+
+    Round 7: looking for a painless way to die is a plan alone; a weak farewell with
+    affairs handed over ("托付"), or two different goodbyes with a time, is one too."""
+    if _PLAN_METHOD.search(text) is not None:
+        return True
     strong = {
         name
         for name, pattern in (
@@ -273,7 +323,16 @@ def names_plan(text: str) -> bool:
     }
     if strong and len(strong | more) >= 2:
         return True
-    return _PLAN_GOODBYE.search(text) is not None and ("place" in more or "means" in strong)
+    if "place" in more and "time" in more and _PLAN_RELEASE.search(text) is not None:
+        return True  # round 7: release with a place to die from and a time
+    goodbyes = {m.group(0) for m in _PLAN_GOODBYE.finditer(text)}
+    return bool(goodbyes) and (
+        "place" in more
+        or "means" in strong
+        or _PLAN_AFFAIRS.search(text) is not None
+        # Round 7: two different goodbyes and a time ("跟我告别……今晚过后就不上线了").
+        or (len(goodbyes) >= 2 and "time" in more)
+    )
 
 
 # -- English ------------------------------------------------------------------------------
@@ -549,7 +608,10 @@ class ReportedSpeech:
                     *(
                         m.start
                         for m in selves
-                        if start <= m.start < end and text[m.start : m.end] != _REFLEXIVE
+                        if start <= m.start < end
+                        and text[m.start : m.end] != _REFLEXIVE
+                        # Round 7: "等我考完试" inside the words is a time, not the user.
+                        and not text.endswith(_TIME_OBJECT, 0, m.start)
                     ),
                 ]
             )
@@ -656,10 +718,11 @@ class ReportedSpeech:
             if not _covered(s, exceptions)
             and s.start not in recipient_ends
             and not (s.start > 0 and text[s.start - 1] in _PASSIVE)
+            and not self._passive_owned(text, s, selves)
         ]
         kins: list[Match] = []
         for kin in found.get(_KIN, ()):
-            if _covered(kin, candidates):
+            if _covered(kin, candidates) or self._passive_owned(text, kin, selves):
                 continue
             owner = [m for m in selves if m.end <= kin.start]
             if owner and _KIN_POSSESSIVE.fullmatch(text[owner[-1].end : kin.start]):
@@ -678,6 +741,65 @@ class ReportedSpeech:
             ):
                 speakers.append(s)
         return speakers
+
+    def _passive_owned(self, text: str, speaker: Match, selves: Sequence[Match]) -> bool:
+        """A speaker owned by a self word right after 被 / 让 ("被我妈念叨得……", "让我室友
+        吵得……"; round 7) is the agent of a passive, as one right after 被 is."""
+        for m in selves:
+            if m.end <= speaker.start and m.start > 0 and text[m.start - 1] in _PASSIVE:
+                between = text[m.end : speaker.start]
+                if _POSSESSIVE.fullmatch(between) or _KIN_POSSESSIVE.fullmatch(between):
+                    return True
+        return False
+
+    def user_speaks(self, text: str, spans: Sequence[ReportedSpan]) -> bool:
+        """The user says something of their own outside the reported ``spans`` of the
+        normalized ``text`` (round 7, re-test: "他要是不回来，我就死给他看"): a self word that
+        is the subject of its clause (not a possessive before a speaker, an object, a place
+        or a recipient), outside every span, whose clause goes on with something other than
+        a worried or helpless word or a question about what to do ("我好担心", "我该怎么办").
+        Grammar only: the session then no longer reads a model's alarm as one on someone
+        else's words alone."""
+        if not self._enabled:
+            return False
+        found = self._found(text)
+        recipient_ends = {m.end for m in found.get(_RECIPIENT, ())}
+        speakers = self._speakers(text, found, recipient_ends)
+        for m in found.get(_SELF, ()):
+            if any(s.start <= m.start and m.end <= s.end for s in spans):
+                continue
+            if text[m.start : m.end] == _REFLEXIVE:
+                continue
+            if m.start in recipient_ends or self._placed(text, m) or self._object(text, m):
+                continue
+            if any(
+                m.end <= s.start
+                and self._clause_start(text, s.start) <= m.start
+                and (
+                    _POSSESSIVE.fullmatch(text[m.end : s.start]) is not None
+                    or _KIN_POSSESSIVE.fullmatch(text[m.end : s.start]) is not None
+                )
+                for s in speakers
+            ):
+                continue
+            end = self._clause_end(text, m.end)
+            if any(m.end <= s.start < end for s in spans) or any(
+                s.start <= m.start < s.end for s in speakers
+            ):
+                continue  # the self word opens a clause that reports someone (我妈说……)
+            at = m.end
+            moved = True
+            while moved:
+                moved = False
+                for lead in (*_HELPLESS_LEAD, "自己", "好", "很", "该", "要", "能", "可以", "应该"):
+                    if text.startswith(lead, at, end):
+                        at += len(lead)
+                        moved = True
+            rest = text[at:end]
+            if not rest or rest.startswith(_HELPLESS) or rest.startswith(_WORRY_REST):
+                continue
+            return True
+        return False
 
     def _clause_start(self, text: str, index: int) -> int:
         start = index
@@ -778,6 +900,7 @@ class ReportedSpeech:
         )
         pronouns = found.get(_PRONOUN, ())
         connectives = found.get(_CONNECTIVE, ())
+        intents = found.get(_INTENT, ())
         about_them = pronoun and not any(start <= c.start < end for c in cues)
         for _ in range(_CHAIN_MAX):
             if end >= len(text) or text[end] not in _CHAIN_STOPS:
@@ -787,8 +910,12 @@ class ReportedSpeech:
             if nxt >= nxt_end or any(nxt <= m.start < nxt_end for m in blocking):
                 break
             opens = self._skip_fillers(text, nxt, nxt_end)
-            opener = any(p.start == nxt for p in pronouns) or any(
-                c.start in (nxt, opens) for c in connectives
+            opener = (
+                any(p.start == nxt for p in pronouns)
+                or any(c.start in (nxt, opens) for c in connectives)
+                # Round 7 (re-test q2 第 1 节): a clause with no subject that opens with an
+                # intent verb ("说她撑不下去了，想……") goes on with the same subject.
+                or (pronoun and any(v.start == opens for v in intents))
             )
             if not (opener or about_them):
                 break

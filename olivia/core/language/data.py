@@ -484,6 +484,11 @@ class RenderText:
     # Round 5 (2026-10-29; drafts, G-0).
     third_party_far: tuple[str, ...] = ()
     """After that card: the user is far from the other person; what to do from afar."""
+    # Round 7 (2026-11-01; drafts, G-0).
+    third_party_police: tuple[str, ...] = ()
+    """After that card: whether to call the police, and what to say when calling."""
+    third_party_signs: tuple[str, ...] = ()
+    """After that card: whether what the other person said is a warning sign."""
     third_party_stranger: tuple[str, ...] = ()
     """After that card: the user does not know the other person; what one can still do."""
     # Round 6 (2026-10-29; drafts, G-0).
@@ -1155,6 +1160,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         third_party_how_to_ask=crisis_lists["third_party_how_to_ask"],
         third_party_says_fine=crisis_lists["third_party_says_fine"],
         third_party_far=crisis_lists["third_party_far"],
+        third_party_police=crisis_lists["third_party_police"],
+        third_party_signs=crisis_lists["third_party_signs"],
         third_party_stranger=crisis_lists["third_party_stranger"],
         no_feeling_prompts=crisis_lists["no_feeling_prompts"],
         help_seeking_school=crisis_lists["help_seeking_school"],
@@ -2046,6 +2053,8 @@ _CRISIS_LISTS: Final = (
     "third_party_says_fine",
     "third_party_far",
     "third_party_stranger",
+    "third_party_police",
+    "third_party_signs",
     "no_feeling_prompts",
     "help_seeking_school",
     "suds_heard",

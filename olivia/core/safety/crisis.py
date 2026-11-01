@@ -114,6 +114,11 @@ from olivia.core.taxonomy import Taxonomy
 _MATCHED_SECTIONS: Final[tuple[RiskSection, ...]] = ("stage1", "stage2", "hyperbole", "negation")
 # Matcher keys of pair-cue phrases start with this; lexicon cue ids are printable text.
 _PAIR_KEY: Final = "\x00"
+# Round 7: the resolve anchors that are also plain reassurance (``CrisisAssessment.reassured``).
+_REASSURANCE_KEYS: Final = frozenset(
+    _PAIR_KEY + normalize(p)
+    for p in ("不用担心我", "你不用担心我", "别担心我", "don'tworryaboutme")
+)
 MODEL_FAILURE: Final = "MODEL_FAILURE"
 
 
@@ -157,6 +162,11 @@ class CrisisAssessment:
     """The rules found no risk cue at all in the message (owner decision 2026-10-26; see
     :func:`rules_found_nothing`). ``False`` unless the screen checked: an assessment built
     by hand never counts as clear, so nothing relaxes for it."""
+    reassured: bool = False
+    """Round 7 (re-test q2 I4): not ``rule_clear`` only because of a reassurance the rules
+    keep as a resolve anchor ("不用担心我", "don't worry about me"). Only the tracker's
+    reading of an explicit safety confirmation next to it uses this; every other rule
+    stays on ``rule_clear``."""
 
 
 @dataclass(frozen=True)
@@ -182,6 +192,10 @@ class ReportedRisk:
     """A farewell in the reported words (round 4; ``reported.farewell_strength``): 2 for a
     strong one ("永别了"), which opens the card alone, 1 for a weak one ("大家再见了"),
     which opens it only with a means or a place in the message."""
+    user_speaks: bool = False
+    """Round 7: the user also says something of their own outside the reported words
+    (``ReportedSpeech.user_speaks``: "他要是不回来，我就死给他看"), so a model's alarm on the
+    message is not one on someone else's words alone."""
 
 
 def rules_found_nothing(
@@ -755,7 +769,8 @@ class SafetyScreen:
                 or assessment.level is CrisisLevel.L3
                 or (model is not None and model.level is CrisisLevel.L3)
             )
-        return ReportedRisk(level, plan, user_clear, rule_risk, anchor, farewell)
+        speaks = self._index.reported.user_speaks(normalized, spans)
+        return ReportedRisk(level, plan, user_clear, rule_risk, anchor, farewell, speaks)
 
     def _assess(
         self, text: str, *, void_reported: bool = True
@@ -867,6 +882,14 @@ class SafetyScreen:
             composed,
             asks_intent,
         )
+        reassured = not clear and rules_found_nothing(
+            rule_prediction.level,
+            [m for m in matches if m.key not in _REASSURANCE_KEYS],
+            cues,
+            self._index.pair_anchor_keys,
+            composed,
+            asks_intent,
+        )
         assessment = CrisisAssessment(
             level,
             prediction.score,
@@ -877,6 +900,7 @@ class SafetyScreen:
             rule_prediction.level,
             None if uncapped is None or uncapped is level else uncapped,
             clear,
+            reassured,
         )
         return assessment, observed
 

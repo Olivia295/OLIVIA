@@ -117,6 +117,22 @@ _SOFT_BREAK: Final = re.compile(
 )
 
 
+# Round 7 (re-test q3 第四节): a first clause that is a question ("有时候怀疑自己是不是……",
+# "有没有什么说法……") is no yes even when it starts like one (有, 是): an A-not-A form, a
+# question word or particle, or a question mark. It stays unclear (the session's reading
+# of unclear is unchanged).
+_QUESTION_FORM: Final = re.compile(
+    r"是不是|有没有|有冇|会不会|要不要|能不能|可不可以|对不对|是否|系唔系|"
+    r"什么|啥|怎么|为什么|为啥|吗|呢|么|嘛\?|\?"
+)
+# Round 7 (re-test q2 I5): an English no followed by "I'm fine" in its clause ("nah i'm fine
+# lol") is the same no; the unsure words are still read over the whole message.
+_EN_NO_FINE: Final = re.compile(
+    r"(?:no|nope|nah|naw|not really no)\s*(?:i'm|im|i am)\s*(?:fine|ok|okay|good|alright|all right)"
+    r"(?:\s*(?:lol|haha|lmao|really|honestly|thanks|now))*"
+)
+
+
 class IntentAnswer(StrEnum):
     """How the turn after the question answered it (``inspect["safety_check"]``)."""
 
@@ -204,8 +220,10 @@ def read_answer(
         and not living
         and _NEGATED_INTENT.match(clause) is not None
     )
+    if not denies and _EN_NO_FINE.fullmatch(plain.strip()) is not None:
+        denies = not sarcastic
     if not denies and not negated:
-        yes = _starts(clause, answers.affirm_start)
+        yes = _starts(clause, answers.affirm_start) and _QUESTION_FORM.search(clause) is None
         return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
     if rest_screen is not None:
         following = _following(clause, rest)
