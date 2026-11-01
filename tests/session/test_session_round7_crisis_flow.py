@@ -299,3 +299,23 @@ def test_a_minor_in_the_crisis_gets_the_youth_line_and_the_age_question() -> Non
     after = session.turn("是的")
     assert after.inspect.get("minor_record") == "confirmed"
     assert session.take_minor_record()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我是安全的，该弄的都弄好了",
+        "我现在安全，什么都准备好了",
+        "我很安全，事情我都安排好了",
+        "安全的，都打点妥当了",
+    ],
+)
+def test_a_confirmation_next_to_a_readiness_word_does_not_count(text: str) -> None:
+    tracker = CrisisTracker(TAX, LEX)
+    assert not tracker.confirms_safety(text, RULES.assess(text))
+
+
+@pytest.mark.parametrize("text", ["我是安全的，准备去洗澡了", "我现在安全，作业也写完了"])
+def test_a_confirmation_next_to_everyday_words_still_counts(text: str) -> None:
+    tracker = CrisisTracker(TAX, LEX)
+    assert tracker.confirms_safety(text, RULES.assess(text))
