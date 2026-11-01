@@ -282,3 +282,17 @@ def test_round7_risk_meaning_not_said_back(text: str) -> None:
     result = _session().turn(text)
     for clause in text.replace("，", ",").split(","):
         assert clause[1:] not in result.reply
+
+
+# -- transit heights and tracks (round 7 addendum) ----------------------------------------------
+
+
+def test_round7_transit_places_are_filtered_and_everyday_transit_is_not() -> None:
+    from olivia.core.chang.setup_screen import SetupScreen
+
+    plan = SetupScreen(TAX, student=False)
+    for place in ("小区后头的铁轨旁", "东边那座立交桥下", "江北的高架桥上", "轻轨桥那一段"):
+        assert plan.risky_words(place), place
+    for daily in ("早上坐轻轨去公司", "铁路局发了新通知", "下班走高架很堵"):
+        assert not plan.risky_words(daily), daily
+        assert SCREEN.assess(daily).level is L.L0
