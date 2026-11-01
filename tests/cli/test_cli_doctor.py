@@ -457,7 +457,13 @@ def test_a_directory_without_permissions_fails_and_says_how_to_fix_it(
     said = f"{FAIL} {text.format(location=shown, name=where)}"
     assert said in run.lines
     fix = run.lines[run.lines.index(said) + 1]
-    assert fix == "  " + cli.DOCTOR_FIX_POSIX.format(path=cli._shell_path(data_home))
+    path = cli._shell_path(data_home)
+    # Round 7 (QA q4 P5): with the modes off too, one chmod does both.
+    assert fix in (
+        "  " + cli.DOCTOR_FIX_POSIX.format(path=path),
+        "  " + cli.DOCTOR_FIX_POSIX_PRIVATE.format(path=path),
+    )
+    assert len([line for line in run.lines if "chmod" in line]) == 1
 
 
 @POSIX_ONLY

@@ -109,6 +109,10 @@ class Utterance(StrEnum):
     """The words that leave the quiet company ("我好多了", "换个话题吧"; FSM-15, F10). Only
     the session sets it, on the turn that leaves S_haven on them; :func:`utterance_kind`
     never returns it."""
+    RATING = "RATING"
+    """Round 7 (QA q4 P6): a number that is the whole message, given as the 0-10 distress
+    rating a card asked for. Only the session sets it; :func:`utterance_kind` never
+    returns it (a bare "8" there is no Chinese)."""
 
 
 class _Tag(StrEnum):
@@ -1397,8 +1401,45 @@ def _trim(clauses: list[str]) -> str:
     return text
 
 
+# Round 7 (QA q4 P8): where a run of Chinese may be cut without splitting a word: after
+# an aspect or sentence particle, or before a connective, a time word or a pronoun.
+_CUT_AFTER: Final = frozenset("了过着呢吧啊呀嘛啦哦")
+_CUT_BEFORE: Final = (
+    "然后",
+    "但是",
+    "可是",
+    "不过",
+    "因为",
+    "所以",
+    "而且",
+    "结果",
+    "今天",
+    "昨天",
+    "明天",
+    "现在",
+    "我",
+    "你",
+    "他",
+    "她",
+)
+
+
 def _cut(text: str) -> str:
-    """The longest prefix of at most MAX_MIRROR characters that ends between words."""
+    """The longest prefix of at most MAX_MIRROR characters that ends between words.
+
+    Round 7 (QA q4 P8): between two Chinese characters only where a word surely ends
+    (:data:`_CUT_AFTER`, :data:`_CUT_BEFORE`), keeping at least half the length; failing
+    that, as before, anywhere but inside a Latin word."""
+    for end in range(MAX_MIRROR, MAX_MIRROR // 2, -1):
+        before, after = text[end - 1], text[end]
+        if _latin(before) and _latin(after):
+            continue
+        inside = _CJK_RE.match(before) is not None and _CJK_RE.match(after) is not None
+        if inside and before not in _CUT_AFTER and not text.startswith(_CUT_BEFORE, end):
+            continue
+        head = text[:end].rstrip()
+        if len(head) > 1:
+            return head
     for end in range(MAX_MIRROR, 1, -1):
         before, after = text[end - 1], text[end]
         if _latin(before) and _latin(after):

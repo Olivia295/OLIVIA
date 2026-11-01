@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -304,6 +305,7 @@ class ProfileStore:
         recovered = source != self.path
         if recovered:
             self._mark_recovered(source)
+            self._restore(text)
         else:
             self._clear_told_marker()
         profile, form = decoded[text]
@@ -401,6 +403,15 @@ class ProfileStore:
             return  # this recovery is already marked (and perhaps told)
         self._write_marker(moment, told=False)
 
+    def _restore(self, text: str) -> None:
+        """Round 7 (QA q4 P1): write the recovered version back as the main file, so the
+        next load (and ``olivia doctor``) finds an intact one. The very text that opened is
+        written as it is (nothing is sealed again, so no keychain is needed), and without a
+        snapshot of the damaged main file: taking one could rotate out the only snapshot
+        that opens. A file the system will not write leaves the recovery for the next load."""
+        with contextlib.suppress(OSError):
+            atomic_write_bytes(self.path, text.encode("utf-8"), snapshot=False)
+
     def _write_marker(self, moment: datetime, *, told: bool) -> None:
         body = json.dumps({"from": moment.astimezone(UTC).isoformat(), "told": told})
         atomic_write_bytes(self._marker, body.encode("utf-8"), snapshot=False)
@@ -466,7 +477,13 @@ class ProfileStore:
         """Complete a re-keying save interrupted after its commit point, or discard one
         interrupted before it."""
         if not self._staging.is_file():
-            if self.vault.has_data_key(PROFILE_REKEY_STORE):
+            try:
+                leftover = self.vault.has_data_key(PROFILE_REKEY_STORE)
+            except PermissionError:
+                # Round 7 (QA q4 B4): a ``keys/`` folder that cannot be read leaves a plain
+                # profile readable; a leftover staging key waits for a later load.
+                leftover = False
+            if leftover:
                 self.vault.shred(PROFILE_REKEY_STORE)
             return
         try:
@@ -487,15 +504,17 @@ class ProfileStore:
 
     def _settle(self, profile: PersonaProfile, target: _Form) -> None:
         """On load: shred what an interrupted save or a pre-re-key version left readable."""
-        if not self.vault.has_data_key(PROFILE_STORE):
-            return
         try:
+            if not self.vault.has_data_key(PROFILE_STORE):
+                return
             if target is _Form.PLAIN:
                 self.vault.shred(PROFILE_STORE)
             elif self._stale(profile):
                 self._rekey(profile)
         except CryptoError:
             pass  # keychain locked or keys damaged: retried on the next load
+        except PermissionError:
+            pass  # round 7 (QA q4 B4): ``keys/`` cannot be read now: retried on the next load
 
     def _encode(self, profile: PersonaProfile) -> str:
         data = profile.to_dict()

@@ -554,7 +554,9 @@ def test_follow_ups_about_the_numbers_get_a_true_line(question, pool):
     session.turn("能给我一个心理热线吗")
     result = session.turn(question)
     assert result.inspect.get("resources_reply") == "hotline"
-    assert any(line in result.reply for line in getattr(RENDER, pool))
+    # Round 7 (QA q4 P12): in mainland China the language question gets a plain yes.
+    lines = RENDER.hotline_language_cn if pool == "hotline_language" else getattr(RENDER, pool)
+    assert any(line in result.reply for line in lines)
     assert "12356" in result.reply
 
 

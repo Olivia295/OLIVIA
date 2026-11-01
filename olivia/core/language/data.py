@@ -462,6 +462,8 @@ class RenderText:
     """Round 3: when the lines answer (the card shows each line's hours)."""
     hotline_language: tuple[str, ...] = ()
     """Round 3: which languages the lines take."""
+    hotline_language_cn: tuple[str, ...] = ()
+    """Round 7 (QA q4 P12): the same for mainland China, where the answer is known."""
     hotline_real: tuple[str, ...] = ()
     """Round 3: where the numbers come from."""
     hotline_more: tuple[str, ...] = ()
@@ -1145,6 +1147,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         hotline_fee=crisis_lists["hotline_fee"],
         hotline_hours=crisis_lists["hotline_hours"],
         hotline_language=crisis_lists["hotline_language"],
+        hotline_language_cn=crisis_lists["hotline_language_cn"],
         hotline_real=crisis_lists["hotline_real"],
         hotline_more=crisis_lists["hotline_more"],
         hotline_other_region=crisis_lists["hotline_other_region"],
@@ -2037,6 +2040,7 @@ _CRISIS_LISTS: Final = (
     "hotline_fee",
     "hotline_hours",
     "hotline_language",
+    "hotline_language_cn",
     "hotline_real",
     "hotline_more",
     "hotline_other_region",

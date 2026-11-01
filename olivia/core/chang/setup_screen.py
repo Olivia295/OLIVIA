@@ -57,12 +57,16 @@ from enum import StrEnum
 from typing import Final
 
 from olivia.core.chang.onboarding import parse_taboo
+from olivia.core.chang.safety_plan import chores_masked
 from olivia.core.language.data import load_language_data
 from olivia.core.language.guard import MirrorGuard
 from olivia.core.models import CrisisLevel
 from olivia.core.safety.crisis import MODEL_FAILURE, CrisisAssessment, SafetyScreen
 from olivia.core.safety.lexicon import ModelAskRules, load_safety_lexicons
 from olivia.core.taxonomy import Taxonomy
+
+_MEANS: Final = "means"
+"""The ``guarded.components`` kind for a means or a place (``utterances.yaml``)."""
 
 ALARM_LEVEL: Final = CrisisLevel.L2
 """The level from which a reply is not taken and the hotlines are shown."""
@@ -146,6 +150,20 @@ class SetupScreen:
             lexicons = load_safety_lexicons(self._tax)
             self._guard = MirrorGuard(lexicons, said.extra_risk_words, said.components)
         return self._guard.risky(text) or self._guard.flagged(text)
+
+    def hidden_in_crisis(self, text: str) -> bool:
+        """Round 7 (QA q4 S2, P2): whether a crisis reply leaves this safety-plan entry
+        out: a crisis sentence, words a reply never says back, or a place or a means (the
+        guard's ``means`` components, one list for every place, "桥" as "天台"). A home
+        place named only as where an everyday chore is done is not read as a place
+        (``safety_plan.chores_masked``); every other word in the entry still counts."""
+        if self.alarms(text):
+            return True
+        masked = chores_masked(text)
+        if self.risky_words(masked):
+            return True
+        assert self._guard is not None  # built by ``risky_words``
+        return _MEANS in self._guard.kinds(masked)
 
     def alarms(self, text: str) -> bool:
         """Whether ``text`` screens at L2 or above (a screen that fails counts as yes)."""

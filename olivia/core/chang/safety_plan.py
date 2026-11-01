@@ -54,6 +54,7 @@ All wording is in ``olivia/data/templates/safety_plan.yaml`` (G-0 draft).
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from collections.abc import Callable, Mapping
@@ -72,7 +73,7 @@ from olivia.core.crypto.errors import (
     KeychainUnavailableError,
     KeyMissingError,
 )
-from olivia.core.crypto.vault import Vault
+from olivia.core.crypto.vault import KEYS_DIRNAME, Vault, key_file_intact
 from olivia.core.storage import app_data_dir, atomic_write_bytes, remove_file
 from olivia.core.yaml_load import safe_load
 
@@ -159,6 +160,10 @@ _COMMAND_KEYS: Final = (
     "crisis_left_saved",
     "left_saved",
     "edit_not_saved",
+    "cannot_save_keys",
+    "cannot_save_master",
+    "cannot_save_key_damaged",
+    "crisis_hidden",
 )
 
 
@@ -424,6 +429,26 @@ def farewell_people(plan: SafetyPlan | None, text: SafetyPlanText | None = None)
     return "\n".join([wording.farewell_people, *(f"· {line}" for line in lines)])
 
 
+# Round 7 (QA q4 P2, S2): a home place named only as where an everyday chore is done
+# ("去阳台给花浇水") is not a place in the crisis sense; it is blanked before the place and
+# means words are read, only when one of these chores is in the same entry. Every other
+# risk word in the entry still counts (a means, a height, being alone there).
+_HOME_PLACES: Final = ("阳台",)
+_HOME_CHORE: Final = re.compile(
+    r"浇水|浇花|浇浇|浇一浇|浇一下|盆栽|绿植|花草|晾衣服|晾被子|收衣服|晒被子|晒衣服|收被子"
+)
+
+
+def chores_masked(text: str) -> str:
+    """``text`` with :data:`_HOME_PLACES` blanked when an everyday chore is named with
+    them (round 7); unchanged otherwise."""
+    if _HOME_CHORE.search(text) is None:
+        return text
+    for place in _HOME_PLACES:
+        text = text.replace(place, "\u3000" * len(place))
+    return text
+
+
 def without_crisis_entries(
     plan: SafetyPlan | None, alarms: Callable[[str], bool]
 ) -> SafetyPlan | None:
@@ -483,6 +508,8 @@ class SafetyPlanStore:
             raise
         except (KeyMissingError, DecryptionError, ValueError) as exc:
             raise SafetyPlanDamagedError("the saved safety plan cannot be opened") from exc
+        except OSError as exc:  # round 7 (QA q4 B4): its key file cannot be read
+            raise SafetyPlanUnreadableError("the safety plan's key cannot be read") from exc
 
     def load_quietly(self) -> SafetyPlan | None:
         """:meth:`load` for the chat: any failure is just "no plan" and nothing changes."""
@@ -490,6 +517,34 @@ class SafetyPlanStore:
             return self.load()
         except (KeychainUnavailableError, SafetyPlanDamagedError):
             return None
+
+    def save_blocker(self) -> str | None:
+        """Round 7 (QA q4 B2): why a plan written now could not be saved, as a ``command``
+        text key, or None. Asked before a plan is written from the start, so nobody writes
+        five sections that are then lost: a file where ``keys/`` should be (or a ``keys/``
+        that cannot be used), a master key the keychain no longer holds or one that does not
+        open this store's intact key file (both can be put back), or a damaged key file.
+        Reads the keychain's master items only; creates nothing."""
+        base = self.path.parent
+        keys = base / KEYS_DIRNAME
+        try:
+            if keys.exists() and (
+                not keys.is_dir() or not os.access(keys, os.R_OK | os.W_OK | os.X_OK)
+            ):
+                return "cannot_save_keys"
+            if self.vault.has_data_key(SAFETY_PLAN_STORE):
+                try:
+                    self.vault.check_data_key(SAFETY_PLAN_STORE)
+                except KeyMissingError:
+                    return "cannot_save_master"
+                except DecryptionError:
+                    intact = key_file_intact(base, SAFETY_PLAN_STORE)
+                    return "cannot_save_master" if intact else "cannot_save_key_damaged"
+            elif self.vault.master_lost():
+                return "cannot_save_master"
+        except OSError:
+            return "cannot_save_keys"
+        return None
 
     def save(self, plan: SafetyPlan) -> None:
         """Seal and write ``plan``; an empty plan clears the store instead.
@@ -626,7 +681,9 @@ class _Command:
         text: SafetyPlanText,
         screen: Screen | None = None,
         protective_screen: Screen | None = None,
+        hidden: Callable[[str], bool] | None = None,
     ) -> None:
+        self._hidden = hidden
         self._ask_raw = ask
         self._say_raw = say
         self._store = store
@@ -654,9 +711,16 @@ class _Command:
             self._say(cmd["unreadable"])
             return 1
         except SafetyPlanDamagedError:
-            self._say(cmd["damaged"])
-            self._say("")
             plan = None
+            blocked = self._store.save_blocker()
+            if blocked is None:
+                self._say(cmd["damaged"])
+                self._say("")
+        else:
+            blocked = self._store.save_blocker() if plan is None else None
+        if blocked is not None:  # round 7 (QA q4 B2): said now, not after section 5
+            self._say(cmd[blocked])
+            return 1
         try:
             if plan is None or plan.is_empty:
                 return self._new()
@@ -850,6 +914,9 @@ class _Command:
                 self._say(self._cmd["entry_not_saved"])
                 continue
             entries.append(reply)
+            if section in CRISIS_SECTIONS and self._hidden is not None and self._hidden(reply):
+                # Round 7 (QA q4 P2): kept, but said: a crisis reply will leave it out.
+                self._say(self._cmd["crisis_hidden"])
         self._say(_fill(self._cmd["section_full"], max_entries=MAX_ENTRIES))
         return tuple(entries)
 
@@ -986,12 +1053,16 @@ def run_command(
     *,
     screen: Screen | None = None,
     protective_screen: Screen | None = None,
+    hidden: Callable[[str], bool] | None = None,
 ) -> int:
     """``olivia safety-plan`` for an adult profile: fill a new plan, or show the saved one
     and offer to edit a section or clear it. ``ask`` returns one reply line (None at end
     of input); ``say`` prints one block; ``screen`` (the CLI's crisis screen: it shows the
     numbers and asks whether to go on) sees every reply first (module docstring), except a
     protective section 5 reply, which ``protective_screen`` sees when given (round 5).
-    Returns the exit status (1: no keychain, or the saved plan cannot be opened now)."""
+    ``hidden`` (round 7) says which entries of sections 2 and 3 a crisis reply leaves out
+    (:func:`without_crisis_entries`); such an entry is kept and the user is told.
+    Returns the exit status (1: no keychain, the saved plan cannot be opened now, or a
+    plan could not be saved now)."""
     wording = load_safety_plan_text() if text is None else text
-    return _Command(ask, say, store, wording, screen, protective_screen).run()
+    return _Command(ask, say, store, wording, screen, protective_screen, hidden).run()

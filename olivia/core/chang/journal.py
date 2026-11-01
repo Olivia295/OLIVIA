@@ -105,6 +105,17 @@ def is_exit_command(text: str) -> bool:
     return folded in _EXIT_WORDS
 
 
+def exit_with_words(text: str) -> str | None:
+    """Round 7 (QA q4 P9): the words after an exit command ("/exit 现在就走" -> "现在就走"),
+    for the chat to screen before it ends; None when ``text`` is not an exit command
+    followed by a space and words."""
+    folded = unicodedata.normalize("NFKC", text).strip()
+    head, _, rest = folded.partition(" ")
+    if head.casefold() not in _EXIT_WORDS or not rest.strip():
+        return None
+    return rest.strip()
+
+
 _FILE: Final = "journal.yaml"
 _PROMPT_KEYS: Final = ("rating", "offer", "helpful")
 _REPLY_KEYS: Final = (

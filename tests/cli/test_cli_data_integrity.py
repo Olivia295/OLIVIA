@@ -386,8 +386,11 @@ def test_an_unexpected_error_ends_without_a_traceback(run_cli, data_home, monkey
     monkeypatch.setattr(cli, "_persona", boom)
     run = run_cli(["persona"])
     assert run.code == 1
-    # QA 2026-10-26 #8: the numbers written in the program first, then what happened.
-    assert run.out == f"{fallback_text(damaged=False)}\n\n{cli.UNEXPECTED_ERROR}\n"
+    # QA 2026-10-26 #8: the numbers first, then what happened. Round 7 (QA q4 B1): the
+    # saved region's card when it can be read (12356 for CN), not only every region's 110.
+    numbers, _, said = run.out.rpartition("\n\n")
+    assert said == f"{cli.UNEXPECTED_ERROR}\n"
+    assert "12356" in numbers and "中国大陆（CN）" in numbers
     assert "olivia doctor" in cli.UNEXPECTED_ERROR
     assert "olivia resources" not in cli.UNEXPECTED_ERROR  # it may fail the same way
 
@@ -404,9 +407,20 @@ def test_an_unexpected_error_in_any_command_shows_the_numbers(
     monkeypatch.setattr(cli, "_dispatch", boom)
     run = run_cli(argv, ["你好"])
     assert run.code == 1
-    for number in ("110", "120", "999", "911", "000", "112"):
+    # Round 7 (QA q4 B1): the saved region's numbers, its hotline too.
+    for number in ("110", "120", "12356"):
         assert number in run.out, number
     assert run.lines[-1] == cli.UNEXPECTED_ERROR
+
+
+def test_an_unexpected_error_without_a_region_shows_every_emergency_number(run_cli, monkeypatch):
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected")
+
+    monkeypatch.setattr(cli, "_dispatch", boom)
+    run = run_cli(["resources"])
+    assert run.code == 1
+    assert run.out == f"{fallback_text(damaged=False)}\n\n{cli.UNEXPECTED_ERROR}\n"
 
 
 def test_the_scheduled_check_stays_silent_on_an_unexpected_error(run_cli, data_home, monkeypatch):

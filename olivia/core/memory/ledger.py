@@ -144,6 +144,14 @@ class LedgerUnavailableError(Exception):
         self.permanent = permanent
 
 
+class LedgerUnreadableError(LedgerUnavailableError):
+    """Round 7 (QA q4 B1): the operating system will not let this account read the ledger
+    folder (permissions). Nothing was changed; ``olivia doctor`` says how to fix it."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, permanent=False)
+
+
 def round_battery(value: float) -> float:
     """``value`` (0.0-1.0) rounded to the nearest 0.05, as the summary keeps it."""
     return round(round(min(max(value, 0.0), 1.0) * BATTERY_STEP) / BATTERY_STEP, 2)
@@ -435,11 +443,14 @@ class Ledger:
             _aware(since, "since")
         try:
             self._finish_rekey()
+            paths = self.entry_paths()
         except KeychainUnavailableError as exc:
             raise _unavailable(exc) from exc
+        except OSError as exc:  # round 7 (QA q4 B1): a folder the system will not read
+            raise LedgerUnreadableError("the ledger folder cannot be read") from exc
         found: list[LedgerEntry] = []
         skipped = 0
-        for path in self.entry_paths():
+        for path in paths:
             try:
                 entry = _parse(self.read_markdown(path.stem), path.stem)
             except (KeyMissingError, DecryptionError, UnicodeDecodeError, ValueError, OSError):

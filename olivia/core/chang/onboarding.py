@@ -155,6 +155,7 @@ _PROMPT_KEYS: Final = (
     "taboo",
     "region",
     "timezone_choice",
+    "timezone_choice_default",
     "timezone_free",
     "clinical_consent",
     "clinical_history",
@@ -168,6 +169,7 @@ _HINT_KEYS: Final = (
     "taboo_limits",
     "timezone_invalid",
     "timezone_free_invalid",
+    "timezone_needed",
     "consent_unrecognized",
     "clinical_unknown",
 )
@@ -642,8 +644,16 @@ class OnboardingFlow:
     def _prompt_key(self) -> str:
         """The ``prompts`` / ``reprompts`` key for the current step."""
         if self._step is Step.TIMEZONE:
-            return "timezone_free" if self._country == UNKNOWN_COUNTRY else "timezone_choice"
+            if self._country == UNKNOWN_COUNTRY:
+                return "timezone_free"
+            # Round 7 (QA q4 P10): Enter takes this computer's zone when it is one listed.
+            return "timezone_choice_default" if self._system_choice() else "timezone_choice"
         return self._step.value
+
+    def _system_choice(self) -> str | None:
+        """This computer's timezone when it is one of the region's choices, else None."""
+        zone = system_timezone()
+        return zone if zone in TIMEZONE_CHOICES.get(self._country, ()) else None
 
     def answer(self, text: str) -> Prompt | Completed | Refused:
         self._ensure_running()
@@ -687,7 +697,9 @@ class OnboardingFlow:
                     return self._render(
                         prompts["timezone_free"], system_timezone=system_timezone()
                     ), ()
-                return prompts["timezone_choice"], tuple(
+                return self._render(
+                    prompts[self._prompt_key()], system_timezone=system_timezone()
+                ), tuple(
                     f"{self._text.timezone_labels[zone]} {zone}"
                     for zone in TIMEZONE_CHOICES[self._country]
                 )
@@ -802,8 +814,15 @@ class OnboardingFlow:
         choices = TIMEZONE_CHOICES[self._country]
         zone: str | None
         free = self._country == UNKNOWN_COUNTRY
-        if free and (reply == "" or is_skip(self._text, text)):  # dogfood P2: 「跳过」 too
+        skipped = reply == "" or is_skip(self._text, text)
+        if free and skipped:  # dogfood P2: 「跳过」 too
             zone = system_timezone()
+        elif skipped and (listed := self._system_choice()) is not None:
+            zone = listed  # round 7 (QA q4 P10): this computer's zone, one of the choices
+        elif reply == "":
+            # Round 7 (QA q4 P10): nothing typed is not "a zone I did not recognise".
+            self._hint = self._text.hints["timezone_needed"]
+            return
         elif reply.isdigit() and 1 <= int(reply) <= len(choices):
             zone = choices[int(reply) - 1]
         else:

@@ -191,6 +191,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import functools
+import os
 import platform
 import random
 import re
@@ -209,7 +210,12 @@ from olivia import __version__, doctor
 from olivia.core.chang import onboarding
 from olivia.core.chang.care import CARE_FILENAME, CareRecorder, CareStore
 from olivia.core.chang.health import HealthDone, HealthEditor, HealthPrompt
-from olivia.core.chang.journal import ChatChecks, is_exit_command, load_journal_text
+from olivia.core.chang.journal import (
+    ChatChecks,
+    exit_with_words,
+    is_exit_command,
+    load_journal_text,
+)
 from olivia.core.chang.journal import run_command as run_journal
 from olivia.core.chang.onboarding import (
     DEFAULT_TIMEZONES,
@@ -250,6 +256,7 @@ from olivia.core.chang.setup_screen import (
 )
 from olivia.core.chang.stats import load_stats_text
 from olivia.core.chang.stats import run_command as run_stats
+from olivia.core.crypto.errors import DecryptionError, KeychainUnavailableError, KeyMissingError
 from olivia.core.crypto.keychain import Probe
 from olivia.core.crypto.vault import KEYS_DIRNAME, key_file_intact
 from olivia.core.datalock import DataDirBusyError, DataDirLock
@@ -320,6 +327,8 @@ EXIT_COMMAND: Final = "/exit"
 # -- user-facing text (short, warm, no diagnosis words; checked against WILLOW in tests) ---
 
 GOODBYE: Final = "好，今天就先聊到这里。想说话的时候，随时回来。"
+# Round 7 (QA q4 P9; 草稿：待 G-0): after "/exit" with words, the numbers go along.
+EXIT_NUMBERS: Final = "需要的话，这些电话随时可以联系：{numbers}。"
 CHAT_HINT: Final = "想结束的时候，输入 /exit 就好。"
 # ``olivia chat -h`` (F9, FSM-15; draft, G-0): how to ask for quiet company and how to
 # leave it; the quoted words are perception.yaml ``haven_exit`` phrases.
@@ -384,7 +393,7 @@ CHAT_BUSY: Final = (
 # QA 2026-10-26 #12 (草稿：待 G-0): the region decides which numbers a crisis card shows,
 # and the version recovered may hold an older one, so it is named every time.
 PROFILE_RECOVERED: Final = (
-    "设置文件坏了，已经恢复到 {time} 前后保存的版本，在那之后改过的地方可能没有了。"
+    "设置文件坏了，已经恢复到 {time}前后保存的版本，在那之后改过的地方可能没有了。"
     "{region}健康信息、称呼和不想谈的话题，请用 olivia health 和 olivia profile 检查一下。"
 )
 PROFILE_RECOVERED_TIME: Final = "{time}（这台电脑的时区 {zone}）"
@@ -397,6 +406,11 @@ PROFILE_RECOVERED_NO_REGION: Final = (
 PROFILE_UNREADABLE: Final = (
     "设置文件现在打不开（可能是权限不对，或者被换成了文件夹）。我没有改动它。"
     "可以运行 olivia doctor 看看是哪里不对。"
+)
+# Round 7 (QA q4 B4; 草稿：待 G-0): the keys folder, not the settings file, cannot be read.
+PROFILE_KEYS_UNREADABLE: Final = (
+    "数据目录里存放钥匙的 keys 文件夹现在读不了（多半是权限不对），加密保存的设置打不开。"
+    "我没有改动任何文件。可以运行 olivia doctor 看看怎么修。"
 )
 # QA 2026-10-26 #8 (草稿：待 G-0): said after ``fallback_text(damaged=False)``, so the
 # numbers are on screen even when ``resources`` would fail the same way.
@@ -437,6 +451,23 @@ CHAT_KEYS_MISPLACED: Final = (
     "数据目录里存放钥匙的 keys 文件夹被换成了一个同名文件，"
     "这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
     "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+# Round 7 (QA q4 B4; 草稿：待 G-0): the keys folder cannot be read (permissions).
+CHAT_KEYS_UNREADABLE: Final = (
+    "数据目录里存放钥匙的 keys 文件夹现在读不了（多半是权限不对），"
+    "加密保存的内容（比如聊天记录和安全计划）这次打不开，这次聊天的小结也存不下来；聊天本身照常。"
+    "运行 olivia doctor 可以看到怎么修。"
+)
+# Round 7 (QA q4 P3; 草稿：待 G-0): the plan is there but does not open (a damaged file, a
+# folder in its place, its key): said before the chat, as an unreadable one is.
+CHAT_PLAN_DAMAGED: Final = (
+    "你的安全计划现在打不开（它的文件或者钥匙出了问题），难受的时候我没办法把它拿给你看；"
+    "聊天本身照常，热线也照常会给。运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+# Round 7 (QA q4 B3; 草稿：待 G-0): the keychain's master key does not open the saved data.
+CHAT_MASTER_WRONG: Final = (
+    "系统钥匙串里的主钥匙和保存时用的对不上，之前加密保存的内容（比如聊天记录和安全计划）现在打不开，"
+    "这次聊天的小结也存不下来；聊天本身照常。运行 olivia doctor 可以看到怎么修。"
 )
 CHAT_LEDGER_KEY_DAMAGED: Final = (
     "保存聊天小结用的钥匙文件坏了，这次聊天的小结和让我记住的话存不下来；聊天本身照常。"
@@ -643,9 +674,10 @@ DOCTOR_STORE_FIX: Final = (
     "怎么修：这份{name}的文件或者它的钥匙文件坏了，程序没办法修复。有备份的话可以放回原处；"
     "不需要的话，运行 olivia forget {flag} 把它删掉，以后会重新开始记"
 )
+# Round 7 (QA q4 P4; 草稿：待 G-0): only the care marker goes, nothing else.
 DOCTOR_CARE_FIX: Final = (
     "怎么修：关心提醒的文件或者它的钥匙文件坏了，程序没办法修复。它只记着下次聊天时要不要先问候你，"
-    "不影响其他记录；要清掉它，只能运行 olivia forget --all 从头开始（会删掉全部记录）"
+    "不影响其他记录；运行 olivia forget --care 只删掉它，其他记录都不变"
 )
 DOCTOR_PERMISSIONS_WINDOWS: Final = "数据目录的权限：Windows 上不做这项检查"
 DOCTOR_KEYCHAIN_READY: Final = "系统钥匙串：可以使用（没有改动里面的任何条目）"
@@ -684,6 +716,11 @@ DOCTOR_STORE_STATES: Final = {
     StoreState.MISPLACED: (DOCTOR_FAIL, "{name}：{file} 被换成了一个同名的{kind}，程序读不了它"),
     StoreState.NO_KEYS: (DOCTOR_FAIL, "{name}：打不开，因为存放钥匙的 keys 文件夹被换成了一个文件"),
     StoreState.NO_MASTER: (DOCTOR_FAIL, "{name}：打不开，系统钥匙串里找不到它的主钥匙"),
+    # Round 7 (QA q4 B3; 草稿：待 G-0).
+    StoreState.WRONG_MASTER: (
+        DOCTOR_FAIL,
+        "{name}：打不开，系统钥匙串里的主钥匙和保存它时用的对不上",
+    ),
 }
 DOCTOR_KIND_FILE: Final = "文件"
 DOCTOR_KIND_FOLDER: Final = "文件夹"
@@ -703,6 +740,17 @@ DOCTOR_MASTER_FIX: Final = (
     "怎么修：主钥匙是系统钥匙串里服务名为 olivia、名为 master-key 的条目。"
     "如果清理过钥匙串或者换了电脑，把这个条目恢复回来就能打开；"
     "找不回来的话，这些加密内容就再也打不开了，可以运行 olivia forget --all 从头开始"
+)
+# Round 7 (QA q4 B3; 草稿：待 G-0): a changed master key is put back, not deleted around.
+DOCTOR_MASTER_WRONG_FIX: Final = (
+    "怎么修：先修，不要删。主钥匙是系统钥匙串里服务名为 olivia、名为 master-key 的条目，"
+    "它现在的值和保存这些内容时的不一样（可能被改过，或者换成了别处的）。把原来的值恢复回来就能打开；"
+    "确定找不回来了，再运行 olivia forget --all 从头开始"
+)
+# Round 7 (QA q4 P5; 草稿：待 G-0): one chmod gives the access back and closes it to others.
+DOCTOR_FIX_POSIX_PRIVATE: Final = (
+    "怎么修：在终端里运行 chmod -R u=rwX,go= {path}，把读写权限还给自己、只留给自己，"
+    "再运行一次 olivia doctor"
 )
 DOCTOR_STORES_NOTE: Final = "加密的内容只核对了能不能解开，没有显示、也没有保存其中的任何内容。"
 DOCTOR_MODEL_OK: Final = "本机模型：文件齐全，校验通过"
@@ -790,6 +838,8 @@ DOCTOR_TEXTS: Final = (
     DOCTOR_KEYS_MISPLACED,
     DOCTOR_KEYS_FIX,
     DOCTOR_MASTER_FIX,
+    DOCTOR_MASTER_WRONG_FIX,
+    DOCTOR_FIX_POSIX_PRIVATE,
     DOCTOR_STORES_NOTE,
     DOCTOR_MODEL_OK,
     DOCTOR_MODEL_FAILED,
@@ -839,6 +889,11 @@ USER_TEXTS: Final = (
     CHAT_KEYS_MISPLACED,
     CHAT_LEDGER_KEY_DAMAGED,
     CHAT_PLAN_UNREADABLE,
+    CHAT_KEYS_UNREADABLE,
+    EXIT_NUMBERS,
+    CHAT_PLAN_DAMAGED,
+    CHAT_MASTER_WRONG,
+    PROFILE_KEYS_UNREADABLE,
     PROFILE_CORRUPT,
     PROFILE_LOCKED,
     PROFILE_LOCKED_NOW,
@@ -1469,9 +1524,9 @@ def _chat(
     # 着") is left out of that block too, whatever the screen made of it.
     plan_screen = screen if student else SetupScreen(tax)
     saved = plan_store.load_quietly()
-    plan = without_crisis_entries(
-        saved, lambda x: plan_screen.alarms(x) or plan_screen.risky_words(x)
-    )
+    # Round 7 (QA q4 S2, P2): one test for every place (``hidden_in_crisis``), and a home
+    # place named only for an everyday chore ("去阳台给花浇水") is no place in this sense.
+    plan = without_crisis_entries(saved, plan_screen.hidden_in_crisis)
     # QA q4 FLT-3: a plan that is there but cannot be opened is said so in a crisis reply.
     # Round 6 (复测 q4 F1): a folder (or anything else) where the plan's file should be
     # is a plan that cannot be opened too, never "no plan".
@@ -1506,6 +1561,8 @@ def _chat(
         blocked = _records_blocked(store.path.parent, store)
         if blocked is not None:
             console.say(blocked)
+        if plan_unreadable and blocked not in _PLAN_NAMED:
+            console.say(CHAT_PLAN_DAMAGED)  # round 7 (QA q4 P3)
     console.say(CHAT_HINT)
     care = CareStore(vault=store.vault)
     marker = care.take(clock())
@@ -1525,6 +1582,7 @@ def _chat(
         persona=profile.persona_spectrum,
     )
     interrupted = False
+    left_with_words = False  # round 7 (QA q4 P9): "/exit 现在就走"
     # Round 6 (re-test q4 F5): the user confirmed in the chat that they are under 18 and
     # the refusal record was written; everything else here is removed when the chat ends.
     minor_recorded = False
@@ -1536,6 +1594,13 @@ def _chat(
             pending = None
             if line is None:
                 break
+            # Round 7 (QA q4 P9): "/exit 现在就走" ends the chat too, after its words have
+            # been screened and answered like any message (a crisis sentence included).
+            words = exit_with_words(line)
+            leaving = words is not None
+            if words is not None:
+                line = words
+                left_with_words = True
             if is_exit_command(line):  # round 6 (QA q4 F16): any case, /quit, /退出
                 carry = checks.at_exit(session.state)
                 if carry.line is None or is_exit_command(carry.line):
@@ -1549,6 +1614,8 @@ def _chat(
             except Exception:  # SDD §10.1: even a failed screen leaves every number on screen
                 console.say(_failed_turn_reply(tax, profile, local().date()))
                 console.say()
+                if leaving:
+                    break
                 continue
             if session.minor_disclosed and recorder.enabled:
                 # Round 6 (re-test q4 F5): no summary of a chat in which the user said they
@@ -1582,6 +1649,12 @@ def _chat(
                 for panel_line in inspect_panel(result):
                     console.say(panel_line)
             console.say()
+            if leaving:
+                carry = checks.at_exit(session.state)
+                if carry.line is None or is_exit_command(carry.line):
+                    break
+                pending = carry.line  # text typed at the rating: the chat goes on
+                continue
             carry = checks.after_turn(session.state)
             pending = carry.line
     except KeyboardInterrupt:  # Ctrl-C ends the chat like /exit, with the same goodbye
@@ -1605,6 +1678,10 @@ def _chat(
     farewell = session.farewell()
     if farewell is None:
         console.say(GOODBYE)
+        if left_with_words:
+            # Round 7 (QA q4 P9): words typed with /exit ("现在就走") may be a goodbye of
+            # another kind; whatever the screen made of them, the numbers go with the user.
+            console.say(_numbers_line(profile, local().date(), minor=session.minor_disclosed))
         return 0
     console.say(f"{profile.agent_name}：{farewell.text}")
     if not minor_recorded:
@@ -1620,14 +1697,23 @@ def _forget_for_minor() -> None:
     forget_all(stores, keep=frozenset({stores.profile.path}))
 
 
+_PLAN_NAMED: Final = frozenset(
+    {CHAT_PLAN_UNREADABLE, CHAT_MASTER_LOST, CHAT_MASTER_WRONG, CHAT_KEYS_UNREADABLE}
+)
+"""The lines before a chat that already say the safety plan does not open."""
+
+
 def _records_blocked(base: Path, store: ProfileStore) -> str | None:
     """Why the session summary and notes will not be saved, said before the chat; None
     when nothing stands in the way: the keychain no longer holds the master key the data
     needs (QA q4 FLT-3), a file where ``ledger/`` should be (DOC-10), or part of the data
     directory cannot be read or written now (permissions, ``doctor.access_problem``)."""
-    if store.vault.master_lost():
-        return CHAT_MASTER_LOST
     try:
+        keys = base / KEYS_DIRNAME
+        if keys.is_dir() and not os.access(keys, os.R_OK | os.X_OK):
+            return CHAT_KEYS_UNREADABLE  # round 7 (QA q4 B4): not "the settings"
+        if store.vault.master_lost():
+            return CHAT_MASTER_LOST
         wrong = doctor.misplaced(base)
         if LEDGER_DIRNAME in wrong:
             return CHAT_LEDGER_MISPLACED
@@ -1636,6 +1722,8 @@ def _records_blocked(base: Path, store: ProfileStore) -> str | None:
         key = base / KEYS_DIRNAME / f"{LEDGER_STORE}.key"
         if key.exists() and not key_file_intact(base, LEDGER_STORE):
             return CHAT_LEDGER_KEY_DAMAGED
+        if key.exists() and _master_mismatch(store, LEDGER_STORE):
+            return CHAT_MASTER_WRONG
         detail = doctor.access_detail(base)
         if detail is None:
             return None
@@ -1644,6 +1732,33 @@ def _records_blocked(base: Path, store: ProfileStore) -> str | None:
         return CHAT_RECORDS_UNSAVED
     except OSError:
         return CHAT_RECORDS_UNSAVED
+
+
+def _master_mismatch(store: ProfileStore, name: str) -> bool:
+    """Round 7 (QA q4 B3): whether the intact key file of ``name`` does not unwrap under the
+    master key the keychain holds (its value was changed); a keychain that does not answer
+    is not a mismatch."""
+    try:
+        store.vault.check_data_key(name)
+    except DecryptionError:
+        return True
+    except (KeyMissingError, KeychainUnavailableError):
+        return False
+    return False
+
+
+def _numbers_line(profile: PersonaProfile, today: date, *, minor: bool = False) -> str:
+    """One line of the region's emergency and hotline numbers (``EXIT_NUMBERS``); the fixed
+    help when the hotline data cannot be verified now (S3)."""
+    try:
+        store = _load_store(today)
+    except HOTLINE_DATA_DAMAGED:
+        return fallback_text()
+    card = resolve(
+        store, profile.region, CrisisLevel.L3, mode=CardMode.BROWSING, today=today, is_minor=minor
+    )
+    numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+    return EXIT_NUMBERS.format(numbers="、".join(dict.fromkeys(numbers)))
 
 
 def _failed_turn_reply(tax: Taxonomy, profile: PersonaProfile, today: date) -> str:
@@ -1761,8 +1876,19 @@ def _unreadable_profile(exc: ProfileCorruptError | ProfileLockedError) -> tuple[
         return (PROFILE_KEYS_LOST, PROFILE_START_OVER) if exc.lost else (PROFILE_LOCKED_NOW,)
     if isinstance(exc, ProfileUnreadableError):
         # QA q4 P7: the data directory itself may be the file in the way.
-        return (DATA_DIR_IS_FILE,) if _data_dir_is_file() else (PROFILE_UNREADABLE,)
+        if _data_dir_is_file():
+            return (DATA_DIR_IS_FILE,)
+        # Round 7 (QA q4 B4): the keys, not the settings file, are what cannot be read.
+        return (PROFILE_KEYS_UNREADABLE,) if _keys_unreadable() else (PROFILE_UNREADABLE,)
     return (PROFILE_CORRUPT, PROFILE_MOVE_ASIDE, PROFILE_START_OVER)
+
+
+def _keys_unreadable() -> bool:
+    """Whether the data directory's ``keys/`` folder is there but cannot be read."""
+    keys = data_dir_location() / KEYS_DIRNAME
+    with contextlib.suppress(OSError):
+        return keys.is_dir() and not os.access(keys, os.R_OK | os.X_OK)
+    return False
 
 
 def _data_dir_is_file() -> bool:
@@ -2113,15 +2239,15 @@ def _safety_plan(console: _Console, clock: Clock) -> int:
         return 1
     # QA #4, r3: every crisis sentence brings the numbers and the choice; the plan keeps
     # it only in sections 1 and 5 (``safety_plan.Screened``).
-    screen = _SetupConsole(
-        console, SetupScreen(_taxonomy()), lambda: _setup_hotlines(console, profile, clock)
-    )
+    checker = SetupScreen(_taxonomy())
+    screen = _SetupConsole(console, checker, lambda: _setup_hotlines(console, profile, clock))
     return run_command(
         lambda: console.ask(ANSWER_PROMPT),
         console.say,
         SafetyPlanStore(),
         screen=screen.check,
         protective_screen=screen.check_protective,
+        hidden=checker.hidden_in_crisis,  # round 7 (QA q4 P2): said when it is written
     )
 
 
@@ -2222,6 +2348,7 @@ _FORGET_FLAGS: Final = (
     ("ledger", Target.LEDGER),
     ("kit", Target.KIT),
     ("safety_plan", Target.SAFETY_PLAN),
+    ("care", Target.CARE),
     ("all", Target.ALL),
 )
 
@@ -2308,13 +2435,19 @@ def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
         )
         return [(DOCTOR_FAIL, text), _doctor_fix(found.location)]
     rows = [(DOCTOR_OK, DOCTOR_DIR.format(location=where))]
+    fixed = False
     if found.access == "unwritable":
         text = (
             DOCTOR_DIR_UNWRITABLE_AT.format(location=where, name=name)
             if name
             else DOCTOR_DIR_UNWRITABLE.format(location=where)
         )
-        rows = [(DOCTOR_FAIL, text), _doctor_fix(found.location)]
+        fix = _doctor_fix(found.location)
+        if found.mismatched and sys.platform != "win32":
+            # Round 7 (QA q4 P5): one chmod for both, not two that disagree.
+            fix = ("", DOCTOR_FIX_POSIX_PRIVATE.format(path=_shell_path(found.location)))
+            fixed = True
+        rows = [(DOCTOR_FAIL, text), fix]
     if found.mismatched is None:
         rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_WINDOWS))
     elif found.mismatched:
@@ -2327,7 +2460,8 @@ def _doctor_dir_rows(found: doctor.DataDir) -> list[Row]:
                 else DOCTOR_PERMISSIONS_OFF.format(count=found.mismatched),
             )
         )
-        rows.append(("", DOCTOR_PERMISSIONS_FIX_POSIX.format(path=_shell_path(found.location))))
+        if not fixed:
+            rows.append(("", DOCTOR_PERMISSIONS_FIX_POSIX.format(path=_shell_path(found.location))))
     else:
         rows.append((DOCTOR_OK, DOCTOR_PERMISSIONS_OK))
     return rows
@@ -2374,6 +2508,8 @@ def _doctor_store_rows(report: doctor.Report) -> list[Row]:
         rows.append(("", DOCTOR_KEYS_FIX.format(path=_shell_path(base / KEYS_DIRNAME))))
     if StoreState.NO_MASTER in states.values():  # QA q4 FLT-3
         rows.append(("", DOCTOR_MASTER_FIX))
+    if StoreState.WRONG_MASTER in states.values():  # round 7 (QA q4 B3)
+        rows.append(("", DOCTOR_MASTER_WRONG_FIX))
     rows.append(("", DOCTOR_STORES_NOTE))
     return rows
 
@@ -2748,6 +2884,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     which.add_argument("--kit", action="store_true", help="忘掉锦囊与方法偏好")
     which.add_argument("--safety-plan", action="store_true", help="删掉个人安全计划")
+    which.add_argument("--care", action="store_true", help="只删掉关心提醒")
     which.add_argument("--all", action="store_true", help="忘掉全部数据，之后从头开始")
     forget.add_argument("--yes", action="store_true", help="不再询问确认")
     commands.add_parser(
@@ -2991,11 +3128,34 @@ def main(
         # QA 2026-10-26 #8: the numbers written in the program first (they need no data
         # file), then what happened; ``resources`` may fail the same way.
         with contextlib.suppress(Exception):
-            console.say(fallback_text(damaged=False))
+            console.say(_last_resort_numbers(now))
             console.say()
         with contextlib.suppress(Exception):
             console.say(_what_went_wrong())
         return 1
+
+
+def _last_resort_numbers(clock: Clock) -> str:
+    """The numbers after an error nothing else handled: the saved region's card when the
+    profile's plaintext part still reads and the hotline data verifies (round 7, QA q4
+    B1: a user in CN gets 12356, not only the emergency numbers of every region), else the
+    numbers written in the program (they need no data file)."""
+    try:
+        profile = ProfileStore().load_unsealed()
+        if profile is not None and profile.region is not None:
+            today = _local_clock(clock, profile)().date()
+            card = resolve(
+                _load_store(today),
+                profile.region,
+                CrisisLevel.L3,
+                mode=CardMode.BROWSING,
+                today=today,
+                is_minor=profile.is_age_gate_refusal,
+            )
+            return render_browsing(card)
+    except Exception:  # noqa: BLE001 - the fixed numbers below always work
+        pass
+    return fallback_text(damaged=False)
 
 
 def _what_went_wrong() -> str:
