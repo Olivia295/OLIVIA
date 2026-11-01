@@ -191,6 +191,12 @@ _MEANS_GONE: Final = re.compile(
     r"(?:交给[^,.!?;:、。]{1,6}|给了[^,.!?;:、。]{1,6}|扔了|扔掉了|丢了|丢掉了|冲掉了|上交了|剪掉了|剪断了|"
     r"交出去了|收走了)(?:了|啦)?"
 )
+# Round 7 (2026-11-01, 复测 q2 S1): a confirmation taken back ("其实刚才是骗你的", "我刚才说
+# 安全是假的", "其实我并不安全"). In a crisis after a confirmation it voids the confirmation
+# like an L2 turn; outside a crisis it is read by nobody ("刚才是骗你的，我没吃蛋糕").
+_RETRACTION: Final = re.compile(
+    r"骗你的|骗了你|在骗你|骗你呢|是假的|不是真的|说谎|撒谎|(?:不|没有?|并不|并没有)安全"
+)
 # Round 5: what voids a confirm phrase in the same message: a hedge, a later time, a means
 # or place, a farewell or a plan (with the F10 contrasts). Narrower than the F10 vetoes,
 # whose 那边 or 最后 are everyday words next to "热线接通了".
@@ -423,8 +429,8 @@ class CrisisTracker:
             )
         )
         self._note_risk(assessment)
-        if escalated:
-            level = CrisisLevel.L2
+        if escalated or self._relapse_after_confirmation(assessment, text):
+            level = max(level, CrisisLevel.L2)
 
         just_entered = False
         just_exited = False
@@ -484,6 +490,17 @@ class CrisisTracker:
             and not self._raise_ids.isdisjoint(assessment.cue_ids)
             and (self._run >= 2 or self._had_crisis)
         )
+
+    def _relapse_after_confirmation(self, assessment: CrisisAssessment, text: str) -> bool:
+        """Round 7 (复测 q2 S1): in a crisis after a confirmation, the confirmation taken back
+        (:data:`_RETRACTION`) or a farewell-family D3 cue (``raise_with_risk``: "我还是想今晚
+        就走") is a relapse: L2, the confirmation void, as outside a crisis such a cue in a
+        session that showed risk is L2 at once. Only ever more sensitive."""
+        if not (self._in_crisis and self._confirmed):
+            return False
+        if _RETRACTION.search(normalize(text)) is not None:
+            return True
+        return assessment.asks_intent and not self._raise_ids.isdisjoint(assessment.cue_ids)
 
     def _is_figure(self, assessment: CrisisAssessment) -> bool:
         return bool(self._figure_id) and self._figure_id in assessment.cue_ids

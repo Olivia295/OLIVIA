@@ -118,6 +118,8 @@ _PAIRS: Final = (
     "傾倾 執执 "
     # Round 6 (2026-10-29): savings, Shenzhen / Xiamen-style place words, leaking.
     "儲储 興兴 劉刘 廈厦 洩泄 "
+    # Round 7 (2026-11-01): 乔迁 of ASK_INTENT_DAY_SET_SELF.
+    "喬乔 "
 )
 
 TRAD_TO_SIMP: Final[dict[str, str]] = {pair[0]: pair[1] for pair in _PAIRS.split()}

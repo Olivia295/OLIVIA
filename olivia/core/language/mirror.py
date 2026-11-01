@@ -143,8 +143,10 @@ _FIRST_PERSON: Final = ("我", "咱")
 # Words that hold 我/你 without being a pronoun for the speaker or the listener.
 _NON_PRONOUN: Final = ("你死我活", "自我", "忘我", "无我", "唯我", "敌我", "你我", "你好")
 # The characters at which _swap can do anything but copy: a _NON_PRONOUN word's first
-# character, 我们/咱们/你们 and the pronouns 你/您/我.
-_SWAP_STARTS: Final = frozenset(w[0] for w in _NON_PRONOUN) | frozenset("我咱你您")
+# character, 我们/咱们/你们 and the pronouns 你/您/我. Round 7 (复测 q1 六): Wu 侬 ("you")
+# is the listener like 你 ("侬勿要劝我" is never "侬勿要劝你").
+_SWAP_STARTS: Final = frozenset(w[0] for w in _NON_PRONOUN) | frozenset("我咱你您侬")
+_LISTENER_CHARS: Final = "你您侬"
 _LEADS: Final = (
     "我总是觉得",
     "我总觉得",
@@ -916,8 +918,11 @@ def mirror(user_text: str) -> str:
     # List items after a first clause that is not one are left out (F16b).
     clauses = [part for c in picked if not c.listed for part in _split_news(c.text)]
     conflict = _has_conflict("".join(clauses))
+    repeated = _repeated_delight(clauses)
     out: list[str] = []
     for i, clause in enumerate(clauses):
+        if i in repeated:
+            continue
         body = clause
         missed = _missing(body)
         if missed is not None:
@@ -967,6 +972,7 @@ def _sentences(text: str) -> tuple[tuple[_Clause, ...], ...]:
                 continue
             c = _drop_lead_fillers(c if item is None else item[0])
             tagged.append(_Clause(c, _tag(c, asked=asked and j == len(raw) - 1)))
+        tagged = _embedded_questions(tagged, asked=asked)
         if any(c.tag is _Tag.COMPANION for c in tagged):
             # The rest of a remark about the companion goes with it ("上次你一直问我安不
             # 安全，吓我一跳": "吓我一跳" alone would lose what it is about).
@@ -975,6 +981,25 @@ def _sentences(text: str) -> tuple[tuple[_Clause, ...], ...]:
             ]
         sentences.append(tuple(tagged))
     return tuple(sentences)
+
+
+def _embedded_questions(tagged: list[_Clause], *, asked: bool) -> list[_Clause]:
+    """Round 7 (复测 q1 六): a sentence that is no question but opens with question words
+    and then says something ("去哪里、怎么做，我心里都有数了"): the words before its last
+    question clause are part of that question, so they are not said back on their own
+    ("你提到去哪里，你心里都有数了"); only what follows is."""
+    if asked:
+        return tagged
+    last = -1
+    for j, clause in enumerate(tagged):
+        if clause.tag is _Tag.QUESTION and any(c.tag is _Tag.STATEMENT for c in tagged[j + 1 :]):
+            last = j
+    if last <= 0:
+        return tagged
+    return [
+        replace(c, tag=_Tag.QUESTION) if j < last and c.tag is _Tag.STATEMENT else c
+        for j, c in enumerate(tagged)
+    ]
 
 
 def _list_item(clause: str) -> tuple[str, bool] | None:
@@ -1265,7 +1290,7 @@ def _fragment(clause: str) -> bool:
     """A spoken fragment after the first clause ("他走了两年了，肺癌"): at most two
     characters, no feeling and nobody in it (dogfood I3)."""
     plain = _plain(clause)
-    return len(plain) <= 2 and not _feeling(plain) and not any(p in plain for p in "你您我")
+    return len(plain) <= 2 and not _feeling(plain) and not any(p in plain for p in "你您侬我")
 
 
 def _only_object_me(clause: str) -> bool:
@@ -1300,6 +1325,24 @@ def _missing(clause: str) -> str | None:
     return "你很想念" + _MISSED.get(who, who)
 
 
+def _repeated_delight(clauses: list[str]) -> set[int]:
+    """Round 7 (复测 q1 六): the clauses after a delight exclamation that say its word
+    again ("笑死我了，这个视频太好笑了" is "你觉得特别好笑", never "你觉得特别好笑，这个视频
+    太好笑了"), and a delight exclamation after a clause that already said it."""
+    skip: set[int] = set()
+    for k, clause in enumerate(clauses):
+        laughed = clause.lstrip("哈")
+        delight = _DELIGHT_BARE_RE.match(laughed) or _EXCLAIM_RE.match(laughed)
+        if delight is None or delight.group(1) not in _DELIGHT_WORDS:
+            continue
+        stem = delight.group(1)
+        if any(stem in c for c in clauses[:k]):
+            skip.add(k)
+        else:
+            skip.update(j for j in range(k + 1, len(clauses)) if stem in clauses[j])
+    return skip
+
+
 def _exclamation(clause: str) -> str | None:
     """An exclamation "X死我了" as "你X坏了" ("气死我了" -> "你气坏了"), else None.
 
@@ -1313,7 +1356,7 @@ def _exclamation(clause: str) -> str | None:
     if match is None:
         return None
     word = match.group(1)
-    if not all(_CJK_RE.fullmatch(ch) for ch in word) or any(ch in "我你您咱他她" for ch in word):
+    if not all(_CJK_RE.fullmatch(ch) for ch in word) or any(ch in "我你您侬咱他她" for ch in word):
         return None
     return _EXCLAIM_WORDS.get(word, f"你{word}坏了")
 
@@ -1348,7 +1391,7 @@ def _swap(clause: str, conflict: bool) -> str:
                 break
         else:
             ch = clause[i]
-            if ch in "你您":
+            if ch in _LISTENER_CHARS:
                 out.append("对方")
             elif ch == "我":
                 owned = clause.startswith("我的", i) or clause.startswith("我自己", i)

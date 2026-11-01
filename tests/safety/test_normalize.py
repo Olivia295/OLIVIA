@@ -61,6 +61,9 @@ SAME_IN_TRADITIONAL = frozenset(
     "碰"
     # 2026-10-30: the illnesses and preparations that void ASK_INTENT_PILLS_READY.
     "南咳嗽炸煎睛腹膏"
+    # Round 7 (2026-11-01): the round-7 frames (Wu 覅 / 毋, Cantonese 瞓 / 嘞 / 返, 熄灭, 菩萨,
+    # 保姆, 烘焙 ...) and their everyday exceptions.
+    "介佑刷剖勤喘嘞噪坑姆巡席庇抵擦毋汰洞涯液淘混漆烘焙熄王瞓章缺菩覅趴返"
 )
 
 
