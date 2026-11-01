@@ -260,7 +260,8 @@ def test_the_lines_say_no_more_than_they_know() -> None:
 def test_the_withdrawal_line_alone() -> None:
     engine = _engine()
     assert engine.withdrawal_line("我在戒酒，第三天") == ""
-    assert engine.withdrawal_line("手一直在抖") == SAID.substance_lines["withdrawal"]
+    # Round 7: the kind spoken of earlier (alcohol) names the reminder.
+    assert engine.withdrawal_line("手一直在抖") == SAID.withdrawal_classes["alcohol"]
     assert engine.withdrawal_line("刚才抽搐了一下") == SAID.substance_lines["withdrawal_severe"]
 
 

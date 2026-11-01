@@ -267,6 +267,10 @@ class SubstanceReading:
     symptoms: bool = False
     """Round 6: a withdrawal sign in the body or a severe one ("手一直抖", "看见墙上有东西"):
     the reply sends to a doctor and offers no practice card."""
+    kind: str = ""
+    """Round 7: the ``substance.yaml`` class of the drink or medicine named first ("帕罗西汀"
+    -> ``antidepressant``), ``general`` for someone else's medicine or one outside the
+    classes the reminders speak of ("降压药"), "" when none is named."""
 
     @property
     def any(self) -> bool:
@@ -285,8 +289,13 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     # the drink or the medicine named in the message, and no doctor-led taper.
     # Round 6 (复测 q2 第 6 节, q3 第三节): stopping as grammar too ("一粒也不吃", "再也
     # 不喝"), and a taper is the doctor's only when not negated ("也不跟医生说" is none).
+    # Round 7 (复测 q3 第三节): a medicine named by its class counts as one too, tapering
+    # on one's own ("隔天吃，慢慢减") is a stop unless a doctor leads it, and so are missed
+    # doses of a named medicine ("两天没吃").
+    kind = _kind(folded, cues)
+    guided = _guided(folded, cues)
     stopping = (
-        (_has(folded, cues.substances) or _has(folded, cues.stop_objects))
+        (_has(folded, cues.substances) or _has(folded, cues.stop_objects) or bool(kind))
         and (
             _free(folded, cues.stopping, cues)
             or any(
@@ -294,8 +303,10 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
                 for pattern in cues.stop_patterns
                 for m in pattern.finditer(folded)
             )
+            or _has(folded, cues.stop_taper)
+            or (bool(kind) and any(p.search(folded) is not None for p in cues.stop_missed))
         )
-        and not _guided(folded, cues)
+        and not guided
     )
     # "突然不喝会出问题吗" is about drinking unless it names something else to drink.
     asked = _has(folded, cues.questions)
@@ -333,7 +344,32 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         talks,
         stopping=stopping,
         symptoms=symptoms,
+        kind=kind,
     )
+
+
+_GENERAL: Final = "general"
+_OTHER_MEDICINE: Final = "other_medicine"
+_ALCOHOL: Final = "alcohol"
+
+
+def _kind(folded: str, cues: SubstanceCues) -> str:
+    """The class of the drink or medicine named first (round 7), ``general`` for one of
+    ``other_medicine`` or (any but alcohol) someone else's; "" when no class is named."""
+    first: tuple[int, str] | None = None
+    for name, words in cues.classes.items():
+        for word in words:
+            at = folded.find(word)
+            if at >= 0 and (first is None or at < first[0]):
+                first = (at, name)
+    if first is None:
+        return ""
+    name = first[1]
+    if name == _OTHER_MEDICINE:
+        return _GENERAL
+    if name != _ALCOHOL and any(p.search(folded) is not None for p in cues.stop_others):
+        return _GENERAL
+    return name
 
 
 def _relishes(sentence: str, cues: SubstanceCues, *, context: bool) -> bool:

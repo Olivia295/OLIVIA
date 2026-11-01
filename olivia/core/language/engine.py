@@ -257,6 +257,9 @@ class LanguageEngine:
         self._ack_uses: Counter[str] = Counter()
         self._last_ack: tuple[str, tuple[str, ...], str] | None = None
         self._drinking = False
+        # Round 7: the kind of drink or medicine the last reminder spoke of, for a later
+        # sign with no kind named ("手还在抖").
+        self._substance_kind = ""
         self._words_read: tuple[str, bool] | None = None
         # Round 6: this turn's text came with direction controls that change its order.
         self._scrambled = False
@@ -465,7 +468,38 @@ class LanguageEngine:
         context = self._drinking or cues.image_topic in self._image_topics
         reading = read_substance(cues, user_text, context=context)
         self._drinking = context or reading.mentioned
+        if reading.kind:
+            self._substance_kind = reading.kind
         return reading
+
+    def _withdrawal_text(self, reading: SubstanceReading) -> str:
+        """Round 7 (复测 q2 第 6 节 P7, q3 第三节; draft, G-0): the reminder for the kind of
+        drink or medicine named (``withdrawal_classes``; the last one named when this
+        message names none), else the general ``withdrawal`` line; the severe line for a
+        severe sign whatever the kind."""
+        said = self._data.utterances
+        if reading.severe:
+            return said.substance_lines.get("withdrawal_severe", "")
+        kind = reading.kind or self._substance_kind
+        return said.withdrawal_classes.get(kind) or said.substance_lines.get("withdrawal", "")
+
+    def without_conflicts(self, reply: str) -> str:
+        """Round 7 (复测 q3 第三节): ``reply`` without the paragraphs that contradict a
+        withdrawal reminder ("这不是一个需要马上解决的难题"; ``urgent_conflicts``). A
+        paragraph that only holds such a sentence among others keeps the rest."""
+        phrases = self._data.utterances.urgent_conflicts
+        if not phrases or not any(p in reply for p in phrases):
+            return reply
+        kept: list[str] = []
+        for para in reply.split("\n\n"):
+            if not any(p in para for p in phrases):
+                kept.append(para)
+                continue
+            sentences = [x for x in re.split(r"(?<=[。！？])", para) if x]
+            rest = "".join(x for x in sentences if not any(p in x for p in phrases))
+            if rest.strip():
+                kept.append(rest)
+        return "\n\n".join(kept)
 
     def withdrawal_symptoms(self, user_text: str) -> bool:
         """Round 6 (复测 q3 第三节): ``user_text`` tells of a withdrawal sign in the body
@@ -565,7 +599,11 @@ class LanguageEngine:
             ("withdrawal_severe", reading.severe),
             ("withdrawal", reading.withdrawal and not reading.severe),
         )
-        lines += [said[name] for name, on in wanted if on and name in said]
+        lines += [
+            self._withdrawal_text(reading) if name.startswith("withdrawal") else said[name]
+            for name, on in wanted
+            if on and name in said
+        ]
         if not lines:
             return ""
         line = apply_willow("".join(lines), ContentKind.NORMAL, self._data.willow)
@@ -579,8 +617,7 @@ class LanguageEngine:
         reply or a safety question, where :meth:`boundary_line` is not used: the risk
         model's misreading must not cost the reminder."""
         reading = self.substance(user_text)
-        name = "withdrawal_severe" if reading.severe else "withdrawal"
-        line = self._data.utterances.substance_lines.get(name, "")
+        line = self._withdrawal_text(reading)
         if not (reading.withdrawal and line):
             return ""
         line = apply_willow(line, ContentKind.NORMAL, self._data.willow)

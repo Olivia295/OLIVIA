@@ -217,7 +217,8 @@ def test_the_lines_before_the_reply() -> None:
     engine = _engine()
     engine.boundary_line("我在戒酒")
     asked = engine.boundary_line("晚上不喝真的睡不着，喝一点帮助睡眠总可以吧？")
-    assert asked == lines["ask_to_drink"] + lines["withdrawal"]
+    # Round 7: the reminder names the kind of drink spoken of.
+    assert asked == lines["ask_to_drink"] + DATA.utterances.withdrawal_classes["alcohol"]
     assert engine.boundary_line("半夜看到墙上有东西在爬") == lines["withdrawal_severe"]
 
 

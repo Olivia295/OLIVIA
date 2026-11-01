@@ -125,7 +125,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, TypeVar
@@ -380,6 +380,11 @@ class RuleStub:
         self._call_script_patterns = lexicon.hotline_call_script_patterns
         self._place_hint_patterns = lexicon.hotline_place_hint_patterns
         self._place_patterns = lexicon.hotline_place_patterns
+        self._which_patterns = lexicon.hotline_which_patterns
+        self._purpose_patterns = lexicon.hotline_purpose_patterns
+        self._police_fear_patterns = lexicon.hotline_police_fear_patterns
+        self._other_call_patterns = lexicon.hotline_other_call_patterns
+        self._help_mask_patterns = lexicon.help_seeking_mask_patterns
         self._minor_patterns = lexicon.minor_disclosure_patterns
         self._minor_past = lexicon.minor_past_patterns
         self._minor_other = lexicon.minor_other_patterns
@@ -489,6 +494,14 @@ class RuleStub:
             for label, match in signals
         )
         lock_on, lock_off = _lock(signals)
+        # Round 7 (2026-11-01, re-test q3 第四节): someone else's call or a nuisance call
+        # ("室友半夜煲电话") is no request for a line and names none; its span is blanked.
+        phone_body = _blank(body, self._other_call_patterns)
+        which = self._live(phone_body, self._which_patterns)
+        purposes = self._live(phone_body, self._purpose_patterns)
+        police_fear = self._live(phone_body, self._police_fear_patterns)
+        hotline_asked = which or purposes or self._live(phone_body, self._hotline_patterns)
+        help_body = _blank(body, self._help_mask_patterns)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
             assessment.level,
@@ -542,7 +555,7 @@ class RuleStub:
             privacy_question=bool(hits.get(_PRIVACY)) and bool(hits.get(_PRIVACY_SUBJECT)),
             advice_request=not direct and self._advice(body),
             hotline_pushback=bool(hits.get(_HOTLINE)),
-            hotline_request=not hits.get(_HOTLINE) and self._live(body, self._hotline_patterns),
+            hotline_request=not hits.get(_HOTLINE) and hotline_asked,
             hotline_anonymous=bool(hits.get(_ANONYMOUS)),
             hotline_abroad=bool(hits.get(_ABROAD)),
             minor_disclosure=self._minor_in(body),
@@ -554,13 +567,13 @@ class RuleStub:
             imminent_context=bool(hits.get(_IMMINENT_CONTEXT)),
             third_party_unreachable=bool(hits.get(_UNREACHABLE)),
             third_party_question=bool(hits.get(_OTHER_QUESTION)),
-            help_seeking=bool(hits.get(_HELP_SEEKING)),
+            help_seeking=_kept(hits.get(_HELP_SEEKING, ()), help_body),
             hotline_fee=bool(hits.get(_FEE)),
-            hotline_hours=bool(hits.get(_HOURS)),
+            hotline_hours=_kept(hits.get(_HOURS, ()), phone_body),
             hotline_language=bool(hits.get(_LANGUAGE)),
             hotline_real=bool(hits.get(_REAL)),
             hotline_more=bool(hits.get(_MORE)),
-            hotline_words=bool(hits.get(_PHONE_WORDS)),
+            hotline_words=_kept(hits.get(_PHONE_WORDS, ()), phone_body),
             hotline_place=next(
                 (label for label, _ in sorted(hits.get(_PLACE, ()), key=lambda h: h[1].start)),
                 None,
@@ -579,7 +592,10 @@ class RuleStub:
             hotline_number=self._number(body),
             hotline_unreachable=bool(hits.get(_UNREACHABLE_CALL)),
             hotline_emergency=bool(hits.get(_EMERGENCY_ASKED)),
-            hotline_call_script=self._live(body, self._call_script_patterns),
+            hotline_call_script=self._live(phone_body, self._call_script_patterns),
+            hotline_which=which,
+            hotline_purposes=purposes,
+            hotline_police_fear=police_fear,
             hotline_place_hint=not hits.get(_PLACE)
             and self._raw_place(text) is None
             and any(p.search(text.casefold()) for p in self._place_hint_patterns),
@@ -827,6 +843,22 @@ class RuleStub:
         if emotion == _REFLECTION_EMOTION:
             return EmpathyIntent.REFLECTION
         return EmpathyIntent.EXPLORATION
+
+
+_BLANK: Final = "□"
+
+
+def _blank(body: str, patterns: tuple[re.Pattern[str], ...]) -> str:
+    """``body`` with every match of ``patterns`` blanked out, its length kept (round 7)."""
+    for pattern in patterns:
+        if pattern.search(body) is not None:
+            body = pattern.sub(lambda m: _BLANK * len(m.group(0)), body)
+    return body
+
+
+def _kept(items: Sequence[tuple[str, Match]], blanked: str) -> bool:
+    """A hit of ``items`` that :func:`_blank` left alone (round 7)."""
+    return any(blanked[match.start] != _BLANK for _, match in items)
 
 
 def _outermost(items: list[tuple[_L, Match]]) -> list[tuple[_L, Match]]:
