@@ -1257,7 +1257,19 @@ class Session:
         flags = self._red_flags.observe(text)
         self._text_flags |= self._shared.detector.detect(text)
         self._context = self._contra.observe(signals, perception, status, flags)
-        ask = model_ask or (answer is None and assessment.asks_intent and not status.in_crisis)
+        # 负责人 2026-11-01 决定: after a confirmation in a crisis, a farewell-family cue asks
+        # the direct question once (the answer turn voids the confirmation unless it is a no).
+        crisis_ask = (
+            answer is None
+            and status.in_crisis
+            and status.level < CrisisLevel.L2
+            and self._tracker.asks_after_confirmation(assessment)
+        )
+        ask = (
+            model_ask
+            or (answer is None and assessment.asks_intent and not status.in_crisis)
+            or crisis_ask
+        )
         if ask and model_level == CrisisLevel.L3.name:
             # Owner decision 2026-10-28: a model L3 that asks first (a score below 0.6, or a
             # figure of speech the screen capped) keeps the 2026-10-24 framing: the region's
@@ -1604,7 +1616,7 @@ class Session:
         ordinary = False
         reached_out = False
         heard = False
-        if stage is HelpStage.S_CRISIS:
+        if stage is HelpStage.S_CRISIS and not crisis_ask:
             # After a confirmation the crisis waits to end: no second safety question.
             waiting = status.in_crisis and not status.awaiting_confirmation
             # Round 3: a calm turn of new words (no rule cue, below L2, not a command).

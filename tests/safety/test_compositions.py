@@ -382,6 +382,12 @@ def test_trailing_is_read_from_the_lexicon():
         "ASK_INTENT_END_IT_BARE",
         "L2_END_IT_PLACED",
         "ASK_INTENT_DECIDED_TO_GO",
+        # Round 7 (2026-11-01): going down from a height, going at a time, following
+        # someone, a jump threatened.
+        "L2_HEIGHT_GO_DOWN",
+        "ASK_INTENT_GO_AT_TIME",
+        "ASK_INTENT_FOLLOW_GONE",
+        "L2_JUMP_THREAT",
     }
     later = [e for e in LEX.compositions.entries if e.id in round2]
     assert len(later) == len(round2) and all(e.trailing for e in later)

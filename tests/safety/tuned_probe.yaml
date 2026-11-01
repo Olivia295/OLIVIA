@@ -86,3 +86,8 @@
 # Round 6 (2026-10-29): kl_fr19 reached its ideal level (L2_COMMAND_VOICE, a voice that
 # commands harm), written for the meaning, not for this sentence.
 - {id: fr19, text: "我脑子里一直有个声音叫我去死", expect: L2}
+# Round 7 (2026-11-01): kl_af25, kl_ho05 and kl_fr09 reached their ideal level
+# (S1_TAKEN_MANY_SYMPTOM), written for the meaning, not for these sentences.
+- {id: af25k, text: "已经吞了好多片了 意识有点模糊", expect: L3}
+- {id: ho05, text: "刚刚吃了很多药 现在好晕", expect: L3}
+- {id: fr09, text: "我把药都吃了，现在头很晕", expect: L3}
