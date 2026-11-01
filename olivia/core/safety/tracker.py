@@ -493,14 +493,25 @@ class CrisisTracker:
 
     def _relapse_after_confirmation(self, assessment: CrisisAssessment, text: str) -> bool:
         """Round 7 (复测 q2 S1): in a crisis after a confirmation, the confirmation taken back
-        (:data:`_RETRACTION`) or a farewell-family D3 cue (``raise_with_risk``: "我还是想今晚
-        就走") is a relapse: L2, the confirmation void, as outside a crisis such a cue in a
-        session that showed risk is L2 at once. Only ever more sensitive."""
+        (:data:`_RETRACTION`: "其实刚才是骗你的", "我并不安全") is a relapse: L2, the
+        confirmation void (负责人 2026-11-01 决定). A farewell-family D3 cue alone asks first
+        (:meth:`asks_after_confirmation`)."""
         if not (self._in_crisis and self._confirmed):
             return False
-        if _RETRACTION.search(normalize(text)) is not None:
-            return True
-        return assessment.asks_intent and not self._raise_ids.isdisjoint(assessment.cue_ids)
+        return _RETRACTION.search(normalize(text)) is not None
+
+    def asks_after_confirmation(self, assessment: CrisisAssessment) -> bool:
+        """负责人 2026-11-01 决定: in a crisis after a confirmation, a farewell-family D3 cue
+        (``raise_with_risk``: "我今晚还是想走") asks the direct question once instead of
+        voiding the confirmation at once; an unclear or yes answer then comes back as L2
+        and voids it, a clear no keeps it. Read after :meth:`observe` of the same turn
+        (an L1 turn in a crisis only pauses the count, so the confirmation still holds)."""
+        return (
+            self._in_crisis
+            and self._confirmed
+            and assessment.asks_intent
+            and not self._raise_ids.isdisjoint(assessment.cue_ids)
+        )
 
     def _is_figure(self, assessment: CrisisAssessment) -> bool:
         return bool(self._figure_id) and self._figure_id in assessment.cue_ids

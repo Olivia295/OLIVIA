@@ -209,7 +209,7 @@ def _confirmed() -> Session:
 
 @pytest.mark.parametrize(
     "text",
-    ["其实我刚才说的是骗你的", "我今晚还是想走", "刚才那句是假的，我并不安全"],
+    ["其实我刚才说的是骗你的", "我说的安全是假的", "刚才那句是假的，我并不安全"],
 )
 def test_round7_confirmation_taken_back_is_l2_again(text: str) -> None:
     session = _confirmed()
@@ -219,6 +219,30 @@ def test_round7_confirmation_taken_back_is_l2_again(text: str) -> None:
     # The exit count starts again: two calm turns do not end the crisis.
     session.turn("今天吃了面条")
     assert session.turn("天气还不错").in_crisis
+
+
+@pytest.mark.parametrize("cue", ["我今晚还是想走", "等过完年我就离开"])
+def test_round7_farewell_after_a_confirmation_asks_first(cue: str) -> None:
+    # 负责人 2026-11-01 决定: a farewell-family cue after a confirmation asks the direct
+    # question once; an unclear answer then voids the confirmation and is L2.
+    session = _confirmed()
+    asked = session.turn(cue)
+    assert asked.in_crisis
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    assert asked.crisis_level < L.L2
+    unclear = session.turn("嗯，也许吧")
+    assert unclear.in_crisis
+    assert unclear.crisis_level >= L.L2
+    session.turn("今天吃了面条")
+    assert session.turn("天气还不错").in_crisis
+
+
+def test_round7_farewell_after_a_confirmation_then_a_clear_no_keeps_it() -> None:
+    # 负责人 2026-11-01 决定: a clear no to the question keeps the confirmation.
+    session = _confirmed()
+    session.turn("我今晚还是想走")
+    answered = session.turn("不是，我是说回老家")
+    assert answered.crisis_level < L.L2
 
 
 def test_round7_calm_turns_after_a_confirmation_still_count() -> None:
