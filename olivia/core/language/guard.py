@@ -34,11 +34,13 @@ Two readings, both about wording only; neither changes a crisis level, a card or
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from olivia.core.language.data import RiskComponents, RiskSemantics, SubstanceCues
+from olivia.core.language.data import RiskComponents, RiskSemantics, SubstanceCues, Utterances
+from olivia.core.safety.compose import shared_set
 from olivia.core.safety.lexicon import Composition, SafetyLexicons
 from olivia.core.safety.normalize import normalize
 
@@ -74,7 +76,7 @@ class _Index:
             if len(phrase) == 1:
                 singles.add(phrase)
             else:
-                by_head.setdefault(phrase[:2], []).append(phrase)
+                by_head.setdefault(sys.intern(phrase[:2]), []).append(phrase)
         self._by_head = {head: tuple(group) for head, group in by_head.items()}
         self._singles = frozenset(singles)
 
@@ -106,11 +108,12 @@ class _Relaxed:
 
     @classmethod
     def of(cls, entry: Composition) -> _Relaxed:
+        # Round 7 perf: the crisis screen's composer holds equal sets; share them.
         return cls(
-            frozenset(entry.heads),
-            frozenset(entry.tails),
-            frozenset(entry.context),
-            frozenset(entry.unless),
+            shared_set(entry.heads),
+            shared_set(entry.tails),
+            shared_set(entry.context),
+            shared_set(entry.unless),
             entry.exceptions,
         )
 
@@ -178,10 +181,11 @@ class MirrorGuard:
         self._figurative = _Index(figurative)
         self._everyday = _Index(everyday)
         # Each composition under the words of its first part: only those can match.
-        self._by_word: dict[str, list[_Relaxed]] = {}
+        by_word: dict[str, list[_Relaxed]] = {}
         for r in relaxed:
             for word in r.heads or r.tails or r.context:
-                self._by_word.setdefault(word, []).append(r)
+                by_word.setdefault(word, []).append(r)
+        self._by_word = {word: tuple(group) for word, group in by_word.items()}
         self._parts = _Index(w for r in relaxed for w in r.words())
         self._vetoes = _Index(vetoes)
         self._confirms = _Index(confirms)
@@ -236,6 +240,29 @@ class MirrorGuard:
         nor inside a ``guarded.components.everyday`` word: "心跳很快")."""
         folded = self._usual.masked(normalize(text))
         return bool(self._vetoes.found(self._everyday.masked(folded)))
+
+
+# Round 7 perf: the guard reads only the crisis lexicon and the utterances, both shared
+# by every session over one taxonomy, and never changes after it is built; one guard per
+# pair instead of one per session keeps its indexes (about 1.8 MB) from being rebuilt and
+# freed with every session. Keyed by identity; the entry holds both objects, so an id is
+# never reused while its entry lives.
+_GUARDS: Final[dict[tuple[int, int], tuple[object, object, MirrorGuard]]] = {}
+_GUARDS_MAX: Final = 8
+
+
+def shared_guard(lexicons: SafetyLexicons | None, said: Utterances) -> MirrorGuard:
+    """The :class:`MirrorGuard` of ``lexicons`` and ``said`` (``extra_risk_words``,
+    ``components`` and ``semantic``), built once per pair and shared."""
+    key = (id(lexicons), id(said))
+    entry = _GUARDS.get(key)
+    if entry is not None and entry[0] is lexicons and entry[1] is said:
+        return entry[2]
+    guard = MirrorGuard(lexicons, said.extra_risk_words, said.components, semantic=said.semantic)
+    if len(_GUARDS) >= _GUARDS_MAX:
+        del _GUARDS[next(iter(_GUARDS))]
+    _GUARDS[key] = (lexicons, said, guard)
+    return guard
 
 
 def _masked(folded: str, masks: Sequence[str]) -> str:

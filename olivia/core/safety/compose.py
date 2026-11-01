@@ -33,6 +33,7 @@ from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass
 from itertools import accumulate
 from typing import Final
+from weakref import WeakValueDictionary
 
 from olivia.core.safety.lexicon import Composition, CompositionRules
 from olivia.core.safety.matcher import Match, PhraseMatcher
@@ -123,6 +124,22 @@ class _Lists:
         )
 
 
+# One set per distinct phrase list in the process (round 6, 2026-10-30: many entries name
+# the same list; round 7 perf: the mirror guard reads the same entries and shares these
+# sets instead of building its own, about a megabyte). Weak values: a set lives as long as
+# something that uses it.
+_SETS: Final[WeakValueDictionary[frozenset[str], frozenset[str]]] = WeakValueDictionary()
+
+
+def shared_set(phrases: Iterable[str]) -> frozenset[str]:
+    """``frozenset(phrases)``, the same object for every equal list (read-only)."""
+    found = frozenset(phrases)
+    kept = _SETS.get(found)
+    if kept is None:
+        _SETS[found] = kept = found
+    return kept
+
+
 @dataclass(frozen=True)
 class _EntrySets:
     """One entry's phrase lists as sets, built once per composer."""
@@ -136,14 +153,9 @@ class _EntrySets:
     also: tuple[frozenset[str], ...]
 
     @classmethod
-    def of(cls, entry: Composition, shared: dict[frozenset[str], frozenset[str]]) -> _EntrySets:
-        """``shared`` keeps one set per distinct list: many entries name the same list
-        (round 6, 2026-10-30: about half a megabyte of repeated sets)."""
-
-        def once(phrases: Iterable[str]) -> frozenset[str]:
-            found = frozenset(phrases)
-            return shared.setdefault(found, found)
-
+    def of(cls, entry: Composition) -> _EntrySets:
+        """Equal lists share one set (:func:`shared_set`)."""
+        once = shared_set
         return cls(
             heads=once(entry.heads),
             tails=once(entry.tails),
@@ -310,8 +322,7 @@ class Composer:
             reach.setdefault(phrase[0], []).append(phrase)
         self._reach = {ch: tuple(sorted(ps, key=len, reverse=True)) for ch, ps in reach.items()}
         self._lists = _Lists.of(rules)
-        shared: dict[frozenset[str], frozenset[str]] = {}
-        self._sets = tuple((entry, _EntrySets.of(entry, shared)) for entry in rules.entries)
+        self._sets = tuple((entry, _EntrySets.of(entry)) for entry in rules.entries)
         # Which part of which entry a phrase is: a message only visits the entries whose
         # every required part occurs in it (round 3: the entries keep growing, most
         # messages hit none; 2026-10-28: a head as common as 去 or 多少 visits its entry
