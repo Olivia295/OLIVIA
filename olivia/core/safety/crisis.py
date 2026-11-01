@@ -420,7 +420,11 @@ class _FigureIndex:
         if any(normalized[h.start : h.end] not in _HABIT_WORDS for h in hits):
             return False  # only a run of days can be someone else's (round 6)
         frames = [*self._frames.find_all(normalized), *_repeated_frames(normalized)]
-        if any(not _someone_elses_habit(normalized, hit, frames) for hit in hits):
+        if any(
+            not _someone_elses_habit(normalized, hit, frames)
+            and not _habit_on_the_cause(normalized, hit, frames)
+            for hit in hits
+        ):
             return False
         cover = _MaskCover(frames)
         return all(cover.contains(m) for m in valid)
@@ -448,6 +452,28 @@ _NO_SUBJECT: Final = re.compile(
     r"每次|感觉|觉得|心里|脑子|脑袋|整个人|人|自己)*"
 )
 _SELF_WORDS: Final = ("我", "俺", "咱", "自己")
+
+
+# 负责人 2026-11-01 决定 (B): a run of days in another clause says how often the cause happens
+# ("……，天天饿肚子") unless that clause is about the wish or the pain itself, or names nothing
+# but a state ("天天都这样"): then it still lifts the figure to L2.
+_HABIT_ABOUT_PAIN: Final = re.compile(
+    r"想死|死|不想活|活着|活下去|难受|痛苦|崩溃|绝望|想哭|哭|撑不|熬不|受不了|没意思|没意义|消失|"
+    r"失眠|睡不着|心情|情绪|抑郁|焦虑|这样|这种|如此|这么|那样|一样|感觉|心里"
+)
+_HABIT_FILLERS: Final = re.compile(r"[都也还又就是很好真的了啊呀呢吧嘛我俺咱自己]*")
+
+
+def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:
+    """A run-of-days word in a clause of its own about the cause (负责人 2026-11-01 决定)."""
+    start = max((normalized.rfind(c, 0, hit.start) for c in _CLAUSE_STOPS), default=-1) + 1
+    ends = [i for i in (normalized.find(c, hit.end) for c in _CLAUSE_STOPS) if i >= 0]
+    end = min(ends, default=len(normalized))
+    if any(start <= f.end and f.start <= end for f in frames):
+        return False  # the figure's own clause
+    clause = normalized[start:end]
+    rest = normalized[hit.end : end]
+    return _HABIT_ABOUT_PAIN.search(clause) is None and _HABIT_FILLERS.fullmatch(rest) is None
 
 
 def _someone_elses_habit(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:

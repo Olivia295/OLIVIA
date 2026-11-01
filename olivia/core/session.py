@@ -676,6 +676,10 @@ _GO_ALONG: Final = re.compile(
     r"(?:去死|死|结束(?:这一切|生命|自己)?|了断|了结|解脱|离开这个世界|跳(?:下去|楼|河|江)?|走|去|算了)"
     r"(?=$|[,.!?;:~…]|了|吧|算了|好了|得了|的)"
 )
+# 负责人 2026-11-01 决定 (A): model-only questions per session, and the turns that must lie
+# between an accepted no and the next one.
+_MODEL_ASKS_MAX: Final = 2
+_MODEL_ASK_GAP: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
 # Round 4 (SDD §4.4): Arousal = SUDS / 10.
@@ -890,6 +894,10 @@ class Session:
         # marks the pending question as that one.
         self._model_asked = False
         self._asking_model = False
+        # 负责人 2026-11-01 决定 (A): the turn of the last accepted no to a model-only question
+        # and how many such questions this session asked (at most two).
+        self._model_denied_turn: int | None = None
+        self._model_ask_count = 0
         # Safety replies round 2 (2026-10-26): the user said they are under 18 in this
         # session (第 5 条; never written anywhere) and was told so once; the highest crisis
         # entry level of this session (第 11 条); the turn count when the user last reported
@@ -2369,7 +2377,20 @@ class Session:
             # user is under 18 with a no and the rules find no risk cue in it; a sure model
             # (score >= 0.6) asks first too, never the crisis flow on its word alone.
             return True
-        return first and self._shared.lexicons.model_ask.asks_first(model_score)
+        # 负责人 2026-11-01 决定 (A): after an accepted no (it passed F10), a later unsure alarm
+        # with no rule cue asks once more when at least 3 turns lie between; at most two
+        # such questions per session.
+        denied = self._model_denied_turn
+        again = (
+            denied is not None
+            and self._model_ask_count < _MODEL_ASKS_MAX
+            and self._state.global_turn_count - denied > _MODEL_ASK_GAP
+        )
+        if not (first or again) or not self._shared.lexicons.model_ask.asks_first(model_score):
+            return False
+        self._model_ask_count += 1
+        self._model_denied_turn = None
+        return True
 
     def _score_band_safe(self, assessment: CrisisAssessment, model_level: str | None) -> bool:
         """负责人 2026-10-29 决定 (round 5, re-test q2 第 3 节, E03): in the crisis flow with an
@@ -2504,6 +2525,8 @@ class Session:
         if answer is IntentAnswer.DENIED:
             if not model:
                 self._gentle_care = True
+            else:
+                self._model_denied_turn = self._state.global_turn_count
             if reading.negated:
                 return self._negation_capped(assessment), answer
             return self._denial_capped(text, assessment, rules), answer

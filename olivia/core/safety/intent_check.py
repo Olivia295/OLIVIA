@@ -133,6 +133,16 @@ _EN_NO_FINE: Final = re.compile(
 )
 
 
+# 负责人 2026-11-01 决定 (C): "不是 + a feeling" as the whole first clause, then a clause that
+# opens with 就是 / 只是 ("不是难过啊，就是好奇"), is a no; what follows is still screened,
+# the unsure words still count and the session checks the F10 conditions on it.
+_FEELING_NO: Final = re.compile(
+    r"不是(?:很|太|特别|因为)?(?:难过|伤心|难受|不开心|不高兴|抑郁|绝望|痛苦|崩溃|烦|丧|低落|郁闷|"
+    r"想不开|心情不好)"
+)
+_JUST_LEAD: Final = re.compile(r"\s*(?:就是|只是|单纯是|单纯|纯粹是|只不过|主要是)")
+
+
 class IntentAnswer(StrEnum):
     """How the turn after the question answered it (``inspect["safety_check"]``)."""
 
@@ -222,6 +232,13 @@ def read_answer(
     )
     if not denies and _EN_NO_FINE.fullmatch(plain.strip()) is not None:
         denies = not sarcastic
+    feeling_no = (
+        not denies
+        and not sarcastic
+        and _FEELING_NO.fullmatch(plain) is not None
+        and _JUST_LEAD.match(rest) is not None
+    )
+    denies = denies or feeling_no
     if not denies and not negated:
         yes = _starts(clause, answers.affirm_start) and _QUESTION_FORM.search(clause) is None
         return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
@@ -233,7 +250,7 @@ def read_answer(
     if calm and not unsure:
         # Round 6: a rhetorical or reassured no also passes the F10 denial conditions in the
         # session, as a split one does ("没有你放心，反正药都备好了" is no no).
-        checked = split or rhetorical or reassured is not None
+        checked = split or rhetorical or reassured is not None or feeling_no
         guard = rest.strip() if rhetorical else None
         return IntentReading(IntentAnswer.DENIED, reason_split=checked, guard_text=guard)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
