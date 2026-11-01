@@ -1586,6 +1586,57 @@ hotline_request_patterns:
   - "(?:报警|急救车|急救|救护车|police|ambulance)(?:的话|的|用的|要打的|是|系|要|该|得|应该|就|打|拨|叫|找){0,4}(?:哪个|哪一个|什么|多少|几|啥|咩|边个|几多)(?:号码|电话|号|热线|number)"
   - "(?:俾|畀|给)(?:我)?(?:一?个|一?条|几个|啲|些)(?:能打的|可以打的|求助的)?{C}{0,4}?(?:热线|hotline|helpline)"
   - "(?:有没有|有冇|有无|有什么|有啥|有咩)(?:啲|些|一些|几个|点)(?:能|可以|可)?(?:打的)?{C}{0,4}?(?:电话|号码|热线){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话|讲)"
+  # Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0). Grammar, not example sentences
+  # (Traditional characters are folded to Simplified before these run):
+  # - wanting to call or find a line, then talking or "which one" right after it, with at
+  #   most "找个人 / 跟人" between ("想拨个电话找人说说", "要找个号码倾诉"); a call to someone
+  #   named ("想给我妈打个电话聊聊", "打个电话跟客户聊方案") or someone else's wish ("他想…") is
+  #   none;
+  # - the police or the ambulance (HK 白车) named, then the number asked for later in the
+  #   message ("要报警，电话多少", "叫白车拨几号");
+  # - a support word, a line word, then "which number" ("咨询专线是几号").
+  - "(?<![他她妈爸哥姐弟妹友事们])(?:想|想要|要|需要|得|能不能|可不可以|可以)(?:找人)?(?:打|拨|找|要)(?:一?个|一?通|通|一下)?(?:电话|号码|热线|专线)(?:来|去)?(?:找|跟|和|同)?(?:一?个|个)?(?:真|陌生|专业的)?(?:人)?(?:来|去)?(?:说说话|说说|说话|聊聊天|聊聊|聊天|聊一下|聊会儿|聊会|聊|倾诉|倾吓|倾|谈谈|讲讲话|打哪个|哪个|哪支|边个)(?:吗|呢|啊|吧|好|一下|吖)?{E}"
+  - "(?:报警|急救|叫救护车|救护车|叫白车|白车)[^.!?。！？]{0,8}?(?:电话|号码|热线)(?:是|系)?(?:多少|什么|啥|咩|乜|哪个|几号|几多|来着|是啥)"
+  - "(?:报警|急救|叫救护车|救护车|叫白车|白车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:几号|几多号|几多|哪个|多少|边个)"
+  - "(?:心理|情绪|倾诉|支援|支持|援助|求助|咨询|陪伴|自杀|危机|防治)[^.!?。！？]{0,10}?(?:电话|热线|号码|专线)(?:是|系)?(?:几号|几多号|哪个|哪支|边个|什么号码|多少号)"
+
+# Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): which line to call ("该打哪支电话",
+# "报警还是打热线", "who do I call"). Outside a crisis it is a hotline request; in the crisis
+# flow the reply says which kind of line is for what, and the emergency numbers come first.
+# Same placeholders as hotline_request_patterns.
+hotline_which_patterns:
+  - "(?:打|拨)(?:哪|哪一|边)(?:个|支|条|通|一个)(?:电话|号码|热线|专线|号)?(?:好|比较好|好呢|好啊|呢|啊|吖|先|才对|合适|最好)?{E}"
+  - "(?:找|联系|搵)(?:哪|哪一|边)(?:个|支|条|一个)(?:电话|号码|热线|专线)"
+  - "(?:报警|打110|叫救护车|叫白车|急救|紧急电话|police|911|999)[^.!?。！？]{0,6}?还是[^.!?。！？]{0,4}?(?:热线|心理|求助电话|援助|聊|hotline)"
+  - "(?:热线|心理援助|求助电话)[^.!?。！？]{0,6}?还是[^.!?。！？]{0,4}?(?:报警|急救|救护车|白车|紧急|\\d{3,})"
+  - "\\d{3,}[^.!?。！？]{0,3}?还是(?:先)?(?:打|拨)?\\d{3,}"
+  - "(?:who|whatnumber|whichnumber|whichline|whichone|whatline)(?:do|should|can|could|would|shall|must)i(?:call|ring|phone|dial|text|contact)"
+  - "(?:who|whatnumber|whichnumber)to(?:call|ring|phone|dial)"
+
+# Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): what each number on the card is for,
+# or how two differ ("这几个号码分别管什么", "110跟120有啥不一样"). The reply lists what the
+# signed hotline data says each one is (only the named ones when numbers are named).
+hotline_purpose_patterns:
+  - "(?:号码|电话|热线|这些|这几个|那几个|那些|这两个|这俩|它们|下面的|上面的)(?:都|分别|各自|各)(?:是)?(?:用来)?(?:干什么|干嘛|干啥|做什么|做啥|管什么|管啥|什么用|啥用|有什么用|是什么|是啥|打什么|做咩|做乜)"
+  - "(?:号码|电话|热线)(?:之间)?(?:有)?(?:什么|啥|咩|乜)(?:区别|不同|分别|差别)"
+  - "\\d{3,}[^.!?。！？]{0,4}?(?:和|跟|与|同|还是|或|or|and|vs)[^.!?。！？]{0,2}?\\d{3,}{C}{0,6}?(?:区别|不同|不一样|分别|差别|差异|difference)"
+  - "(?:报警|急救|热线|心理援助)(?:电话|号码)?(?:和|跟|与|同)(?:报警|急救|热线|心理援助)(?:电话|号码)?{C}{0,6}?(?:区别|不同|不一样|差别|分别)"
+  - "whatare(?:these|those|the)numbersfor|whatdo(?:these|those|the)numbers|differencebetween"
+
+# Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): afraid that calling the police gets
+# one arrested ("报了警会不会被关起来"). Only with the police call named, so trouble with the
+# law in a story ("我偷了东西警察会不会抓我") is none.
+hotline_police_fear_patterns:
+  - "(?:报警|报了警|打110|拨110|打了110|叫警察|找警察|call(?:ing)?the(?:police|cops)|call(?:ing)?911)[^.!?。！？]{0,12}?(?:抓|拘留|关起来|关进|带走|坐牢|案底|犯法|违法|犯罪|惹麻烦|找麻烦|俾人拉|被拉|arrest|jail|introuble|lockmeup)"
+
+# Round 7 (2026-11-01, re-test q3 第四节; 草稿：待 G-0): a call that is someone else's or a
+# nuisance ("室友半夜煲电话", "电话吵得睡不着", "推销电话"). Its span is ignored when the
+# message is read for a hotline request or a phone word, so "怎么跟室友说她打电话太吵" is
+# no follow-up about the hotlines. Folded, no spaces.
+hotline_other_call_patterns:
+  - "(?:他|她|他们|她们|室友|舍友|邻居|楼上|楼下|隔壁|同事|领导|老板|对象|男朋友|女朋友|男友|女友|老公|老婆|爸|妈|哥|姐|弟|妹|孩子|朋友|别人|人家|客服|快递|外卖)(?:(?!让我|叫我|要我|帮我|陪我)[^.!?。！？]){0,6}?(?:打|讲|接|煲|通)(?:了|着|个|起)?(?:电话|视频)"
+  - "电话[^.!?。！？]{0,8}?(?:太吵|好吵|很吵|吵死|吵到|吵得|吵醒|噪音|扰民|声音大|声音很大|大声)"
+  - "(?:骚扰|推销|诈骗|广告|快递|外卖|客服|催收)电话"
 
 # What a number is ("12356是干嘛的"; round 5, 2026-10-29, re-test q2 第 5 节; 草稿：待 G-0):
 # group 1 is the number (at least three digits). The reply names what the signed hotline
@@ -1609,6 +1660,10 @@ hotline_call_script_patterns:
   - "(?:打|拨|接)(?:通|过去|进|给)?(?:热线|\\d{3,})(?:以后|之后|后|的时候|时)?{C}{0,6}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|怎么开口|该说|要说|点讲|讲乜|讲咩|说些什么)"
   # the emergency itself: "报警的时候要怎么说"
   - "(?:报警|叫救护车|叫急救)(?:的时候|时|以后|之后)?{C}{0,4}?(?:怎么说|说什么|说啥|讲什么|讲啥|怎么讲|该说|要说|点讲|讲乜|讲咩)"
+  # Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): getting through at a clause start
+  # ("接通以后要讲啥", "打通了开口第一句说什么"), and the first words of the call.
+  - "(?:打|拨|接)(?:通|过去|进去)(?:了|以后|之后|后|的时候|时)?{C}{0,6}?(?:第一句|头一句|开口|怎么说|说什么|说啥|讲什么|讲啥|讲乜|讲咩)"
+  - "(?:电话|热线|号码)[^.!?。！？]{0,8}?(?:第一句|头一句|开场白)"
 
 # A call that does not get through (round 5; 草稿：待 G-0): with a phone word, a question or a
 # resource card on screen, the reply says what to do (try later or another line, the local
@@ -1646,6 +1701,7 @@ hotline_emergency:
   - 报警
   - 急救
   - 救护车
+  - 白车
   - 紧急电话
   - 紧急号码
   - police
@@ -1809,38 +1865,56 @@ hotline_places:
   HK: [香港, hongkong]
   MO: [澳门, macau, macao]
   TW: [台湾, taiwan]
-  US: [美国, usa, america]
-  CA: [加拿大, canada]
-  GB: [英国, theuk, britain, england, scotland, wales, london, 伦敦]
-  AU: [澳大利亚, 澳洲, australia, 悉尼, 墨尔本, sydney, melbourne]
+  # Round 7 (2026-11-01, re-test q4 B5; 草稿：待 G-0): cities where many students and workers
+  # from here live count for their country ("我现在在大阪交换" is Japan, never the profile's
+  # region). English city names that are also common words are left out.
+  US: [美国, usa, america, 纽约, 洛杉矶, 旧金山, 三藩市, 波士顿, 西雅图, 芝加哥, 费城, 匹兹堡, 休斯顿,
+       达拉斯, 亚特兰大, 硅谷, 华盛顿特区, newyork, losangeles, sanfrancisco, boston,
+       seattle, chicago]
+  CA: [加拿大, canada, 多伦多, 温哥华, 蒙特利尔, 渥太华, 卡尔加里, toronto, vancouver, montreal,
+       ottawa]
+  GB: [英国, theuk, britain, england, scotland, wales, london, 伦敦, 曼彻斯特, 爱丁堡, 伯明翰, 利兹,
+       格拉斯哥, 利物浦, 布里斯托, 诺丁汉, 谢菲尔德, 南安普顿, manchester, edinburgh, glasgow]
+  AU: [澳大利亚, 澳洲, australia, 悉尼, 墨尔本, sydney, melbourne, 布里斯班, 珀斯, 阿德莱德, 堪培拉,
+       黄金海岸, brisbane, adelaide, canberra]
   ZZ: [日本, japan, 韩国, korea, 新加坡, singapore, 德国, germany, 法国, france, 意大利, italy,
        西班牙, spain, 荷兰, netherlands, 新西兰, newzealand, 马来西亚, malaysia, 泰国, thailand,
        越南, vietnam, 菲律宾, philippines, 印度, india, 俄罗斯, russia, 爱尔兰, ireland, 瑞士,
        switzerland, 瑞典, sweden, 挪威, norway, 丹麦, denmark, 芬兰, finland, 比利时, belgium,
        奥地利, austria, 迪拜, dubai, 阿联酋, 欧洲, europe, 东京, tokyo, 首尔, seoul, 巴黎, paris,
-       柏林, berlin]
+       柏林, berlin,
+       大阪, osaka, 京都, kyoto, 名古屋, 福冈, 横滨, 札幌, 神户, 釜山, 仁川, 曼谷, bangkok, 清迈, 普吉,
+       吉隆坡, 槟城, 河内, 胡志明, 马尼拉, 雅加达, 印尼, 印度尼西亚, indonesia, 新德里, 孟买, 阿布扎比,
+       多哈, 卡塔尔, 慕尼黑, munich, 法兰克福, 科隆, 亚琛, 海德堡, 里昂, 马赛, 米兰, milan, 罗马,
+       佛罗伦萨, 都灵, 威尼斯, 巴塞罗那, barcelona, 马德里, madrid, 阿姆斯特丹, amsterdam, 鹿特丹,
+       代尔夫特, 莱顿, 埃因霍温, 都柏林, dublin, 苏黎世, zurich, 日内瓦, geneva, 洛桑, 斯德哥尔摩,
+       stockholm, 哥本哈根, copenhagen, 赫尔辛基, helsinki, 奥斯陆, oslo, 维也纳, vienna, 布鲁塞尔,
+       brussels, 鲁汶, 奥克兰, auckland, 惠灵顿, wellington, 基督城, 莫斯科, 圣彼得堡, 葡萄牙, 里斯本,
+       波兰, 华沙, 捷克, 布拉格, 匈牙利, 布达佩斯, 希腊, 雅典, 土耳其, 伊斯坦布尔, 以色列, 南非, 巴西,
+       墨西哥, 阿根廷, 智利]
 
 # The country of a place without verified hotlines here (round 4, 2026-10-28, re-test q2
 # 第 6 节; 草稿：待 G-0): ISO 3166 code -> place names. Only countries whose official
 # emergency numbers render.yaml crisis.local_emergency lists; the reply names those numbers
 # as the local ones to check locally, after the general card. Folded, no spaces.
 local_emergency_places:
-  JP: [日本, japan, 东京, tokyo, 大阪, osaka]
-  KR: [韩国, korea, 首尔, seoul]
+  # Round 7 (2026-11-01): the cities of hotline_places ZZ, for their country.
+  JP: [日本, japan, 东京, tokyo, 大阪, osaka, 京都, kyoto, 名古屋, 福冈, 横滨, 札幌, 神户]
+  KR: [韩国, korea, 首尔, seoul, 釜山, 仁川]
   SG: [新加坡, singapore]
-  MY: [马来西亚, malaysia, 吉隆坡]
-  NZ: [新西兰, newzealand]
-  DE: [德国, germany, 柏林, berlin]
-  FR: [法国, france, 巴黎, paris]
-  IT: [意大利, italy]
-  ES: [西班牙, spain]
-  NL: [荷兰, netherlands]
-  IE: [爱尔兰, ireland]
-  BE: [比利时, belgium]
-  AT: [奥地利, austria]
-  DK: [丹麦, denmark]
-  FI: [芬兰, finland]
-  SE: [瑞典, sweden]
+  MY: [马来西亚, malaysia, 吉隆坡, 槟城]
+  NZ: [新西兰, newzealand, 奥克兰, auckland, 惠灵顿, wellington, 基督城]
+  DE: [德国, germany, 柏林, berlin, 慕尼黑, munich, 法兰克福, 科隆, 亚琛, 海德堡]
+  FR: [法国, france, 巴黎, paris, 里昂, 马赛]
+  IT: [意大利, italy, 米兰, milan, 罗马, 佛罗伦萨, 都灵, 威尼斯]
+  ES: [西班牙, spain, 巴塞罗那, barcelona, 马德里, madrid]
+  NL: [荷兰, netherlands, 阿姆斯特丹, amsterdam, 鹿特丹, 代尔夫特, 莱顿, 埃因霍温]
+  IE: [爱尔兰, ireland, 都柏林, dublin]
+  BE: [比利时, belgium, 布鲁塞尔, brussels, 鲁汶]
+  AT: [奥地利, austria, 维也纳, vienna]
+  DK: [丹麦, denmark, 哥本哈根, copenhagen]
+  FI: [芬兰, finland, 赫尔辛基, helsinki]
+  SE: [瑞典, sweden, 斯德哥尔摩, stockholm]
 
 # A distress rating, 0-10, as the whole message (round 4, 2026-10-28; PRD COLBO-07, SDD
 # §4.4; 草稿：待 G-0): every exercise card ends by asking for one ("给此刻的难受打个分：0 是
@@ -2267,6 +2341,12 @@ help_seeking_cues:
   - 心理辅导
   - 心理健康中心
   - 校医院
+
+# Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): a clinic word that names where a
+# medicine came from, no wish to go there ("医生开的那个精神科的药我不想吃了"). A help_seeking
+# cue inside one of these spans does not count. Folded, no spaces.
+help_seeking_mask_patterns:
+  - "(?:精神科|心理科|心理门诊|医院|医生|心理医生|psychiatrist|doctor)(?:的)?(?:医生|大夫)?(?:那边|那里)?(?:开|配|给)?(?:了|的)?(?:那个|那些|这个|这些)?(?:精神科|心理科)?的?(?:药|药物|meds|medication|pills)"
 
 # With help_seeking, the place is at school or university (round 4, 2026-10-28; 草稿：待
 # G-0): the reply speaks of the school's counselling centre instead of a hospital

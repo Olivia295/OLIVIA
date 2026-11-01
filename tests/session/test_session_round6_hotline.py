@@ -35,6 +35,9 @@ SAID = DATA.utterances
 ZONES = {"CN": "Asia/Shanghai", "HK": "Asia/Hong_Kong"}
 CRISIS = "我真的撑不下去了，不想活了"
 WITHDRAWAL = SAID.substance_lines["withdrawal"]
+# Round 7: the reminder names the kind of drink or medicine (substance.withdrawal_classes).
+REMINDERS = (WITHDRAWAL, *SAID.withdrawal_classes.values())
+ALCOHOL = SAID.withdrawal_classes["alcohol"]
 
 
 def _open(region: str = "CN") -> Session:
@@ -140,7 +143,8 @@ def test_a_hong_kong_request_in_a_crisis_gets_no_mainland_number() -> None:
     ],
 )
 def test_stopping_by_grammar_gets_the_reminder(text: str) -> None:
-    assert WITHDRAWAL in _open().turn(text).reply
+    reply = _open().turn(text).reply
+    assert any(line in reply for line in REMINDERS), reply
 
 
 @pytest.mark.parametrize(
@@ -153,18 +157,18 @@ def test_stopping_by_grammar_gets_the_reminder(text: str) -> None:
 )
 def test_no_reminder_without_a_drink_or_medicine_or_with_a_taper(text: str) -> None:
     reply = _open().turn(text).reply
-    assert WITHDRAWAL not in reply
+    assert not any(line in reply for line in REMINDERS)
 
 
 def test_in_a_crisis_the_reminder_comes_before_the_numbers() -> None:
     session = _in_crisis()
     reply = session.turn("我每晚都喝白酒，从后天开始一滴也不碰了").reply
-    assert WITHDRAWAL in reply
-    assert reply.index(WITHDRAWAL) < reply.index("12356")
+    assert ALCOHOL in reply
+    assert reply.index(ALCOHOL) < reply.index("12356")
 
 
 def test_a_withdrawal_sign_gets_no_practice_card() -> None:
     result = _open().turn("停了氯硝西泮四天，手抖得厉害，心跳很快，一整夜都没合眼")
     assert result.reply_kind is not ReplyKind.CARD
     assert "约 2 分钟" not in result.reply
-    assert WITHDRAWAL in result.reply
+    assert SAID.withdrawal_classes["benzo"] in result.reply

@@ -25,7 +25,12 @@ from olivia.core.taxonomy import load_taxonomy
 NOW = datetime(2026, 10, 22, 15, 0, tzinfo=UTC)
 TAX = load_taxonomy()
 SAID = load_language_data(TAX).utterances
-WITHDRAWAL = (SAID.substance_lines["withdrawal"], SAID.substance_lines["withdrawal_severe"])
+# Round 7: the reminder names the kind of drink or medicine (substance.withdrawal_classes).
+WITHDRAWAL = (
+    SAID.substance_lines["withdrawal"],
+    SAID.substance_lines["withdrawal_severe"],
+    *SAID.withdrawal_classes.values(),
+)
 ASKED = SAID.substance_lines["ask_to_drink"]
 MODES = pytest.mark.parametrize("student", [False, True], ids=["rules", "model"])
 PERSONAS = pytest.mark.parametrize("persona", list(PersonaSpectrum))

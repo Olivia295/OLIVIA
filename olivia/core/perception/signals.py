@@ -208,6 +208,14 @@ class TurnSignals:
     hotline_place_hint: bool = False
     """An English place that is no known region ("in Brazil"; round 5): the reply says
     how to see another region's numbers."""
+    hotline_which: bool = False
+    """Which line to call ("该打哪支电话", "报警还是打热线"; round 7, 2026-11-01): outside a
+    crisis a hotline request; in the crisis flow the reply says which line is for what."""
+    hotline_purposes: bool = False
+    """What each number is for, or how two differ ("110跟120有啥不一样"; round 7): the reply
+    lists what the signed hotline data says each one is."""
+    hotline_police_fear: bool = False
+    """Afraid a police call gets one arrested ("报了警会不会被关起来"; round 7)."""
     suds: int | None = None
     """The whole message is a 0-10 distress rating ("7", "大概8分"; SUDS, PRD COLBO-07,
     round 4). The session reads it only while a card waits: arousal = SUDS / 10."""

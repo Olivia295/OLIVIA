@@ -179,6 +179,8 @@ def test_help_and_feedback_commands_still_work() -> None:
 # -- 4: stopping on one's own ------------------------------------------------------------------
 
 WITHDRAWAL = SAID.substance_lines["withdrawal"]
+# Round 7: the reminder names the kind of drink or medicine (substance.withdrawal_classes).
+REMINDERS = (WITHDRAWAL, *SAID.withdrawal_classes.values())
 
 
 @pytest.mark.parametrize(
@@ -193,8 +195,9 @@ WITHDRAWAL = SAID.substance_lines["withdrawal"]
 )
 def test_stopping_on_ones_own_gets_the_reminder(text: str) -> None:
     reply = _open().turn(text).reply
-    assert WITHDRAWAL in reply
-    assert "医生" in WITHDRAWAL and "急救" in WITHDRAWAL
+    shown = [line for line in REMINDERS if line in reply]
+    assert shown, reply
+    assert all("医" in line for line in shown)
 
 
 @pytest.mark.parametrize(
@@ -202,7 +205,9 @@ def test_stopping_on_ones_own_gets_the_reminder(text: str) -> None:
 )
 def test_the_abrupt_plan_is_not_said_back(text: str) -> None:
     reply = _open().turn(text).reply
-    assert "戒" not in reply.replace(WITHDRAWAL, "")
+    for line in REMINDERS:
+        reply = reply.replace(line, "")
+    assert "戒" not in reply
 
 
 def test_the_stopping_mirror_line() -> None:
@@ -213,7 +218,7 @@ def test_the_stopping_mirror_line() -> None:
 def test_stopping_in_the_crisis_flow_keeps_the_reminder() -> None:
     result = _open().turn("我真的不想活了，安眠药我这两天全停了")
     assert result.in_crisis
-    assert WITHDRAWAL in result.reply
+    assert SAID.withdrawal_classes["sleep"] in result.reply
 
 
 def test_a_sip_to_ease_it_is_sent_to_the_doctor() -> None:
@@ -234,4 +239,5 @@ def test_a_sip_to_ease_it_is_sent_to_the_doctor() -> None:
     ],
 )
 def test_no_stop_reminder_without_a_stop_on_ones_own(text: str) -> None:
-    assert WITHDRAWAL not in _open().turn(text).reply
+    reply = _open().turn(text).reply
+    assert not any(line in reply for line in REMINDERS)

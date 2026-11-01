@@ -517,6 +517,15 @@ class RenderText:
     """What to say once a call gets through (where, what happened, how things are now)."""
     hotline_number_known: str = ""
     """Leads "number: what the data says it is" for a number asked about."""
+    # Round 7 (2026-11-01, re-test q2 第 6 节; drafts, G-0).
+    hotline_which: tuple[str, ...] = ()
+    """Which line to call: the emergency number when in danger, else the hotline."""
+    hotline_police_fear: tuple[str, ...] = ()
+    """A police call is for help and safety, not an arrest."""
+    hotline_first_words: tuple[str, ...] = ()
+    """The first words on a hotline call (no emergency named)."""
+    hotline_purposes_known: str = ""
+    """Leads "number: what the data says it is" for every number on the card."""
     hotline_number_unknown: tuple[str, ...] = ()
     """A number asked about that the signed data does not hold: no guess."""
     hotline_place_hint: tuple[str, ...] = ()
@@ -591,6 +600,12 @@ class Utterances:
     substance_lines: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     """``SUBSTANCE_LINES`` -> the plain line put before the reply (withdrawal reminder, the
     answer to "is a small drink all right?")."""
+    withdrawal_classes: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    """Round 7 (draft, G-0): ``substance.yaml`` class (and ``general``) -> the withdrawal
+    reminder for that kind of drink or medicine only, used instead of ``withdrawal``."""
+    urgent_conflicts: tuple[str, ...] = ()
+    """Round 7: phrases that contradict a withdrawal reminder ("不是一个需要马上解决的难
+    题"); a paragraph of the reply holding one is left out on that turn."""
     components: RiskComponents | None = None
     """Round 4: the kinds of risk component (means, preparation, time, an ending, ...) of
     which two in one message keep it from being said back (``guarded.components``)."""
@@ -677,6 +692,16 @@ class SubstanceCues:
     stop_patterns: tuple[re.Pattern[str], ...] = ()
     """Stopping as grammar, on the folded text ("一粒也不吃", "再也不喝", "全都不吃"):
     read like ``stopping``."""
+    # Round 7 (2026-11-01, re-test q2 第 6 节 / q3 第三节; draft, G-0).
+    stop_taper: tuple[str, ...] = ()
+    """Tapering ("慢慢减", "减量"): a stop on one's own unless a doctor leads it."""
+    stop_missed: tuple[re.Pattern[str], ...] = ()
+    """Missed doses ("两天没吃", "忘带了"): a stop, only for a medicine named by class."""
+    stop_others: tuple[re.Pattern[str], ...] = ()
+    """Someone else's medicine ("我妈的降压药"): the general reminder."""
+    classes: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    """Class id -> the names of that kind of drink or medicine (round 7): the reminder names
+    only the kind the message names."""
 
 
 def _no_feelings() -> Feelings:
@@ -1170,6 +1195,10 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         hotline_in_crisis=crisis_lists["hotline_in_crisis"],
         hotline_call_script=crisis_lists["hotline_call_script"],
         hotline_number_known=texts["hotline_number_known"],
+        hotline_which=crisis_lists["hotline_which"],
+        hotline_police_fear=crisis_lists["hotline_police_fear"],
+        hotline_first_words=crisis_lists["hotline_first_words"],
+        hotline_purposes_known=texts["hotline_purposes_known"],
         hotline_number_unknown=crisis_lists["hotline_number_unknown"],
         hotline_place_hint=crisis_lists["hotline_place_hint"],
         unknown_command=texts["unknown_command"],
@@ -1752,6 +1781,7 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         notices[name] = lines
     guarded_acks, affirmations, extra = _parse_guarded(data.get("guarded"), where)
     craving, said_lines, stopping = _parse_substance_lines(data.get("substance"), where)
+    by_class, conflicts = _parse_withdrawal_classes(data.get("substance"), where)
     guarded = data.get("guarded")
     extras = _map(guarded, f"{where} guarded") if guarded is not None else {}
     here = f"{where} guarded"
@@ -1794,6 +1824,8 @@ def _parse_utterances(data: Mapping[str, Any]) -> Utterances:
         craving_acks=craving,
         stopping_acks=stopping,
         substance_lines=MappingProxyType(said_lines),
+        withdrawal_classes=MappingProxyType(by_class),
+        urgent_conflicts=conflicts,
         components=components,
         self_blame=blame_cues,
         self_blame_acks=blame_acks,
@@ -1880,7 +1912,12 @@ def _parse_substance_lines(
         return (), {}, ()
     here = f"{where} substance"
     item = _map(node, here)
-    _keys(item, {"craving", *SUBSTANCE_LINES}, here, optional={"stopping"})
+    _keys(
+        item,
+        {"craving", *SUBSTANCE_LINES},
+        here,
+        optional={"stopping", "withdrawal_classes", "urgent_conflicts"},
+    )
     craving = _mirror_lines(item["craving"], f"{here}.craving")
     stopping = _mirror_lines(item["stopping"], f"{here}.stopping") if "stopping" in item else ()
     lines: dict[str, str] = {}
@@ -1901,6 +1938,39 @@ def _parse_substance_lines(
             raise LanguageDataError(f"{here}.{name}: the withdrawal line sends to a doctor")
         lines[name] = line
     return craving, lines, stopping
+
+
+def _parse_withdrawal_classes(node: Any, where: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    """``substance.withdrawal_classes`` and ``substance.urgent_conflicts`` (round 7; draft,
+    G-0): plain lines like ``withdrawal`` (no slot, digit or dose, one paragraph of at
+    most 80 characters, sending to a doctor), and phrases (optional)."""
+    if node is None:
+        return {}, ()
+    here = f"{where} substance"
+    item = _map(node, here)
+    lines: dict[str, str] = {}
+    if "withdrawal_classes" in item:
+        for name, raw in _map(item["withdrawal_classes"], f"{here}.withdrawal_classes").items():
+            line = _str(raw, f"{here}.withdrawal_classes.{name}")
+            if (
+                slots_of(line)
+                or any(ch.isdigit() for ch in line)
+                or any(w in line for w in _DOSE_WORDS)
+                or "\n" in line
+                or len(line) > _NOTICE_MAX
+                or "医" not in line
+            ):
+                raise LanguageDataError(
+                    f"{here}.withdrawal_classes.{name}: a plain line with no slot, number or"
+                    f" dose, at most {_NOTICE_MAX} characters, sending to a doctor: {line!r}"
+                )
+            lines[name] = line
+    conflicts = (
+        _strs(item["urgent_conflicts"], f"{here}.urgent_conflicts")
+        if "urgent_conflicts" in item
+        else ()
+    )
+    return lines, tuple(conflicts)
 
 
 def _check_unaffirmed(tpl: Templates, affirmations: tuple[str, ...], where: str) -> None:
@@ -1948,6 +2018,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
             *lists,
         },
         where,
+        optional={"classes"},
     )
     _version(data, where)
 
@@ -1961,16 +2032,29 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     _keys(raw, {"signs", "severe", "questions"}, f"{where} withdrawal")
     v = {name: folded(data[name], f"{where} {name}") for name in lists}
     stop = _map(data["stopping"], f"{where} stopping")
-    _keys(stop, {"objects", "phrases", "guided"}, f"{where} stopping", optional={"patterns"})
-    stop_patterns: list[re.Pattern[str]] = []
-    for raw_pattern in _strs(stop.get("patterns", []), f"{where} stopping.patterns"):
-        try:
-            compiled = re.compile(raw_pattern)
-        except re.error as exc:
-            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r}: {exc}") from exc
-        if compiled.fullmatch(""):
-            raise LanguageDataError(f"{where} stopping.patterns: {raw_pattern!r} matches empty")
-        stop_patterns.append(compiled)
+    _keys(
+        stop,
+        {"objects", "phrases", "guided"},
+        f"{where} stopping",
+        optional={"patterns", "taper", "missed", "others"},
+    )
+
+    def compiled(key: str) -> tuple[re.Pattern[str], ...]:
+        out: list[re.Pattern[str]] = []
+        for raw_pattern in _strs(stop[key], f"{where} stopping.{key}") if key in stop else ():
+            try:
+                pattern = re.compile(raw_pattern)
+            except re.error as exc:
+                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r}: {exc}") from exc
+            if pattern.fullmatch(""):
+                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r} matches empty")
+            out.append(pattern)
+        return tuple(out)
+
+    classes = {
+        str(name): folded(words, f"{where} classes.{name}")
+        for name, words in _map(data.get("classes", {}), f"{where} classes").items()
+    }
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -1995,7 +2079,11 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_objects=folded(stop["objects"], f"{where} stopping.objects"),
         stopping=folded(stop["phrases"], f"{where} stopping.phrases"),
         stop_guided=folded(stop["guided"], f"{where} stopping.guided"),
-        stop_patterns=tuple(stop_patterns),
+        stop_patterns=compiled("patterns"),
+        stop_taper=folded(stop["taper"], f"{where} stopping.taper") if "taper" in stop else (),
+        stop_missed=compiled("missed"),
+        stop_others=compiled("others"),
+        classes=MappingProxyType(classes),
     )
 
 
@@ -2056,6 +2144,9 @@ _CRISIS_LISTS: Final = (
     "hotline_place_hint",
     "hotline_in_crisis",
     "hotline_call_script",
+    "hotline_which",
+    "hotline_police_fear",
+    "hotline_first_words",
 )
 """render.yaml ``crisis`` line lists of the 2026-10-26 safety replies (draft, G-0)."""
 _CRISIS_TEXTS: Final = (
@@ -2070,6 +2161,7 @@ _CRISIS_TEXTS: Final = (
     "hotline_local_emergency_intro",
     "hotline_hours_from_data",
     "hotline_number_known",
+    "hotline_purposes_known",
     "unknown_command",
 )
 """render.yaml ``crisis`` single lines of the same replies."""

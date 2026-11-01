@@ -910,6 +910,11 @@ class Session:
         # the emergency numbers).
         self._third_party_urgent = False
         self._resources_turn: int | None = None
+        # Round 7 (re-test q4 B5): where the user said they are now ("我现在在大阪交换"):
+        # (region code, country code); a later hotline request names that place's numbers.
+        self._said_place: tuple[str, str | None] | None = None
+        # Round 7: the turn whose reply led with a medication or withdrawal line.
+        self._boundary_turn: int | None = None
         self._care_turn: int | None = None
         # Round 4: this turn reports someone else's words and every rule cue lies in them
         # (set by ``_reported_risk``; a model-only alarm on it asks, never the crisis flow).
@@ -1301,6 +1306,7 @@ class Session:
         pending = self._pending
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
+        signals = self._place_said(text, signals)
         before_turns = self._state.global_turn_count
         # dogfood I2: a practice the user's own heart or breathing condition masks, named on
         # a calm turn, is a request for a practice (another one while a card waits, as F16b
@@ -1429,6 +1435,7 @@ class Session:
                 or followup
                 or signals.hotline_number is not None
                 or signals.hotline_call_script
+                or signals.hotline_police_fear
             )
         )
         transition = step(
@@ -1606,7 +1613,12 @@ class Session:
                 # 室友也在" is no confirmation, and the user may not know what is).
                 and (self._engine.reassures(text) or calm_words)
             )
-            reaches = status.in_crisis and self._reaches_out(text, assessment)
+            # Round 7: "我想打电话，打哪个好" asks which line; it is no reaching out to someone.
+            reaches = (
+                status.in_crisis
+                and not (signals.hotline_which or signals.hotline_request)
+                and self._reaches_out(text, assessment)
+            )
             if waiting and not confirmed and calm_words:
                 # Round 3: waiting to end after a confirmation, a calm turn gets an answer
                 # to its words and one line of every number (SDD §8.2's compact card); no
@@ -1616,8 +1628,12 @@ class Session:
             else:
                 # Round 6 (re-test q2 第 5 节): asked for the police or ambulance number, or
                 # how to talk on that call, the card puts the emergency numbers first.
-                emergency = signals.hotline_emergency or (
-                    signals.hotline_call_script and self._names_emergency(text)
+                emergency = (
+                    signals.hotline_emergency
+                    # Round 7: which line to call, or a police call feared.
+                    or signals.hotline_which
+                    or signals.hotline_police_fear
+                    or (signals.hotline_call_script and self._names_emergency(text))
                 )
                 rendered = self._crisis(
                     status, now, confirmed=waiting, hint=hint, emergency=emergency
@@ -1656,7 +1672,7 @@ class Session:
             )
             self._third_party_turn = turn_no
         elif hotline_now:
-            rendered = self._hotline_reply(stage, now, signals)
+            rendered = self._hotline_reply(stage, now, signals, text)
         elif no_pending:
             rendered = self._followup(templates.no_pending_feedback, stage)
         elif forget:
@@ -1864,7 +1880,12 @@ class Session:
             # A dose or "am I X?" question gets one plain line before the reply (F3).
             boundary = self._engine.boundary_line(text)
             if boundary:
-                rendered.reply = f"{boundary}\n\n{rendered.reply}"
+                # Round 7 (复测 q3 第三节): nothing after the reminder says it can wait, on
+                # this turn or the next one.
+                self._boundary_turn = turn_no
+                rendered.reply = f"{boundary}\n\n{self._engine.without_conflicts(rendered.reply)}"
+            elif self._boundary_turn is not None and turn_no - self._boundary_turn <= 1:
+                rendered.reply = self._engine.without_conflicts(rendered.reply)
         elif withdrawal := self._engine.withdrawal_line(text):
             # Round 4 (复测 q3): a withdrawal sign gets its reminder after the crisis card or
             # the safety question too. Round 6 (复测 q2 第 6 节): before the numbers, after
@@ -2190,6 +2211,9 @@ class Session:
         ``brief_heard`` line for anything else. Only for a turn with no rule risk cue (the
         callers check); None when the gate or a taboo topic rules it out."""
         render = self._engine.data.render
+        answer = self._hotline_answer(text, signals, stage)
+        if answer is not None:
+            return answer
         if signals.hotline_call_script and render.hotline_call_script:
             # Round 6 (re-test q2 第 5 节): "打通了要怎么说" gets what to say on the line.
             line = self._plain_line(render.hotline_call_script, stage)
@@ -2243,6 +2267,71 @@ class Session:
             return None
         line = self._plain_line(pool, stage)
         return None if line is None or self._has_taboo(line[0], "") else line[0]
+
+    def _hotline_answer(self, text: str, signals: TurnSignals, stage: HelpStage) -> str | None:
+        """Round 7 (re-test q2 第 6 节; drafts, G-0): the answer to a question about the
+        numbers in the crisis flow, before any generic line: whether a police call gets one
+        arrested, what each number (or the one asked about) is in the signed hotline data,
+        which line to call, and the first words on a hotline call. None for none of these."""
+        render = self._engine.data.render
+        if signals.hotline_police_fear and (line := self._crisis_line(render.hotline_police_fear)):
+            return line
+        if signals.hotline_purposes:
+            note = self._purposes_note(self._named_numbers(text))
+            if note is not None:
+                return note
+        if signals.hotline_number is not None:
+            note = self._number_note(signals.hotline_number)
+            if note is not None:
+                return note
+        if signals.hotline_which and (line := self._crisis_line(render.hotline_which)):
+            return line
+        if self._first_words(text, signals):
+            return self._crisis_line(render.hotline_first_words)
+        return None
+
+    def _first_words(self, text: str, signals: TurnSignals) -> bool:
+        """Round 7: the first words on a call are asked about and no emergency is named
+        (the emergency call has its own script, ``crisis.hotline_call_script``)."""
+        folded = normalize(text)
+        return (
+            signals.hotline_call_script
+            and _FIRST_WORDS.search(folded) is not None
+            and not signals.hotline_emergency
+            and not self._names_emergency(text)
+        )
+
+    def _crisis_line(self, pool: tuple[str, ...]) -> str | None:
+        """One plain line of ``pool`` through the gate, None when blocked or empty."""
+        if not pool:
+            return None
+        line = self._plain_line(pool, HelpStage.S_CRISIS)
+        return None if line is None or self._has_taboo(line[0], "") else line[0]
+
+    def _purposes_note(self, named: frozenset[str]) -> str | None:
+        """What every number of the region's card is, as the signed hotline data says
+        (round 7, re-test q2 第 6 节): ``crisis.hotline_purposes_known``, then "number:
+        purpose or name" for the emergency numbers and the lines (only the named ones when
+        the message names some of them). None when the gate blocks it; nothing is guessed."""
+        render = self._engine.data.render
+        card = self._region_card()
+        items = [(em.number, render.emergency_purposes[em.purpose]) for em in card.emergency]
+        items += [(ln.number, ln.name_zh) for ln in card.lines]
+        if named:
+            items = [item for item in items if _digits(item[0]) in named] or items
+        if not items or not render.hotline_purposes_known:
+            return None
+        body = "\n".join(f"· {number}：{what}" for number, what in items)
+        result = self._engine.gate.check(
+            f"{render.hotline_purposes_known}\n{body}",
+            kind=ContentKind.CRISIS,
+            stage=HelpStage.S_CRISIS,
+            allowed_numbers=[number for number, _ in items],
+        )
+        self._engine.last_gate = result
+        if not self._note_gate():
+            return None
+        return result.text
 
     def _lead_with_heard(
         self, rendered: _Rendered, text: str, signals: TurnSignals, stage: HelpStage
@@ -2879,7 +2968,9 @@ class Session:
             lines_heading=render.third_party_lines_heading,
         )
 
-    def _hotline_reply(self, stage: HelpStage, now: datetime, signals: TurnSignals) -> _Rendered:
+    def _hotline_reply(
+        self, stage: HelpStage, now: datetime, signals: TurnSignals, text: str = ""
+    ) -> _Rendered:
         """The region's resources when the user asks for a hotline (问题单第 7 条, 2026-10-26,
         draft, G-0): the same verified data and entries as ``olivia resources`` (every
         emergency number and line, the minors' lines only after the user said they are
@@ -2917,6 +3008,16 @@ class Session:
                 head = render.hotline_unreachable  # round 5: "一直占线怎么办"
             if signals.hotline_call_script and render.hotline_call_script:
                 head = render.hotline_call_script  # round 6: "打通了该说什么"
+            # Round 7 (re-test q2 第 6 节): what the numbers are (the note leads instead),
+            # which line, a police call feared, first words.
+            if signals.hotline_purposes:
+                head = ()
+            if signals.hotline_which and render.hotline_which:
+                head = render.hotline_which
+            if signals.hotline_police_fear and render.hotline_police_fear:
+                head = render.hotline_police_fear
+            if self._first_words(text, signals) and render.hotline_first_words:
+                head = render.hotline_first_words
             if card.region_used == UNKNOWN_COUNTRY and (
                 signals.hotline_request or signals.hotline_place is not None
             ):
@@ -2942,7 +3043,10 @@ class Session:
             if flag and pool
         ]
         number_note: str | None = None
-        if signals.hotline_number is not None:
+        if signals.hotline_purposes and not elsewhere:
+            # Round 7: what each number is ("110跟120有啥不一样"), from the signed data only.
+            number_note = self._purposes_note(self._named_numbers(text))
+        if signals.hotline_number is not None and number_note is None:
             # Round 5 (re-test q2 第 5 节): what the number is, from the signed data only.
             number_note = self._number_note(signals.hotline_number)
             if number_note is None and render.hotline_number_unknown:
@@ -2957,6 +3061,23 @@ class Session:
         if local is not None:
             rendered.reply = f"{rendered.reply}\n\n{local}"
         return rendered
+
+    def _place_said(self, text: str, signals: TurnSignals) -> TurnSignals:
+        """Round 7 (re-test q4 B5): a place the user says they are in now ("我现在在大阪交
+        换") is kept for the session; a later hotline request with no place of its own names
+        that place, so a place without verified numbers gets the general card, never the
+        profile region's numbers as if they were local."""
+        if signals.hotline_place is not None:
+            folded = normalize(text)
+            if _PRESENT_PLACE.search(folded) and not _PAST_PLACE.search(folded):
+                self._said_place = (signals.hotline_place, signals.hotline_country)
+            return signals
+        if self._said_place is None or not (
+            signals.hotline_request or signals.hotline_number is not None
+        ):
+            return signals
+        place, country = self._said_place
+        return replace(signals, hotline_place=place, hotline_country=country)
 
     def _number_note(self, number: str) -> str | None:
         """What the signed hotline data says ``number`` is (round 5, re-test q2 第 5 节):
@@ -4135,6 +4256,14 @@ _MIN_NUMBER_DIGITS: Final = 3
 _ASK_WHAT: Final = re.compile(
     r"什么|啥|咩|乜|怎样|如何|点样|(?<!一)点(?=帮|做|讲|算|办|同|先|去|开口|劝|搞)|how(?:do|can|should)|what(?:do|can|should)"
 )
+# Round 7 (re-test q4 B5): the user says where they are now ("我现在在大阪交换", "人在首尔"),
+# not where they were ("我在日本留学的时候").
+_PRESENT_PLACE: Final = re.compile(
+    r"(?:我|人|我们)(?:现在|目前|如今|最近|这学期|今年|正|还)?(?:人)?(?:在|住在|待在|呆在|来了|到了)"
+)
+_PAST_PLACE: Final = re.compile(r"的时候|那时|那会|以前|之前|去年|曾经|当年|小时候|回来")
+# Round 7 (re-test q2 第 6 节): the first words of a call ("第一句说什么", "开口第一句").
+_FIRST_WORDS: Final = re.compile(r"第一句|头一句|开场白|开口第一|firstthing|firstwords")
 _SAY_WHAT: Final = re.compile(
     r"(?:说|讲|问|聊|开口|讲话)(?:些|点|啲|几句)?(?:什么|啥|咩|乜)|第一句|头一句|开场白"
     r"|(?:怎么|怎样|如何|点样|点)(?:说|讲|问|开口|聊|劝)|what(?:do|should|can)isay"

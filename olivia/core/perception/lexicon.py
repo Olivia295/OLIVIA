@@ -131,6 +131,11 @@ _SECTIONS: Final = frozenset(
         "hotline_call_script_patterns",
         "hotline_place_hint_patterns",
         "hotline_place_patterns",
+        "hotline_which_patterns",
+        "hotline_purpose_patterns",
+        "hotline_police_fear_patterns",
+        "hotline_other_call_patterns",
+        "help_seeking_mask_patterns",
         *_PHRASE_SECTIONS,
     }
 )
@@ -333,6 +338,17 @@ class PerceptionLexicon:
         default_factory=lambda: MappingProxyType({})
     )
     """Region code -> patterns on the raw text for places that need word edges ("the US")."""
+    # Round 7 (2026-11-01, re-test q2 第 6 节 / q3; draft, G-0).
+    hotline_which_patterns: tuple[re.Pattern[str], ...] = ()
+    """Which line to call ("该打哪支电话", "报警还是打热线", "who do I call")."""
+    hotline_purpose_patterns: tuple[re.Pattern[str], ...] = ()
+    """What each number is for, or how two differ ("110跟120有啥不一样")."""
+    hotline_police_fear_patterns: tuple[re.Pattern[str], ...] = ()
+    """Afraid a police call gets one arrested ("报了警会不会被关起来")."""
+    hotline_other_call_patterns: tuple[re.Pattern[str], ...] = ()
+    """Someone else's call or a nuisance call ("室友半夜煲电话"): ignored for hotlines."""
+    help_seeking_mask_patterns: tuple[re.Pattern[str], ...] = ()
+    """A clinic word that is no wish to go ("精神科的药"): ignored for ``help_seeking``."""
     """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
@@ -503,6 +519,21 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
             doc.get("hotline_place_hint_patterns"), "hotline_place_hint_patterns"
         ),
         hotline_place_patterns=MappingProxyType(_place_patterns(doc.get("hotline_place_patterns"))),
+        hotline_which_patterns=_patterns(
+            doc.get("hotline_which_patterns"), "hotline_which_patterns"
+        ),
+        hotline_purpose_patterns=_patterns(
+            doc.get("hotline_purpose_patterns"), "hotline_purpose_patterns"
+        ),
+        hotline_police_fear_patterns=_patterns(
+            doc.get("hotline_police_fear_patterns"), "hotline_police_fear_patterns"
+        ),
+        hotline_other_call_patterns=_patterns(
+            doc.get("hotline_other_call_patterns"), "hotline_other_call_patterns"
+        ),
+        help_seeking_mask_patterns=_patterns(
+            doc.get("help_seeking_mask_patterns"), "help_seeking_mask_patterns"
+        ),
     )
 
 
