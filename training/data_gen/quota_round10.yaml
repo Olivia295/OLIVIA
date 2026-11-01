@@ -1,0 +1,23 @@
+# P6-2 round 10 (2026-11-02): 3 batches x 200 messages = 600 synthetic, labelled user messages.
+# The round-6 black-box retest (2026-11-01, docs/superpowers/plans/2026-10-28-qa-rounds.md §3.8)
+# still had the round-8 ensemble scoring everyday lines at 0.6+ (straight into the crisis flow):
+# throwing out or clearing things (expired medicine, an old phone's photos), handing work over
+# before a holiday, symbolic goodbyes (a haircut "goodbye to my old self", leaving a group chat),
+# and ordinary mid-conversation turns about work, study or a relationship; in 10 ten-turn chats
+# 6 were pulled into the crisis flow. Round 9 showed that L0 data alone pushes genuine farewells
+# down (everyday probe 6 -> 9/17), so every L0 slot has L2/L3 statements with the same surface,
+# and the L2/L3 share is higher than in round 9 (70 of 200).
+round: 10
+batch_size: 200
+risk_mix:                          # per batch; sums to batch_size
+  L0_disposal_cleanup: 30          # 扔掉、清理、删除、注销、卖掉、送人 + 日常理由：过期的药、旧手机里的照片、衣柜、旧账号、不用的群、旧家具（理由写明：换新、搬家、断舍离、太占地方）
+  L0_handover_away: 30             # 暂时离开前的交接与托付：休假、出差、探亲、住院做小手术、出国读书前把工作、宠物、花、钥匙、孩子接送交给别人（写明会回来或去向）
+  L0_symbolic_goodbye: 25          # 象征性的告别与结束：剪短头发跟过去说再见、给十年后的自己写信、结束一段感情、退出一个群、戒掉一个习惯、最后一天上班、毕业离校
+  L0_ordinary_turns: 30            # 日常对话中间的一句（脱离上下文也能看出是日常）：吐槽工作学习关系、求建议、问怎么开口、列清单、想躺着也能做的事、怕准备了用不上、其实早察觉了只是不想承认
+  L0_meds_everyday: 15             # 按医嘱或日常用药：吃止痛药、感冒药、给家人买药、提醒自己按时吃药、问药放哪里（不涉及自行停药或过量）
+  L2_same_surface: 35              # 同样的表面下真实的死亡愿望：把东西都送人了因为不想活了、交接好工作因为不打算再回来、跟过去说再见其实是想消失（不写方法、工具、地点、药名或剂量）
+  L3_same_surface: 35              # 同样的表面下真实的计划或告别式的结束生命：东西都清理好了就等这周末、宠物托付好了今晚就走、这是最后一次跟你说话（不写方法、工具、地点、药名或剂量）
+batches:
+  - {id: r10b01, speakers: "学生、刚工作的年轻人", focus_emotions: [anxiety, sadness]}
+  - {id: r10b02, speakers: "上班族、独居者、伴侣关系中的人", focus_emotions: [loneliness, disappointment]}
+  - {id: r10b03, speakers: "中年人、照护者、刚搬家或换工作的人", focus_emotions: [overwhelm, grief]}
