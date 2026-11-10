@@ -102,7 +102,7 @@ md(r"""
    - 按标注规范 v0.2 处理第三、四轮：`python training/data_gen/relabel_v02.py <合并文件> --out round1.jsonl [--include-mixed 4:L0_med_self_adjust ...]`（问药问诊断三个槽位都混有决定与知识问题，默认不改，只报告；整槽改须明确指定）；
    - 导出用例：`.venv/bin/python training/colab/export_olivia_data.py [--dev-eval build/eval/interim_fresh.csv] --fresh-eval <独立评估集.csv> --exclude-csv build/eval/redteam_texts.csv`（红队 `tests/redteam/cases.yaml` 与多轮场景 `tests/redteam/multiturn.yaml` 的全部用户输入总会作为 `exclude` 行导出）；
    - 上传到 Drive：`round1.jsonl` → `OLIVIA_perception/raw/synthetic/`，`olivia_cases.csv` → `OLIVIA_perception/raw/olivia/`。
-2. Colab：运行时类型选 GPU，“运行时 → 全部运行”。教师 5 折 + 最终模型是主要耗时（数据约 4,000 条时 T4 上约 1 小时），学生模型几分钟。
+2. Colab：运行时类型选 GPU，“运行时 → 全部运行”。Kaggle：把两个文件放进一个私有数据集并加到 Input，Accelerator 选 GPU T4 x2、打开 Internet，“Save Version → Save & Run All”；输入自动复制到 `/kaggle/working/OLIVIA_perception`，产出随版本保存（学生 notebook 再把本 notebook 的输出加到 Input 即可）。教师 5 折 + 最终模型是主要耗时（数据约 4,000 条时 T4 上约 1 小时），学生模型几分钟。
 3. 断开后重新“全部运行”是安全的：已完成的折、最终教师、学生模型在配置与数据未变时直接复用；每个测试集只测一次（除非 `FORCE_RETEST = True`）。
 
 ## 产出（`DRIVE_ROOT/` 下）
@@ -134,6 +134,8 @@ try:
     IN_COLAB = True
 except ImportError:
     IN_COLAB = False
+import os
+IN_KAGGLE = not IN_COLAB and os.path.isdir("/kaggle/input")  # Kaggle：输入在只读的 /kaggle/input，产出写 /kaggle/working
 """)
 
 code(r"""
@@ -154,6 +156,8 @@ if DEVICE.type == "cuda":
     print("GPU:", torch.cuda.get_device_name(0))
 elif IN_COLAB:
     print("提示：当前没有 GPU。请在“运行时 → 更改运行时类型”中选择 GPU 后重新运行。")
+elif IN_KAGGLE:
+    print("提示：当前没有 GPU。请在右侧 Session options 的 Accelerator 里选 GPU T4 x2 后重新运行。")
 
 
 def set_seed(seed):
@@ -172,7 +176,35 @@ md("## 2. 配置区（所有可变项集中于此）")
 
 code(r"""
 SMOKE_TEST = os.environ.get("OLIVIA_SMOKE_TEST") == "1"  # 本地 CPU 冒烟测试用；Colab 上保持关闭
-DRIVE_ROOT = os.environ.get("OLIVIA_PERCEPTION_ROOT", "/content/drive/MyDrive/OLIVIA_perception")
+DRIVE_ROOT = os.environ.get("OLIVIA_PERCEPTION_ROOT", "/kaggle/working/OLIVIA_perception" if IN_KAGGLE
+                            else "/content/drive/MyDrive/OLIVIA_perception")
+
+
+def stage_kaggle_inputs(root, source="/kaggle/input"):
+    # Kaggle 没有 Drive：把挂在 /kaggle/input 下的数据集（round1.jsonl、olivia_cases.csv）和上一个 notebook 的
+    # 产出（含 OLIVIA_perception/ 目录，比如教师 notebook 的输出）复制到可写的 root，后面的代码与 Colab 完全相同
+    import shutil
+    wanted = {"round1.jsonl": ("raw", "synthetic"), "olivia_cases.csv": ("raw", "olivia")}
+    for dirpath, dirnames, filenames in os.walk(source):
+        dirnames.sort()
+        if os.path.basename(dirpath) == "OLIVIA_perception":
+            shutil.copytree(dirpath, root, dirs_exist_ok=True)
+            print("已复制上一个 notebook 的产出：", dirpath)
+            dirnames[:] = []
+            continue
+        for name in filenames:
+            if name in wanted:
+                target = os.path.join(root, *wanted[name], name)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(os.path.join(dirpath, name), target)
+                print("已复制输入：", os.path.join(dirpath, name))
+    missing = [n for n, parts in wanted.items() if not os.path.exists(os.path.join(root, *parts, n))]
+    if missing:
+        raise FileNotFoundError(f"{source} 下没找到 {missing}：在右侧 Input 里加上放这两个文件的数据集")
+
+
+if IN_KAGGLE and "OLIVIA_PERCEPTION_ROOT" not in os.environ:
+    stage_kaggle_inputs(DRIVE_ROOT)
 
 # ---- 教师模型 ----
 ENCODER = "hfl/chinese-roberta-wwm-ext"

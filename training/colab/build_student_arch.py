@@ -141,7 +141,7 @@ md(r"""
 
 - 先用**同一份** `raw/synthetic/round1.jsonl` 与 `raw/olivia/olivia_cases.csv` 跑完 `perception_teacher.ipynb`（至少到第 8 节，教师蒸馏目标已缓存）。本 notebook 用与主 notebook 逐字相同的代码重建训练池、泄露剔除、分折与学生留出划分，并核对三个指纹：教师配置（`config_fingerprint`）、学生训练文本 + 教师（`cache/teacher_targets.npz`）、各折教师的蒸馏输出（`fold_*.npz` 的 `kd_fingerprint`）。任何一个对不上就停下：说明数据或配置变了，要先重跑主 notebook。
 - `olivia_cases.csv` 要带开发集：本地 `export_olivia_data.py --dev-eval build/eval/interim_fresh.csv ...`。开发集、独立评估集、探针、排除集都参与泄露剔除，所以开发集换了文件也要先重跑主 notebook。
-- Colab 运行时选 GPU，“全部运行”。四个变体共训练 6 个模型（集成的第 1 个成员复用基线），每个都在 Drive 上存检查点，断开后重跑会直接复用。
+- Colab 运行时选 GPU，“全部运行”。Kaggle：Input 里加上放两个原始文件的数据集和教师 notebook 的输出（其中的 `OLIVIA_perception/` 会自动复制到 `/kaggle/working/`），Accelerator 选 GPU T4 x2，“Save & Run All”。四个变体共训练 6 个模型（集成的第 1 个成员复用基线），每个都在 Drive 上存检查点，断开后重跑会直接复用。
 
 ## 产出（`DRIVE_ROOT/` 下）
 
