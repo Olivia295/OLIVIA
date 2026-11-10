@@ -154,7 +154,7 @@ md(r"""
 
 md("## 1. 环境（与主 notebook 相同）")
 
-code(main_cell("IN_COLAB = True"))
+code(main_cell("IN_COLAB = not IN_KAGGLE"))
 
 code(main_cell("# 环境检查、随机种子与挂载 Drive"))
 

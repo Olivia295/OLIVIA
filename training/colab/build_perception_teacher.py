@@ -129,13 +129,14 @@ md("## 1. 环境")
 
 code(r"""
 # 依赖：直接用 Colab 预装的 torch / transformers / scikit-learn / pandas（不固定版本，实际版本在下一单元打印）
+import os
+# Kaggle：输入在只读的 /kaggle/input，产出写 /kaggle/working。Kaggle 镜像里也装了 google.colab 包，所以先判断 Kaggle
+IN_KAGGLE = bool(os.environ.get("KAGGLE_KERNEL_RUN_TYPE")) or os.path.isdir("/kaggle/input")
 try:
     import google.colab  # noqa: F401
-    IN_COLAB = True
+    IN_COLAB = not IN_KAGGLE
 except ImportError:
     IN_COLAB = False
-import os
-IN_KAGGLE = not IN_COLAB and os.path.isdir("/kaggle/input")  # Kaggle：输入在只读的 /kaggle/input，产出写 /kaggle/working
 """)
 
 code(r"""
