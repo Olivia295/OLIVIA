@@ -219,6 +219,9 @@ controls:
 evidence:
   - tests/safety/test_method_seeking.py::test_method_request_is_at_least_l2
   - tests/safety/test_method_seeking.py::test_masks_never_hide_a_method_request
+  - tests/safety/test_method_seeking.py::test_a_request_word_and_an_anchor_in_any_order_are_l2
+  - tests/safety/test_rules_method_r8.py::test_a_way_asked_for_someone_else_asks_the_question
+  - tests/safety/test_rules_method_r8.py::test_the_session_asks_and_a_yes_enters_the_crisis_flow
   - tests/safety/test_method_seeking.py::test_no_negation_or_hyperbole_mask_contains_a_method_phrase
   - tests/safety/test_intent_ask.py::test_euphemistic_request_asks_at_l1
   - tests/safety/test_veiled_requests.py::test_veiled_request_or_goodbye_for_good_asks_at_l1
@@ -334,6 +337,7 @@ evidence:
   - tests/safety/test_rules_generalize_round3.py::test_an_embedded_or_english_cue_asks_in_a_session
   - tests/safety/test_normalize.py::test_curly_apostrophes_fold_to_ascii
   - tests/safety/test_intent_ask.py::test_an_english_unsure_word_voids_an_english_denial
+  - tests/safety/test_rules_method_r8.py::test_a_last_day_said_as_now_stays_l2
 residual: {severity: 灾难性, likelihood: 中, risk: 4}
 status: 部分控制
 known_gaps:
@@ -399,6 +403,7 @@ evidence:
   - tests/safety/test_crisis.py::test_the_hyperbole_cap_needs_every_risk_phrase_figurative
   - tests/safety/test_crisis.py::test_a_model_failure_on_a_denial_still_fails_safe_to_l2
   - tests/safety/test_hyperbole_ask.py::test_any_other_cue_or_veto_keeps_l2_or_above
+  - tests/safety/test_rules_method_r8.py::test_a_run_of_days_after_a_pain_cleft_keeps_the_figure_at_l2
   - tests/session/test_session_safety_round2.py::test_a_new_risk_cue_after_the_no_still_enters_the_crisis_flow
   - tests/session/test_session_safety_round2.py::test_a_no_with_a_rule_cue_keeps_the_models_level
 residual: {severity: 灾难性, likelihood: 低, risk: 4}
@@ -491,6 +496,8 @@ evidence:
   - tests/safety/test_hyperbole_ask.py::test_the_frame_alone_is_l1_with_the_question
   - tests/safety/test_hyperbole_ask.py::test_everyday_death_idioms_are_unchanged
   - tests/safety/test_lexicon_gaps.py::test_daily_talk_stays_below_l2_and_asks_nothing
+  - tests/safety/test_rules_method_r8.py::test_a_last_day_imagined_is_no_crisis
+  - tests/safety/test_method_seeking.py::test_everyday_prevention_grief_and_help_stay_below_l2
   - tests/safety/test_crisis.py::test_injected_model_is_at_most_l1_where_a_hyperbole_cue_covers_every_risk_phrase
   - tests/perception/test_student.py::test_everyday_plans_and_farewells_rarely_reach_l2
   - tests/session/test_session_ask_first.py::test_a_clear_no_stays_in_ordinary_talk_without_a_care_flag
@@ -1014,6 +1021,7 @@ evidence:
   - tests/safety/test_lexicon_gaps.py::test_the_users_own_words_or_an_unclear_speaker_keep_l2
   - tests/safety/test_lexicon_gaps.py::test_reported_speech_fails_toward_keeping_the_phrase
   - tests/safety/test_lexicon_gaps.py::test_a_method_request_for_someone_else_is_never_reported_speech
+  - tests/safety/test_method_seeking.py::test_the_worried_friends_words_stay_someone_elses
   - tests/session/test_session_flows_round3.py::test_cannot_reach_them_is_an_emergency_even_after_a_plain_report
   - tests/redteam/test_redteam.py::test_case
 residual: {severity: 灾难性, likelihood: 低, risk: 4}
