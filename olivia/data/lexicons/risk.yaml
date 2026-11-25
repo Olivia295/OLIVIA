@@ -4493,6 +4493,53 @@ compositions:
                "面试", "签约", "约会", "交房", "开工", "动工"]
       unless_window: 24
       unless_across: true
+  # G2b-2 (2026-11-25): entries that count only in a session context (`after`), matched
+  # apart from `entries`: alone they are no cue at all (no level, no question, rule_clear
+  # untouched) and the screen only reports them (SafetyScreen.context_cues); the
+  # session reads them (Session._in_context). `after: crisis` (ASK entries, the farewell
+  # family) counts in a session that has been in the crisis flow: after a safety
+  # confirmation it asks the question first (负责人 2026-11-01 决定, §9.4 第 33 条), after the
+  # crisis ended it is L2 at once (§9.4 第 18 条). `after: own_risk` (L3 entries) counts
+  # after the user's own L2 or higher risk earlier in the session: a plan and a time with
+  # nothing named is then a plan to die (PRD §9.1 L3, 明确计划 + 时限); after a confirmation
+  # it asks first instead, and anything but a no is L3. Each keeps the everyday voids of its
+  # standalone counterpart.
+  context_entries:
+    # Going at a time, said in a session that has been in the crisis flow (下礼拜一我就走,
+    # 等过完这个月我就走了). Alone this is a new job, a move or a trip (ASK_INTENT_GO_AT_TIME
+    # needs a nearer time); a trip, a ticket, work, a meal or an errand voids it here too.
+    - id: ASK_INTENT_GO_AT_TIME_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["就走", "就离开", "就走了", "就离开了", "就要走了", "就要离开了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      also:
+        - {phrases: ["@plan_time", "礼拜", "下个月", "月底", "年后", "过年", "过完", "等过", "生日", "考完", "那天",
+                     "之后", "以后", "这个月", "下个星期"], window: 16}
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "去", "说", "讲", "消息", "告诉我", "留言",
+               "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
+    # Going all the same (我还是打算走, 我决定了还是要走), the clause ending there: as above.
+    - id: ASK_INTENT_STILL_GO_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["还是想走", "还是要走", "还是决定走", "还是打算走", "还是会走", "还是得走", "还是准备走",
+              "还是想离开", "还是要离开", "还是打算离开", "还是决定离开", "决定要走", "决定走了", "决定了要走",
+              "决定了走", "打算走了", "准备走了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "发展", "去", "说", "讲", "消息", "告诉我",
+               "留言", "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]

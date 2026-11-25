@@ -355,8 +355,14 @@ class CrisisTracker:
         self._veto_matcher = PhraseMatcher(
             {phrase: cue.id for cue in lexicons.cues("confirm_veto") for phrase in cue.patterns}
         )
+        rules = lexicons.compositions
+        # G2b-2: a context-only cue the session reads as a question (``Session``) is of the
+        # farewell family too.
         self._raise_ids = frozenset(
-            entry.id for entry in lexicons.compositions.entries if entry.raise_with_risk
+            [
+                *(entry.id for entry in rules.entries if entry.raise_with_risk),
+                *(entry.id for entry in rules.context_entries),
+            ]
         )
         self._figure_id = lexicons.hyperbole_ask.id
         # The F10 denial conditions guard the clause reading (S5): any veto or contrast of

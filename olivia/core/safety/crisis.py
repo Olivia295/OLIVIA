@@ -90,7 +90,7 @@ import numbers
 import re
 from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import accumulate
 from typing import Final, Literal, Protocol, TypeVar
 
@@ -290,6 +290,11 @@ class _CueIndex:
             _PAIR_KEY + phrase for pair in pairs for phrase in pair.anchors
         )
         self.composer = Composer(lexicons.compositions)
+        # G2b-2: the compositions that count only in a session context, matched apart.
+        self.context_composer = Composer(
+            replace(lexicons.compositions, entries=lexicons.compositions.context_entries)
+        )
+        self._contexts: dict[str, tuple[str, ...]] = {}
         # Round 6 (2026-10-30): the last few scans, by normalized text. The rule screen and
         # a model screen share this index, and in model mode both screen each message
         # (the rule screen's level decides the mirror and the D3 answer): the second pass
@@ -329,6 +334,14 @@ class _CueIndex:
         if hits is None:
             hits = _remember(self._compositions, text, tuple(self.composer.find(text)))
         return list(hits)
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """The ids of the context-only compositions that fire in ``text`` (G2b-2)."""
+        ids = self._contexts.get(text)
+        if ids is None:
+            found = _unique_ids(hit.entry.id for hit in self.context_composer.find(text))
+            ids = _remember(self._contexts, text, found)
+        return ids
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
         """Pair cues with a request and an anchor that none of their exceptions contains."""
@@ -980,6 +993,13 @@ class SafetyScreen:
         return not any(
             m.key in self._index.pair_anchor_keys and not negations.contains(m) for m in matches
         )
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """G2b-2 (2026-11-25): the ids of the ``compositions.context_entries`` that fire in
+        ``text``. They are no cue of ``assess`` (no level, no D3 cue, ``rule_clear``
+        untouched); the session reads them in its own context (``Composition.after``) and
+        asks for them only when that context could make them count."""
+        return self._index.context_cues(normalize(text))
 
     def about_others(self, text: str) -> bool:
         """The message is about a specific other person and says nothing of the user's own

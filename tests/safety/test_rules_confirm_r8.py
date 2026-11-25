@@ -11,6 +11,10 @@
    "不是难过，就是好奇": the 不是不 inside that first clause is the double negation of not
    wanting to live (or of an unhappy feeling), no hedge. "不是不想死" is the double negation
    of not wanting to die, a wish to die: the rules rate it L2 and it stays no no.
+3.-5. The compositions that count only in a session context (``compositions.
+   context_entries``: going at a time or all the same, starting over, a plan and a time with
+   nothing named) are no cue for the screen: it only reports them
+   (``SafetyScreen.context_cues``), and the session reads them.
 
 Every sentence here was written for this round; none comes from an evaluation set or the
 red-team suite.
@@ -18,12 +22,17 @@ red-team suite.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+from typing import Any
+
 import pytest
+import yaml
 
 from olivia.core.models import CrisisLevel as L
 from olivia.core.safety.crisis import SafetyScreen
 from olivia.core.safety.intent_check import IntentAnswer, read_answer
-from olivia.core.safety.lexicon import load_safety_lexicons
+from olivia.core.safety.lexicon import LexiconError, load_safety_lexicons
 from olivia.core.taxonomy import load_taxonomy
 
 TAX = load_taxonomy()
@@ -163,3 +172,84 @@ def test_not_wanting_to_die_negated_or_risk_after_stays_unclear(text: str, stric
 @pytest.mark.parametrize("text", ["不是不想死，就是太累了", "我不是不想死，就是没力气"])
 def test_not_not_wanting_to_die_is_a_risk_for_the_screen(text: str) -> None:
     assert SCREEN.assess(text).level >= L.L2
+
+
+# -- 3.-5. cues that count only in a session context ------------------------------------------
+
+CONTEXT_ONLY = [
+    ("下礼拜一我就走", "ASK_INTENT_GO_AT_TIME_AFTER_CRISIS"),
+    ("我还是打算走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
+    ("我决定了还是要走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
+]
+
+
+@pytest.mark.parametrize(("text", "cue"), CONTEXT_ONLY)
+def test_a_context_only_cue_is_reported_and_counts_for_nothing(text: str, cue: str) -> None:
+    result = SCREEN.assess(text)
+    assert cue in SCREEN.context_cues(text)
+    assert cue not in result.cue_ids
+    assert result.level is L.L0
+    assert result.rule_clear
+    assert not result.asks_intent
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "下礼拜一我就走，去新公司报到",
+        "我还是打算走，回老家发展",
+    ],
+)
+def test_everyday_denied_or_someone_elses_words_are_no_context_cue(text: str) -> None:
+    assert not SCREEN.context_cues(text)
+
+
+def test_context_entries_are_apart_from_the_entries() -> None:
+    rules = LEX.compositions
+    ids = {e.id for e in rules.context_entries}
+    assert ids == {cue for _, cue in CONTEXT_ONLY}
+    assert ids.isdisjoint(e.id for e in rules.entries)
+    for entry in rules.context_entries:
+        assert entry.after in {"crisis", "own_risk"}
+        assert entry.ask == (entry.after == "crisis")
+        assert entry.level is (L.L1 if entry.ask else L.L3)
+    assert all(e.after is None for e in rules.entries)
+
+
+PKG_LEX = Path(__file__).resolve().parents[2] / "olivia" / "data" / "lexicons"
+
+
+def _copy(tmp_path: Path, change: Any) -> Path:
+    d = tmp_path / "lex"
+    shutil.copytree(PKG_LEX, d)
+    data = yaml.safe_load((d / "risk.yaml").read_text(encoding="utf-8"))
+    change(data)
+    (d / "risk.yaml").write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return d
+
+
+def _first_context(data: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = data["compositions"]["context_entries"][0]
+    return entry
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda d: _first_context(d).update(after="later"),
+        lambda d: _first_context(d).pop("after"),
+        lambda d: _first_context(d).update(after="own_risk"),  # an ASK entry after own_risk
+        lambda d: d["compositions"]["entries"][0].update(after="crisis"),
+        lambda d: d["put_away_ask"].update(ids=["S1_NO_SUCH_ENTRY"]),
+    ],
+)
+def test_a_wrong_context_entry_or_put_away_id_is_rejected(tmp_path: Path, change: Any) -> None:
+    with pytest.raises(LexiconError):
+        load_safety_lexicons(TAX, _copy(tmp_path, change))
+
+
+def test_without_the_put_away_section_it_is_plain_l3(tmp_path: Path) -> None:
+    lex = load_safety_lexicons(TAX, _copy(tmp_path, lambda d: d.pop("put_away_ask")))
+    result = SafetyScreen(TAX, lex).assess("我不想死，刀我已经收好了")
+    assert result.level is L.L3
+    assert not result.plan_candidate

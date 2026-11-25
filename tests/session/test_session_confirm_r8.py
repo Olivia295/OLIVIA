@@ -8,6 +8,11 @@
    session (a rule L1 or a D3 cue, or a crisis) it is L3 at once, as before.
 2. "不是不想活，就是太累了" answers a direct question (D3 or a model-only alarm's) with a no;
    "不是不想死，就是太累了" (a wish to die) still enters the crisis flow.
+3. 负责人 2026-11-01 决定 (§9.4 第 33 条), rules mode: after a safety confirmation in a crisis,
+   going at a time or going all the same ("下礼拜一我就走", "我还是打算走", "我决定了还是要走")
+   asks the direct question first; a confirmation taken back still voids it at once. These
+   words count only in a session that has been in the crisis flow: on their own (a new
+   job, a move) they are ordinary talk.
 
 Every sentence here was written for this round; none comes from an evaluation set or the
 red-team suite.
@@ -219,3 +224,73 @@ def test_not_not_wanting_to_die_enters_the_crisis(answer: str) -> None:
         result = session.turn(answer)
         assert result.in_crisis
         assert result.crisis_level >= L.L2
+
+
+# -- 3. going after a confirmation -----------------------------------------------------------
+
+
+def _confirmed() -> Session:
+    session = _session()
+    assert session.turn("我真的不想活了").in_crisis
+    session.turn("我现在安全了")
+    return session
+
+
+GOING = ["下礼拜一我就走", "我还是打算走", "我决定了还是要走", "等过完这个月我就走了"]
+
+
+@pytest.mark.parametrize("text", GOING)
+def test_going_after_a_confirmation_asks_first(text: str) -> None:
+    session = _confirmed()
+    asked = session.turn(text)
+    assert asked.in_crisis
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    assert asked.crisis_level < L.L2
+    unclear = session.turn("嗯，也许吧")
+    assert unclear.in_crisis
+    assert unclear.crisis_level >= L.L2
+
+
+def test_going_after_a_confirmation_then_a_clear_no_keeps_it() -> None:
+    session = _confirmed()
+    session.turn(GOING[0])
+    answered = session.turn("不是，我是说换工作")
+    assert answered.crisis_level < L.L2
+    session.turn("今天吃了面条")
+    assert not session.turn("天气还不错").in_crisis
+
+
+@pytest.mark.parametrize("text", GOING[:3])
+def test_going_with_no_crisis_in_the_session_is_ordinary_talk(text: str) -> None:
+    # (等过完这个月我就走了 asks on its own already: ASK_INTENT_GO_AT_TIME.)
+    result = _session().turn(text)
+    assert result.reply_kind is not ReplyKind.SAFETY_CHECK
+    assert not result.in_crisis
+    assert result.crisis_level is L.L0
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["下礼拜一我就走，去新公司报到", "我还是打算走，回老家发展", "下礼拜一我就走，票都买好了"],
+)
+def test_going_with_an_everyday_reason_after_a_confirmation_asks_nothing(text: str) -> None:
+    session = _confirmed()
+    result = session.turn(text)
+    assert result.reply_kind is not ReplyKind.SAFETY_CHECK
+
+
+def test_a_confirmation_taken_back_still_voids_it_at_once() -> None:
+    session = _confirmed()
+    result = session.turn("其实刚才是骗你的，下礼拜一我就走")
+    assert result.in_crisis
+    assert result.crisis_level >= L.L2
+
+
+def test_going_after_a_crisis_that_ended_is_the_farewell_family() -> None:
+    # §9.4 第 18 条: the farewell family after an earlier crisis is L2 at once.
+    session = _confirmed()
+    session.turn("今天吃了面条")
+    assert not session.turn("天气还不错").in_crisis
+    result = session.turn(GOING[0])
+    assert result.in_crisis
+    assert result.crisis_level >= L.L2

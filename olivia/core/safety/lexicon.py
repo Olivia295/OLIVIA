@@ -80,6 +80,7 @@ _COMP_KEYS: Final = frozenset(
         "negation_reach",
         "lists",
         "entries",
+        "context_entries",
         *_COMP_GLOBAL_LISTS,
     }
 )
@@ -110,6 +111,10 @@ _COMP_ENTRY_KEYS: Final = frozenset(
     }
 )
 _COMP_ALSO_KEYS: Final = frozenset({"phrases", "window", "negatable"})
+# G2b-2 (2026-11-25): what a context entry needs before it counts (``Composition.after``):
+# a session that has been in the crisis flow (an ASK entry, the farewell family), or the
+# user's own L2 or higher risk earlier in the session (an L3 entry, plan evidence).
+_COMP_AFTER: Final = {"crisis": "ASK", "own_risk": "L3"}
 # An inline composition list may name a shared list with this prefix ("@time"); the named
 # list's phrases are spliced in, so one entry can join several lists (time or plan).
 _LIST_REF: Final = "@"
@@ -233,6 +238,12 @@ class Composition:
     places, prepositions) stands between the two (我不打算这周末去楼顶跳下去: the plan is
     denied, so its time is no plan). Any other word ends the negator's reach (2026-10-28:
     我再也不想忍了我打算今晚从楼顶跳下去 is a plan; the 不 belongs to 忍)."""
+    after: str | None = None
+    """G2b-2 (2026-11-25): set only on a ``context_entries`` entry, which counts for nothing
+    on its own (the screen reports it in ``SafetyScreen.context_cues``): "crisis" (an
+    ASK entry) is a farewell-family question in a session that has been in the crisis flow,
+    "own_risk" (an L3 entry) is plan evidence after the user's own L2 or higher risk earlier
+    in the session (``Session``)."""
 
 
 @dataclass(frozen=True)
@@ -264,6 +275,9 @@ class CompositionRules:
     """What a negator reaches across to a ``clause_negation`` match: the words of the plan
     it denies (打算, 这周末, 去, 楼顶). Empty: only ``lookback`` applies."""
     entries: tuple[Composition, ...] = ()
+    context_entries: tuple[Composition, ...] = ()
+    """G2b-2: entries that count only in a session context (``Composition.after``); kept
+    apart so that no screen, mirror guard or report reads them as a cue of their own."""
 
 
 @dataclass(frozen=True)
@@ -780,6 +794,12 @@ def _parse_compositions(
         _parse_composition(tax, item, lists, seen_ids)
         for item in _entry_list(node, "entries", where)
     )
+    context_entries: tuple[Composition, ...] = ()
+    if "context_entries" in node:
+        context_entries = tuple(
+            _parse_composition(tax, item, lists, seen_ids, context=True)
+            for item in _entry_list(node, "context_entries", where)
+        )
     return CompositionRules(
         stops=stops,
         lookback=lookback,
@@ -794,6 +814,7 @@ def _parse_compositions(
         listeners=shared["listeners"],
         negation_reach=negation_reach,
         entries=entries,
+        context_entries=context_entries,
     )
 
 
@@ -866,11 +887,23 @@ def _parse_composition(
     item: Mapping[str, Any],
     lists: Mapping[str, tuple[str, ...]],
     seen_ids: dict[str, str],
+    *,
+    context: bool = False,
 ) -> Composition:
     where = f"{_RISK_FILE} {_COMP_SECTION} entry {item.get('id')!r}"
     cue_id = _entry_id(item, where, seen_ids)
     where = f"{_RISK_FILE} {_COMP_SECTION} entry {cue_id}"
-    _check_keys(item, set(_COMP_ENTRY_KEYS), where)
+    _check_keys(item, {*_COMP_ENTRY_KEYS, "after"} if context else set(_COMP_ENTRY_KEYS), where)
+    after: str | None = None
+    if context:
+        raw_after = item.get("after")
+        if raw_after not in _COMP_AFTER:
+            raise LexiconError(f"{where}: 'after' must be one of {list(_COMP_AFTER)}")
+        if item.get("level") != _COMP_AFTER[raw_after]:
+            raise LexiconError(
+                f"{where}: an entry after {raw_after!r} has level {_COMP_AFTER[raw_after]}"
+            )
+        after = str(raw_after)
     raw_level = item.get("level")
     if raw_level not in _COMP_LEVELS:
         raise LexiconError(f"{where}: level must be one of {list(_COMP_LEVELS)}, got {raw_level!r}")
@@ -952,6 +985,7 @@ def _parse_composition(
         raise_with_risk=raise_with_risk,
         also=also,
         clause_negation=clause_negation,
+        after=after,
     )
 
 
