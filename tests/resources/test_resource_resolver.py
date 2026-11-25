@@ -36,40 +36,42 @@ def _numbers(card: ResourceCard) -> list[str]:
     return [e.number for e in card.emergency] + [ln.number for ln in card.lines]
 
 
-# Expected card contents per region, in priority (file) order.
+# Expected card contents per region, in priority (file) order. Owner decisions 2026-10-28
+# (CN) and 2026-11-25 (the rest): every L2 card with a line to call also lists one local
+# emergency number, after its lines (``ResourceCard.emergency_leads`` is False): CN 120 (not
+# 110), HK 999, MO 999 (not the 110 and 112 that reach it), TW 119 (not 110), US 911, CA 911,
+# GB 999, AU 000. Taiwan's L3 card lists 119 before 110 (re-verification 2026-11-25).
 EXPECTED = {
     "CN": {
-        # Owner decision 2026-10-28: the mainland L2 card also lists 120 (not 110), after
-        # 12356 (``ResourceCard.emergency_leads`` is False).
         CrisisLevel.L2: (["120"], ["12356"]),
         CrisisLevel.L3: (["110", "120"], ["12356"]),
     },
     "HK": {
-        CrisisLevel.L2: ([], ["18111", "2389 2222", "2382 0000"]),
+        CrisisLevel.L2: (["999"], ["18111", "2389 2222", "2382 0000"]),
         CrisisLevel.L3: (["999"], ["18111", "2389 2222", "2382 0000"]),
     },
     "MO": {
-        CrisisLevel.L2: ([], ["2852 5222", "2871 2356"]),
+        CrisisLevel.L2: (["999"], ["2852 5222", "2871 2356"]),
         CrisisLevel.L3: (["999", "110", "112"], ["2852 5222"]),
     },
     "TW": {
-        CrisisLevel.L2: ([], ["1925", "1995", "1980"]),
-        CrisisLevel.L3: (["110", "119"], ["1925", "1995"]),
+        CrisisLevel.L2: (["119"], ["1925", "1995", "1980"]),
+        CrisisLevel.L3: (["119", "110"], ["1925", "1995"]),
     },
     "US": {
-        CrisisLevel.L2: ([], ["988", "741741"]),
+        CrisisLevel.L2: (["911"], ["988", "741741"]),
         CrisisLevel.L3: (["911"], ["988"]),
     },
     "CA": {
-        CrisisLevel.L2: ([], ["988", "686868"]),
+        CrisisLevel.L2: (["911"], ["988", "686868"]),
         CrisisLevel.L3: (["911"], ["988"]),
     },
     "GB": {
-        CrisisLevel.L2: ([], ["116 123", "111", "85258"]),
+        CrisisLevel.L2: (["999"], ["116 123", "111", "85258"]),
         CrisisLevel.L3: (["999"], ["116 123", "111"]),
     },
     "AU": {
-        CrisisLevel.L2: ([], ["13 11 14", "0477 13 11 14", "1300 22 4636"]),
+        CrisisLevel.L2: (["000"], ["13 11 14", "0477 13 11 14", "1300 22 4636"]),
         CrisisLevel.L3: (["000"], ["13 11 14"]),
     },
     "ZZ": {
@@ -206,8 +208,8 @@ def test_entries_older_than_180_days_are_flagged() -> None:
 def test_stale_flag_only_covers_shown_entries() -> None:
     card = _card("CN", CrisisLevel.L2, today=date(2030, 1, 1))
     assert card.stale_entries == ("cn_emergency_120", "cn_12356")
-    hk = _card("HK", CrisisLevel.L2, today=date(2030, 1, 1))
-    assert not any("emergency" in entry for entry in hk.stale_entries)
+    mo = _card("MO", CrisisLevel.L2, today=date(2030, 1, 1))
+    assert [e for e in mo.stale_entries if "emergency" in e] == ["mo_emergency_999"]
 
 
 def test_l2_falls_back_to_emergency_when_region_has_no_l2_line() -> None:
@@ -258,10 +260,57 @@ def test_l2_shows_emergency_numbers_when_its_lines_are_only_directories() -> Non
     assert [e.number for e in card.emergency] == ["112"]
 
 
-@pytest.mark.parametrize("code", [c for c in SUPPORTED if c not in ("ZZ", "CN")])
-def test_l2_with_a_phone_line_still_shows_no_emergency_numbers(code: str) -> None:
-    """GEO-02: an L2 card with a line to call stays as it was outside the mainland."""
-    assert _card(code, CrisisLevel.L2).emergency == ()
+# Owner decision 2026-11-25: the one emergency number each L2 card lists after its lines, and
+# what the signed data says it is for (Taiwan's 119 is fire and ambulance, never the police).
+L2_AFTER_LINES = {
+    "CN": ("120", "ambulance"),
+    "HK": ("999", "police_fire_ambulance"),
+    "MO": ("999", "police_fire_ambulance"),
+    "TW": ("119", "fire_ambulance"),
+    "US": ("911", "police_fire_ambulance"),
+    "CA": ("911", "police_fire_ambulance"),
+    "GB": ("999", "police_fire_ambulance"),
+    "AU": ("000", "police_fire_ambulance"),
+}
+
+
+def test_every_region_with_an_l2_line_lists_one_emergency_number() -> None:
+    assert set(L2_AFTER_LINES) == set(SUPPORTED) - {"ZZ"}
+
+
+@pytest.mark.parametrize("code", sorted(L2_AFTER_LINES))
+@pytest.mark.parametrize("is_minor", [False, True])
+def test_each_l2_card_lists_its_emergency_number_after_its_lines(code: str, is_minor: bool) -> None:
+    """Owner decision 2026-11-25: one number from the region's own signed emergency entries,
+    after every hotline of the card, never a second number of the same purpose."""
+    number, purpose = L2_AFTER_LINES[code]
+    card = _card(code, CrisisLevel.L2, is_minor=is_minor)
+    assert [(e.number, e.purpose.value) for e in card.emergency] == [(number, purpose)]
+    assert card.emergency[0] in STORE.region(code).emergency
+    assert card.emergency_leads is False
+    assert card.lines and all(CrisisLevel.L2 in ln.levels for ln in card.lines)
+
+
+def test_macau_l2_lists_999_not_the_numbers_that_reach_it() -> None:
+    card = _card("MO", CrisisLevel.L2)
+    assert [e.number for e in card.emergency] == ["999"]
+    assert not {"110", "112"} & set(_numbers(card))
+    # All three share one purpose in the data; the first one in the file is listed.
+    assert len({e.purpose for e in STORE.region("MO").emergency}) == 1
+
+
+def test_taiwan_l2_lists_119_and_never_110() -> None:
+    card = _card("TW", CrisisLevel.L2)
+    assert [e.number for e in card.emergency] == ["119"]
+    assert "110" not in _numbers(card)
+
+
+def test_taiwan_lists_119_before_110_on_the_l3_and_browsing_cards() -> None:
+    for card in (
+        _card("TW", CrisisLevel.L3),
+        _card("TW", CrisisLevel.L0, mode=CardMode.BROWSING),
+    ):
+        assert [e.number for e in card.emergency] == ["119", "110"]
 
 
 @pytest.mark.parametrize("is_minor", [False, True])
@@ -282,7 +331,7 @@ def test_the_mainland_l2_card_adds_120_after_its_lines(is_minor: bool) -> None:
 def test_every_other_crisis_card_leads_with_its_emergency_numbers(code: str) -> None:
     for level in CRISIS_LEVELS:
         card = _card(code, level)
-        if code == "CN" and level is CrisisLevel.L2:
+        if code in L2_AFTER_LINES and level is CrisisLevel.L2:
             continue
         assert card.emergency_leads is True
     assert _card(code, CrisisLevel.L0, mode=CardMode.BROWSING).emergency_leads is True
@@ -297,3 +346,14 @@ def test_the_120_comes_from_the_data_not_the_code() -> None:
     store = replace(STORE, regions={**STORE.regions, "CN": police_only})
     card = resolve(store, _region("CN"), CrisisLevel.L2, mode=CardMode.CRISIS, today=TODAY)
     assert card.emergency == ()
+
+
+def test_the_l2_number_is_the_first_one_of_its_purpose_in_the_data() -> None:
+    """Macau's order in the signed data decides which of its three numbers the L2 card lists."""
+    from dataclasses import replace
+
+    mo = STORE.region("MO")
+    reordered = replace(mo, emergency=(*mo.emergency[1:], mo.emergency[0]))
+    store = replace(STORE, regions={**STORE.regions, "MO": reordered})
+    card = resolve(store, _region("MO"), CrisisLevel.L2, mode=CardMode.CRISIS, today=TODAY)
+    assert [e.number for e in card.emergency] == [reordered.emergency[0].number]
