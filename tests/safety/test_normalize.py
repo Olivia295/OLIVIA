@@ -43,7 +43,7 @@ SAME_IN_TRADITIONAL = frozenset(
     # weariness and reported speech, with their everyday exceptions.
     "串乜使免入冬冰助化叔口吐吹呢味喺姨山往怨悼抱抽拔拾捆捱控描攰槽歉池泳派淡滑版甲登移竹"
     "答粗索缸翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑娘帖座微提昨近阿「『"
-    "名街逛头墓灵殡仪馆堂"
+    "名街逛头墓灵仪馆堂"
     # Round 2 (2026-10-26): heights, farewells, slang, the 别 non-negators and their
     # everyday exceptions.
     "令剁副合品哈埋培墅夏宿寄局恩截扔扛拉持探推播曝沉注流淹特球申白粉肥辣辨逑醉震音"
@@ -130,6 +130,78 @@ def test_invisible_characters_are_dropped(raw):
     assert normalize(raw) == "想死"
 
 
+# Unicode's Default_Ignorable_Code_Point (DerivedCoreProperties.txt) outside Cf, whitespace
+# and the variation selectors, which the test below already covers. Python's unicodedata
+# has no such property, so the list is static. Left out: the unassigned U+E01F0-E0FFF.
+_OTHER_DEFAULT_IGNORABLE = (
+    (0x034F, 0x034F),  # combining grapheme joiner (Mn)
+    (0x115F, 0x1160),  # Hangul choseong / jungseong filler (Lo)
+    (0x17B4, 0x17B5),  # Khmer inherent vowels (Mn)
+    (0x180B, 0x180D),  # Mongolian free variation selectors (Mn)
+    (0x180F, 0x180F),
+    (0x2065, 0x2065),  # reserved (Cn)
+    (0x3164, 0x3164),  # Hangul filler (Lo), a chat nickname's "blank"
+    (0xFFA0, 0xFFA0),  # half-width Hangul filler (Lo)
+    (0xFFF0, 0xFFF8),  # reserved (Cn)
+    (0xE0000, 0xE0000),  # reserved (Cn)
+    (0xE0002, 0xE001F),
+    (0xE0080, 0xE00FF),
+)
+
+
+@pytest.mark.parametrize(
+    "cp", [cp for first, last in _OTHER_DEFAULT_IGNORABLE for cp in range(first, last + 1)]
+)
+def test_every_default_ignorable_code_point_is_dropped(cp):
+    # Metamorphic testing (2026-11-25): one of these between two characters hid any phrase.
+    assert normalize(f"想{chr(cp)}死") == "想死"
+
+
+def test_braille_blank_is_dropped_like_the_hangul_filler():
+    assert normalize("我\u2800想\u3164死\uffa0了") == "我想死了"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("想\u0332死\u0332", "想死"),  # underlined by a "fancy text" maker
+        ("不\u0336想\u0336活\u0336了\u0336", "不想活了"),  # struck through: still read
+        ("d\u0332i\u0332e\u0332", "die"),
+        ("想\u0301\u0308\u0353死\u1ab0\u1dc0\ufe20", "想死"),  # stacked marks of every block
+        ("考了5\ufe0f\u20e30\ufe0f\u20e3分", "考了50分"),  # keycap digits
+        ("想\u20dd死", "想死"),  # enclosing circle (Me)
+    ],
+)
+def test_leftover_combining_marks_are_dropped(raw, expected):
+    assert normalize(raw) == expected
+
+
+def test_combining_marks_that_compose_are_kept():
+    # NFKC composes these before the fold, so the letter keeps its accent.
+    assert normalize("cafe\u0301") == "café"
+    assert normalize("nin\u0303o") == "niño"
+
+
+def test_every_combining_diacritical_mark_is_dropped():
+    blocks = ((0x0300, 0x036F), (0x1AB0, 0x1AFF), (0x1DC0, 0x1DFF), (0x20D0, 0x20FF))
+    blocks += ((0xFE20, 0xFE2F),)
+    # U+0345 (the Greek ypogegrammeni, written under a Greek vowel) casefolds to the letter
+    # iota before the fold, as it should.
+    marks = [
+        chr(cp)
+        for first, last in blocks
+        for cp in range(first, last + 1)
+        if unicodedata.category(chr(cp)) in ("Mn", "Me") and cp != 0x0345
+    ]
+    kept = [f"U+{ord(m):04X}" for m in marks if normalize(f"想{m}死") != "想死"]
+    assert not kept
+
+
+def test_fold_words_reads_blank_fillers_as_word_breaks():
+    assert fold_words("no\u3164i\u2800meant\uffa0it") == "no i meant it"
+    assert fold_words("no\u034fpe") == "nope"  # the joiner is invisible, not a blank
+
+
 def test_every_whitespace_and_invisible_character_is_dropped():
     # Checked against the running Python's Unicode database, so a newer database that
     # adds a format character fails here until the static ranges in normalize.py catch up.
@@ -167,6 +239,11 @@ def test_curly_apostrophes_fold_to_ascii(raw, expected):
         ("我確診了躁鬱症", "我确诊了躁郁症"),
         ("這個時候為什麼還沒來", "这个时候为什么还没来"),
         ("爲甚麼説不出口", "为甚么说不出口"),  # Hong Kong variants 爲 / 説
+        # 2026-11-25 (metamorphic testing): lexicon phrases whose Traditional form was missed.
+        ("帳號都註銷了", "账号都注销了"),
+        ("殯儀館", "殡仪馆"),
+        ("我打算參加培訓", "我打算参加培训"),
+        ("偶爾會想 這周又沒達標 嚴重", "偶尔会想这周又没达标严重"),
     ],
 )
 def test_traditional_folds_to_simplified(raw, expected):
