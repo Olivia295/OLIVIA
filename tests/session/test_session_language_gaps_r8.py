@@ -5,6 +5,11 @@
   says a sudden stop may bring reactions, and neither urges stopping nor taking it
   (``substance.withdrawal_classes.others_psychiatric``). The user's own stop keeps its
   reminder, and someone else's non-psychiatric medicine keeps the general line.
+* A drink asked for without 喝 ("就一小杯行不行", "来一口没事吧") is a drink asked for when
+  alcohol was spoken of this turn or the turn before (酒, 啤酒, 白酒, 红酒, 喝两杯): in the
+  crisis flow it gets ``substance.ask_to_drink_crisis``, outside it ``ask_to_drink``. An
+  amount of something else ("一小杯奶茶", "一口饭"), eating or smoking ("吃一口", "抽一口"),
+  or alcohol spoken of only earlier is none.
 
 Every example message is written here; none comes from an evaluation set or a re-test
 report.
@@ -121,3 +126,73 @@ def test_someone_elses_other_medicine_keeps_the_general_line(text: str) -> None:
 def test_no_line_without_a_stop(text: str) -> None:
     reply = _open().turn(text).reply
     assert OTHERS_LINE not in reply
+
+
+# -- 4: a drink asked for without 喝 --------------------------------------------------------------
+
+DRINK_LINE = SAID.substance_lines["ask_to_drink_crisis"]
+ASK_LINE = SAID.substance_lines["ask_to_drink"]
+
+BARE_ASKS = [
+    ("家里还有半瓶白酒", "就一小杯行不行"),
+    ("我想喝两杯", "来一口没事吧"),
+    ("柜子里有瓶红酒", "就两口，应该没关系吧"),
+    ("好想喝几杯", "一小杯总行吧"),
+    ("我这周在戒酒", "就一小杯行不行"),
+    ("想小酌一下", "半杯可以吗"),
+    ("", "冰箱里有啤酒，就一小罐可以吗"),
+]
+
+
+@pytest.mark.parametrize(("before", "text"), BARE_ASKS)
+def test_a_drink_asked_for_without_drinking_in_the_crisis(before: str, text: str) -> None:
+    session = _open()
+    assert session.turn(CRISIS_OPENER).in_crisis
+    if before:
+        session.turn(before)
+    result = session.turn(text)
+    assert result.in_crisis
+    assert DRINK_LINE in result.reply, result.reply
+    assert "12356" in result.reply
+
+
+@pytest.mark.parametrize(("before", "text"), BARE_ASKS[:3])
+def test_a_drink_asked_for_without_drinking_outside_the_crisis(before: str, text: str) -> None:
+    session = _open()
+    session.turn(before)
+    result = session.turn(text)
+    assert not result.in_crisis
+    assert ASK_LINE in result.reply, result.reply
+
+
+@pytest.mark.parametrize(
+    ("before", "text"),
+    [
+        ("家里还有半瓶白酒", "一小杯奶茶行不行"),
+        ("我想喝两杯", "来一口饭没事吧"),
+        ("柜子里有瓶红酒", "吃一口蛋糕可以吗"),
+        ("家里还有半瓶白酒", "就一小杯热水行不行"),
+        ("我想喝两杯", "我能不能抽一口烟"),
+        ("好想喝几杯", "一口气睡到天亮行不行"),
+        ("家里还有半瓶白酒", "我一口都不碰了，可以吗"),
+        ("好想喝几杯", "一口答应他行不行"),
+        ("楼下奶茶店还开着", "就一小杯行不行"),
+        ("酒店楼下有家奶茶店", "就一小杯行不行"),
+        ("我想喝一杯热牛奶", "来一口没事吧"),
+    ],
+)
+def test_no_drink_asked_for_without_drinking_in_the_crisis(before: str, text: str) -> None:
+    session = _open()
+    assert session.turn(CRISIS_OPENER).in_crisis
+    session.turn(before)
+    result = session.turn(text)
+    assert DRINK_LINE not in result.reply, result.reply
+
+
+def test_alcohol_said_only_earlier_is_not_enough() -> None:
+    session = _open()
+    assert session.turn(CRISIS_OPENER).in_crisis
+    session.turn("我想喝两杯")
+    session.turn("身边没有别人")
+    result = session.turn("就一小杯行不行")
+    assert DRINK_LINE not in result.reply, result.reply

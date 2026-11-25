@@ -299,6 +299,10 @@ class SubstanceReading:
     -> ``antidepressant``), ``general`` for someone else's medicine or one outside the
     classes the reminders speak of ("降压药"), "" when none is named. Round 8
     (2026-11-25): ``others_psychiatric`` for someone else's psychiatric medicine."""
+    alcohol: bool = False
+    """Round 8 (2026-11-25; draft, G-0): the message speaks of alcohol ("酒", "啤酒", "喝两
+    杯", "小酌"; not "酒店"), so a drink asked for without 喝 on the next turn ("就一小杯行
+    不行") is one (``recent``)."""
 
     @property
     def any(self) -> bool:
@@ -308,11 +312,18 @@ class SubstanceReading:
 NOTHING: Final = SubstanceReading()
 
 
-def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> SubstanceReading:
-    """Read ``text`` for drinking cues; ``context``: drinking came up earlier this session."""
+def read_substance(
+    cues: SubstanceCues, text: str, *, context: bool, recent: bool = False
+) -> SubstanceReading:
+    """Read ``text`` for drinking cues; ``context``: drinking came up earlier this session;
+    ``recent`` (round 8): the turn before spoke of alcohol (:attr:`SubstanceReading.alcohol`)."""
     folded = normalize(text)
     if not folded or not cues.substances:
         return NOTHING
+    # Round 8 (2026-11-25; draft, G-0): a drink asked for without 喝 ("就一小杯行不行",
+    # "来一口没事吧") when alcohol was spoken of this turn or the one before, never earlier.
+    alcohol = _says_alcohol(folded, cues)
+    bare_ask = (recent or alcohol) and _asks_bare(folded, cues)
     # Round 5 (复测 q3 第三节): stopping a drink or a medicine on one's own, at once, with
     # the drink or the medicine named in the message, and no doctor-led taper.
     # Round 6 (复测 q2 第 6 节, q3 第三节): stopping as grammar too ("一粒也不吃", "再也
@@ -349,6 +360,8 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         or (_has(folded, cues.quitting) and _drinks(folded, cues))
     )
     if not (context or mentioned or stopping):
+        if bare_ask or alcohol:
+            return SubstanceReading(asks_to_drink=bare_ask, talks=bare_ask, alcohol=alcohol)
         return NOTHING
     severe = _free(folded, cues.severe, cues)
     symptoms = severe or _free(folded, cues.signs, cues)
@@ -360,13 +373,14 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         or _has(folded, cues.postpone)
         or put_off
         or _free(folded, cues.excuses, cues)
+        or bare_ask
     )
     craving = not asks_to_drink and any(
         _relishes(sentence, cues, context=context)
         for sentence in _SENTENCE_RE.split(folded)
         if sentence
     )
-    talks = _has(folded, cues.substances) or drinks or stopping
+    talks = _has(folded, cues.substances) or drinks or stopping or bare_ask
     return SubstanceReading(
         mentioned,
         withdrawal,
@@ -377,6 +391,7 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
         stopping=stopping,
         symptoms=symptoms,
         kind=kind,
+        alcohol=alcohol,
     )
 
 
@@ -464,13 +479,69 @@ def _wants_more(sentence: str, cues: SubstanceCues) -> bool:
 
 
 def _drink_at(text: str, start: int, cues: SubstanceCues) -> bool:
-    """A drink act begins at ``start`` and is of nothing in ``not_alcohol``."""
+    """A drink act begins at ``start`` and is of nothing in ``not_alcohol``. Round 8: nor a
+    refusal right after it ("一口都不碰"); an amount ("一口", "来一杯") is of nothing in
+    ``bare_not_drink`` either ("一口蛋糕"), and one that begins the act is right after no
+    other act ("吃一口", "抽一口"; :func:`_of_drink`)."""
     for act in cues.drinking:
-        if text.startswith(act, start):
-            after = text[start + len(act) : start + len(act) + cues.object_window]
-            if not _has(after, cues.not_alcohol):
-                return True
+        if text.startswith(act, start) and _of_drink(
+            text, start, start + len(act), cues, amount=any(ch in _AMOUNT_HEADS for ch in act)
+        ):
+            return True
     return False
+
+
+# Round 8 (2026-11-25; draft, G-0): the characters an amount begins with ("一口", "半杯").
+_AMOUNT_HEADS: Final = "一两三几半"
+# Before a refusal, at most this (``bare_drinks.refusals``: "一口酒都不碰").
+_REFUSED_OBJECT: Final = ("酒", "药")
+
+
+def _of_drink(text: str, start: int, end: int, cues: SubstanceCues, *, amount: bool) -> bool:
+    """The drink act or ``amount`` at ``text[start:end]`` is of a drink: nothing in
+    ``not_alcohol`` in the ``object_window`` characters after it and no refusal right after
+    it ("一口都不碰", "一口酒也不喝"); an amount also has nothing in ``bare_not_drink`` after
+    it ("一口蛋糕", "一口答应") and, when the amount begins it, no ``bare_not_before`` act
+    right before it ("吃一口", "抽一口", "松一口气")."""
+    after = text[end : end + cues.object_window]
+    if _has(after, cues.not_alcohol) or (amount and _has(after, cues.bare_not_drink)):
+        return False
+    rest = text[end + 1 :] if text[end : end + 1] in _REFUSED_OBJECT else text[end:]
+    if rest.startswith(cues.bare_refusals):
+        return False
+    return not (
+        amount
+        and text[start] in _AMOUNT_HEADS
+        and any(text.endswith(w, 0, start) for w in cues.bare_not_before)
+    )
+
+
+def _says_alcohol(folded: str, cues: SubstanceCues) -> bool:
+    """Round 8 (2026-11-25; draft, G-0): ``folded`` speaks of alcohol: an ``alcohol`` class
+    word outside the ``bare_everyday`` words ("酒店"), or a ``bare_alcohol`` phrase of a
+    drink ("喝两杯", "小酌"; "喝一杯咖啡" is none)."""
+    plain = _masked(folded, cues.bare_everyday)
+    if _has(plain, cues.classes.get(_ALCOHOL, ())):
+        return True
+    return any(
+        _of_drink(plain, m.start(), m.end(), cues, amount=True)
+        for pattern in cues.bare_alcohol
+        for m in pattern.finditer(plain)
+    )
+
+
+def _asks_bare(folded: str, cues: SubstanceCues) -> bool:
+    """Round 8 (2026-11-25; draft, G-0): ``folded`` asks for an amount of a drink with no
+    drink named ("就一小杯行不行", "来一口没事吧"): a question (``asking``) with a
+    ``bare_amounts`` match that is not negated and is of a drink (:func:`_of_drink`)."""
+    if not _has(folded, cues.asking):
+        return False
+    return any(
+        not _negated(folded, m.start(), cues)
+        and _of_drink(folded, m.start(), m.end(), cues, amount=True)
+        for pattern in cues.bare_amounts
+        for m in pattern.finditer(folded)
+    )
 
 
 def _has(text: str, phrases: Sequence[str]) -> bool:

@@ -260,6 +260,10 @@ class LanguageEngine:
         # Round 7: the kind of drink or medicine the last reminder spoke of, for a later
         # sign with no kind named ("手还在抖").
         self._substance_kind = ""
+        # Round 8 (2026-11-25; draft, G-0): whether the turn before and this turn spoke of
+        # alcohol, for a drink asked for without 喝 ("就一小杯行不行"); moved on by note_risk.
+        self._alcohol_before = False
+        self._alcohol_now = False
         self._words_read: tuple[str, bool] | None = None
         # Round 6: this turn's text came with direction controls that change its order.
         self._scrambled = False
@@ -422,9 +426,13 @@ class LanguageEngine:
         Round 3: from L1 up the user's words were not said back. Round 4 (复测 q3): an L1
         that only the risk model gives, to a message with no risk component of its own
         ("吼了孩子，现在很后悔"), is answered like any other turn; the rule screen's L1 and
-        any L2 or higher still say nothing back."""
+        any L2 or higher still say nothing back.
+
+        Round 8 (2026-11-25): a new turn, so what the last one said of alcohol is now the
+        turn before's (:meth:`substance`)."""
         self._turn_level = level
         self._rules_level = level if rules is None else rules
+        self._alcohol_before, self._alcohol_now = self._alcohol_now, False
 
     def guarded(self, user_text: str) -> bool:
         """None of the user's words this turn are said back: an L2+ turn, a turn the rule
@@ -463,11 +471,14 @@ class LanguageEngine:
         """What ``user_text`` says about drinking (``lexicons/substance.yaml``). Drinking is
         the session's context once a message mentioned it or its image topic came up
         (``image_topic``: the substance spectrum, its situation, its referral card or a
-        cue such as "喝了"), and stays so."""
+        cue such as "喝了"), and stays so. Round 8 (2026-11-25; draft, G-0): a drink asked for
+        without 喝 ("来一口没事吧") counts only when this turn or the one before spoke of
+        alcohol (``recent``; the session marks each turn with :meth:`note_risk`)."""
         cues = self._data.substance
         context = self._drinking or cues.image_topic in self._image_topics
-        reading = read_substance(cues, user_text, context=context)
+        reading = read_substance(cues, user_text, context=context, recent=self._alcohol_before)
         self._drinking = context or reading.mentioned
+        self._alcohol_now = self._alcohol_now or reading.alcohol
         if reading.kind:
             self._substance_kind = reading.kind
         return reading
@@ -509,7 +520,9 @@ class LanguageEngine:
         it."""
         cues = self._data.substance
         context = self._drinking or cues.image_topic in self._image_topics
-        return read_substance(cues, user_text, context=context).symptoms
+        return read_substance(
+            cues, user_text, context=context, recent=self._alcohol_before
+        ).symptoms
 
     def note_image(self, text: str, image: str) -> None:
         """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""

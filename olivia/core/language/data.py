@@ -734,6 +734,20 @@ class SubstanceCues:
     stop by someone else gets ``withdrawal_classes.others_psychiatric`` (ask the
     prescribing doctor or a pharmacist soon, a sudden stop may bring reactions) instead
     of the general line."""
+    # Round 8 (2026-11-25; draft, G-0): a drink asked for without 喝 (``bare_drinks``).
+    bare_alcohol: tuple[re.Pattern[str], ...] = ()
+    """Phrases that speak of alcohol beside the ``alcohol`` class words ("喝两杯", "小酌")."""
+    bare_everyday: tuple[str, ...] = ()
+    """Words holding an alcohol class word that speak of none ("酒店", "啤酒肚")."""
+    bare_amounts: tuple[re.Pattern[str], ...] = ()
+    """An amount of a drink with no drink named ("一小杯", "两口", "半瓶")."""
+    bare_not_before: tuple[str, ...] = ()
+    """Right before an amount, another act ("吃一口", "抽一口", "松一口气")."""
+    bare_not_drink: tuple[str, ...] = ()
+    """After an amount, something that is no drink ("一口饭" has 饭 in ``not_alcohol``;
+    "一口蛋糕", "一口烟")."""
+    bare_refusals: tuple[str, ...] = ()
+    """Right after an amount or a drink act, saying no to it ("一口都不碰")."""
 
 
 def _no_feelings() -> Feelings:
@@ -2056,7 +2070,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
             *lists,
         },
         where,
-        optional={"classes"},
+        optional={"classes", "bare_drinks"},
     )
     _version(data, where)
 
@@ -2111,6 +2125,22 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
     unknown = sorted(others_classes - classes.keys())
     if unknown:
         raise LanguageDataError(f"{where} stopping.others_classes: {unknown[0]!r} is no class")
+    # Round 8 (2026-11-25; draft, G-0): a drink asked for without 喝.
+    bare_where = f"{where} bare_drinks"
+    bare = _map(data.get("bare_drinks", {}), bare_where)
+    if bare:
+        _keys(
+            bare,
+            {"alcohol_said", "everyday", "amounts", "not_before", "not_drink", "refusals"},
+            bare_where,
+        )
+
+    def bare_words(key: str) -> tuple[str, ...]:
+        return folded(bare[key], f"{bare_where}.{key}") if bare else ()
+
+    def bare_regexes(key: str) -> tuple[re.Pattern[str], ...]:
+        return regexes(bare[key], f"{bare_where}.{key}") if bare else ()
+
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -2142,6 +2172,12 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         classes=MappingProxyType(classes),
         stop_short_names=MappingProxyType(short_names),
         stop_others_classes=others_classes,
+        bare_alcohol=bare_regexes("alcohol_said"),
+        bare_everyday=bare_words("everyday"),
+        bare_amounts=bare_regexes("amounts"),
+        bare_not_before=bare_words("not_before"),
+        bare_not_drink=bare_words("not_drink"),
+        bare_refusals=bare_words("refusals"),
     )
 
 
