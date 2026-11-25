@@ -1570,10 +1570,10 @@ hotline_request_patterns:
   # - a phone word told to come over, after a clause start or a word naming it ("求助电话发我",
   #   "号码甩我一个"), never someone's own number ("把他电话发我" has 他 before it);
   # - the police or ambulance number asked for ("报警电话是多少", "叫救护车拨几号").
-# Round 8 (2026-11-25; 草稿：待 G-0): in the first two, a phone word followed by what makes it
-# a product, a job or a service ("电话销售", "电话卡", "电话套餐", "电话会议", "电话面试",
-# "电话客服") is no line asked for, as in the round-8 finding grammar below; "电话本" only
-# when 地 or 人 does not follow ("要个电话本地能打的" asks).
+  # Round 8 (2026-11-25; 草稿：待 G-0): in the first two, a phone word followed by what makes
+  # it a product, a job or a service ("电话销售", "电话卡", "电话套餐", "电话会议", "电话面试",
+  # "电话客服") is no line asked for, as in the round-8 finding grammar below; "电话本" only
+  # when 地 or 人 does not follow ("要个电话本地能打的" asks).
   - "(?:给我|给个|给一个|发我|发个|发给我|告诉我|甩我|甩个|俾我|畀我|俾个|畀个|留个|来个|要个|要一个|求个|求一个|推荐个|推荐一个)(?:一?个|几个|一些|些)?(?:能打的|可以打的|求助的|帮忙的|有人接的|靠谱的)?(?:电话|号码)(?!给|号码给|卡|费|套餐|手表|机|号段|簿|本(?!地|人)|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏)"
   - "(?:有没有|有冇|有无|有什么|有啥|有咩|有哪个|有哪些)(?:什么|啥|咩|哪个|哪些|一个|个)?(?:能|可以|可)?(?:打的)?(?:电话|号码)(?!给|号码给|卡|费|套餐|手表|机|号段|簿|本(?!地|人)|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话)"
   - "有(?:个)?(?:电话|号码)(?:可以|能|好)(?:打|拨){C}{0,6}?(?:吗|么|嘛|冇|\\?)"
