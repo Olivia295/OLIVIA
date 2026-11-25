@@ -18,6 +18,14 @@ PERCEPTION_TAIL: Final = 256
 # character (category Cf: zero-width space and joiners, word joiner, BOM, soft hyphen,
 # direction marks and isolates, tag characters) and the variation selectors, which are
 # combining marks (Mn) that render as nothing. All of them can split a phrase invisibly.
+# 2026-11-25 (metamorphic testing, tests/safety/metamorphic.py): also every other default
+# ignorable code point of Unicode's DerivedCoreProperties (the combining grapheme joiner,
+# the Hangul fillers, the Khmer inherent vowels, the Mongolian variation selectors and the
+# reserved ones up to U+E00FF), the Braille blank U+2800 (a blank cell, used like the
+# Hangul filler U+3164 as an "invisible" character), and the combining diacritical marks
+# left after NFKC: a mark NFKC composes (e + U+0301 -> é) is kept, one with no composed
+# form only decorates, such as the underline and strike-through of "fancy text" makers
+# (想\u0332死\u0332). Before this, one such character between two characters hid any phrase.
 # The ranges are static so the whole fold stays one C-level ``str.translate``;
 # tests/safety/test_normalize.py checks them against the running Unicode database.
 _DROPPED_RANGES: Final[tuple[tuple[int, int], ...]] = (
@@ -26,31 +34,43 @@ _DROPPED_RANGES: Final[tuple[tuple[int, int], ...]] = (
     (0x0085, 0x0085),
     (0x00A0, 0x00A0),
     (0x00AD, 0x00AD),
+    (0x0300, 0x036F),
     (0x0600, 0x0605),
     (0x061C, 0x061C),
     (0x06DD, 0x06DD),
     (0x070F, 0x070F),
     (0x0890, 0x0891),
     (0x08E2, 0x08E2),
+    (0x115F, 0x1160),
     (0x1680, 0x1680),
-    (0x180E, 0x180E),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x1AB0, 0x1AFF),
+    (0x1DC0, 0x1DFF),
     (0x2000, 0x200F),
     (0x2028, 0x202F),
-    (0x205F, 0x2064),
-    (0x2066, 0x206F),
+    (0x205F, 0x206F),
+    (0x20D0, 0x20FF),
+    (0x2800, 0x2800),
     (0x3000, 0x3000),
+    (0x3164, 0x3164),
     (0xFE00, 0xFE0F),
+    (0xFE20, 0xFE2F),
     (0xFEFF, 0xFEFF),
-    (0xFFF9, 0xFFFB),
+    (0xFFA0, 0xFFA0),
+    (0xFFF0, 0xFFFB),
     (0x110BD, 0x110BD),
     (0x110CD, 0x110CD),
     (0x13430, 0x1343F),
     (0x1BCA0, 0x1BCA3),
     (0x1D173, 0x1D17A),
-    (0xE0001, 0xE0001),
-    (0xE0020, 0xE007F),
+    (0xE0000, 0xE00FF),
     (0xE0100, 0xE01EF),
 )
+
+# The blank fillers among them show as an empty space, so :func:`fold_words` reads each as a
+# word break instead of dropping it. U+3164 and U+FFA0 reach the fold as U+1160 (NFKC).
+_BLANKS: Final = "\u115f\u1160\u2800\u3164\uffa0"
 
 # One translate table: Traditional -> Simplified characters, the curly single quotes (NFKC
 # leaves them alone) to the ASCII apostrophe used by English lexicon phrases, and deletion
@@ -77,8 +97,13 @@ def _drop_stray_letters(folded: str) -> str:
     return folded if folded.isascii() else _STRAY_LETTER.sub("", folded)
 
 
-# The same fold with spaces kept (whitespace is turned into spaces before it applies).
-_FOLD_KEEP_SPACES: Final[dict[int, str | None]] = {**_FOLD, ord(" "): " "}
+# The same fold with spaces kept (whitespace is turned into spaces before it applies) and
+# the blank fillers read as spaces.
+_FOLD_KEEP_SPACES: Final[dict[int, str | None]] = {
+    **_FOLD,
+    ord(" "): " ",
+    **{ord(blank): " " for blank in _BLANKS},
+}
 
 
 # Round 5 (复测 q4 IN-4): the Unicode direction controls. "我想<RLO>杀自<PDF>" is shown as
@@ -188,15 +213,17 @@ _FOLD_CACHE_SIZE: Final = 256
 @functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
 def normalize(text: str) -> str:
     """Fold text for matching: NFKC, casefold, Traditional -> Simplified, curly quotes
-    -> "'", then drop all whitespace and invisible characters, and a single ASCII letter
-    standing between two Han characters (a colour code's leftover)."""
+    -> "'", then drop all whitespace, invisible characters and leftover combining marks,
+    and a single ASCII letter standing between two Han characters (a colour code's
+    leftover)."""
     return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
 
 
 def fold_words(text: str) -> str:
-    """:func:`normalize` without dropping word breaks: every run of whitespace becomes one
-    space (invisible characters are still dropped), so English words stay apart. Used where
-    word boundaries matter (reading a yes or no to the D3 question)."""
+    """:func:`normalize` without dropping word breaks: every run of whitespace or blank
+    fillers (U+2800, the Hangul fillers) becomes one space (invisible characters are still
+    dropped), so English words stay apart. Used where word boundaries matter (reading a yes
+    or no to the D3 question)."""
     spaced = "".join(" " if ch.isspace() else ch for ch in unicodedata.normalize("NFKC", text))
     return _drop_stray_letters(" ".join(spaced.casefold().translate(_FOLD_KEEP_SPACES).split()))
 
