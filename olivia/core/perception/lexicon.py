@@ -137,6 +137,7 @@ _SECTIONS: Final = frozenset(
         "hotline_police_fear_patterns",
         "hotline_other_call_patterns",
         "help_seeking_mask_patterns",
+        "present_place",
         *_PHRASE_SECTIONS,
     }
 )
@@ -160,6 +161,19 @@ _PATTERN_SLOTS: Final = {
     "{E}": f"(?=[{_CLAUSE_MARKS}]|$)",
 }
 _FEEDBACK_KEYS: Final = ("done", "not_now", "unhelpful", "unclear")
+# ``present_place`` (owner decision 2026-11-25 B): its phrase lists and its pattern lists.
+_PRESENT_PLACE_PHRASES: Final = (
+    "subjects",
+    "clause_subjects",
+    "fillers",
+    "verbs",
+    "continuations",
+    "not_before",
+    "not_after",
+    "attributes",
+    "excluded",
+)
+_PRESENT_PLACE_PATTERNS: Final = ("english", "english_not_now")
 _ANSWER_KEYS: Final = ("affirm", "decline")
 GRIEF_KEYS: Final = ("loss", "duration", "unresolved")
 _INFO_GRADES: Final = frozenset({SafetyGrade.GRADE_B, SafetyGrade.GRADE_C})
@@ -168,6 +182,37 @@ _CARD_ACTION_TYPES: Final = frozenset({ActionType.STABILIZATION, ActionType.MICR
 
 class PerceptionLexiconError(Exception):
     """Raised when the perception lexicon is missing, malformed, or inconsistent."""
+
+
+@dataclass(frozen=True)
+class PresentPlaceGrammar:
+    """``present_place`` (owner decision 2026-11-25 B; draft, G-0): how a user says where
+    they are now. ``perception/location.py`` reads it; the place names are the lexicon's
+    ``hotline_places`` and ``local_emergency_places`` without ``excluded``. Every phrase
+    list is folded; the English patterns read the raw text (lower case, spaces kept)."""
+
+    subjects: tuple[str, ...]
+    """The user, anywhere in a clause ("我", "我们")."""
+    clause_subjects: tuple[str, ...]
+    """The user, only at the start of a clause ("人在悉尼")."""
+    fillers: tuple[str, ...]
+    """All that may stand between the subject and the verb ("现在", "人", "还")."""
+    verbs: tuple[str, ...]
+    """Being or living somewhere, right before the place ("在", "住在", "到了")."""
+    continuations: tuple[str, ...]
+    """Start a clause with no subject after one that said where the user is or was."""
+    not_before: tuple[str, ...]
+    """Before the subject in its clause: not where the user is now ("如果", "以前")."""
+    not_after: tuple[str, ...]
+    """After the place in its clause: not where the user is now ("的时候", "就好了")."""
+    attributes: tuple[str, ...]
+    """Right after the place: the name is an attribute, not a place ("公司", "路")."""
+    excluded: tuple[str, ...]
+    """Place names of ``hotline_places`` that never say where one is ("国内")."""
+    english: tuple[re.Pattern[str], ...]
+    """English up to the place ("i'm in ", "i live in ")."""
+    english_not_now: tuple[re.Pattern[str], ...]
+    """Anywhere in an English clause: not where the user is now ("if", "next week")."""
 
 
 @dataclass(frozen=True)
@@ -354,6 +399,8 @@ class PerceptionLexicon:
     hotline_hours_patterns: tuple[re.Pattern[str], ...] = ()
     """When someone answers, at the start of a clause ("几点有人听", "半夜有没有人听"): a
     hotline request about the hours that names a line, also as a first message."""
+    present_place: PresentPlaceGrammar | None = None
+    """Where the user says they are now (owner decision 2026-11-25 B; draft, G-0)."""
     """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
@@ -542,6 +589,7 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         hotline_hours_patterns=_patterns(
             doc.get("hotline_hours_patterns"), "hotline_hours_patterns"
         ),
+        present_place=_present_place(doc.get("present_place"), doc.get("hotline_places")),
     )
 
 
@@ -737,6 +785,28 @@ def _place_patterns(node: Any) -> dict[str, tuple[re.Pattern[str], ...]]:
             raise PerceptionLexiconError(f"{_FILE}: {where}: {key!r} is not a region code")
         places[key] = _patterns(raw, f"{where}.{key}")
     return places
+
+
+def _present_place(node: Any, places_node: Any) -> PresentPlaceGrammar:
+    """``present_place`` (owner decision 2026-11-25 B): every key present, each phrase list
+    folded and each pattern list compiled; ``excluded`` names only ``hotline_places``."""
+    where = "present_place"
+    section = _mapping(node, where)
+    keys = {str(key) for key in section}
+    expected = {*_PRESENT_PLACE_PHRASES, *_PRESENT_PLACE_PATTERNS}
+    if keys != expected:
+        missing, unknown = sorted(expected - keys), sorted(keys - expected)
+        raise PerceptionLexiconError(f"{_FILE}: {where}: missing {missing}, unknown {unknown}")
+    lists = {key: _phrases(section[key], f"{where}.{key}") for key in _PRESENT_PLACE_PHRASES}
+    named = {name for names in _places(places_node).values() for name in names}
+    stray = [name for name in lists["excluded"] if name not in named]
+    if stray:
+        raise PerceptionLexiconError(f"{_FILE}: {where}.excluded: {stray} not in hotline_places")
+    return PresentPlaceGrammar(
+        **lists,
+        english=_patterns(section["english"], f"{where}.english"),
+        english_not_now=_patterns(section["english_not_now"], f"{where}.english_not_now"),
+    )
 
 
 def _keyed_cues(node: Any, where: str, known: tuple[str, ...]) -> dict[str, tuple[str, ...]]:

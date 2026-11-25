@@ -1326,10 +1326,54 @@ class LanguageEngine:
         ``urgent`` frames the emergency numbers as an L3 card does (:meth:`render_crisis`).
         ``emergency_heading`` / ``lines_heading`` replace the headings; without
         ``contact_people`` an L3 framing leaves out the line asking to call someone close.
-        A card whose emergency numbers do not lead (``ResourceCard.emergency_leads``: the
-        mainland L2 card's 120, owner decision 2026-10-28) lists them after the lines under
-        the L2 emergency heading, unless ``urgent`` puts them first.
+        A card whose emergency numbers do not lead (``ResourceCard.emergency_leads``: an L2
+        card's one local emergency number, owner decisions 2026-10-28 and 2026-11-25) lists
+        them after the lines under the L2 emergency heading, unless ``urgent`` puts them
+        first.
+
+        Owner decision 2026-11-25 B: where the user said they are now comes first, its
+        ``here_note`` (after ``hotline_local_emergency_intro``) or its ``here`` card (under
+        ``here_heading``; the line asking to call someone close only there), then this
+        card's numbers under ``home_heading``.
         """
+        r = self._data.render
+        ahead: list[str] = []
+        if card.here_note:
+            ahead.append(f"{r.hotline_local_emergency_intro}{card.here_note}")
+        if card.here is not None:
+            inner = self._resource_blocks(
+                card.here,
+                urgent=urgent,
+                emergency_heading=emergency_heading,
+                lines_heading=lines_heading,
+                contact_people=contact_people,
+            )
+            if inner and r.here_heading:
+                inner[0] = f"{r.here_heading}\n{inner[0]}"
+            ahead += inner
+            framed = urgent or card.here.level >= CrisisLevel.L3
+            contact_people = contact_people and not (framed and card.here.emergency)
+        own = self._own_blocks(
+            card,
+            urgent=urgent,
+            emergency_heading=emergency_heading,
+            lines_heading=lines_heading,
+            contact_people=contact_people,
+        )
+        if ahead and own and r.home_heading:
+            own[0] = f"{r.home_heading}\n{own[0]}"
+        return [*ahead, *own]
+
+    def _own_blocks(
+        self,
+        card: ResourceCard,
+        *,
+        urgent: bool,
+        emergency_heading: str | None,
+        lines_heading: str | None,
+        contact_people: bool,
+    ) -> list[str]:
+        """The card's own numbers (:meth:`_resource_blocks` without where the user is)."""
         r = self._data.render
         stale = set(card.stale_entries)
         mark = r.crisis_stale_mark
@@ -1374,7 +1418,7 @@ class LanguageEngine:
 
 
 def _numbers(card: ResourceCard) -> list[str]:
-    return [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+    return list(card.numbers())
 
 
 def _info_kind(entry: InfoEntry) -> ContentKind:

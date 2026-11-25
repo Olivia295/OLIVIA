@@ -259,6 +259,12 @@ crisis:
   # 加一行：当地的紧急电话请以当地公布的为准，再列 local_emergency 里那个国家的官方报警 / 急救号码。
   # local_emergency 只收各国官方公布的报警、消防与急救号码（不收任何心理热线），每条注明来源。
   hotline_local_emergency_intro: "当地的紧急电话请以当地公布的为准，常见的是："
+  # 草稿：待 G-0（负责人 2026-11-25 决定 B）。用户在本次会话里说过自己现在在别的地区（“我在多伦多”）以后，
+  # 危机卡、先问一句附带的号码和危机中的告别都先列那个地区的号码：here_heading 放在那一组号码最前面；
+  # 再列设置地区的号码，home_heading 放在这一组最前面。那个地方只在 local_emergency 里有一行时，先列
+  # hotline_local_emergency_intro 加那一行，再是 home_heading。都不写号码。
+  here_heading: "你说过你现在在那边，先列当地的号码："
+  home_heading: "下面是按你设置的地区给出的号码："
   # 草稿：待 G-0（第四轮修复，2026-10-28）。热线追问“几点有人接”时，在 hotline_hours 之前先列热线资料里
   # 每条热线的服务时间（程序附上“名称 号码：时段”，时段原样取自签名的热线资料）。
   hotline_hours_from_data: "热线资料里写的服务时间是："

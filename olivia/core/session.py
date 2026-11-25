@@ -518,6 +518,21 @@ Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
   at L1 (``inspect["model_held"]``): no question and, as 第 22 条 says for words about
   someone else, no crisis flow on the model's word alone.
 
+Owner decisions 2026-11-25 (regional cards; new wording 草稿：待 G-0):
+
+* A: every L2 card with a line to call lists one local emergency number after its
+  hotlines (``resources/resolver.py``: HK 999, MO 999, TW 119, US 911, CA 911, GB 999,
+  AU 000, as CN's 120 since 2026-10-28).
+* B: where the user says they are now ("我在多伦多", "我人在悉尼读书", "I'm in Toronto";
+  ``perception/location.py``, never the past, the future, a condition or someone else's
+  place) is kept in memory for the session, the latest one counting. The session's crisis
+  cards (the crisis reply, the D3 question's card, a calm waiting turn's line, the crisis
+  farewell and the degraded card) then list that region's numbers first, under
+  ``crisis.here_heading``, and the profile region's after them under
+  ``crisis.home_heading``; for a country only ``crisis.local_emergency`` lists, that line
+  comes first. 12356, 120 and 12355 still show outside a CN profile only after the user
+  named mainland China ("大陆", "内地", "中国大陆"; never "国内") as where they are now.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -961,6 +976,8 @@ class Session:
         self._resources_turn: int | None = None
         # Round 7 (re-test q4 B5): where the user said they are now ("我现在在大阪交换"):
         # (region code, country code); a later hotline request names that place's numbers.
+        # Owner decision 2026-11-25 B: the latest one, read by grammar; the crisis cards
+        # list its numbers first. In memory only: never written, never carried over.
         self._said_place: tuple[str, str | None] | None = None
         # Round 7: the turn whose reply led with a medication or withdrawal line.
         self._boundary_turn: int | None = None
@@ -1388,7 +1405,7 @@ class Session:
         reminded, self._card_reminded = self._card_reminded, False
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
-        signals = self._place_said(text, signals)
+        signals = self._place_said(signals)
         # Session gaps: a yes right after ``suds_high_ask`` asks for another card in place
         # of the waiting one (F16b's switch), taken from the stabilization whitelist.
         steady_yes = (
@@ -2307,37 +2324,75 @@ class Session:
         they are under 18 in this session, 第 5 条), and whether it is framed as urgent:
         below L3 after a capped model L3 (``_urgent``), the region's emergency numbers are
         added in front of every line of the card. A card whose emergency numbers already
-        lead it (ZZ's L2) is left as it is; the mainland L2 card's trailing 120 (owner
-        decision 2026-10-28) is replaced by every emergency number in front. Round 6:
-        ``emergency`` (the user asked for the police or ambulance number, or how to talk
-        on that call, in the crisis flow) frames it the same way for that turn."""
+        lead it (ZZ's L2) is left as it is; an L2 card's one trailing emergency number
+        (owner decisions 2026-10-28 and 2026-11-25: CN 120, HK 999, ...) is replaced by
+        every emergency number in front. Round 6: ``emergency`` (the user asked for the
+        police or ambulance number, or how to talk on that call, in the crisis flow) frames
+        it the same way for that turn.
+
+        Owner decision 2026-11-25 B: after the user said in this session where they are
+        now (``_place_said``), that region's card at the same level, framed the same way,
+        comes first (``ResourceCard.here``), or, for a country with no verified lines here,
+        its ``crisis.local_emergency`` line (``ResourceCard.here_note``); the profile
+        region's card follows. A place in the profile's region adds nothing."""
+        want = (self._urgent or emergency) and level < CrisisLevel.L3
+        card, urgent = self._region_crisis_card(self._profile.region, level, now, urgent=want)
+        return self._here_first(card, level, now, urgent=want), urgent
+
+    def _region_crisis_card(
+        self, region: UserRegion | None, level: CrisisLevel, now: datetime, *, urgent: bool
+    ) -> tuple[ResourceCard, bool]:
+        """``region``'s CRISIS card at ``level``, and whether it was framed as urgent (see
+        :meth:`_crisis_card`)."""
         card = resolve(
             self._shared.store,
-            self._profile.region,
+            region,
             level,
             mode=CardMode.CRISIS,
             today=now.date(),
             is_minor=self._minor,
         )
         leading = bool(card.emergency) and card.emergency_leads
-        if not (self._urgent or emergency) or level >= CrisisLevel.L3 or leading:
+        if not urgent or leading:
             return card, False
         l3 = resolve(
             self._shared.store,
-            self._profile.region,
+            region,
             CrisisLevel.L3,
             mode=CardMode.CRISIS,
             today=now.date(),
             is_minor=False,
         )
         stale = tuple(e.id for e in l3.emergency if e.id in l3.stale_entries)
-        urgent = replace(
+        framed = replace(
             card,
             emergency=l3.emergency,
             emergency_leads=True,
             stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
         )
-        return urgent, True
+        return framed, True
+
+    def _here_first(
+        self, card: ResourceCard, level: CrisisLevel, now: datetime, *, urgent: bool
+    ) -> ResourceCard:
+        """``card`` with where the user said they are now in front of it (owner decision
+        2026-11-25 B; see :meth:`_crisis_card`). R8 holds: a mainland card is only ever
+        added when the user named mainland China as where they are now."""
+        if self._said_place is None:
+            return card
+        place, country = self._said_place
+        store = self._shared.store
+        if place != UNKNOWN_COUNTRY and store.has_region(place):
+            if place == card.region_used:
+                return card
+            zone = self._profile.region.timezone if self._profile.region is not None else "UTC"
+            here, _ = self._region_crisis_card(UserRegion(place, zone), level, now, urgent=urgent)
+            return replace(card, here=here)
+        render = self._engine.data.render
+        local = None if country is None else render.local_emergency.get(country)
+        if local is None or not render.hotline_local_emergency_intro:
+            return card
+        return replace(card, here_note=local, here_numbers=tuple(_DIGIT_RUNS.findall(local)))
 
     def _crisis(
         self,
@@ -2544,17 +2599,26 @@ class Session:
     def _compact_numbers(self, card: ResourceCard) -> str | None:
         """Every number of ``card`` in one line (``crisis.care_hotline`` first), through
         the gate with those numbers allowed; None when it is blocked. Emergency numbers
-        come first unless they follow the lines on the card (the mainland L2 card's 120)."""
+        come first unless they follow the lines on the card (an L2 card's one emergency
+        number). Where the user said they are now comes first (owner decision 2026-11-25
+        B): its ``crisis.local_emergency`` line or its card's numbers."""
         render = self._engine.data.render
-        urgent = [
-            f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in card.emergency
-        ]
-        lines = [f"{ln.name_zh} {ln.number}" for ln in card.lines]
-        items = [*urgent, *lines] if card.emergency_leads else [*lines, *urgent]
+
+        def items_of(shown: ResourceCard) -> list[str]:
+            urgent = [
+                f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in shown.emergency
+            ]
+            lines = [f"{ln.name_zh} {ln.number}" for ln in shown.lines]
+            return [*urgent, *lines] if shown.emergency_leads else [*lines, *urgent]
+
+        ahead = [card.here_note] if card.here_note else []
+        if card.here is not None:
+            ahead += items_of(card.here)
+        items = [*ahead, *items_of(card)]
         if not items or not render.care_hotline:
             return None
         text = f"{render.care_hotline}{'；'.join(items)}"
-        numbers = [em.number for em in card.emergency] + [ln.number for ln in card.lines]
+        numbers = list(card.numbers())
         result = self._engine.gate.check(
             text, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
         )
@@ -3314,15 +3378,20 @@ class Session:
             rendered.reply = f"{rendered.reply}\n\n{local}"
         return rendered
 
-    def _place_said(self, text: str, signals: TurnSignals) -> TurnSignals:
+    def _place_said(self, signals: TurnSignals) -> TurnSignals:
         """Round 7 (re-test q4 B5): a place the user says they are in now ("我现在在大阪交
         换") is kept for the session; a later hotline request with no place of its own names
         that place, so a place without verified numbers gets the general card, never the
-        profile region's numbers as if they were local."""
+        profile region's numbers as if they were local.
+
+        Owner decision 2026-11-25 B: the place is read by grammar (``present_place``,
+        ``perception/location.py``: never the past, the future, a condition or someone
+        else's place), the latest one counting, and kept in memory only (never written);
+        the session's crisis cards then list that region's numbers first
+        (:meth:`_crisis_card`)."""
+        if signals.present_place is not None:
+            self._said_place = (signals.present_place, signals.present_country)
         if signals.hotline_place is not None:
-            folded = normalize(text)
-            if _PRESENT_PLACE.search(folded) and not _PAST_PLACE.search(folded):
-                self._said_place = (signals.hotline_place, signals.hotline_country)
             return signals
         if self._said_place is None or not (
             signals.hotline_request or signals.hotline_number is not None
@@ -4351,7 +4420,7 @@ class Session:
             entry = status.entry_level if status is not None else None
             level = max(CrisisLevel.L2, assessment.level, entry or CrisisLevel.L0)
             card, _ = self._crisis_card(level, now)
-            numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+            numbers = card.numbers()
             minimal = self._shared.language.render.crisis_minimal
             reply = "\n".join([minimal, *(f"· {n}" for n in numbers)])
             kind = ReplyKind.CRISIS
@@ -4547,12 +4616,6 @@ _MIN_NUMBER_DIGITS: Final = 3
 _ASK_WHAT: Final = re.compile(
     r"什么|啥|咩|乜|怎样|如何|点样|(?<!一)点(?=帮|做|讲|算|办|同|先|去|开口|劝|搞)|how(?:do|can|should)|what(?:do|can|should)"
 )
-# Round 7 (re-test q4 B5): the user says where they are now ("我现在在大阪交换", "人在首尔"),
-# not where they were ("我在日本留学的时候").
-_PRESENT_PLACE: Final = re.compile(
-    r"(?:我|人|我们)(?:现在|目前|如今|最近|这学期|今年|正|还)?(?:人)?(?:在|住在|待在|呆在|来了|到了)"
-)
-_PAST_PLACE: Final = re.compile(r"的时候|那时|那会|以前|之前|去年|曾经|当年|小时候|回来")
 # Round 7 (re-test q2 第 6 节): the first words of a call ("第一句说什么", "开口第一句").
 _FIRST_WORDS: Final = re.compile(r"第一句|头一句|开场白|开口第一|firstthing|firstwords")
 _SAY_WHAT: Final = re.compile(
