@@ -185,6 +185,8 @@ evidence:
   - tests/safety/test_passive_ideation.py::test_passive_ideation_with_inserted_words_is_l2
   - tests/safety/test_passive_ideation.py::test_sleep_and_waking_talk_stays_below_l2
   - tests/safety/test_veiled_requests.py::test_no_more_waking_and_one_and_done_are_l2
+  - tests/safety/test_rules_round8.py::test_round8_plain_passive_ideation_enters_the_crisis_flow
+  - tests/safety/test_rules_round8.py::test_round8_euphemism_asks_the_direct_question
   - tests/session/test_session_ask_first.py::test_a_model_only_l2_asks_once_with_the_regional_hotlines
   - tests/session/test_session_ask_first.py::test_unclear_off_topic_or_no_answer_enters_the_crisis_flow
   - tests/session/test_session_ask_first.py::test_ending_with_the_question_unanswered_counts_as_the_crisis_flow
@@ -192,9 +194,8 @@ evidence:
 residual: {severity: 灾难性, likelihood: 中, risk: 4}
 status: 部分控制
 known_gaps:
-  - {file: tests/redteam/known_gaps.yaml, kind: crisis recall, category: passive_ideation, count: 12}
+  - {file: tests/redteam/known_gaps.yaml, kind: crisis recall, category: passive_ideation, count: 9}
   - {file: tests/redteam/known_gaps_model.yaml, kind: crisis recall, category: passive_ideation, count: 1}
-  - {file: tests/redteam/known_gaps_model.yaml, kind: asked first, category: passive_ideation, count: 4}
 ```
 
 默认的模型模式下仍有 1 条漏判（粤语），另有 4 条只得到直接询问（附热线），回答“是”、含糊或不回答才进危机流程。规则模式几乎全部漏掉，所以模型不可用或用户选 `--rules` 时这一危害明显加重（见 HAZ-34）。
