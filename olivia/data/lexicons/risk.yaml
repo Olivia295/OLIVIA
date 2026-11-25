@@ -624,8 +624,9 @@ compositions:
             # Self-harm named, negated or not (F16a), like 不想死 above: "我不会伤害自己的，药
             # 我都攒够了" is plan evidence because of 伤害自己.
             "伤害自己", "伤害我自己"]
+    # 收好 (put away) is S1_MEANS_PUT_AWAY's own tail (负责人 2026-11-25 决定).
     prepared_marks: ["准备好", "买好", "备好", "藏好", "攒好", "攒够", "攒起来", "囤好", "囤起来",
-                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来", "收好",
+                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来",
                      "存够", "存好"]
     # Everyday reasons for the same objects; they void a means match in the same clause.
     everyday: ["西瓜", "切菜", "做饭", "水果", "感冒", "发烧", "医院", "医生", "野营", "露营",
@@ -974,6 +975,20 @@ compositions:
       level: L3
       heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
       tails: prepared_marks
+      max_gap: 4
+      order: either
+      context: death
+      unless: everyday
+      unless_window: 10
+    # A means put away (刀我已经收好了) next to a death word: S1_MEANS_PREPARED's frame with
+    # the one ready mark that is also what a user says after putting a knife or pills out of
+    # reach ("我不会伤害自己的，刀我已经收好了"). Still Stage 1 plan evidence for the screen;
+    # 负责人 2026-11-25 决定: alone in the message (`put_away_ask` below) it is a plan
+    # candidate, and the session asks once first.
+    - id: S1_MEANS_PUT_AWAY
+      level: L3
+      heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
+      tails: ["收好"]
       max_gap: 4
       order: either
       context: death
@@ -4576,6 +4591,111 @@ compositions:
                "面试", "签约", "约会", "交房", "开工", "动工"]
       unless_window: 24
       unless_across: true
+  # G2b-2 (2026-11-25): entries that count only in a session context (`after`), matched
+  # apart from `entries`: alone they are no cue at all (no level, no question, rule_clear
+  # untouched) and the screen only reports them (SafetyScreen.context_cues); the
+  # session reads them (Session._in_context). `after: crisis` (ASK entries, the farewell
+  # family) counts in a session that has been in the crisis flow: after a safety
+  # confirmation it asks the question first (负责人 2026-11-01 决定, §9.4 第 33 条), after the
+  # crisis ended it is L2 at once (§9.4 第 18 条). `after: own_risk` (L3 entries) counts
+  # after the user's own L2 or higher risk earlier in the session: a plan and a time with
+  # nothing named is then a plan to die (PRD §9.1 L3, 明确计划 + 时限); after a confirmation
+  # it asks first instead, and anything but a no is L3. Each keeps the everyday voids of its
+  # standalone counterpart.
+  context_entries:
+    # Going at a time, said in a session that has been in the crisis flow (下礼拜一我就走,
+    # 等过完这个月我就走了). Alone this is a new job, a move or a trip (ASK_INTENT_GO_AT_TIME
+    # needs a nearer time); a trip, a ticket, work, a meal or an errand voids it here too.
+    - id: ASK_INTENT_GO_AT_TIME_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["就走", "就离开", "就走了", "就离开了", "就要走了", "就要离开了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      also:
+        - {phrases: ["@plan_time", "礼拜", "下个月", "月底", "年后", "过年", "过完", "等过", "生日", "考完", "那天",
+                     "之后", "以后", "这个月", "下个星期"], window: 16}
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "去", "说", "讲", "消息", "告诉我", "留言",
+               "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
+    # Going all the same (我还是打算走, 我决定了还是要走), the clause ending there: as above.
+    - id: ASK_INTENT_STILL_GO_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["还是想走", "还是要走", "还是决定走", "还是打算走", "还是会走", "还是得走", "还是准备走",
+              "还是想离开", "还是要离开", "还是打算离开", "还是决定离开", "决定要走", "决定走了", "决定了要走",
+              "决定了走", "打算走了", "准备走了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "发展", "去", "说", "讲", "消息", "告诉我",
+               "留言", "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
+    # Starting over (这局想去重开了, 好想重开一局) in a session that has been in the crisis
+    # flow: the life code of ASK_INTENT_LIFE_LEFT_EARLY without its life word, 这局 being
+    # the life. Alone it is a game; game words, meetings and work void it here too.
+    - id: ASK_INTENT_RESTART_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["想", "要", "好想", "真想", "该", "准备", "打算", "决定", "去"]
+      tails: ["重开", "重来一局", "重开一局", "重新开一局", "重新来一局", "投胎重来", "重新投胎"]
+      max_gap: 3
+      unless: ["@fiction", "游戏", "关卡", "副本", "账号", "存档", "读档", "这把", "排位", "匹配", "段位", "队友",
+               "开黑", "掉线", "输", "赢", "开局", "打游戏", "打得", "打完", "玩游戏", "玩家", "boss", "地图", "服务器", "电脑", "手机", "软件", "系统",
+               "会议", "开会", "店", "公司", "工作", "项目", "代码", "文档", "论文", "视频", "直播", "节目"]
+      unless_window: 20
+      unless_across: true
+    # A readiness or a resolve, then the moment in a clause of its own (准备好了，就今晚;
+    # 决定好了，就这周五) after the user's own risk: ASK_INTENT_READY_MOMENT and
+    # S1_DEATH_THEN_MOMENT with the death said on an earlier turn. Occasions void it.
+    - id: S1_READY_MOMENT_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: moment_heads
+      tails: moment_times
+      max_gap: 3
+      context: ["@resolve_any", "准备好了", "都准备好了", "我准备好了", "我已经准备好了", "准备就绪", "我已经准备好",
+                "我准备好", "决定好了", "决定了", "想好了", "定好了", "下定决心了"]
+      context_window: 6
+      trailing: ["@particles", "@clock"]
+      unless: ["@moment_everyday", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # The moment fixed (我定在周五, 日子选在下礼拜) after the user's own risk:
+    # S1_DEATH_TIME_FIXED with the death said on an earlier turn.
+    - id: S1_TIME_FIXED_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["定在", "就定在", "定在了", "选在", "就选在", "选在了", "挑在", "就挑在"]
+      tails: ["@moment_times", "礼拜", "下礼拜", "这礼拜", "下个礼拜", "下个月", "月底", "过完年"]
+      max_gap: 3
+      unless: ["@moment_everyday", "@death_intent_void", "婚", "领证", "订婚", "摆酒", "手术", "产检", "截止", "ddl",
+               "签约", "交房", "开工", "动工", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # A time and doing it, the clause ending there (今晚就动手, 周五就了断) after the user's
+    # own risk: S1_DEATH_TIME_DO with the death said on an earlier turn, its tails with 就
+    # (今晚结束 alone is an event that ends). Trips, work, errands and occasions void it.
+    - id: S1_TIME_DO_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["@plan_time", "现在", "马上", "立刻", "这就"]
+      tails: ["就动手", "就结束", "就了断", "就行动", "就了结", "就走", "就离开", "动手", "了断", "了结"]
+      max_gap: 3
+      trailing: ["@particles"]
+      unless: ["@moment_everyday", "@death_intent_void", "@leaving", "@return_marks", "车", "票", "航班", "行李",
+               "上班", "开会", "饭", "公司", "学校", "宿舍", "医院", "医生", "复诊", "复查", "咨询", "热线",
+               "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
@@ -4840,3 +4960,34 @@ hyperbole_ask:
            "了断", "了结", "解脱", "一了百了", "结束这一切", "结束生命", "结束自己", "活着", "活下去",
            "不想活", "去死", "死掉", "自杀", "轻生", "寻死", "消失", "离开这个世界", "没意思", "没意义",
            "撑不下去", "撑不住", "绝望", "不想醒"]
+# 负责人 2026-11-25 决定: a means put away (S1_MEANS_PUT_AWAY: "我不想死，刀我已经收好了") is
+# what a user says after putting the knife or the pills out of reach as often as what one
+# says after making them ready. The screen keeps it Stage 1 (L3) but marks it a plan
+# candidate (CrisisAssessment.plan_candidate) when it is the message's only cue: every
+# Stage 1 cue of the message is one of `ids`, the rules find nothing else of the user's
+# own (no Stage 2 phrase, pair, other composition or pair anchor outside a negation mask;
+# a composition over the same words, such as ASK_INTENT_MEANS_OBTAINED on 刀片 + 收好, is
+# the same phrase) and no `vetoes` phrase lies anywhere in it: a plan, a time, a farewell,
+# a hedge or a contrast, keeping it at hand or hidden, another means or place. The session
+# then asks the direct question once first, the emergency numbers in front; a clear no or a
+# safety confirmation that passes F10 goes back to the chat, anything else is L3. With any
+# other risk earlier in the session it is L3 at once. Read by lexicon.PutAwayAskRules;
+# without this section every such cue stays plain L3 (fail-safe).
+put_away_ask:
+  ids: ["S1_MEANS_PUT_AWAY"]
+  vetoes: [
+           # a plan
+           "计划", "打算", "决定", "准备", "想好", "安排", "交代", "动手", "就等", "等着", "留着", "备用",
+           "用得上", "用得着", "要用", "用的时候", "到时候", "以备",
+           # a time
+           "今晚", "今夜", "今天", "明天", "明晚", "后天", "待会", "等会", "一会儿", "过几天", "过两天",
+           "以后", "将来", "迟早", "早晚", "很快", "马上", "立刻", "现在就", "周末", "下周", "月底",
+           "晚上", "半夜", "凌晨", "那天", "随时",
+           # a farewell
+           "再见", "永别", "告别", "道别", "最后", "遗书", "遗言", "后事", "下辈子", "来世",
+           # a hedge or a contrast
+           "暂时", "先收", "目前", "至少", "可能", "也许", "说不定", "万一", "如果", "要是", "还在",
+           "但", "可是", "不过", "然而", "却", "偏偏",
+           # at hand, hidden, another means or a place
+           "藏", "手边", "身边", "枕头", "床底", "床头", "随身", "绳", "炭", "农药", "煤气", "楼顶",
+           "天台", "阳台", "桥", "铁轨", "跳", "割"]
