@@ -709,6 +709,13 @@ class SubstanceCues:
     classes: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     """Class id -> the names of that kind of drink or medicine (round 7): the reminder names
     only the kind the message names."""
+    # Round 8 (2026-11-25; draft, G-0).
+    stop_short_names: Mapping[str, tuple[re.Pattern[str], ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    """Class id -> patterns for a short name of that kind of medicine that is a medicine only
+    next to stopping it ("停了安定", "安定我自己停了", never "情绪安定" or "安定医院"): a match
+    names the class and, not negated, is a stop on one's own like ``stopping``."""
 
 
 def _no_feelings() -> Feelings:
@@ -2046,25 +2053,34 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop,
         {"objects", "phrases", "guided"},
         f"{where} stopping",
-        optional={"patterns", "taper", "missed", "others"},
+        optional={"patterns", "taper", "missed", "others", "short_names"},
     )
 
-    def compiled(key: str) -> tuple[re.Pattern[str], ...]:
+    def regexes(node: Any, here: str) -> tuple[re.Pattern[str], ...]:
         out: list[re.Pattern[str]] = []
-        for raw_pattern in _strs(stop[key], f"{where} stopping.{key}") if key in stop else ():
+        for raw_pattern in _strs(node, here):
             try:
                 pattern = re.compile(raw_pattern)
             except re.error as exc:
-                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r}: {exc}") from exc
+                raise LanguageDataError(f"{here}: {raw_pattern!r}: {exc}") from exc
             if pattern.fullmatch(""):
-                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r} matches empty")
+                raise LanguageDataError(f"{here}: {raw_pattern!r} matches empty")
             out.append(pattern)
         return tuple(out)
+
+    def compiled(key: str) -> tuple[re.Pattern[str], ...]:
+        return regexes(stop[key], f"{where} stopping.{key}") if key in stop else ()
 
     classes = {
         str(name): folded(words, f"{where} classes.{name}")
         for name, words in _map(data.get("classes", {}), f"{where} classes").items()
     }
+    # Round 8 (2026-11-25; draft, G-0): a short name, a medicine only next to stopping it.
+    short_names: dict[str, tuple[re.Pattern[str], ...]] = {}
+    for name, node in _map(stop.get("short_names", {}), f"{where} stopping.short_names").items():
+        if str(name) not in classes:
+            raise LanguageDataError(f"{where} stopping.short_names: {name!r} is no class")
+        short_names[str(name)] = regexes(node, f"{where} stopping.short_names.{name}")
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -2094,6 +2110,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_missed=compiled("missed"),
         stop_others=compiled("others"),
         classes=MappingProxyType(classes),
+        stop_short_names=MappingProxyType(short_names),
     )
 
 
