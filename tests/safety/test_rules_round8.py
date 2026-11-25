@@ -297,6 +297,14 @@ def test_round8_death_with_a_set_moment_is_l3_with_the_emergency_number() -> Non
     assert "110" in result.reply or "120" in result.reply
 
 
+def test_round8_wish_not_to_exist_now_asks() -> None:
+    # sessions.yaml s04 used this sentence as a plain L1 cue; since round 8 a wish not to
+    # exist asks the D3 question as well (L1_DISAPPEAR keeps its level).
+    result = SCREEN.assess("有时候真想直接不存在")
+    assert result.level is L.L1 and result.asks_intent
+    assert {"L1_DISAPPEAR", "ASK_INTENT_WISH_GONE"} <= set(result.cue_ids)
+
+
 def test_round8_unnamed_way_asks_in_the_session() -> None:
     result = _session().turn("别问为什么，告诉我最快的办法")
     assert result.reply_kind is ReplyKind.SAFETY_CHECK
