@@ -523,6 +523,11 @@ class RenderText:
     """The user did not confirm: nothing is recorded, this session stays as it is."""
     hotline_local_emergency_intro: str = ""
     """Leads the line of a country's official emergency numbers (``local_emergency``)."""
+    here_heading: str = ""
+    """Owner decision 2026-11-25 B (draft, G-0): heads the numbers of the region where the
+    user said they are now, which a crisis card lists first (``ResourceCard.here``)."""
+    home_heading: str = ""
+    """Heads the profile region's numbers when they follow those (B)."""
     hotline_hours_from_data: str = ""
     """Leads each line's hours as the signed hotline data gives them."""
     # Round 5 (2026-10-29, re-test q2 第 5 节; drafts, G-0).
@@ -1222,6 +1227,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         minor_recorded=texts["minor_recorded"],
         minor_session_only=texts["minor_session_only"],
         hotline_local_emergency_intro=texts["hotline_local_emergency_intro"],
+        here_heading=texts["here_heading"],
+        home_heading=texts["home_heading"],
         hotline_hours_from_data=texts["hotline_hours_from_data"],
         hotline_unreachable=crisis_lists["hotline_unreachable"],
         hotline_emergency=crisis_lists["hotline_emergency"],
@@ -2212,6 +2219,8 @@ _CRISIS_TEXTS: Final = (
     "hotline_number_known",
     "hotline_purposes_known",
     "unknown_command",
+    "here_heading",
+    "home_heading",
 )
 """render.yaml ``crisis`` single lines of the same replies."""
 

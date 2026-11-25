@@ -157,11 +157,17 @@ def test_a_minor_still_gets_the_emergency_numbers_first():
     assert reply.index("120") < reply.index("12355")
 
 
-@pytest.mark.parametrize(("region", "emergency"), [("HK", "999"), ("US", "911"), ("GB", "999")])
-def test_other_regions_l2_cards_are_unchanged(region, emergency):
+@pytest.mark.parametrize(
+    ("region", "line", "emergency"),
+    [("HK", "18111", "999"), ("US", "988", "911"), ("GB", "116 123", "999")],
+)
+def test_other_regions_l2_cards_list_their_own_emergency_number_never_120(region, line, emergency):
+    """Owner decision 2026-11-25 A superseded "other regions unchanged": their L2 card lists
+    their own emergency number after the lines, as the mainland's lists 120; never 120 or
+    12356 (R8)."""
     result = _open(region=region).turn("我不想活了")
     _assert_crisis(result)
-    assert emergency not in result.reply
+    assert result.reply.index(line) < result.reply.index(emergency)
     assert "120" not in result.reply and "12356" not in result.reply
 
 

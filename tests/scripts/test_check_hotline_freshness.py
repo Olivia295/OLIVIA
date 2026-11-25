@@ -121,3 +121,14 @@ def test_the_workflow_runs_it_quarterly_and_on_demand():
 def test_the_sources_document_names_an_owner():
     doc = (ROOT / "docs/resources/hotline-sources.md").read_text(encoding="utf-8")
     assert "维护负责人" in doc and "check_hotline_freshness.py" in doc
+
+
+def test_the_2026_11_25_review_holds_until_the_next_quarter(capsys):
+    """The re-verification of 2026-11-25 (every entry, signed again): the check passes for
+    90 days, through 2027-02-23, and asks for the next review from 2027-02-24."""
+    store = fresh.load_store(None, date(2026, 11, 25))
+    dates = {e.verified_on for r in store.regions.values() for e in (*r.emergency, *r.lines)}
+    assert dates == {date(2026, 11, 25)} and store.compiled_on == date(2026, 11, 25)
+    assert fresh.main(["--today", "2027-02-23"]) == 0
+    assert fresh.main(["--today", "2027-02-24"]) == 1
+    assert "35 of 35" in capsys.readouterr().out

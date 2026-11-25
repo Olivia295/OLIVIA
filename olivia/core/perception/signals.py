@@ -198,6 +198,14 @@ class TurnSignals:
     hotline_country: str | None = None
     """The ISO code of a country without verified hotlines here whose official emergency
     numbers the render data lists ("我在日本" -> ``JP``; round 4), the first one named."""
+    present_place: str | None = None
+    """Where the user says they are now, by grammar (owner decision 2026-11-25 B;
+    ``perception/location.py``: "我在多伦多" -> ``CA``, "I'm in Tokyo" -> ``ZZ``), the last
+    such clause of the message; never the past, the future, a condition or someone else's
+    place. None when the message says no such thing."""
+    present_country: str | None = None
+    """With ``present_place`` ``ZZ``: the country, when ``crisis.local_emergency`` may list
+    its official emergency numbers ("我在东京" -> ``JP``)."""
     hotline_number: str | None = None
     """The digits of a number the message asks about ("12356是干嘛的"; round 5,
     2026-10-29): the reply says what the signed hotline data says it is."""
