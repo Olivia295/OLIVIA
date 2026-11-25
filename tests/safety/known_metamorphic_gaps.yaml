@@ -1,0 +1,161 @@
+# 危机筛查的变形测试（metamorphic testing）在规则模式下的已知缺口。
+# 由 scripts/metamorphic_report.py --write-gaps 生成，从不手挑：它用 test_metamorphic.py
+# 的入口（SafetyScreen.assess，规则模式）跑每个 (种子, 变换)，写下全部不满足不变性的组合。
+# test_metamorphic.py 对这些条目做严格 xfail：某条开始通过，测试就失败，直到把它从这里删掉
+# （重新运行生成脚本）；不在这里的组合一旦失败也是失败。绝不新增条目来掩盖回归。
+#
+# 不变性：期望 L3 的种子，变体仍是 L3；期望 L2 的，变体 ≥ L2；期望 L0 的，变体 < L2。
+# L1 种子只报告。原句本身就没达到期望的种子跳过（规则模式下就是 known_false_positives.yaml
+# 里 ideal 不是 L1 的条目：它们的 current 都不等于 ideal）。
+# 变换都不改变句子的意思，定义见 tests/safety/metamorphic.py。
+#
+# 表层形式（零宽与不可见字符、组合装饰符、全角、繁体）的缺口在 normalize.py 与
+# _trad2simp.py 里修，不进这个文件；这里只记录词表、组合规则与分句（compose.py、
+# crisis.py、risk.yaml）里的缺口，在那里修好后重新生成。
+#
+# 按变换类别与掉档方式：
+#   标点形式 · L0 误报到 L3：2 条
+#   标点形式 · L2 掉档到 L0：2 条
+#   句前接日常句 · L0 误报到 L2：3 条
+#   句前接日常句 · L0 误报到 L3：3 条
+#   句前接日常句 · L2 掉档到 L0：19 条
+#   句前接日常句 · L3 掉档到 L0：12 条
+#   句前接日常句 · L3 掉档到 L1：2 条
+#   句前接日常句 · L3 掉档到 L2：10 条
+#   整句重复 · L0 误报到 L2：1 条
+#   整句重复 · L0 误报到 L3：1 条
+# 按变换：
+#   punct_strip：2
+#   punct_to_space：2
+#   lead_overtime：1
+#   lead_overtime_space：4
+#   lead_roommate：44
+#   repeat_twice：2
+# 按种子类别：
+#   BENIGN：4
+#   L2_IDEATION：1
+#   L3_MEANS：2
+#   L3_TIME_PLACE：2
+#   comp:benign_object：3
+#   comp:farewell_ctx：7
+#   comp:intent_act：6
+#   comp:means_hoarded：2
+#   comp:no_wake：10
+#   comp:place：2
+#   comp:prep_benign：3
+#   comp:prep_means：3
+#   comp:prep_note：8
+#   tuned_probe：2
+# 合计：55 条（涉及 49 个种子）
+
+gaps:
+  - id: r3_tp09/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（L3_TIME_PLACE）"
+  - id: r3_tp12/lead_roommate
+    reason: "L3 掉档到 L1：句前接“室友今天搬走了。”（L3_TIME_PLACE）"
+  - id: g26_m38/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（L3_MEANS）"
+  - id: g26_m38_rw/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（L3_MEANS）"
+  - id: i25/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（L2_IDEATION）"
+  - id: b41/lead_overtime_space
+    reason: "L0 误报到 L3：句前接“今天加班到九点”，空格隔开（BENIGN）"
+  - id: b71/lead_overtime_space
+    reason: "L0 误报到 L3：句前接“今天加班到九点”，空格隔开（BENIGN）"
+  - id: b71/repeat_twice
+    reason: "L0 误报到 L2：整句重复两遍（BENIGN）"
+  - id: b106/lead_overtime_space
+    reason: "L0 误报到 L3：句前接“今天加班到九点”，空格隔开（BENIGN）"
+  - id: cp014/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:intent_act）"
+  - id: cp028/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:intent_act）"
+  - id: cp030/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:intent_act）"
+  - id: cp034/punct_strip
+    reason: "L2 掉档到 L0：去掉全部标点（comp:intent_act）"
+  - id: cp034/punct_to_space
+    reason: "L2 掉档到 L0：标点换成空格（comp:intent_act）"
+  - id: cp034/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:intent_act）"
+  - id: cp060/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp062/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp064/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp065/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp068/lead_roommate
+    reason: "L3 掉档到 L1：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp069/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp070/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp072/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（comp:prep_note）"
+  - id: cp083/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:prep_means）"
+  - id: cp086/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:prep_means）"
+  - id: cp090/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:prep_means）"
+  - id: cp234/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:means_hoarded）"
+  - id: cp236/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:means_hoarded）"
+  - id: cp100/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp101/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp102/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp103/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp105/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp106/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp107/lead_roommate
+    reason: "L3 掉档到 L2：句前接“室友今天搬走了。”（comp:farewell_ctx）"
+  - id: cp123/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:place）"
+  - id: cp126/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:place）"
+  - id: cp130/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp131/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp132/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp133/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp134/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp135/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp137/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp138/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp139/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cp140/lead_roommate
+    reason: "L2 掉档到 L0：句前接“室友今天搬走了。”（comp:no_wake）"
+  - id: cn028/lead_overtime
+    reason: "L0 误报到 L2：句前接“今天加班到九点。”（comp:benign_object）"
+  - id: cn028/lead_overtime_space
+    reason: "L0 误报到 L2：句前接“今天加班到九点”，空格隔开（comp:benign_object）"
+  - id: cn028/lead_roommate
+    reason: "L0 误报到 L2：句前接“室友今天搬走了。”（comp:benign_object）"
+  - id: cn127/punct_strip
+    reason: "L0 误报到 L3：去掉全部标点（comp:prep_benign）"
+  - id: cn127/punct_to_space
+    reason: "L0 误报到 L3：标点换成空格（comp:prep_benign）"
+  - id: cn231/repeat_twice
+    reason: "L0 误报到 L3：整句重复两遍（comp:prep_benign）"
+  - id: af25k/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（tuned_probe）"
+  - id: ho05/lead_roommate
+    reason: "L3 掉档到 L0：句前接“室友今天搬走了。”（tuned_probe）"
