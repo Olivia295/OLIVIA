@@ -40,6 +40,10 @@ olivia --version
 
 如果电脑上默认的 Python 版本低于 3.11，可以指定版本：`pipx install --python python3.11 git+https://github.com/Olivia295/OLIVIA.git`。
 
+### 从源码一键启动
+
+已经把仓库下载到本地、不想装 pipx 的话，可以用根目录的启动脚本：macOS 双击 `start.command`，或在终端运行 `./start.sh`。它会检查 Python 3.11+、第一次自动建 `.venv` 并安装依赖（需要联网），然后运行 `olivia chat`；带参数时原样传给 `olivia`，例如 `./start.sh doctor`。OLIVIA 不用 `.env`，没有需要填写的密钥。按 Ctrl+C 停止。
+
 ## 更新与卸载
 
 ```bash
