@@ -120,7 +120,9 @@ NOTICES: Final = (
 )
 _NOTICE_MAX: Final = 80
 # utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
-SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink")
+# ``ask_to_drink_crisis`` (#137, 2026-11-25; 草稿：待 G-0) answers the same question in the
+# crisis flow and on the safety question, where the card stays.
+SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink", "ask_to_drink_crisis")
 # Those lines give no amount (no dose, as the #125 withdrawal warning).
 _DOSE_WORDS: Final = ("毫升", "毫克", "两白酒", "一两", "半斤", "一斤", "瓶以内", "杯以内", "剂量")
 # A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.

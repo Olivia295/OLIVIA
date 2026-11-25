@@ -490,6 +490,13 @@ Session flows, round 6 (re-test 2026-10-29, q2/q3/q4; new wording 草稿：待 G
 * "别总问我感受" holds for the rest of the session: the listening lock, no feeling or need
   named, and a ``crisis.no_feeling_prompts`` line in place of the closing question.
 
+Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
+
+* #137: "喝一点行不行" (``SubstanceReading.asks_to_drink``, alcohol only) in the crisis flow
+  or on the safety question keeps the card and gets one plain answer
+  (``substance.ask_to_drink_crisis``): first on a calm crisis turn, in place of the mirror
+  of the wish; otherwise after the opening line, before the numbers.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -1927,13 +1934,24 @@ class Session:
                 rendered.reply = f"{boundary}\n\n{self._engine.without_conflicts(rendered.reply)}"
             elif self._boundary_turn is not None and turn_no - self._boundary_turn <= 1:
                 rendered.reply = self._engine.without_conflicts(rendered.reply)
-        elif withdrawal := self._engine.withdrawal_line(text):
+        else:
+            # #137 (2026-11-25; draft, G-0): "喝一点行不行" in the crisis flow or on the safety
+            # question gets its plain answer too (the card stays), unless the reply already
+            # answers the words with it (``_heard_line``).
+            added: list[str] = []
+            if rendered.kind in (ReplyKind.CRISIS, ReplyKind.SAFETY_CHECK):
+                drink = self._engine.crisis_drink_line(text)
+                if drink and drink not in rendered.reply:
+                    added.append(drink)
             # Round 4 (复测 q3): a withdrawal sign gets its reminder after the crisis card or
             # the safety question too. Round 6 (复测 q2 第 6 节): before the numbers, after
             # the opening line, so the card does not bury it.
-            parts = rendered.reply.split("\n\n")
-            at = 1 if len(parts) > 1 else len(parts)
-            rendered.reply = "\n\n".join([*parts[:at], withdrawal, *parts[at:]])
+            if withdrawal := self._engine.withdrawal_line(text):
+                added.append(withdrawal)
+            if added:
+                parts = rendered.reply.split("\n\n")
+                at = 1 if len(parts) > 1 else len(parts)
+                rendered.reply = "\n\n".join([*parts[:at], *added, *parts[at:]])
         cared = False
         if (
             (self._care_greeting or self._crisis_seen is not None)
@@ -2280,6 +2298,10 @@ class Session:
             line = self._plain_line(render.hotline_in_crisis, stage)
             if line is not None and not self._has_taboo(line[0], ""):
                 return line[0]
+        if stage is HelpStage.S_CRISIS and (drink := self._engine.crisis_drink_line(text)):
+            # #137 (2026-11-25; draft, G-0): "喝一点行不行" in the crisis flow is answered
+            # plainly (not now; someone near or the numbers), never with a mirror of the wish.
+            return drink
         if signals.help_seeking and render.help_seeking:
             # Round 4 (re-test q2 n01, n08): school or university, in English too.
             school = signals.help_seeking_school and bool(render.help_seeking_school)
