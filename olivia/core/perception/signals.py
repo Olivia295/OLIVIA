@@ -160,7 +160,9 @@ class TurnSignals:
     hotline_fee: bool = False
     """A follow-up about a hotline's cost (round 3, 2026-10-27)."""
     hotline_hours: bool = False
-    """About when it answers (round 3)."""
+    """About when it answers (round 3). Round 8 (2026-11-25): asked at the start of a clause
+    with no line named ("几点有人听"), it is a ``hotline_request`` and sets
+    ``hotline_words`` too."""
     hotline_language: bool = False
     """About the languages it takes (round 3)."""
     hotline_real: bool = False
@@ -168,7 +170,8 @@ class TurnSignals:
     hotline_more: bool = False
     """Asking for more numbers (round 3)."""
     hotline_words: bool = False
-    """A phone line or a call is named ("这个号码"; round 3)."""
+    """A phone line or a call is named ("这个号码"; round 3), or (round 8) when one answers
+    is asked ("几点有人听")."""
     hotline_place: str | None = None
     """The region code of a place the user says they are in ("我在日本" -> ``ZZ``, "香港这边"
     -> ``HK``; round 3), the first one named; None when no place is named."""

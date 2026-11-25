@@ -5,6 +5,7 @@ card stays faithful to taxonomy.yaml (one card per method, one step per core ste
 same duration) and inside the WILLOW length and wording limits.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -121,3 +122,29 @@ def test_cards_have_only_known_fields() -> None:
     allowed = {"id", "duration_minutes", "steps", "display_title", *TEXT_FIELDS}
     for card in CARDS:
         assert set(card) <= allowed, f"{card['id']}: {set(card) - allowed}"
+
+
+# Session gaps (#139 left over): the closing asks for SUDS, 0 calm and 10 the worst. Any
+# other 0-10 rating in a step is another scale (behaviour activation's sense of mastery,
+# taxonomy 03 "胜任感"): it says what 0 and 10 mean and that it runs the other way, and is
+# kept in one's head, so it is never typed in as the closing's distress rating.
+SUDS_DIRECTION = "0 是平静，10 是最难受"
+SCALE = re.compile(r"0\s*[–\-~～到]\s*10")
+
+
+@pytest.mark.parametrize("card_id", EXPECTED_IDS)
+def test_every_0_to_10_rating_says_which_way_it_runs(card_id: str) -> None:
+    card = CARD_BY_ID[card_id]
+    if "10" in card["closing"]:
+        assert SUDS_DIRECTION in card["closing"], card["closing"]
+    for step in card["steps"]:
+        if SCALE.search(step) is None:
+            continue
+        assert "0 是" in step and "10 是" in step, step
+        assert "方向相反" in step and "在心里" in step, step
+
+
+def test_the_mastery_rating_of_behaviour_activation_is_its_own_scale() -> None:
+    step = CARD_BY_ID["03"]["steps"][2]
+    assert "0 是一点没有" in step and "10 是很有成就感" in step
+    assert SUDS_DIRECTION in CARD_BY_ID["03"]["closing"]

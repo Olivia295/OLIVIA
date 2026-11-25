@@ -192,10 +192,14 @@ COLBO-07:
     - tests/session/test_session.py::test_low_battery_direct_request_gets_a_light_stabilization_card
     - tests/session/test_session_round4.py::test_a_rating_while_a_card_waits_sets_the_arousal
     - tests/session/test_session_round4.py::test_a_rating_at_the_somatic_line_retreats_to_stabilization
+    - tests/session/test_session_suds_scale.py::test_a_changed_scale_factor_changes_the_arousal_and_the_line
+    - tests/session/test_session_suds_high.py::test_an_eight_without_a_retreat_says_no_steadying_it_does_not_do
+    - tests/session/test_session_suds_high.py::test_a_yes_to_the_offer_brings_another_steadying_card
   reason: >-
-    双翼桥接按进度表 9.2 不做（文档未定义判据）。SUDS 换算（taxonomy.yaml suds_mapping，唤醒 = SUDS / 10）
-    #139 起接入：卡片等待时回的 0–10 分设定唤醒度；到稳定化线的回退按状态机规则（S_empower 为 ≥ 0.85
-    或升高 ≥ 0.25），S_empower 里打 8 分只说“先稳一稳”不换卡，见进度表“剩余”
+    双翼桥接按进度表 9.2 不做（文档未定义判据）。SUDS 换算（taxonomy.yaml suds_mapping.scale_factor，
+    唤醒 = SUDS × 0.10）#139 起接入，会话缺口起从 taxonomy 读取：卡片等待时回的 0–10 分设定唤醒度；到稳定化线的
+    回退按状态机规则（S_empower 为 ≥ 0.85 或升高 ≥ 0.25）；没有回退时不说“先稳一稳”，改为说分数偏高、
+    回“好”再换稳定化卡（草稿，待 G-0）
 
 # ---------------------------------------------------------------- W.I.L.L.O.W.
 WILLOW-01:

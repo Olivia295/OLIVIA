@@ -155,7 +155,12 @@ error nothing else handled ends the command with the emergency numbers written i
 program (``resources/fallback.py``), then one plain sentence and ``olivia doctor``, never a
 traceback (exit 1; Ctrl-C keeps its own handling); when a packaged file does not load, the
 sentence names it and says to reinstall (QA q4). ``chat`` says at its start when part of
-the data directory cannot be read or written, so records may not be saved (QA q4).
+the data directory cannot be read or written, so records may not be saved (QA q4). When
+the lock itself cannot be written for want of permission or on a read-only disk, a
+``chat`` with a saved profile goes on without it (``CHAT_READ_ONLY``, said once with the
+kind of reason) and writes nothing: no summary, self-rating, note, kit, care marker or plan
+suggestion; the crisis flow and its numbers are unchanged. A first visit, and every other
+writing command, still stops as on any error.
 
 The CLI writes the profile (``chang/profile.py``: region, timezone and the onboarding
 answers) through ``storage.atomic_write_text``, the memory ledger (``core/memory``,
@@ -190,6 +195,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import functools
 import os
 import platform
@@ -437,6 +443,15 @@ CHAT_RECORDS_UNSAVED: Final = (
     "这次聊天的小结和让我记住的话可能存不下来；聊天本身照常。"
     "运行 olivia doctor 可以看到是哪里不对、怎么修。"
 )
+# Session gaps (草稿：待 G-0): said before the chat, once, when the data directory may be
+# read but not written; the chat then writes nothing at all (``_chat(read_only=...)``).
+CHAT_READ_ONLY: Final = (
+    "这台电脑上的数据目录现在只能读、不能写（{reason}），这次的内容存不下来："
+    "聊天小结、让我记住的话和练习的反馈都不会保存。聊天本身照常，需要的时候热线也照常会给。"
+    "运行 olivia doctor 可以看到是哪里不对、怎么修。"
+)
+READ_ONLY_PERMISSIONS: Final = "多半是权限不对"
+READ_ONLY_DISK: Final = "它所在的磁盘是只读的"
 # QA q4 DOC-10, FLT-3 (草稿：待 G-0): said before the chat, once, when ``ledger/`` is a
 # file or the keychain no longer holds the master key the saved data needs.
 CHAT_LEDGER_MISPLACED: Final = (
@@ -1490,6 +1505,7 @@ def _chat(
     rng: random.Random | None,
     *,
     student: bool = True,
+    read_only: str | None = None,
 ) -> int:
     tax = _taxonomy()
     store = ProfileStore()
@@ -1541,7 +1557,8 @@ def _chat(
             carried=state_store.load(),
             safety_plan=plan,
             safety_plan_unreadable=plan_unreadable,
-            suggest_safety_plan=plan is None and plan_store.should_suggest(),
+            # A plan could not be saved now, so a read-only chat does not suggest one.
+            suggest_safety_plan=read_only is None and plan is None and plan_store.should_suggest(),
             hotline_updates=override_dir_location(),
         )
     except HOTLINE_DATA_DAMAGED:  # S3: no chat without verified numbers; the fixed help
@@ -1555,7 +1572,15 @@ def _chat(
     titles = _card_titles(tax)
     ledger = Ledger(store.path.parent, store.vault, method_titles=titles)
     recorder = SessionRecorder(ledger, session.state.session_id, local)
-    if not recorder.enabled and ledger.take_unavailable_notice():
+    if read_only is not None:
+        # Nothing is written in this chat (no summary, rating, note, kit or care marker),
+        # said once, with the kind of reason; the crisis flow and the numbers are the same.
+        recorder.discard()
+        state_recorder.disabled = True
+        console.say(CHAT_READ_ONLY.format(reason=read_only))
+        if plan_unreadable:
+            console.say(CHAT_PLAN_DAMAGED)
+    elif not recorder.enabled and ledger.take_unavailable_notice():
         console.say(ledger.text.replies["memory_unavailable"])
     else:  # QA q4 P8, DOC-10, FLT-3: said now, not only at the end
         blocked = _records_blocked(store.path.parent, store)
@@ -1581,6 +1606,7 @@ def _chat(
         taboo_topics=profile.taboo_topics,
         persona=profile.persona_spectrum,
     )
+    writes = read_only is None
     interrupted = False
     left_with_words = False  # round 7 (QA q4 P9): "/exit 现在就走"
     # Round 6 (re-test q4 F5): the user confirmed in the chat that they are under 18 and
@@ -1625,13 +1651,14 @@ def _chat(
             checks.observe(result)
             # The reply (a crisis card included) is on screen before any keychain access.
             console.say(f"{profile.agent_name}：{result.reply}")
-            if not minor_recorded:  # the care marker stays a crisis follow-up for anyone else
+            # The care marker stays a crisis follow-up for anyone else (none read-only).
+            if not minor_recorded and writes:
                 care_recorder.observe(result, session.snapshot())
             if not session.minor_disclosed:
                 state_recorder.observe(session.carried_state())  # feedback survives a crash
-            if session.safety_plan_suggested:
+            if session.safety_plan_suggested and writes:
                 plan_store.mark_suggested()
-            if session.take_minor_record():
+            if session.take_minor_record() and writes:
                 # Round 4 (ruling 22): the user confirmed being under 18 in the chat; the
                 # same refusal record as the first visit (no age, no words), so the next
                 # ``olivia chat`` shows the refusal.
@@ -1684,7 +1711,7 @@ def _chat(
             console.say(_numbers_line(profile, local().date(), minor=session.minor_disclosed))
         return 0
     console.say(f"{profile.agent_name}：{farewell.text}")
-    if not minor_recorded:
+    if not minor_recorded and writes:
         care_recorder.observe_level(farewell.level)
     return 0
 
@@ -2959,14 +2986,33 @@ def _forget_all_pending(args: argparse.Namespace) -> bool:
     return args.command not in _EXEMPT_FROM_UNFINISHED
 
 
+def _profile_saved() -> bool:
+    """Whether the data directory holds a saved profile (so a chat needs no setup)."""
+    with contextlib.suppress(OSError):
+        return (data_dir_location() / PROFILE_FILENAME).is_file()
+    return False
+
+
+def _read_only_reason(exc: OSError) -> str | None:
+    """What kind of "cannot write" stopped the data directory's lock, as said to the user
+    (``CHAT_READ_ONLY``); None for any other failure, which is not handled here."""
+    if exc.errno == errno.EROFS:
+        return READ_ONLY_DISK
+    if isinstance(exc, PermissionError) or exc.errno in (errno.EACCES, errno.EPERM):
+        return READ_ONLY_PERMISSIONS
+    return None
+
+
 def _dispatch(
     args: argparse.Namespace,
     console: _Console,
     now: Clock,
     rng: random.Random | None,
+    *,
+    read_only: str | None = None,
 ) -> int:
     if args.command == "chat":
-        return _chat(console, args.inspect, now, rng, student=not args.rules)
+        return _chat(console, args.inspect, now, rng, student=not args.rules, read_only=read_only)
     if args.command == "resources":
         return _resources(console, args.code, now)
     if args.command == "health":
@@ -3063,6 +3109,7 @@ def _run_locked(
         console.say(load_forget_text().forget["unfinished"])
         return 1
     lock: DataDirLock | None = None
+    read_only: str | None = None
     if _writes(args):
         lock = DataDirLock(app_data_dir())
         try:
@@ -3077,8 +3124,17 @@ def _run_locked(
                 console.say(DATA_DIR_BUSY)
                 return 1
             return 0
+        except OSError as exc:
+            # A data directory this user may read but not write: a chat with a saved
+            # profile goes on and writes nothing, so it needs no lock (and no other writer
+            # can take one here either). A first visit, which must save, stops as before.
+            chat = args.command == "chat" and _profile_saved()
+            read_only = _read_only_reason(exc) if chat else None
+            if read_only is None:
+                raise
+            lock = None
     try:
-        code = _dispatch(args, console, now, rng)
+        code = _dispatch(args, console, now, rng, read_only=read_only)
         if args.command not in ("notify-check", "doctor"):  # doctor writes nothing at all
             _tell_recovery(console)
         if args.command == "resources" and _forget_all_unfinished_here():

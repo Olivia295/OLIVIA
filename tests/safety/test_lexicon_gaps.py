@@ -154,11 +154,17 @@ def test_a_farewell_or_preparation_alone_asks_at_l1(text: str, cue: str) -> None
         "今晚就是最后一次跟你说话了，活着太累了",
         "后事都安排好了，我撑不下去了",
         "我已经想好了，就这周五，活着没意思",
-        "我已经想好了，就明天，反正也不想活了",
     ],
 )
 def test_a_farewell_with_the_users_own_risk_cue_is_l2(text: str) -> None:
     assert SCREEN.assess(text).level is L.L2, text
+
+
+def test_a_resolve_with_the_moment_and_a_plain_death_wish_is_l3() -> None:
+    # Round 8 (2026-11-25): a moment set in a clause of its own (就明天) next to ending one's
+    # life named plainly (不想活了) is a plan with a time limit, PRD §9.1 L3; it was L2 here.
+    a = SCREEN.assess("我已经想好了，就明天，反正也不想活了")
+    assert a.level is L.L3 and "S1_DEATH_THEN_MOMENT" in a.cue_ids, a
 
 
 @pytest.mark.parametrize(

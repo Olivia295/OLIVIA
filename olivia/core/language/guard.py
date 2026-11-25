@@ -319,7 +319,10 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
     # Round 7 (复测 q3 第三节): a medicine named by its class counts as one too, tapering
     # on one's own ("隔天吃，慢慢减") is a stop unless a doctor leads it, and so are missed
     # doses of a named medicine ("两天没吃").
-    kind = _kind(folded, cues)
+    # Round 8 (2026-11-25; draft, G-0): a short name that is a medicine only next to
+    # stopping it ("停了安定", "安定我自己停了"; never "情绪安定", "安定医院").
+    short = _short_names(folded, cues)
+    kind = _kind(folded, cues, short)
     guided = _guided(folded, cues)
     stopping = (
         (_has(folded, cues.substances) or _has(folded, cues.stop_objects) or bool(kind))
@@ -332,6 +335,7 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
             )
             or _has(folded, cues.stop_taper)
             or (bool(kind) and any(p.search(folded) is not None for p in cues.stop_missed))
+            or any(not _negated(folded, at, cues) for at, _ in short)
         )
         and not guided
     )
@@ -380,10 +384,21 @@ _OTHER_MEDICINE: Final = "other_medicine"
 _ALCOHOL: Final = "alcohol"
 
 
-def _kind(folded: str, cues: SubstanceCues) -> str:
+def _short_names(folded: str, cues: SubstanceCues) -> list[tuple[int, str]]:
+    """Round 8: (start, class) of every ``stop_short_names`` match, in class order."""
+    return [
+        (m.start(), name)
+        for name, patterns in cues.stop_short_names.items()
+        for pattern in patterns
+        for m in pattern.finditer(folded)
+    ]
+
+
+def _kind(folded: str, cues: SubstanceCues, short: Sequence[tuple[int, str]] = ()) -> str:
     """The class of the drink or medicine named first (round 7), ``general`` for one of
-    ``other_medicine`` or (any but alcohol) someone else's; "" when no class is named."""
-    first: tuple[int, str] | None = None
+    ``other_medicine`` or (any but alcohol) someone else's; "" when no class is named.
+    ``short``: the short names found (round 8), named where their match starts."""
+    first: tuple[int, str] | None = min(short, default=None)
     for name, words in cues.classes.items():
         for word in words:
             at = folded.find(word)
