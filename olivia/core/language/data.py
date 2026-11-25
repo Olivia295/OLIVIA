@@ -734,6 +734,25 @@ class SubstanceCues:
     """Class id -> patterns for a short name of that kind of medicine that is a medicine only
     next to stopping it ("停了安定", "安定我自己停了", never "情绪安定" or "安定医院"): a match
     names the class and, not negated, is a stop on one's own like ``stopping``."""
+    stop_others_classes: frozenset[str] = frozenset()
+    """Round 8 (2026-11-25, owner's decision; draft, G-0): the psychiatric classes whose
+    stop by someone else gets ``withdrawal_classes.others_psychiatric`` (ask the
+    prescribing doctor or a pharmacist soon, a sudden stop may bring reactions) instead
+    of the general line."""
+    # Round 8 (2026-11-25; draft, G-0): a drink asked for without 喝 (``bare_drinks``).
+    bare_alcohol: tuple[re.Pattern[str], ...] = ()
+    """Phrases that speak of alcohol beside the ``alcohol`` class words ("喝两杯", "小酌")."""
+    bare_everyday: tuple[str, ...] = ()
+    """Words holding an alcohol class word that speak of none ("酒店", "啤酒肚")."""
+    bare_amounts: tuple[re.Pattern[str], ...] = ()
+    """An amount of a drink with no drink named ("一小杯", "两口", "半瓶")."""
+    bare_not_before: tuple[str, ...] = ()
+    """Right before an amount, another act ("吃一口", "抽一口", "松一口气")."""
+    bare_not_drink: tuple[str, ...] = ()
+    """After an amount, something that is no drink ("一口饭" has 饭 in ``not_alcohol``;
+    "一口蛋糕", "一口烟")."""
+    bare_refusals: tuple[str, ...] = ()
+    """Right after an amount or a drink act, saying no to it ("一口都不碰")."""
 
 
 def _no_feelings() -> Feelings:
@@ -2058,7 +2077,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
             *lists,
         },
         where,
-        optional={"classes"},
+        optional={"classes", "bare_drinks"},
     )
     _version(data, where)
 
@@ -2076,7 +2095,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop,
         {"objects", "phrases", "guided"},
         f"{where} stopping",
-        optional={"patterns", "taper", "missed", "others", "short_names"},
+        optional={"patterns", "taper", "missed", "others", "short_names", "others_classes"},
     )
 
     def regexes(node: Any, here: str) -> tuple[re.Pattern[str], ...]:
@@ -2104,6 +2123,31 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         if str(name) not in classes:
             raise LanguageDataError(f"{where} stopping.short_names: {name!r} is no class")
         short_names[str(name)] = regexes(node, f"{where} stopping.short_names.{name}")
+    # Round 8 (2026-11-25, owner's decision; draft, G-0): someone else's psychiatric medicine.
+    others_classes = frozenset(
+        _strs(stop["others_classes"], f"{where} stopping.others_classes")
+        if "others_classes" in stop
+        else ()
+    )
+    unknown = sorted(others_classes - classes.keys())
+    if unknown:
+        raise LanguageDataError(f"{where} stopping.others_classes: {unknown[0]!r} is no class")
+    # Round 8 (2026-11-25; draft, G-0): a drink asked for without 喝.
+    bare_where = f"{where} bare_drinks"
+    bare = _map(data.get("bare_drinks", {}), bare_where)
+    if bare:
+        _keys(
+            bare,
+            {"alcohol_said", "everyday", "amounts", "not_before", "not_drink", "refusals"},
+            bare_where,
+        )
+
+    def bare_words(key: str) -> tuple[str, ...]:
+        return folded(bare[key], f"{bare_where}.{key}") if bare else ()
+
+    def bare_regexes(key: str) -> tuple[re.Pattern[str], ...]:
+        return regexes(bare[key], f"{bare_where}.{key}") if bare else ()
+
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -2134,6 +2178,13 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_others=compiled("others"),
         classes=MappingProxyType(classes),
         stop_short_names=MappingProxyType(short_names),
+        stop_others_classes=others_classes,
+        bare_alcohol=bare_regexes("alcohol_said"),
+        bare_everyday=bare_words("everyday"),
+        bare_amounts=bare_regexes("amounts"),
+        bare_not_before=bare_words("not_before"),
+        bare_not_drink=bare_words("not_drink"),
+        bare_refusals=bare_words("refusals"),
     )
 
 
