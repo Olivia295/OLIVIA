@@ -173,6 +173,7 @@ class SessionRecorder:
         self._written: tuple[str, SessionSummary] | None = None
         self.closed_segment: bool = False
         """The last :meth:`observe` wrote a segment's summary (S_closing -> S_ready)."""
+        self._read_only = False
 
     def observe(self, message: str, result: TurnResult) -> TurnResult:
         """Record one turn; returns ``result``, with a note confirmation if one was asked."""
@@ -226,10 +227,16 @@ class SessionRecorder:
         self._written = (key, rated)
         return True
 
-    def discard(self) -> None:
+    def discard(self, *, read_only: bool = False) -> None:
         """Record nothing more and drop the open segment unwritten (round 6, re-test q4 F5:
-        a user who said in the chat that they are under 18 leaves no summary of it)."""
+        a user who said in the chat that they are under 18 leaves no summary of it).
+
+        Session gaps (2026-11-25; draft, G-0): ``read_only`` for a chat on a data directory
+        that cannot be written (``olivia chat``'s ``CHAT_READ_ONLY``); a note asked for then
+        gets ``note_read_only`` (this time the directory cannot be written), not
+        ``note_unavailable`` (encryption is not available here). It stays once set."""
         self.enabled = False
+        self._read_only = self._read_only or read_only
         self._segment = _Segment()
         self._written = None
         self.closed_segment = False
@@ -304,7 +311,7 @@ class SessionRecorder:
     def _take_note(self, note: str, now: datetime) -> str:
         replies = self._text.replies
         if not self.enabled:
-            return replies["note_unavailable"]
+            return replies["note_read_only" if self._read_only else "note_unavailable"]
         if len(note) > NOTE_MAX_CHARS:
             return replies["note_too_long"]
         try:
