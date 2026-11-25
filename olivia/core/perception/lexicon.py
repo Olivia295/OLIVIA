@@ -132,6 +132,7 @@ _SECTIONS: Final = frozenset(
         "hotline_place_hint_patterns",
         "hotline_place_patterns",
         "hotline_which_patterns",
+        "hotline_hours_patterns",
         "hotline_purpose_patterns",
         "hotline_police_fear_patterns",
         "hotline_other_call_patterns",
@@ -349,6 +350,10 @@ class PerceptionLexicon:
     """Someone else's call or a nuisance call ("室友半夜煲电话"): ignored for hotlines."""
     help_seeking_mask_patterns: tuple[re.Pattern[str], ...] = ()
     """A clinic word that is no wish to go ("精神科的药"): ignored for ``help_seeking``."""
+    # Round 8 (2026-11-25, re-test r8; draft, G-0).
+    hotline_hours_patterns: tuple[re.Pattern[str], ...] = ()
+    """When someone answers, at the start of a clause ("几点有人听", "半夜有没有人听"): a
+    hotline request about the hours that names a line, also as a first message."""
     """The other person asked the user to keep it secret ("她不让我告诉别人"; 第 6 条)."""
 
 
@@ -533,6 +538,9 @@ def load_perception_lexicon(tax: Taxonomy, directory: Path | None = None) -> Per
         ),
         help_seeking_mask_patterns=_patterns(
             doc.get("help_seeking_mask_patterns"), "help_seeking_mask_patterns"
+        ),
+        hotline_hours_patterns=_patterns(
+            doc.get("hotline_hours_patterns"), "hotline_hours_patterns"
         ),
     )
 
