@@ -92,7 +92,10 @@ waiting gets ``followups.no_pending_feedback`` and a short request to wipe the m
 ("清空所有记忆", below L1) gets ``followups.forget_hint`` (``olivia forget --all``,
 ``olivia memory``); neither is mirrored, and the stage holds (unless the battery or a
 crisis moves it). ``/unhelpful`` or aversion on a waiting card leads the reply with
-``followups.unhelpful_ack``.
+``followups.unhelpful_ack``. Session gaps (draft, G-0): a done phrase ("做完了") of at most
+``_DONE_AGAIN_MAX_CHARS`` characters within ``_DONE_AGAIN_WINDOW`` turns of a card's
+done, with no card waiting now and not leave-taking, is a meta turn of the same kind in
+S_explore, S_clarify or S_empower: ``notices.already_done``, no mirror, no card.
 
 Leaving for now (F5d): with no card waiting for feedback, a turn whose message takes
 leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
@@ -377,9 +380,15 @@ Session flows, round 4 (re-test 2026-10-28, q2; new wording 草稿：待 G-0):
   official emergency numbers in ``crisis.local_emergency`` gets them as a last line.
   ``/commands`` lists the chat commands too.
 * SUDS (PRD COLBO-07, SDD §4.4): while a card waits, a 0-10 rating as the whole message
-  sets the turn's arousal to SUDS / 10 (``inspect["suds"]``), so the arousal retreat and
+  sets the turn's arousal to SUDS x the taxonomy's ``arousal.suds_mapping.scale_factor``
+  (0.10: SUDS / 10; ``inspect["suds"]``), so the arousal retreat and
   the stabilization whitelist apply; the reply leads with ``crisis.suds_heard`` (read as
-  "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``.
+  "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``
+  when a steadying card comes with it. Session gaps (draft, G-0): when the S_empower card
+  keeps waiting instead (the retreat lines were not reached), ``crisis.suds_high_ask``
+  offers a steadying card, which a yes on the next turn alone brings (F16b's switch, from
+  the whitelist; the waiting card goes into the kit); with none to offer, the reply leads
+  with ``crisis.suds_high_heard``.
 
 Care greeting (PRD §9, step A3): ``care_greeting`` renders the opening check-in for a
 session that follows a crisis (or a no to the D3 question) in an earlier one; the CLI
@@ -489,6 +498,25 @@ Session flows, round 6 (re-test 2026-10-29, q2/q3/q4; new wording 草稿：待 G
   answered in S_explore (``inspect["reason"]`` ``CARD_WAIT_LEFT``).
 * "别总问我感受" holds for the rest of the session: the listening lock, no feeling or need
   named, and a ``crisis.no_feeling_prompts`` line in place of the closing question.
+
+Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
+
+* #137: "喝一点行不行" (``SubstanceReading.asks_to_drink``, alcohol only) in the crisis flow
+  or on the safety question keeps the card and gets one plain answer
+  (``substance.ask_to_drink_crisis``): first on a calm crisis turn, in place of the mirror
+  of the wish; otherwise after the opening line, before the numbers.
+* §9.4 第 8 条: a few turns after the card for someone else's risk, a clue to where the
+  other person is or who they are ("只知道他在成都", "他网名叫小鱼", "IP属地显示四川";
+  ``_gives_clue``, topic ``clue``) is a follow-up: ``crisis.third_party_clue`` (call the
+  police near you, reach them or report through the platform, keep the chat records)
+  before the urgent card, whose emergency numbers are the profile region's. Never the
+  user's own safety question; in the crisis flow it is answered first, emergency first.
+* #139: a model-only alarm on a message that reports someone else's words
+  (``_reported_words``) asks the first time whatever the score, and later only as §9.4
+  第 1、31 条 allow (an accepted no, more than 3 turns on, a score below 0.6, at most two
+  questions a session counted with the user's own alarms). Any other such alarm is held
+  at L1 (``inspect["model_held"]``): no question and, as 第 22 条 says for words about
+  someone else, no crisis flow on the model's word alone.
 
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
@@ -682,8 +710,17 @@ _MODEL_ASKS_MAX: Final = 2
 _MODEL_ASK_GAP: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
-# Round 4 (SDD §4.4): Arousal = SUDS / 10.
-_SUDS_SCALE: Final = 10
+# Round 4 (SDD §4.4): Arousal = SUDS x taxonomy ``suds_mapping.scale_factor`` (0.10, so
+# SUDS / 10), rounded so that 6 gives exactly 0.60 (6 * 0.1 is a hair above it).
+_SUDS_SCALE_KEY: Final = "arousal.suds_mapping.scale_factor"
+_SUDS_DIGITS: Final = 9
+# Session gaps: "做完了" again is heard as done up to this many turns after the card's done,
+# in a message of at most this many characters, outside these stages (they keep their own).
+_DONE_AGAIN_WINDOW: Final = 2
+_DONE_AGAIN_MAX_CHARS: Final = 12
+_DONE_AGAIN_OWN_STAGES: Final = frozenset(
+    {HelpStage.S_CRISIS, HelpStage.S_HAVEN, HelpStage.S_CLOSING, HelpStage.S_READY}
+)
 # Round 4: ``ReportedRisk.farewell`` of a farewell that opens the card alone ("永别了").
 _STRONG_FAREWELL: Final = 2
 
@@ -869,6 +906,7 @@ class Session:
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
         self._heavy_arousal = tax.threshold(_HEAVY_AROUSAL_KEY)
+        self._suds_scale = tax.threshold(_SUDS_SCALE_KEY)
         self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
@@ -898,6 +936,9 @@ class Session:
         # and how many such questions this session asked (at most two).
         self._model_denied_turn: int | None = None
         self._model_ask_count = 0
+        # 2026-11-25 (#139 gap): this turn's model-only alarm on someone else's words asks no
+        # question (none is left) and is held at L1 (set per turn by ``_model_only_alarm``).
+        self._model_held = False
         # Safety replies round 2 (2026-10-26): the user said they are under 18 in this
         # session (第 5 条; never written anywhere) and was told so once; the highest crisis
         # entry level of this session (第 11 条); the turn count when the user last reported
@@ -936,6 +977,13 @@ class Session:
         # Round 7 (re-test q3 第四节): the last reply was the waiting card's /done prompt; a
         # second message with words of its own then leaves the wait (``_new_request``).
         self._card_reminded = False
+        # Session gaps: the turn on which a waiting card was last marked done (/done or a
+        # done phrase); a short "做完了" soon after, with no card waiting, is heard as done.
+        self._done_turn: int | None = None
+        # Session gaps: the last reply offered a steadying card for a high rating while the
+        # S_empower card kept waiting (``crisis.suds_high_ask``); only the next turn's yes
+        # takes it up.
+        self._steady_offered = False
         # Round 6: the rule screen of this turn's answer to the question (or None).
         self._answer_rules: CrisisAssessment | None = None
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
@@ -1130,11 +1178,13 @@ class Session:
     def _turn(self, text: str, now: datetime, assessment: CrisisAssessment) -> TurnResult:
         model_answer = self._asking_model
         self._asking_model = False
+        steady_offered, self._steady_offered = self._steady_offered, False
         assessment, answer = self._answer_safety_check(text, assessment, model=model_answer)
         model_level, model_score = self._risk.take_turn()
         # What the screen said, for ``inspect`` and the reported level of a question turn.
         screened = assessment
         self._reported_words = False
+        self._model_held = False
         # 问题单第 6 条: someone else's risk, reported by the user. The user is not put into
         # the crisis flow for it (nor asked the D3 question); the reply is the region's card
         # to pass on, with the emergency numbers first when the words carry a plan.
@@ -1169,6 +1219,10 @@ class Session:
             # so ask once first. The turn goes on as an L1 only the model gives (no crisis,
             # no L1 run).
             self._asking_model = True
+            assessment = replace(assessment, level=CrisisLevel.L1)
+        elif self._model_held:
+            # 2026-11-25 (§9.4 第 22、31 条): only someone else's words and no question left
+            # to ask: an L1 only the model gives, as on a question turn, without the question.
             assessment = replace(assessment, level=CrisisLevel.L1)
         perception, signals = self._shared.stub.perceive(text, assessment)
         perception = self._shared.introspector.apply(text, perception)
@@ -1245,7 +1299,7 @@ class Session:
             perception = self._heads.refine(text, perception)
         # Round 4 (PRD COLBO-07, SDD §4.4): every card ends by asking for a 0-10 distress
         # rating; while one waits, a number that is the whole message is that rating and
-        # sets the turn's arousal (Arousal = SUDS / 10), so the state machine's arousal
+        # sets the turn's arousal (Arousal = SUDS x scale_factor), so the state machine's arousal
         # retreat and the stabilization whitelist apply as for any other arousal.
         suds = (
             signals.suds
@@ -1255,7 +1309,7 @@ class Session:
             else None
         )
         if suds is not None:
-            arousal = suds / _SUDS_SCALE
+            arousal = self._suds_arousal(suds)
             perception = replace(
                 perception,
                 arousal=arousal,
@@ -1335,6 +1389,21 @@ class Session:
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
         signals = self._place_said(text, signals)
+        # Session gaps: a yes right after ``suds_high_ask`` asks for another card in place
+        # of the waiting one (F16b's switch), taken from the stabilization whitelist.
+        steady_yes = (
+            steady_offered
+            and follow.source is None
+            and signals.command is None
+            and signals.answer is Answer.AFFIRM
+            and pending is not None
+            and pending.stage is HelpStage.S_EMPOWER
+            and self._state.current_stage is HelpStage.S_EMPOWER
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L1
+        )
+        if steady_yes:
+            signals = replace(signals, direct_request=True, another_method=True, answer=None)
         before_turns = self._state.global_turn_count
         # dogfood I2: a practice the user's own heart or breathing condition masks, named on
         # a calm turn, is a request for a practice (another one while a card waits, as F16b
@@ -1468,17 +1537,35 @@ class Session:
                 or signals.hotline_police_fear
             )
         )
+        # Session gaps: "做完了" again soon after the card was marked done, with no card
+        # waiting now, is heard as done (one line, the stage holds), as a stray /done is;
+        # words of its own, leave-taking or the closing ritual's stages keep their replies.
+        done_again = (
+            calm_meta
+            and not privacy
+            and not why
+            and not (help_now or minor_now or third_now or hotline_now)
+            and pending is None
+            and signals.command is None
+            and signals.feedback is Command.DONE
+            and not signals.leave_taking
+            and self._done_turn is not None
+            and before_turns - self._done_turn <= _DONE_AGAIN_WINDOW
+            and len(normalize(text)) <= _DONE_AGAIN_MAX_CHARS
+            and self._state.current_stage not in _DONE_AGAIN_OWN_STAGES
+        )
         transition = step(
             self._tax,
             self._state,
             TurnInput(perception, status, signals, self._profile.persona_spectrum),
         )
-        if no_pending or forget or privacy or why or minor_now or hotline_now or help_now:
+        held = no_pending or forget or privacy or why or minor_now or hotline_now or help_now
+        if held or done_again:
             transition = self._held(transition)
         # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
         # A masked calming practice asked for by name (dogfood I2) is replaced by one from
         # the same whitelist: slow breathing for 4-7-8, never a thought record.
-        self._stabilization_only = transition.stabilization_only or masked
+        self._stabilization_only = transition.stabilization_only or masked or steady_yes
         spectrum = dominant_spectrum(perception.distress_vector)
         reason = transition.reason.value
         if self._reopens(transition, signals, follow, perception, spectrum) and not (
@@ -1543,7 +1630,10 @@ class Session:
             and stage not in _OWN_REPLY_STAGES
         )
         info = None
-        if not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now):
+        if (
+            not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now)
+            and not done_again
+        ):
             info = self._info_choice(
                 stage, perception, flags, signals, status, assessment.level, feedback, transition
             )
@@ -1564,6 +1654,7 @@ class Session:
             or ask
             or answer is not None
             or no_pending
+            or done_again
             or forget
             or privacy
             or why
@@ -1669,6 +1760,13 @@ class Session:
                     or signals.hotline_which
                     or signals.hotline_police_fear
                     or (signals.hotline_call_script and self._names_emergency(text))
+                    # 2026-11-25: a clue to where the other person is, a few turns after
+                    # their card, is answered first with the police near the user.
+                    or (
+                        rules.level is CrisisLevel.L0
+                        and self._third_party_window()
+                        and _third_party_topic(text) == "clue"
+                    )
                 )
                 rendered = self._crisis(
                     status, now, confirmed=waiting, hint=hint, emergency=emergency
@@ -1715,6 +1813,8 @@ class Session:
             rendered = self._hotline_reply(stage, now, signals, text)
         elif no_pending:
             rendered = self._followup(templates.no_pending_feedback, stage)
+        elif done_again and stage is transition.previous:
+            rendered = self._followup(self._notice("already_done"), stage)
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
         elif privacy:
@@ -1860,9 +1960,26 @@ class Session:
         if suds is not None and stage is not HelpStage.S_CRISIS and not resources:
             # Round 4: the rating is heard, read as "higher is worse" (the mood score at the
             # start and end of a chat runs the other way); at the somatic line, first steady.
+            # Session gaps: "steady first" only with a steadying card on this turn. When the
+            # S_empower card keeps waiting (the SDD §4.2 retreat lines were not reached), the
+            # score is said to be high and a steadying card is offered for a yes; with none
+            # to offer, the high score is only heard.
             render = self._engine.data.render
-            high = suds / _SUDS_SCALE >= self._somatic
-            pool = render.suds_high if high else render.suds_heard
+            high = self._suds_arousal(suds) >= self._somatic
+            if not high:
+                pool = render.suds_heard
+            elif rendered.kind is ReplyKind.CARD:
+                pool = render.suds_high
+            elif (
+                stage is HelpStage.S_EMPOWER
+                and rendered.pending is not None
+                and not transition.state.pure_listening_locked
+                and self._steadying_card_left(rendered.pending, perception, flags)
+            ):
+                pool = render.suds_high_ask
+                self._steady_offered = True
+            else:
+                pool = render.suds_high_heard
             if pool:
                 self._add_line(rendered, pool, stage, first=True)
         if masked and stage is not HelpStage.S_CRISIS and not resources:
@@ -1927,13 +2044,24 @@ class Session:
                 rendered.reply = f"{boundary}\n\n{self._engine.without_conflicts(rendered.reply)}"
             elif self._boundary_turn is not None and turn_no - self._boundary_turn <= 1:
                 rendered.reply = self._engine.without_conflicts(rendered.reply)
-        elif withdrawal := self._engine.withdrawal_line(text):
+        else:
+            # #137 (2026-11-25; draft, G-0): "喝一点行不行" in the crisis flow or on the safety
+            # question gets its plain answer too (the card stays), unless the reply already
+            # answers the words with it (``_heard_line``).
+            added: list[str] = []
+            if rendered.kind in (ReplyKind.CRISIS, ReplyKind.SAFETY_CHECK):
+                drink = self._engine.crisis_drink_line(text)
+                if drink and drink not in rendered.reply:
+                    added.append(drink)
             # Round 4 (复测 q3): a withdrawal sign gets its reminder after the crisis card or
             # the safety question too. Round 6 (复测 q2 第 6 节): before the numbers, after
             # the opening line, so the card does not bury it.
-            parts = rendered.reply.split("\n\n")
-            at = 1 if len(parts) > 1 else len(parts)
-            rendered.reply = "\n\n".join([*parts[:at], withdrawal, *parts[at:]])
+            if withdrawal := self._engine.withdrawal_line(text):
+                added.append(withdrawal)
+            if added:
+                parts = rendered.reply.split("\n\n")
+                at = 1 if len(parts) > 1 else len(parts)
+                rendered.reply = "\n\n".join([*parts[:at], *added, *parts[at:]])
         cared = False
         if (
             (self._care_greeting or self._crisis_seen is not None)
@@ -1960,6 +2088,8 @@ class Session:
 
         if pending is not None and feedback is not None and not switch:
             self._apply_feedback(pending, feedback, now)
+            if feedback is Feedback.HELPFUL:
+                self._done_turn = turn_no
         # A card waits only while the session stays in the stage it was shown in. An
         # S_explore stabilization card also expires after one turn that is not about it
         # (no feedback, no clarification question), so a later request gets a new card.
@@ -1993,6 +2123,8 @@ class Session:
             extra["safety_check_by"] = MODEL_CHECK
         if paused:
             extra["model_paused"] = True
+        if self._model_held:
+            extra["model_held"] = True
         if heard:
             extra["heard"] = True
         if rendered.plan_reminded:
@@ -2280,6 +2412,10 @@ class Session:
             line = self._plain_line(render.hotline_in_crisis, stage)
             if line is not None and not self._has_taboo(line[0], ""):
                 return line[0]
+        if stage is HelpStage.S_CRISIS and (drink := self._engine.crisis_drink_line(text)):
+            # #137 (2026-11-25; draft, G-0): "喝一点行不行" in the crisis flow is answered
+            # plainly (not now; someone near or the numbers), never with a mirror of the wish.
+            return drink
         if signals.help_seeking and render.help_seeking:
             # Round 4 (re-test q2 n01, n08): school or university, in English too.
             school = signals.help_seeking_school and bool(render.help_seeking_school)
@@ -2480,18 +2616,6 @@ class Session:
             return False
         first = not self._model_asked
         self._model_asked = True
-        if self._reported_words:
-            # Round 4 (re-test q2 第 1 节): the message reports someone else's words, the
-            # rules find nothing in them or in the user's own, and the model's alarm is
-            # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
-            # so the user is asked, whatever the score and however often, never put into
-            # the crisis flow on the model's word alone ("我妈留言：累了就回家……").
-            return True
-        if self._minor_denial:
-            # 负责人 2026-10-30 决定 (round 6, re-test q2 F4-5): the turn answers whether the
-            # user is under 18 with a no and the rules find no risk cue in it; a sure model
-            # (score >= 0.6) asks first too, never the crisis flow on its word alone.
-            return True
         # 负责人 2026-11-01 决定 (A): after an accepted no (it passed F10), a later unsure alarm
         # with no rule cue asks once more when at least 3 turns lie between; at most two
         # such questions per session.
@@ -2501,7 +2625,29 @@ class Session:
             and self._model_ask_count < _MODEL_ASKS_MAX
             and self._state.global_turn_count - denied > _MODEL_ASK_GAP
         )
-        if not (first or again) or not self._shared.lexicons.model_ask.asks_first(model_score):
+        unsure = self._shared.lexicons.model_ask.asks_first(model_score)
+        if self._reported_words:
+            # Round 4 (re-test q2 第 1 节): the message reports someone else's words, the
+            # rules find nothing in them or in the user's own, and the model's alarm is
+            # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
+            # so the first question is asked whatever the score, never the crisis flow on
+            # the model's word alone ("我妈留言：累了就回家……"; §9.4 第 22 条).
+            # 2026-11-25 (#139 gap, "however often"): a later question only as §9.4 第 1、31
+            # 条 allow (an accepted no, 3 turns between, an unsure score, two a session,
+            # counted with the user's own alarms); any other such alarm is held at L1 with
+            # no question (``_model_held``), still never the crisis flow.
+            if first or (again and unsure):
+                self._model_ask_count += 1
+                self._model_denied_turn = None
+                return True
+            self._model_held = True
+            return False
+        if self._minor_denial:
+            # 负责人 2026-10-30 决定 (round 6, re-test q2 F4-5): the turn answers whether the
+            # user is under 18 with a no and the rules find no risk cue in it; a sure model
+            # (score >= 0.6) asks first too, never the crisis flow on its word alone.
+            return True
+        if not (first or again) or not unsure:
             return False
         self._model_ask_count += 1
         self._model_denied_turn = None
@@ -2788,6 +2934,8 @@ class Session:
             (topic == "police", render.third_party_police),
             (topic == "signs", render.third_party_signs),
             (signals.third_party_unreachable, render.third_party_unreachable),
+            # 2026-11-25: a clue to where the other person is or who they are.
+            (topic == "clue", render.third_party_clue),
             (signals.third_party_how_to_ask, render.third_party_how_to_ask),
         )
         for wanted, pool in pools:
@@ -3043,6 +3191,12 @@ class Session:
                 lead = [self._pick(render.third_party_unreachable)]
             elif far:
                 lead = [self._pick(render.third_party_far)]
+            elif topic == "clue" and render.third_party_clue:
+                # 2026-11-25 (§9.4 第 8 条): a clue to where they are or who they are: call
+                # the police near you (the emergency numbers lead), the platform, keep the
+                # chat records.
+                lead = [self._pick(render.third_party_clue)]
+                urgent = True
             elif stranger:
                 lead = [self._pick(render.third_party_stranger)]
             elif urgent and not signals.keep_secret:
@@ -3987,6 +4141,10 @@ class Session:
         self._add_line(rendered, self._notice("cardiac_care"), stage, first=False)
         self._cardiac_noted = rendered.reply != before
 
+    def _suds_arousal(self, suds: int) -> float:
+        """The arousal a 0-10 distress rating stands for (SDD §4.4, taxonomy ``scale_factor``)."""
+        return round(suds * self._suds_scale, _SUDS_DIGITS)
+
     def _notice(self, name: str) -> tuple[str, ...]:
         """``utterances.yaml`` ``notices[name]``: persona-neutral lines (dogfood I1, I2)."""
         return self._engine.data.utterances.notices[name]
@@ -4271,8 +4429,19 @@ class Session:
         requested = signals.therapy_request
         if not signals.another_method and (requested is None or requested == pending.action_id):
             return False
+        return self._another_card_left(pending, perception, flags, pending.stabilization)
+
+    def _another_card_left(
+        self,
+        pending: _Pending,
+        perception: PerceptionContext,
+        flags: frozenset[str],
+        stabilization: bool,
+    ) -> bool:
+        """Whether the solver leaves an S_empower card other than the waiting one now (from
+        the stabilization whitelist when ``stabilization``), with the waiting one shelved."""
         saved = self._stabilization_only
-        self._stabilization_only = saved or pending.stabilization
+        self._stabilization_only = saved or stabilization
         try:
             shelved = frozenset([*self._state.user_shelved_actions, pending.action_id])
             allowed = self._allowed(HelpStage.S_EMPOWER, perception, flags, shelved)
@@ -4280,6 +4449,12 @@ class Session:
             self._stabilization_only = saved
         deck = self._engine.data.cards.cards
         return any(a in deck and a != pending.action_id for a in allowed.candidates)
+
+    def _steadying_card_left(
+        self, pending: _Pending, perception: PerceptionContext, flags: frozenset[str]
+    ) -> bool:
+        """Session gaps: whether ``crisis.suds_high_ask`` has a steadying card to offer."""
+        return self._another_card_left(pending, perception, flags, True)
 
     @staticmethod
     def _feedback_for(
@@ -4397,13 +4572,80 @@ _SIGNS_ASK: Final = re.compile(
 )
 
 
+# 2026-11-25 (§9.4 第 8 条, round 7 gap: "只知道他在成都" after an online farewell got an
+# ordinary reply): a clue to where the other person is or who they are, read on the folded
+# text one clause at a time. The person is 他 / 她 / ta / 对方 / 人家 (never the user), with
+# fillers and time words before the verb.
+_CLUE_PERSON: Final = r"(?:(?<!其)他|她|ta|对方|人家|那人|此人|那个人|这个人)们?"
+_CLUE_FILLERS: Final = (
+    r"(?:人|现在|目前|应该|好像|可能|大概|估计|似乎|据说|听说|说|说过|自己说|是|本人|也|就|都|还|正|"
+    r"一直|平时|一般|[今昨前明]天|最近|前几天|这几天|之前|以前|上周|那时)*"
+)
+# What 在 / 住 starts that is no place: doing something ("他在睡觉", "他在跟我聊天", "他在
+# 想办法"), a feeling, a question ("他在哪", "他在不在") or a particle.
+_NOT_A_PLACE: Final = (
+    r"(?:睡|哭|笑|忙|想|吃|喝|打|玩|看|写|做|干|听|说|讲|聊|回|发|等|找|搞|弄|整|跑|走|闹|骂|装|躲|"
+    r"洗|逛|刷|追|练|赶|搬|收|拿|买|卖|用|查|问|考|读|念|陪|气|骗|哄|熬|撑|扛|挺|割|跳|喊|叫|唱|画|"
+    r"拍|录|改|删|关|退|变|试|怕|恨|怪|输|赢|开|生|处理|考虑|犹豫|纠结|准备|计划|安排|上班|上课|上网|"
+    r"上学|加班|学习|工作|休息|努力|坚持|继续|慢慢|偷偷|默默|悄悄|拼命|故意|假装|担心|难过|伤害|直播|"
+    r"更新|屏蔽|拉黑|折腾|一起|一块|线|乎|意|理|跟|和|同|给|对|向|帮|替|把|被|让|不|没|哪|吗|呢|么|"
+    r"啊|呀|吧|了|这样|那样)"
+)
+# "他在成都", "她人在深圳", "他好像在杭州那边上大学", "她老家是湖南的", "他来自重庆".
+_CLUE_PLACE: Final = re.compile(
+    _CLUE_PERSON
+    + _CLUE_FILLERS
+    + r"(?:人在|住在|待在|呆在|定居在?|来自|老家(?:在|是)?|住|在)(?!"
+    + _NOT_A_PLACE
+    + r")(?:[一-鿿]{2,}|家)"
+)
+# "网名叫小鱼", "IP属地显示四川", "他叫阿杰" (never "他叫我别管"), "我有他的微信".
+_CLUE_ID: Final = re.compile(
+    r"(?:网名|昵称|用户名|账号|帐号|微信号?|qq号?|(?<![a-z])id|群名片|名字|真名|全名)"
+    r"(?:好像|应该|大概|可能)?(?:叫|是|为|:)"
+    r"|(?:ip属地|ip地址|(?<![a-z])ip|定位|坐标|住址|地址)(?:好像|应该|大概|可能)?"
+    r"(?:在|是|显示|为|:|写着)?[一-鿿]{2,}"
+    r"|" + _CLUE_PERSON + r"(?:好像|应该|大概|可能)?叫(?!我|你|他|她|们|大家|人|别人|了|着|过|醒)"
+    r"[一-鿿a-z0-9]"
+    r"|" + _CLUE_PERSON + r"的?(?:手机号|电话号码?|微信|qq|主页|账号|帐号|地址|学校|单位|公司)"
+)
+# "只知道他在成都", "就知道她是个大学生" (never "我只知道我很害怕").
+_CLUE_KNOWN: Final = re.compile(
+    r"(?:只|就|仅|唯一)(?:知道|晓得|清楚|了解|记得)"
+    + _CLUE_PERSON
+    + r"?的?(?:好像|应该|大概|可能|说)?"
+    r"(?:在|住|是|叫|来自|老家|姓|网名|昵称|账号|帐号|微信|qq|ip|学校|名字)"
+)
+_CLUE_CLAUSES: Final = re.compile(r"[,.!?;:。、…~]+")
+# A name or a way to reach the other person negated just before it ("我连他网名都不知道",
+# "我没有他的微信") is no clue.
+_CLUE_NEGATION: Final = re.compile(r"[没不无未]")
+_CLUE_NEGATION_SPAN: Final = 3
+
+
+def _gives_clue(text: str) -> bool:
+    """A clause of ``text`` tells where the other person is or who they are (2026-11-25)."""
+    for clause in _CLUE_CLAUSES.split(normalize(text)):
+        if _CLUE_PLACE.search(clause) is not None:
+            return True
+        for pattern in (_CLUE_KNOWN, _CLUE_ID):
+            for found in pattern.finditer(clause):
+                before = clause[max(0, found.start() - _CLUE_NEGATION_SPAN) : found.start()]
+                if _CLUE_NEGATION.search(before) is None:
+                    return True
+    return False
+
+
 def _third_party_topic(text: str) -> str | None:
-    """``police`` or ``signs`` for those two follow-ups (round 7), else None."""
+    """``police`` or ``signs`` for those two follow-ups (round 7), ``clue`` for a clue to
+    where the other person is or who they are (2026-11-25), else None."""
     normalized = normalize(text)
     if _POLICE_ASK.search(normalized) is not None:
         return "police"
     if _SIGNS_ASK.search(normalized) is not None:
         return "signs"
+    if _gives_clue(text):
+        return "clue"
     return None
 
 

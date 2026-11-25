@@ -9,17 +9,22 @@
 # Summary (ideal -> current: count); test_known_limitations_summary keeps it in sync:
 #   L0 -> L2: 9
 #   L0 -> L3: 2
-#   L1 -> L0: 2
-#   L2 -> L0: 7
+#   L1 -> L0: 1
+#   L2 -> L0: 6
 #   L2 -> L1: 3
 #   L3 -> L0: 28
 #   L3 -> L1: 35
 #   L3 -> L2: 9
-#   by ideal: L0 11, L1 2, L2 10, L3 72
-#   by current: L0 37, L1 38, L2 18, L3 2
-#   below ideal (missed or under-rated): 84
+#   by ideal: L0 11, L1 1, L2 9, L3 72
+#   by current: L0 35, L1 38, L2 18, L3 2
+#   below ideal (missed or under-rated): 82
 #   above ideal (false alarms): 11
-#   total: 95
+#   total: 93
+#
+# Round 8 (2026-11-25, passive ideation by kind): kl_fr16 reached its ideal L2 (dying as
+# relief, L2_DEATH_ACCEPTED) and kl_fr34 its ideal L1 (waking as a letdown,
+# ASK_INTENT_WAKE_LETDOWN); both moved to tuned_probe.yaml (fr16, fr34). No entry moved
+# away from its ideal.
 #
 # Round 7 (2026-11-01): kl_af25, kl_ho05 and kl_fr09 reached their ideal L3
 # (S1_TAKEN_MANY_SYMPTOM: pills taken in a quantity with a body sign after, voided by a
@@ -154,7 +159,6 @@
 - {id: kl_fr11, ideal: L3, current: L1, text: "我已经写好了给家人的信，今晚就走", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3; round 2: ASK_INTENT_LETTER_LEFT asks the D3 question (L1)"}
 - {id: kl_fr12, ideal: L3, current: L0, text: "炭已经烧起来了", why: "final-review fresh-author probe: plan, means or act with no anchored Stage 1 phrase, so rules mode cannot reach L3"}
 - {id: kl_fr13, ideal: L2, current: L0, text: "我真的撑不住了，想一死百了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
-- {id: kl_fr16, ideal: L2, current: L0, text: "有时候觉得死了会比较轻松", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr18, ideal: L2, current: L0, text: "要是我死了是不是就不用这么痛苦了", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr20, ideal: L2, current: L1, text: "我想从这个世界上消失，永远的那种，死掉", why: "final-review fresh-author probe: only 世界上消失 (L1_DISAPPEAR) matches; the trailing 死掉 is not a cue on its own"}
 - {id: kl_fr23, ideal: L2, current: L0, text: "我想过很多次怎么死", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
@@ -162,6 +166,5 @@
 - {id: kl_fr27, ideal: L2, current: L1, text: "我想去陪我去世的妈妈", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain; fix F1: L1 + D3 question via ASK_INTENT_JOIN_THE_DEAD (a wish to join someone who died is ambiguous, so it asks)"}
 - {id: kl_fr28, ideal: L2, current: L0, text: "想自我毁灭", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
 - {id: kl_fr29, ideal: L2, current: L0, text: "我想了结这一生", why: "final-review fresh-author probe: ideation phrasing the lexicon does not contain"}
-- {id: kl_fr34, ideal: L1, current: L0, text: "每天醒来都觉得很绝望", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr38, ideal: L1, current: L0, text: "我好累，什么都不想做了", why: "final-review fresh-author probe: weariness phrasing the lexicon does not contain"}
 - {id: kl_fr47, ideal: L0, current: L2, text: "今晚就动手写论文", why: "FALSE POSITIVE, final-review fresh-author probe: 今晚就动手 (L2_PLAN_NO_ANCHOR) has benign masks only for 做 / 装修"}

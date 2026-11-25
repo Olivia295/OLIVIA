@@ -381,6 +381,7 @@ class RuleStub:
         self._place_hint_patterns = lexicon.hotline_place_hint_patterns
         self._place_patterns = lexicon.hotline_place_patterns
         self._which_patterns = lexicon.hotline_which_patterns
+        self._hours_patterns = lexicon.hotline_hours_patterns
         self._purpose_patterns = lexicon.hotline_purpose_patterns
         self._police_fear_patterns = lexicon.hotline_police_fear_patterns
         self._other_call_patterns = lexicon.hotline_other_call_patterns
@@ -500,7 +501,11 @@ class RuleStub:
         which = self._live(phone_body, self._which_patterns)
         purposes = self._live(phone_body, self._purpose_patterns)
         police_fear = self._live(phone_body, self._police_fear_patterns)
-        hotline_asked = which or purposes or self._live(phone_body, self._hotline_patterns)
+        # Round 8 (2026-11-25, re-test r8): "几点有人听" asks when a line answers, naming none.
+        hours_asked = self._live(phone_body, self._hours_patterns)
+        hotline_asked = (
+            which or purposes or hours_asked or self._live(phone_body, self._hotline_patterns)
+        )
         help_body = _blank(body, self._help_mask_patterns)
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
@@ -569,11 +574,11 @@ class RuleStub:
             third_party_question=bool(hits.get(_OTHER_QUESTION)),
             help_seeking=_kept(hits.get(_HELP_SEEKING, ()), help_body),
             hotline_fee=bool(hits.get(_FEE)),
-            hotline_hours=_kept(hits.get(_HOURS, ()), phone_body),
+            hotline_hours=hours_asked or _kept(hits.get(_HOURS, ()), phone_body),
             hotline_language=bool(hits.get(_LANGUAGE)),
             hotline_real=bool(hits.get(_REAL)),
             hotline_more=bool(hits.get(_MORE)),
-            hotline_words=_kept(hits.get(_PHONE_WORDS, ()), phone_body),
+            hotline_words=hours_asked or _kept(hits.get(_PHONE_WORDS, ()), phone_body),
             hotline_place=next(
                 (label for label, _ in sorted(hits.get(_PLACE, ()), key=lambda h: h[1].start)),
                 None,

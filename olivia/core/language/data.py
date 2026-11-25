@@ -110,17 +110,21 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
-# utterances.yaml ``notices`` (dogfood I1, I2; 草稿：待 G-0): one paragraph each.
+# utterances.yaml ``notices`` (dogfood I1, I2; session gaps: already_done; 草稿：待 G-0): one
+# paragraph each.
 NOTICES: Final = (
     "advice_heard",
     "hotline_heard",
     "masked_practice",
     "masked_practice_why",
     "cardiac_care",
+    "already_done",
 )
 _NOTICE_MAX: Final = 80
 # utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
-SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink")
+# ``ask_to_drink_crisis`` (#137, 2026-11-25; 草稿：待 G-0) answers the same question in the
+# crisis flow and on the safety question, where the card stays.
+SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink", "ask_to_drink_crisis")
 # Those lines give no amount (no dose, as the #125 withdrawal warning).
 _DOSE_WORDS: Final = ("毫升", "毫克", "两白酒", "一两", "半斤", "一斤", "瓶以内", "杯以内", "剂量")
 # A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.
@@ -493,6 +497,10 @@ class RenderText:
     """After that card: whether what the other person said is a warning sign."""
     third_party_stranger: tuple[str, ...] = ()
     """After that card: the user does not know the other person; what one can still do."""
+    # 2026-11-25 (drafts, G-0).
+    third_party_clue: tuple[str, ...] = ()
+    """After that card: the user gives a clue to where the other person is or who they are;
+    what to do with it (call the police near you, the platform, keep the chat records)."""
     # Round 6 (2026-10-29; drafts, G-0).
     no_feeling_prompts: tuple[str, ...] = ()
     """The closing line of a reply after the user asked not to be asked about feelings."""
@@ -501,7 +509,12 @@ class RenderText:
     suds_heard: tuple[str, ...] = ()
     """A 0-7 distress rating while a card waits: heard, read as "higher is worse"."""
     suds_high: tuple[str, ...] = ()
-    """An 8-10 distress rating while a card waits: steady the body first."""
+    """An 8-10 distress rating that brings a steadying card: steady the body first."""
+    suds_high_ask: tuple[str, ...] = ()
+    """An 8-10 rating while the S_empower card keeps waiting: high, and a yes ("好") brings a
+    steadying card instead (session gaps; draft, G-0)."""
+    suds_high_heard: tuple[str, ...] = ()
+    """An 8-10 rating with no steadying card to offer: only heard as high (draft, G-0)."""
     minor_confirm: str = ""
     """After the first minors' reply: asks whether to record "under 18" (ruling 22)."""
     minor_recorded: str = ""
@@ -709,6 +722,13 @@ class SubstanceCues:
     classes: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     """Class id -> the names of that kind of drink or medicine (round 7): the reminder names
     only the kind the message names."""
+    # Round 8 (2026-11-25; draft, G-0).
+    stop_short_names: Mapping[str, tuple[re.Pattern[str], ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    """Class id -> patterns for a short name of that kind of medicine that is a medicine only
+    next to stopping it ("停了安定", "安定我自己停了", never "情绪安定" or "安定医院"): a match
+    names the class and, not negated, is a stop on one's own like ``stopping``."""
 
 
 def _no_feelings() -> Feelings:
@@ -1191,10 +1211,13 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         third_party_police=crisis_lists["third_party_police"],
         third_party_signs=crisis_lists["third_party_signs"],
         third_party_stranger=crisis_lists["third_party_stranger"],
+        third_party_clue=crisis_lists["third_party_clue"],
         no_feeling_prompts=crisis_lists["no_feeling_prompts"],
         help_seeking_school=crisis_lists["help_seeking_school"],
         suds_heard=crisis_lists["suds_heard"],
         suds_high=crisis_lists["suds_high"],
+        suds_high_ask=crisis_lists["suds_high_ask"],
+        suds_high_heard=crisis_lists["suds_high_heard"],
         minor_confirm=texts["minor_confirm"],
         minor_recorded=texts["minor_recorded"],
         minor_session_only=texts["minor_session_only"],
@@ -2046,25 +2069,34 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop,
         {"objects", "phrases", "guided"},
         f"{where} stopping",
-        optional={"patterns", "taper", "missed", "others"},
+        optional={"patterns", "taper", "missed", "others", "short_names"},
     )
 
-    def compiled(key: str) -> tuple[re.Pattern[str], ...]:
+    def regexes(node: Any, here: str) -> tuple[re.Pattern[str], ...]:
         out: list[re.Pattern[str]] = []
-        for raw_pattern in _strs(stop[key], f"{where} stopping.{key}") if key in stop else ():
+        for raw_pattern in _strs(node, here):
             try:
                 pattern = re.compile(raw_pattern)
             except re.error as exc:
-                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r}: {exc}") from exc
+                raise LanguageDataError(f"{here}: {raw_pattern!r}: {exc}") from exc
             if pattern.fullmatch(""):
-                raise LanguageDataError(f"{where} stopping.{key}: {raw_pattern!r} matches empty")
+                raise LanguageDataError(f"{here}: {raw_pattern!r} matches empty")
             out.append(pattern)
         return tuple(out)
+
+    def compiled(key: str) -> tuple[re.Pattern[str], ...]:
+        return regexes(stop[key], f"{where} stopping.{key}") if key in stop else ()
 
     classes = {
         str(name): folded(words, f"{where} classes.{name}")
         for name, words in _map(data.get("classes", {}), f"{where} classes").items()
     }
+    # Round 8 (2026-11-25; draft, G-0): a short name, a medicine only next to stopping it.
+    short_names: dict[str, tuple[re.Pattern[str], ...]] = {}
+    for name, node in _map(stop.get("short_names", {}), f"{where} stopping.short_names").items():
+        if str(name) not in classes:
+            raise LanguageDataError(f"{where} stopping.short_names: {name!r} is no class")
+        short_names[str(name)] = regexes(node, f"{where} stopping.short_names.{name}")
     return SubstanceCues(
         substances=v["substances"],
         image_topic=_str(data["image_topic"], f"{where} image_topic"),
@@ -2094,6 +2126,7 @@ def _parse_substance(data: Mapping[str, Any]) -> SubstanceCues:
         stop_missed=compiled("missed"),
         stop_others=compiled("others"),
         classes=MappingProxyType(classes),
+        stop_short_names=MappingProxyType(short_names),
     )
 
 
@@ -2147,10 +2180,13 @@ _CRISIS_LISTS: Final = (
     "third_party_stranger",
     "third_party_police",
     "third_party_signs",
+    "third_party_clue",
     "no_feeling_prompts",
     "help_seeking_school",
     "suds_heard",
     "suds_high",
+    "suds_high_ask",
+    "suds_high_heard",
     "hotline_unreachable",
     "hotline_emergency",
     "hotline_number_unknown",

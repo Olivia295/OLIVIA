@@ -146,6 +146,8 @@ _GRIEF_SPECTRUM: Final = "06"
 _FELT: Final = "你感到"
 _SAID: Final = "你提到"
 _FELT_MAX: Final = 4
+# #137 (2026-11-25): the ``substance.yaml`` class the crisis answer to a drink is for.
+_ALCOHOL_KIND: Final = "alcohol"
 
 
 @dataclass(frozen=True)
@@ -617,6 +619,23 @@ class LanguageEngine:
         reading = self.substance(user_text)
         line = self._withdrawal_text(reading)
         if not (reading.withdrawal and line):
+            return ""
+        line = apply_willow(line, ContentKind.NORMAL, self._data.willow)
+        if self._gate.reasons(line, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):
+            return ""
+        return line
+
+    def crisis_drink_line(self, user_text: str) -> str:
+        """#137 (2026-11-25; draft, G-0): the plain answer to "is a little drink all right?"
+        in the crisis flow or on the safety question, where :meth:`boundary_line` is not
+        used and the crisis card stays (``substance.ask_to_drink_crisis``: not now, drinking
+        makes the hard thoughts harder to hold, someone near or the numbers). "" when the
+        message does not ask (``SubstanceReading.asks_to_drink``), when the drink spoken of
+        is a medicine (the line is about alcohol), or when the gate blocks the line."""
+        reading = self.substance(user_text)
+        line = self._data.utterances.substance_lines.get("ask_to_drink_crisis", "")
+        kind = reading.kind or self._substance_kind
+        if not (reading.asks_to_drink and line) or kind not in ("", _ALCOHOL_KIND):
             return ""
         line = apply_willow(line, ContentKind.NORMAL, self._data.willow)
         if self._gate.reasons(line, kind=ContentKind.NORMAL, stage=HelpStage.S_EXPLORE):

@@ -388,6 +388,18 @@ def test_trailing_is_read_from_the_lexicon():
         "ASK_INTENT_GO_AT_TIME",
         "ASK_INTENT_FOLLOW_GONE",
         "L2_JUMP_THREAT",
+        # Round 8 (2026-11-25): the moment or a time as a clause of its own, a time with
+        # doing it, thoughts of dying, rather dead, no tomorrow, ending with no object.
+        "ASK_INTENT_READY_MOMENT",
+        "ASK_INTENT_RESOLVED_MOMENT",
+        "ASK_INTENT_RESOLVED_TIME",
+        "ASK_INTENT_RESOLVED_WHEN",
+        "S1_DEATH_THEN_MOMENT",
+        "S1_DEATH_TIME_DO",
+        "L2_THOUGHT_OF_DYING",
+        "L2_RATHER_DIE",
+        "ASK_INTENT_NO_TOMORROW",
+        "ASK_INTENT_END_HOW",
     }
     later = [e for e in LEX.compositions.entries if e.id in round2]
     assert len(later) == len(round2) and all(e.trailing for e in later)

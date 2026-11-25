@@ -1595,10 +1595,40 @@ hotline_request_patterns:
   # - the police or the ambulance (HK 白车) named, then the number asked for later in the
   #   message ("要报警，电话多少", "叫白车拨几号");
   # - a support word, a line word, then "which number" ("咨询专线是几号").
-  - "(?<![他她妈爸哥姐弟妹友事们])(?:想|想要|要|需要|得|能不能|可不可以|可以)(?:找人)?(?:打|拨|找|要)(?:一?个|一?通|通|一下)?(?:电话|号码|热线|专线)(?:来|去)?(?:找|跟|和|同)?(?:一?个|个)?(?:真|陌生|专业的)?(?:人)?(?:来|去)?(?:说说话|说说|说话|聊聊天|聊聊|聊天|聊一下|聊会儿|聊会|聊|倾诉|倾吓|倾|谈谈|讲讲话|打哪个|哪个|哪支|边个)(?:吗|呢|啊|吧|好|一下|吖)?{E}"
+  # Round 8 (2026-11-25): 通 is a calling verb too ("想通个电话找人聊聊").
+  - "(?<![他她妈爸哥姐弟妹友事们])(?:想|想要|要|需要|得|能不能|可不可以|可以)(?:找人)?(?:打|拨|找|要|通)(?:一?个|一?通|通|一下)?(?:电话|号码|热线|专线)(?:来|去)?(?:找|跟|和|同)?(?:一?个|个)?(?:真|陌生|专业的)?(?:人)?(?:来|去)?(?:说说话|说说|说话|聊聊天|聊聊|聊天|聊一下|聊会儿|聊会|聊|倾诉|倾吓|倾|谈谈|讲讲话|打哪个|哪个|哪支|边个)(?:吗|呢|啊|吧|好|一下|吖)?{E}"
   - "(?:报警|急救|叫救护车|救护车|叫白车|白车)[^.!?。！？]{0,8}?(?:电话|号码|热线)(?:是|系)?(?:多少|什么|啥|咩|乜|哪个|几号|几多|来着|是啥)"
   - "(?:报警|急救|叫救护车|救护车|叫白车|白车)(?:是|要|该|得|应该|就)?(?:打|拨)(?:几号|几多号|几多|哪个|多少|边个)"
   - "(?:心理|情绪|倾诉|支援|支持|援助|求助|咨询|陪伴|自杀|危机|防治)[^.!?。！？]{0,10}?(?:电话|热线|号码|专线)(?:是|系)?(?:几号|几多号|哪个|哪支|边个|什么号码|多少号)"
+  # Round 8 (2026-11-25, re-test r8; 草稿：待 G-0). Grammar, not example sentences:
+  # - finding or having a line, said by what it is for: a finding verb ("帮我找个", "查一下",
+  #   "推荐个") or a having question ("有没有"), then "能打的 / 有人接的 / 求助的 / 能倾诉的"
+  #   right before 电话 / 号码 / 热线 ("帮我找个能打的电话", "有没有有人接的号码"). Without
+  #   that word it is any number ("帮我查一下快递电话", "找一下我妈的电话"); a phone card or
+  #   a watch is none ("能打的电话卡"); "家里 / 附近有没有能打的电话" asks about a phone;
+  # - when someone answers: see hotline_hours_patterns below;
+  # - a call to talk, then asking where or for a recommendation later in the sentence
+  #   ("通个电话聊一下有推荐吗", "打个电话倾诉一下，有推荐的吗"), at the start of a clause, so
+  #   a call to someone named ("跟我妈通个电话聊一下，有推荐的话题吗") is none;
+  # - 报警 with a word inside it ("报个警电话多少", "报一下警打几号"), as 报警 above.
+  - "(?:(?:帮我|帮忙|替我|麻烦你|麻烦|能不能|可不可以|可以|你)?(?:找|查|搜|搜索|推荐|介绍)(?:一下|下)?|想找|想要|需要)(?:一?个|几个|一些|些|一?条)?(?:能打的|可以打的|打得通的|能打通的|有人接的|有人听的|能求助的|可以求助的|求助的|求救的|能帮忙的|帮忙的|靠谱的|能聊的|可以聊的|能聊天的|能说话的|能倾诉的|可以倾诉的)(?:电话|号码|热线|专线)(?!卡|费|套餐|手表|机|号段|簿|本|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏)"
+  - "(?<![里边上近家])(?:有没有|有冇|有无|有什么|有啥|有咩|有哪些|有哪个)(?:什么|啥|咩|一个|个|些|一些)?(?:能打的|可以打的|打得通的|能打通的|有人接的|有人听的|能求助的|可以求助的|求助的|求救的|能帮忙的|帮忙的|靠谱的|能聊的|可以聊的|能聊天的|能说话的|能倾诉的|可以倾诉的)(?:电话|号码|热线|专线)(?!卡|费|套餐|手表|机|号段|簿|本|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏)"
+  - "{S}(?:我|我想|想|想要|要|需要|好想|很想|就想|只想|突然想|能不能|可以|可不可以|找人|找个人)*(?:打|拨|通|打通)(?:一?个|一?通|通|一下|下)?(?:电话|热线)(?:来|去)?(?:找人|跟人|和人|同人|找个人)?(?:聊聊天|聊聊|聊天|聊一下|聊一聊|聊会儿|聊会|聊|倾诉|倾吓|倾|说说话|说说|说话|谈谈|讲讲话)[^.!?。！？]{0,8}?(?:有推荐|求推荐|推荐|有没有(?!空|时间|用|意思|必要)|有冇|有吗|有无|找谁|打给谁|打哪|哪个好|去哪)(?![^.!?。！？]{0,6}?(?:套餐|流量|手机|耳机|话费|软件|app|应用|话题|游戏))"
+  - "报(?:个|一下|下|一个|一次)警[^.!?。！？]{0,8}?(?:电话|号码|热线|号)(?:是|系)?(?:多少|什么|啥|咩|乜|哪个|几号|几多|来着|是啥)"
+  - "报(?:个|一下|下|一个|一次)警(?:的话|是|要|该|得|应该|就)?(?:打|拨)(?:几号|几多号|几多|哪个|多少|什么|啥|边个)"
+
+# Round 8 (2026-11-25, re-test r8; 草稿：待 G-0): when someone answers, asked at the start of a
+# clause with no one else named before it ("几点有人听", "什么时候才有人接电话", "半夜有没有人
+# 听", "周末也有人值班吗"). It is a hotline request about the hours, naming a line, also as a
+# first message: in the crisis flow the reply gives the hours from the signed data. The
+# answering word ends the clause or takes a question particle, and nothing but a line word
+# comes before the time: a subject ("客服几点有人接", "食堂几点有人"), being picked up or
+# handed over ("几点有人来接我", "有人接班"), and a lament ("什么时候才有人听我说话") are
+# none. Same placeholders as hotline_request_patterns.
+hotline_hours_patterns:
+  - "{S}(?:我)?(?:想知道|想问一下|想问下|想问|问一下|问下|请问一下|请问)?(?:那|那么|所以)?(?:这个电话|这个号码|这些电话|这些号码|那个电话|那个号码|电话|热线|你们|这边|那边)?(?:一般|平时|每天|通常|大概)?(?:几点到几点|几点钟|几点|什么时候|啥时候|几时|什么时间段|什么时间|哪个时间段|哪些时间|哪段时间)(?:才|都|还|也|会|开始|以后|之后|前|以前)?(?:会|能)?有(?:没有)?人(?:接电话|接听|接线|接|听电话|听|值班|应答)(?=[吗呢么嘛啊呀吖冇]|{E})"
+  - "{S}(?:我)?(?:想知道|想问一下|想问下|想问|问一下|问下|请问一下|请问)?(?:那|那么|所以)?(?:这个电话|这个号码|这些电话|这些号码|那个电话|那个号码|电话|热线|你们|这边|那边)?(?:晚上|半夜|深夜|凌晨|夜里|夜晚|大半夜|周末|节假日|假期|过年|春节|现在|这会儿|这个点|这么晚|24小时|二十四小时|全天|随时|任何时候)(?:也|还|都|会|能)*(?:有没有人|有冇人|有无人)(?:接电话|接听|接线|接|听电话|听|值班|应答)(?=[吗呢么嘛啊呀吖冇]|{E})"
+  - "{S}(?:我)?(?:想知道|想问一下|想问下|想问|问一下|问下|请问一下|请问)?(?:那|那么|所以)?(?:这个电话|这个号码|这些电话|这些号码|那个电话|那个号码|电话|热线|你们|这边|那边)?(?:晚上|半夜|深夜|凌晨|夜里|夜晚|大半夜|周末|节假日|假期|过年|春节|现在|这会儿|这个点|这么晚|24小时|二十四小时|全天|随时|任何时候)(?:也|还|都|会|能)*有人(?:接电话|接听|接线|接|听电话|听|值班|应答)(?:吗|么|嘛|冇|\\?)"
 
 # Round 7 (2026-11-01, re-test q2 第 6 节; 草稿：待 G-0): which line to call ("该打哪支电话",
 # "报警还是打热线", "who do I call"). Outside a crisis it is a hotline request; in the crisis
@@ -1699,6 +1729,12 @@ hotline_unreachable:
 # with a line saying the emergency numbers come first. Folded, no spaces.
 hotline_emergency:
   - 报警
+  # Round 8 (2026-11-25): 报警 with a word inside it ("报个警电话多少").
+  - 报个警
+  - 报一下警
+  - 报下警
+  - 报一个警
+  - 报一次警
   - 急救
   - 救护车
   - 白车
@@ -1716,9 +1752,14 @@ hotline_place_hint_patterns:
   - "\\b(?:in|for|of)\\s+(?:the\\s+)?(?!my\\b|me\\b|us\\b|this\\b|that\\b|case\\b|crisis\\b|need\\b|english\\b|chinese\\b|mandarin\\b|cantonese\\b|someone\\b|people\\b|students?\\b|teens?\\b|adults?\\b|free\\b|now\\b|tonight\\b|today\\b|help\\b|support\\b|suicide\\b|mental\\b|depression\\b|anxiety\\b|crisis\\b|emergenc|hotline|helpline|number|a\\b|an\\b|your\\b|you\\b|it\\b|them\\b|him\\b|her\\b|friends?\\b|family\\b|chat|talk|text|call)[a-z]{3,}\\b"
 
 # Places in English that need word edges (round 5; 草稿：待 G-0): region code -> patterns read on
-# the raw text (lower case, spaces kept), like hotline_places ("the hotline in the US").
+# the raw text (lower case, spaces kept), like hotline_places ("the hotline in the US"); round 8:
+# a Chinese name that other words hold ("加国" in "参加国际"). Read only when no hotline_places
+# name is in the message.
 hotline_place_patterns:
   US: ["\\bthe\\s+u\\.?s\\.?(?:a\\.?)?(?![a-z])", "\\bin\\s+u\\.?s\\.?a?\\.?(?![a-z])", "\\bu\\.s\\.(?:a\\.)?", "\\bunited\\s+states\\b"]
+  # Round 8 (2026-11-25; 草稿：待 G-0): 加国 is Canada only when no word holds it ("参加国际",
+  # "增加国内", "加国籍"). The raw text is not folded here, so 國 is written too.
+  CA: ["(?<![参參增添附追外更施强強横橫再])加[国國](?![际際内內家庆慶产產籍旗歌徽法策货貨力会會民情务務营營债債])"]
 
 # Follow-ups about a hotline (问题单第 7 条; 草稿：待 G-0): asked with a hotline request, or
 # within two turns of a resource card, each gets one plain, true line
@@ -1871,12 +1912,21 @@ hotline_places:
   US: [美国, usa, america, 纽约, 洛杉矶, 旧金山, 三藩市, 波士顿, 西雅图, 芝加哥, 费城, 匹兹堡, 休斯顿,
        达拉斯, 亚特兰大, 硅谷, 华盛顿特区, newyork, losangeles, sanfrancisco, boston,
        seattle, chicago]
+  # Round 8 (2026-11-25; 草稿：待 G-0): more names for Canada and Australia, their provinces
+  # and states, the Hong Kong and Taiwan names of their cities ("满地可", "卡加利", "坎培拉",
+  # "布里斯本"), and the common nicknames ("枫叶国", "土澳", "袋鼠国"; "加国" is in
+  # hotline_place_patterns, since 参加国际 holds it). 亞, 倫 and 爾 do not fold to Simplified
+  # (safety/_trad2simp.py has no entry for them), so the names with them are listed as they
+  # fold ("澳大利亞", "多倫多", "墨爾本").
   CA: [加拿大, canada, 多伦多, 温哥华, 蒙特利尔, 渥太华, 卡尔加里, toronto, vancouver, montreal,
-       ottawa]
+       ottawa, 枫叶国, 满地可, 卡加利, 埃德蒙顿, 爱德蒙顿, 本拿比, 安大略, 魁北克, 卑诗省, 不列颠哥伦比亚,
+       calgary, edmonton, ontario, quebec, 多倫多, 蒙特利爾, 卡爾加里]
   GB: [英国, theuk, britain, england, scotland, wales, london, 伦敦, 曼彻斯特, 爱丁堡, 伯明翰, 利兹,
        格拉斯哥, 利物浦, 布里斯托, 诺丁汉, 谢菲尔德, 南安普顿, manchester, edinburgh, glasgow]
   AU: [澳大利亚, 澳洲, australia, 悉尼, 墨尔本, sydney, melbourne, 布里斯班, 珀斯, 阿德莱德, 堪培拉,
-       黄金海岸, brisbane, adelaide, canberra]
+       黄金海岸, brisbane, adelaide, canberra, 土澳, 袋鼠国, 布里斯本, 坎培拉, 阿得雷德, 昆士兰,
+       新南威尔士, 塔斯马尼亚, 霍巴特, perth, queensland, tasmania, 澳大利亞, 墨爾本, 新南威爾士,
+       塔斯马尼亞]
   ZZ: [日本, japan, 韩国, korea, 新加坡, singapore, 德国, germany, 法国, france, 意大利, italy,
        西班牙, spain, 荷兰, netherlands, 新西兰, newzealand, 马来西亚, malaysia, 泰国, thailand,
        越南, vietnam, 菲律宾, philippines, 印度, india, 俄罗斯, russia, 爱尔兰, ireland, 瑞士,

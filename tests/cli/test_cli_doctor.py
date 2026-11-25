@@ -486,11 +486,16 @@ def test_privacy_and_a_regions_numbers_need_no_readable_data_directory(
 def test_a_command_that_fails_on_such_a_directory_names_it(run_cli, data_home, keychain, blocked):
     _set_up(run_cli)
     blocked(data_home, 0o500)
-    for argv in (["safety-plan"], ["chat", "--rules"]):
-        run = run_cli(argv, ["洗个热水澡"])
-        assert run.code == 1
-        assert run.lines[-1] == cli.DATA_DIR_UNUSABLE and cli.UNEXPECTED_ERROR not in run.out
-        assert run.out.index("110") < run.out.index(cli.DATA_DIR_UNUSABLE)
+    run = run_cli(["safety-plan"], ["洗个热水澡"])
+    assert run.code == 1
+    assert run.lines[-1] == cli.DATA_DIR_UNUSABLE and cli.UNEXPECTED_ERROR not in run.out
+    assert run.out.index("110") < run.out.index(cli.DATA_DIR_UNUSABLE)
+    # Session gaps: a chat no longer stops on it; it says nothing can be saved and goes on
+    # (tests/cli/test_cli_read_only.py).
+    run = run_cli(["chat", "--rules"], ["洗个热水澡"])
+    assert run.code == 0 and len(run.results) == 1
+    assert cli.CHAT_READ_ONLY.format(reason=cli.READ_ONLY_PERMISSIONS) in run.out
+    assert cli.DATA_DIR_UNUSABLE not in run.out and cli.UNEXPECTED_ERROR not in run.out
 
 
 def test_a_file_in_place_of_the_data_directory_says_what_to_do(run_cli, data_home, keychain):

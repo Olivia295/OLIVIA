@@ -40,6 +40,10 @@ olivia --version
 
 如果电脑上默认的 Python 版本低于 3.11，可以指定版本：`pipx install --python python3.11 git+https://github.com/Olivia295/OLIVIA.git`。
 
+### 从源码一键启动
+
+已经把仓库下载到本地、不想装 pipx 的话，可以用根目录的启动脚本：macOS 双击 `start.command`，或在终端运行 `./start.sh`。它会检查 Python 3.11+、第一次自动建 `.venv` 并安装依赖（需要联网），然后运行 `olivia chat`；带参数时原样传给 `olivia`，例如 `./start.sh doctor`。OLIVIA 不用 `.env`，没有需要填写的密钥。按 Ctrl+C 停止。
+
 ## 更新与卸载
 
 ```bash
@@ -128,7 +132,8 @@ pip install -e '.[dev]'
 bash scripts/check.sh
 ```
 
-两个维护用的脚本：
+三个维护用的脚本：
 
-- `python scripts/eval_crisis.py 文件.csv [--mode rules|model|both] [--show-ids]`：把一份标注好的 CSV（`id,text,level[,category]`）逐句交给产品的危机筛查（规则模式与模型模式），打印混淆矩阵、L2+L3 召回、L0 误报率和按类别的漏报与误报。从不打印原句；`--show-ids` 只额外列出出错样本的 id。
+- `python scripts/eval_crisis.py 文件.csv [--mode rules|model|both] [--show-ids] [--json 路径]`：把一份标注好的 CSV（`id,text,level[,category]`）逐句交给产品的危机筛查（规则模式与模型模式），打印混淆矩阵、L2+L3 召回、L0 误报率（都附 Wilson 95% 置信区间）、按类别的漏报与误报，以及按类别的召回表与 L0 误报表。从不打印原句；`--show-ids` 只额外列出出错样本的 id；`--json` 另把每个模式的这些数字写成 JSON（只有计数和类别名，不含原句和 id）。
+- `python scripts/compare_eval.py 改动前.json 改动后.json`：比较两份 `--json` 报告，逐项打印差值，标出召回下降与误报上升（并说明两边的区间是否重叠）；有任何一项下降或上升时退出码为 1，给修复前后做对比用。
 - `python scripts/check_hotline_freshness.py`：热线数据里任何条目的核验日期超过 90 天就以非零状态退出；GitHub Actions 每季度自动运行一次（`.github/workflows/hotline-freshness.yml`），负责人和复核步骤见 `docs/resources/hotline-sources.md`。

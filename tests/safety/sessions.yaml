@@ -41,7 +41,9 @@
 - id: s04_three_l0_turns_clear_run
   turns:
     - {text: "真想人间蒸发", expect_level: L1, expect_in_crisis: false}
-    - {text: "有时候真想直接不存在", expect_level: L1, expect_in_crisis: false}
+    # Round 8: 真想…不存在 now asks the D3 question (ASK_INTENT_WISH_GONE, checked in
+    # test_rules_round8.py); a plain L1 cue instead, as round 6 did for 想消失.
+    - {text: "有时候觉得活着真没劲", expect_level: L1, expect_in_crisis: false}
     - {text: "下午去超市买了点水果", expect_level: L0, expect_in_crisis: false}
     - {text: "晚上看了部电影", expect_level: L0, expect_in_crisis: false}
     - {text: "明天要早起开会", expect_level: L0, expect_in_crisis: false}
