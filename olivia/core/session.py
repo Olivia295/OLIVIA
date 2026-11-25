@@ -92,7 +92,10 @@ waiting gets ``followups.no_pending_feedback`` and a short request to wipe the m
 ("清空所有记忆", below L1) gets ``followups.forget_hint`` (``olivia forget --all``,
 ``olivia memory``); neither is mirrored, and the stage holds (unless the battery or a
 crisis moves it). ``/unhelpful`` or aversion on a waiting card leads the reply with
-``followups.unhelpful_ack``.
+``followups.unhelpful_ack``. Session gaps (draft, G-0): a done phrase ("做完了") of at most
+``_DONE_AGAIN_MAX_CHARS`` characters within ``_DONE_AGAIN_WINDOW`` turns of a card's
+done, with no card waiting now and not leave-taking, is a meta turn of the same kind in
+S_explore, S_clarify or S_empower: ``notices.already_done``, no mirror, no card.
 
 Leaving for now (F5d): with no card waiting for feedback, a turn whose message takes
 leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
@@ -377,9 +380,15 @@ Session flows, round 4 (re-test 2026-10-28, q2; new wording 草稿：待 G-0):
   official emergency numbers in ``crisis.local_emergency`` gets them as a last line.
   ``/commands`` lists the chat commands too.
 * SUDS (PRD COLBO-07, SDD §4.4): while a card waits, a 0-10 rating as the whole message
-  sets the turn's arousal to SUDS / 10 (``inspect["suds"]``), so the arousal retreat and
+  sets the turn's arousal to SUDS x the taxonomy's ``arousal.suds_mapping.scale_factor``
+  (0.10: SUDS / 10; ``inspect["suds"]``), so the arousal retreat and
   the stabilization whitelist apply; the reply leads with ``crisis.suds_heard`` (read as
-  "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``.
+  "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``
+  when a steadying card comes with it. Session gaps (draft, G-0): when the S_empower card
+  keeps waiting instead (the retreat lines were not reached), ``crisis.suds_high_ask``
+  offers a steadying card, which a yes on the next turn alone brings (F16b's switch, from
+  the whitelist; the waiting card goes into the kit); with none to offer, the reply leads
+  with ``crisis.suds_high_heard``.
 
 Care greeting (PRD §9, step A3): ``care_greeting`` renders the opening check-in for a
 session that follows a crisis (or a no to the D3 question) in an earlier one; the CLI
@@ -701,8 +710,17 @@ _MODEL_ASKS_MAX: Final = 2
 _MODEL_ASK_GAP: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
-# Round 4 (SDD §4.4): Arousal = SUDS / 10.
-_SUDS_SCALE: Final = 10
+# Round 4 (SDD §4.4): Arousal = SUDS x taxonomy ``suds_mapping.scale_factor`` (0.10, so
+# SUDS / 10), rounded so that 6 gives exactly 0.60 (6 * 0.1 is a hair above it).
+_SUDS_SCALE_KEY: Final = "arousal.suds_mapping.scale_factor"
+_SUDS_DIGITS: Final = 9
+# Session gaps: "做完了" again is heard as done up to this many turns after the card's done,
+# in a message of at most this many characters, outside these stages (they keep their own).
+_DONE_AGAIN_WINDOW: Final = 2
+_DONE_AGAIN_MAX_CHARS: Final = 12
+_DONE_AGAIN_OWN_STAGES: Final = frozenset(
+    {HelpStage.S_CRISIS, HelpStage.S_HAVEN, HelpStage.S_CLOSING, HelpStage.S_READY}
+)
 # Round 4: ``ReportedRisk.farewell`` of a farewell that opens the card alone ("永别了").
 _STRONG_FAREWELL: Final = 2
 
@@ -888,6 +906,7 @@ class Session:
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
         self._heavy_arousal = tax.threshold(_HEAVY_AROUSAL_KEY)
+        self._suds_scale = tax.threshold(_SUDS_SCALE_KEY)
         self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
@@ -958,6 +977,13 @@ class Session:
         # Round 7 (re-test q3 第四节): the last reply was the waiting card's /done prompt; a
         # second message with words of its own then leaves the wait (``_new_request``).
         self._card_reminded = False
+        # Session gaps: the turn on which a waiting card was last marked done (/done or a
+        # done phrase); a short "做完了" soon after, with no card waiting, is heard as done.
+        self._done_turn: int | None = None
+        # Session gaps: the last reply offered a steadying card for a high rating while the
+        # S_empower card kept waiting (``crisis.suds_high_ask``); only the next turn's yes
+        # takes it up.
+        self._steady_offered = False
         # Round 6: the rule screen of this turn's answer to the question (or None).
         self._answer_rules: CrisisAssessment | None = None
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
@@ -1152,6 +1178,7 @@ class Session:
     def _turn(self, text: str, now: datetime, assessment: CrisisAssessment) -> TurnResult:
         model_answer = self._asking_model
         self._asking_model = False
+        steady_offered, self._steady_offered = self._steady_offered, False
         assessment, answer = self._answer_safety_check(text, assessment, model=model_answer)
         model_level, model_score = self._risk.take_turn()
         # What the screen said, for ``inspect`` and the reported level of a question turn.
@@ -1272,7 +1299,7 @@ class Session:
             perception = self._heads.refine(text, perception)
         # Round 4 (PRD COLBO-07, SDD §4.4): every card ends by asking for a 0-10 distress
         # rating; while one waits, a number that is the whole message is that rating and
-        # sets the turn's arousal (Arousal = SUDS / 10), so the state machine's arousal
+        # sets the turn's arousal (Arousal = SUDS x scale_factor), so the state machine's arousal
         # retreat and the stabilization whitelist apply as for any other arousal.
         suds = (
             signals.suds
@@ -1282,7 +1309,7 @@ class Session:
             else None
         )
         if suds is not None:
-            arousal = suds / _SUDS_SCALE
+            arousal = self._suds_arousal(suds)
             perception = replace(
                 perception,
                 arousal=arousal,
@@ -1362,6 +1389,21 @@ class Session:
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
         signals = self._place_said(text, signals)
+        # Session gaps: a yes right after ``suds_high_ask`` asks for another card in place
+        # of the waiting one (F16b's switch), taken from the stabilization whitelist.
+        steady_yes = (
+            steady_offered
+            and follow.source is None
+            and signals.command is None
+            and signals.answer is Answer.AFFIRM
+            and pending is not None
+            and pending.stage is HelpStage.S_EMPOWER
+            and self._state.current_stage is HelpStage.S_EMPOWER
+            and not status.in_crisis
+            and assessment.level < CrisisLevel.L1
+        )
+        if steady_yes:
+            signals = replace(signals, direct_request=True, another_method=True, answer=None)
         before_turns = self._state.global_turn_count
         # dogfood I2: a practice the user's own heart or breathing condition masks, named on
         # a calm turn, is a request for a practice (another one while a card waits, as F16b
@@ -1495,17 +1537,35 @@ class Session:
                 or signals.hotline_police_fear
             )
         )
+        # Session gaps: "做完了" again soon after the card was marked done, with no card
+        # waiting now, is heard as done (one line, the stage holds), as a stray /done is;
+        # words of its own, leave-taking or the closing ritual's stages keep their replies.
+        done_again = (
+            calm_meta
+            and not privacy
+            and not why
+            and not (help_now or minor_now or third_now or hotline_now)
+            and pending is None
+            and signals.command is None
+            and signals.feedback is Command.DONE
+            and not signals.leave_taking
+            and self._done_turn is not None
+            and before_turns - self._done_turn <= _DONE_AGAIN_WINDOW
+            and len(normalize(text)) <= _DONE_AGAIN_MAX_CHARS
+            and self._state.current_stage not in _DONE_AGAIN_OWN_STAGES
+        )
         transition = step(
             self._tax,
             self._state,
             TurnInput(perception, status, signals, self._profile.persona_spectrum),
         )
-        if no_pending or forget or privacy or why or minor_now or hotline_now or help_now:
+        held = no_pending or forget or privacy or why or minor_now or hotline_now or help_now
+        if held or done_again:
             transition = self._held(transition)
         # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
         # A masked calming practice asked for by name (dogfood I2) is replaced by one from
         # the same whitelist: slow breathing for 4-7-8, never a thought record.
-        self._stabilization_only = transition.stabilization_only or masked
+        self._stabilization_only = transition.stabilization_only or masked or steady_yes
         spectrum = dominant_spectrum(perception.distress_vector)
         reason = transition.reason.value
         if self._reopens(transition, signals, follow, perception, spectrum) and not (
@@ -1570,7 +1630,10 @@ class Session:
             and stage not in _OWN_REPLY_STAGES
         )
         info = None
-        if not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now):
+        if (
+            not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now)
+            and not done_again
+        ):
             info = self._info_choice(
                 stage, perception, flags, signals, status, assessment.level, feedback, transition
             )
@@ -1591,6 +1654,7 @@ class Session:
             or ask
             or answer is not None
             or no_pending
+            or done_again
             or forget
             or privacy
             or why
@@ -1749,6 +1813,8 @@ class Session:
             rendered = self._hotline_reply(stage, now, signals, text)
         elif no_pending:
             rendered = self._followup(templates.no_pending_feedback, stage)
+        elif done_again and stage is transition.previous:
+            rendered = self._followup(self._notice("already_done"), stage)
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
         elif privacy:
@@ -1894,9 +1960,26 @@ class Session:
         if suds is not None and stage is not HelpStage.S_CRISIS and not resources:
             # Round 4: the rating is heard, read as "higher is worse" (the mood score at the
             # start and end of a chat runs the other way); at the somatic line, first steady.
+            # Session gaps: "steady first" only with a steadying card on this turn. When the
+            # S_empower card keeps waiting (the SDD §4.2 retreat lines were not reached), the
+            # score is said to be high and a steadying card is offered for a yes; with none
+            # to offer, the high score is only heard.
             render = self._engine.data.render
-            high = suds / _SUDS_SCALE >= self._somatic
-            pool = render.suds_high if high else render.suds_heard
+            high = self._suds_arousal(suds) >= self._somatic
+            if not high:
+                pool = render.suds_heard
+            elif rendered.kind is ReplyKind.CARD:
+                pool = render.suds_high
+            elif (
+                stage is HelpStage.S_EMPOWER
+                and rendered.pending is not None
+                and not transition.state.pure_listening_locked
+                and self._steadying_card_left(rendered.pending, perception, flags)
+            ):
+                pool = render.suds_high_ask
+                self._steady_offered = True
+            else:
+                pool = render.suds_high_heard
             if pool:
                 self._add_line(rendered, pool, stage, first=True)
         if masked and stage is not HelpStage.S_CRISIS and not resources:
@@ -2005,6 +2088,8 @@ class Session:
 
         if pending is not None and feedback is not None and not switch:
             self._apply_feedback(pending, feedback, now)
+            if feedback is Feedback.HELPFUL:
+                self._done_turn = turn_no
         # A card waits only while the session stays in the stage it was shown in. An
         # S_explore stabilization card also expires after one turn that is not about it
         # (no feedback, no clarification question), so a later request gets a new card.
@@ -4056,6 +4141,10 @@ class Session:
         self._add_line(rendered, self._notice("cardiac_care"), stage, first=False)
         self._cardiac_noted = rendered.reply != before
 
+    def _suds_arousal(self, suds: int) -> float:
+        """The arousal a 0-10 distress rating stands for (SDD §4.4, taxonomy ``scale_factor``)."""
+        return round(suds * self._suds_scale, _SUDS_DIGITS)
+
     def _notice(self, name: str) -> tuple[str, ...]:
         """``utterances.yaml`` ``notices[name]``: persona-neutral lines (dogfood I1, I2)."""
         return self._engine.data.utterances.notices[name]
@@ -4340,8 +4429,19 @@ class Session:
         requested = signals.therapy_request
         if not signals.another_method and (requested is None or requested == pending.action_id):
             return False
+        return self._another_card_left(pending, perception, flags, pending.stabilization)
+
+    def _another_card_left(
+        self,
+        pending: _Pending,
+        perception: PerceptionContext,
+        flags: frozenset[str],
+        stabilization: bool,
+    ) -> bool:
+        """Whether the solver leaves an S_empower card other than the waiting one now (from
+        the stabilization whitelist when ``stabilization``), with the waiting one shelved."""
         saved = self._stabilization_only
-        self._stabilization_only = saved or pending.stabilization
+        self._stabilization_only = saved or stabilization
         try:
             shelved = frozenset([*self._state.user_shelved_actions, pending.action_id])
             allowed = self._allowed(HelpStage.S_EMPOWER, perception, flags, shelved)
@@ -4349,6 +4449,12 @@ class Session:
             self._stabilization_only = saved
         deck = self._engine.data.cards.cards
         return any(a in deck and a != pending.action_id for a in allowed.candidates)
+
+    def _steadying_card_left(
+        self, pending: _Pending, perception: PerceptionContext, flags: frozenset[str]
+    ) -> bool:
+        """Session gaps: whether ``crisis.suds_high_ask`` has a steadying card to offer."""
+        return self._another_card_left(pending, perception, flags, True)
 
     @staticmethod
     def _feedback_for(

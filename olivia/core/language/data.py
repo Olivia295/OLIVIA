@@ -110,13 +110,15 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
-# utterances.yaml ``notices`` (dogfood I1, I2; 草稿：待 G-0): one paragraph each.
+# utterances.yaml ``notices`` (dogfood I1, I2; session gaps: already_done; 草稿：待 G-0): one
+# paragraph each.
 NOTICES: Final = (
     "advice_heard",
     "hotline_heard",
     "masked_practice",
     "masked_practice_why",
     "cardiac_care",
+    "already_done",
 )
 _NOTICE_MAX: Final = 80
 # utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
@@ -507,7 +509,12 @@ class RenderText:
     suds_heard: tuple[str, ...] = ()
     """A 0-7 distress rating while a card waits: heard, read as "higher is worse"."""
     suds_high: tuple[str, ...] = ()
-    """An 8-10 distress rating while a card waits: steady the body first."""
+    """An 8-10 distress rating that brings a steadying card: steady the body first."""
+    suds_high_ask: tuple[str, ...] = ()
+    """An 8-10 rating while the S_empower card keeps waiting: high, and a yes ("好") brings a
+    steadying card instead (session gaps; draft, G-0)."""
+    suds_high_heard: tuple[str, ...] = ()
+    """An 8-10 rating with no steadying card to offer: only heard as high (draft, G-0)."""
     minor_confirm: str = ""
     """After the first minors' reply: asks whether to record "under 18" (ruling 22)."""
     minor_recorded: str = ""
@@ -1209,6 +1216,8 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         help_seeking_school=crisis_lists["help_seeking_school"],
         suds_heard=crisis_lists["suds_heard"],
         suds_high=crisis_lists["suds_high"],
+        suds_high_ask=crisis_lists["suds_high_ask"],
+        suds_high_heard=crisis_lists["suds_high_heard"],
         minor_confirm=texts["minor_confirm"],
         minor_recorded=texts["minor_recorded"],
         minor_session_only=texts["minor_session_only"],
@@ -2176,6 +2185,8 @@ _CRISIS_LISTS: Final = (
     "help_seeking_school",
     "suds_heard",
     "suds_high",
+    "suds_high_ask",
+    "suds_high_heard",
     "hotline_unreachable",
     "hotline_emergency",
     "hotline_number_unknown",
