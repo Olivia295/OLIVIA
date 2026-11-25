@@ -332,7 +332,7 @@ def test_missing_evaluation_sets_are_skipped(tmp_path, inputs, capsys):
     assert "`0123456789abcdef0123456789abcdef01234567`" in page
     assert "规则（rules-only）；学生模型：student:feedc0de" in page
     assert "- Python：CPython " in page and "- 日期：" in page
-    assert "（退出码 0）" in page
+    assert "- 结论：10 项检查，通过 8、跳过 2、失败 0（退出码 0）" in page
     out = capsys.readouterr().out
     assert "跳过  危机识别 · 开发集" in out and "0 项失败" in out
 
@@ -351,7 +351,7 @@ def test_any_failed_check_makes_the_exit_status_1(tmp_path, inputs, script, chec
     code, page = _report(tmp_path, Fake({script: 1}))
     assert code == 1
     assert f"| {check} | 失败 |" in page
-    assert "（退出码 1）" in page
+    assert "（退出码 1）" in page and "失败 0" not in page
 
 
 def test_the_report_never_holds_the_csv_text_or_ids(tmp_path, inputs, capsys):
@@ -369,6 +369,25 @@ def test_the_report_never_holds_the_csv_text_or_ids(tmp_path, inputs, capsys):
     assert [p.name for p in jsons] == ["evidence.dev.json", "evidence.eval4.json"]
     shown = page + capsys.readouterr().out + "".join(p.read_text(encoding="utf-8") for p in jsons)
     assert written and not [t for pair in written for t in pair if t in shown]
+
+
+def test_the_evaluation_script_runs_as_its_own_process(tmp_path, inputs):
+    # The real subprocess path (PYTHONPATH, --json, the JSON read back), rules mode, one set.
+    folder = tmp_path / "eval"
+    written = _csvs(folder)
+    (folder / "eval4.csv").unlink()
+    fake = Fake()
+
+    def run(args: Sequence[str]) -> Any:
+        return sr.run_command(args) if Path(args[1]).name == "eval_crisis.py" else fake(args)
+
+    out = tmp_path / "reports" / "evidence.md"
+    code = sr.main(["--eval-dir", str(folder), "--out", str(out), "--skip-model"], run=run)
+    page = out.read_text(encoding="utf-8")
+    assert code == 0
+    assert "| 开发集（用于选型） | rules | rules-only | 0/2 = 0.0%（95% 区间 0.0%–65.8%）" in page
+    assert "| 危机识别 · EVAL-4 | 跳过 |" in page
+    assert not [t for pair in written for t in pair if t in page]
 
 
 def test_a_gap_count_that_differs_from_the_header_is_reported(tmp_path, inputs):

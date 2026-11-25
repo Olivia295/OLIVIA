@@ -926,7 +926,7 @@ def _models_line(models: set[str], skip_model: bool) -> str:
 def render(git: GitState, when: str, skip_model: bool, sections: Sequence[Section]) -> str:
     models = set().union(*(s.models for s in sections))
     checks = [c for s in sections for c in s.checks]
-    failed = [c for c in checks if c.status == FAIL]
+    counts = Counter(c.status for c in checks)
     dirty = {None: "未知", True: "有未提交的改动，报告反映的是工作区里的代码", False: "干净"}
     lines = [
         f"# 安全证据报告 · {git.short}",
@@ -938,11 +938,8 @@ def render(git: GitState, when: str, skip_model: bool, sections: Sequence[Sectio
         f"- 日期：{when}",
         f"- 风险模型：{_models_line(models, skip_model)}",
         f"- Python：{platform.python_implementation()} {platform.python_version()}",
-        f"- 结论：{len(checks) - len(failed)}/{len(checks)} 项未失败"
-        + (f"，{len(failed)} 项失败" if failed else "")
-        + "（退出码 "
-        + ("1" if failed else "0")
-        + "）",
+        f"- 结论：{len(checks)} 项检查，通过 {counts[PASS]}、跳过 {counts[SKIP]}、"
+        f"失败 {counts[FAIL]}（退出码 {1 if counts[FAIL] else 0}）",
     ]
     for number, section in enumerate(sections, start=1):
         lines += ["", f"## {number}. {section.title}", "", *section.body]
