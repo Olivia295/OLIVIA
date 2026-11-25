@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import re
 import unicodedata
+from bisect import bisect_left
 from typing import Final
 
 from olivia.core.safety._trad2simp import TRAD_TO_SIMP
@@ -216,7 +217,119 @@ def normalize(text: str) -> str:
     -> "'", then drop all whitespace, invisible characters and leftover combining marks,
     and a single ASCII letter standing between two Han characters (a colour code's
     leftover)."""
-    return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
+    if _WHITESPACE.search(text) is None or not _MARK_SET.isdisjoint(text):
+        return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
+    # The same fold, shared with clause_breaks: the marks stand where _FOLD drops whitespace.
+    return _drop_stray_letters(_MARKS.sub("", _marked_fold(text)))
+
+
+# 2026-11-25 (metamorphic testing, task G3): where the whitespace :func:`normalize` drops
+# stood. Phrases still match across it (a space or a filler between every character must not
+# hide a phrase), and two parts of a composition still join across it, but the compositions
+# read a run of whitespace between two words as the end of a clause for their subject,
+# ``leading``, ``trailing`` and clause-bound ``unless`` checks, and a line break as the end
+# of a sentence (``safety/compose.py``): in "我想过死 不止一次" the words after the space are
+# a clause of their own. Not a break: whitespace between two ASCII characters (the spaces of
+# English words; their phrases are written without them), and whitespace next to a word of
+# one character (letter spacing, "我 想 死", or a stray character).
+_WHITESPACE: Final = re.compile(f"[\\s{_BLANKS}]")
+# ``(position, line)`` pairs of :func:`clause_breaks`.
+Breaks = tuple[tuple[int, bool], ...]
+_LINE_BREAKS: Final = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+# The fold with each whitespace character (as NFKC leaves it) and blank filler marked
+# instead of dropped, a line break with its own mark: one fold of the whole text gives
+# both normalize's characters (the marks removed) and where the whitespace stood. Every
+# marked code point is one _FOLD drops. The marks are private-use characters; a text that
+# holds one itself is folded the old way and has no breaks.
+_SPACE_MARK: Final = "\ue000"
+_LINE_MARK: Final = "\ue001"
+_FOLD_MARKED: Final[dict[int, str | None]] = {
+    **_FOLD,
+    **{
+        cp: _SPACE_MARK
+        for first, last in _DROPPED_RANGES
+        for cp in range(first, last + 1)
+        if chr(cp).isspace()
+    },
+    **{ord(blank): _SPACE_MARK for blank in _BLANKS},
+    **{ord(ch): _LINE_MARK for ch in _LINE_BREAKS},
+}
+_MARKS: Final = re.compile(f"[{_SPACE_MARK}{_LINE_MARK}]+")
+_MARK_SET: Final = frozenset((_SPACE_MARK, _LINE_MARK))
+
+
+@functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
+def _marked_fold(text: str) -> str:
+    """NFKC, casefold and _FOLD_MARKED: normalize's fold before the marks and the stray
+    letters go (for a text with whitespace and no mark of its own)."""
+    return unicodedata.normalize("NFKC", text).casefold().translate(_FOLD_MARKED)
+
+
+@functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
+def clause_breaks(text: str) -> Breaks:
+    """The breaks the whitespace of ``text`` makes in ``normalize(text)``, in order: each is
+    ``(position, line)``, the break standing right before ``normalize(text)[position]``;
+    ``line`` when the whitespace holds a line break (the end of a sentence), else it is a
+    clause break. Empty when the text has none, and when it holds a private-use mark itself
+    (or, never seen, when the marked fold does not give ``normalize(text)`` back)."""
+    if _WHITESPACE.search(text.strip()) is None or not _MARK_SET.isdisjoint(text):
+        return ()
+    marked = _marked_fold(text)
+    runs = list(_MARKS.finditer(marked))
+    joined = _MARKS.sub("", marked)
+    if not runs or _drop_stray_letters(joined) != normalize(text):
+        return ()
+    stray = [] if joined.isascii() else [m.start() for m in _STRAY_LETTER.finditer(joined)]
+    breaks: list[tuple[int, bool]] = []
+    removed = 0  # marks before the current run
+    word_start = 0  # where the word before the current run starts, in ``marked``
+    for i, run in enumerate(runs):
+        a, b = run.span()
+        following = runs[i + 1].start() if i + 1 < len(runs) else len(marked)
+        left, right = a - word_start, following - b
+        position = a - removed
+        removed += b - a
+        word_start = b
+        if not left or not right:
+            continue  # whitespace at either end of the text
+        line = _LINE_MARK in run.group()
+        if not line and marked[a - 1].isascii() and marked[b].isascii():
+            continue  # the space between two English words
+        if left < 2 or right < 2:
+            continue  # letter spacing
+        breaks.append((position - bisect_left(stray, position), line))
+    return tuple(breaks)
+
+
+# A message said twice or more over (整句重复, task G3): a phrase or a composition that spans
+# the place where one copy meets the next was never said. Copies shorter than this are a
+# word said over (哈哈哈哈, 去死去死), not a message.
+_MIN_COPY: Final = 4
+
+
+def repeat_copy(normalized: str) -> int:
+    """The length of one copy when ``normalized`` is one text of at least ``_MIN_COPY``
+    characters written two or more times over, nothing between the copies (the whitespace
+    between them is already gone); 0 otherwise."""
+    n = len(normalized)
+    # The shortest period: the text is that many characters written n // period times.
+    period = (normalized + normalized).find(normalized, 1, 2 * n - 1) if n else -1
+    if period <= 0:
+        return 0
+    copies = n // period
+    for times in range(-(-_MIN_COPY // period), copies // 2 + 1):
+        if copies % times == 0:
+            return period * times
+    return 0
+
+
+def spans_copies(start: int, end: int, copy: int, length: int) -> bool:
+    """Does ``[start, end)`` of a text of ``length`` characters made of copies ``copy``
+    characters long (:func:`repeat_copy`) span a place where one copy meets the next?"""
+    if not copy or end - start < 2:
+        return False
+    meet = (end - 1) // copy * copy  # the last place a copy begins before ``end``
+    return start < meet < length
 
 
 def fold_words(text: str) -> str:
