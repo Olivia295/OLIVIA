@@ -380,7 +380,8 @@ Session flows, round 4 (re-test 2026-10-28, q2; new wording 草稿：待 G-0):
   official emergency numbers in ``crisis.local_emergency`` gets them as a last line.
   ``/commands`` lists the chat commands too.
 * SUDS (PRD COLBO-07, SDD §4.4): while a card waits, a 0-10 rating as the whole message
-  sets the turn's arousal to SUDS / 10 (``inspect["suds"]``), so the arousal retreat and
+  sets the turn's arousal to SUDS x the taxonomy's ``arousal.suds_mapping.scale_factor``
+  (0.10: SUDS / 10; ``inspect["suds"]``), so the arousal retreat and
   the stabilization whitelist apply; the reply leads with ``crisis.suds_heard`` (read as
   "higher is worse", unlike the mood score) or, at the somatic line, ``crisis.suds_high``.
 
@@ -685,8 +686,10 @@ _MODEL_ASKS_MAX: Final = 2
 _MODEL_ASK_GAP: Final = 3
 # 第 11 条: at most one line of care after a crisis in this many turns.
 _CARE_GAP: Final = 3
-# Round 4 (SDD §4.4): Arousal = SUDS / 10.
-_SUDS_SCALE: Final = 10
+# Round 4 (SDD §4.4): Arousal = SUDS x taxonomy ``suds_mapping.scale_factor`` (0.10, so
+# SUDS / 10), rounded so that 6 gives exactly 0.60 (6 * 0.1 is a hair above it).
+_SUDS_SCALE_KEY: Final = "arousal.suds_mapping.scale_factor"
+_SUDS_DIGITS: Final = 9
 # Session gaps: "做完了" again is heard as done up to this many turns after the card's done,
 # in a message of at most this many characters, outside these stages (they keep their own).
 _DONE_AGAIN_WINDOW: Final = 2
@@ -879,6 +882,7 @@ class Session:
         self._now = now
         self._somatic = tax.threshold(_SOMATIC_KEY)
         self._heavy_arousal = tax.threshold(_HEAVY_AROUSAL_KEY)
+        self._suds_scale = tax.threshold(_SUDS_SCALE_KEY)
         self._stabilization_only = False
         self._tracker = CrisisTracker(tax, shared.lexicons)
         self._red_flags = SessionRedFlags(shared.detector, profile.clinical_history)
@@ -1258,7 +1262,7 @@ class Session:
             perception = self._heads.refine(text, perception)
         # Round 4 (PRD COLBO-07, SDD §4.4): every card ends by asking for a 0-10 distress
         # rating; while one waits, a number that is the whole message is that rating and
-        # sets the turn's arousal (Arousal = SUDS / 10), so the state machine's arousal
+        # sets the turn's arousal (Arousal = SUDS x scale_factor), so the state machine's arousal
         # retreat and the stabilization whitelist apply as for any other arousal.
         suds = (
             signals.suds
@@ -1268,7 +1272,7 @@ class Session:
             else None
         )
         if suds is not None:
-            arousal = suds / _SUDS_SCALE
+            arousal = self._suds_arousal(suds)
             perception = replace(
                 perception,
                 arousal=arousal,
@@ -1898,7 +1902,7 @@ class Session:
             # Round 4: the rating is heard, read as "higher is worse" (the mood score at the
             # start and end of a chat runs the other way); at the somatic line, first steady.
             render = self._engine.data.render
-            high = suds / _SUDS_SCALE >= self._somatic
+            high = self._suds_arousal(suds) >= self._somatic
             pool = render.suds_high if high else render.suds_heard
             if pool:
                 self._add_line(rendered, pool, stage, first=True)
@@ -4025,6 +4029,10 @@ class Session:
         before = rendered.reply
         self._add_line(rendered, self._notice("cardiac_care"), stage, first=False)
         self._cardiac_noted = rendered.reply != before
+
+    def _suds_arousal(self, suds: int) -> float:
+        """The arousal a 0-10 distress rating stands for (SDD §4.4, taxonomy ``scale_factor``)."""
+        return round(suds * self._suds_scale, _SUDS_DIGITS)
 
     def _notice(self, name: str) -> tuple[str, ...]:
         """``utterances.yaml`` ``notices[name]``: persona-neutral lines (dogfood I1, I2)."""
