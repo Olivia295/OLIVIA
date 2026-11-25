@@ -34,3 +34,6 @@ fi
 "$PY" scripts/privacy_audit.py
 # Every requirement id the PRD and SDD name has a test, a check or a stated reason.
 "$PY" scripts/trace_requirements.py
+# The clinical safety hazard log (docs/safety/hazard-log.md): fields, risk matrix, real
+# evidence (an AST scan of tests/), known-gap counts and its summary table.
+"$PY" scripts/check_hazard_log.py
