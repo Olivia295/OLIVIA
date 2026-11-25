@@ -2789,13 +2789,34 @@ compositions:
       unless_window: 24
       unless_across: true
     # The last day or night alive (this will be my last night alive): L2. A question about a
-    # last day ("if this were your last day alive") voids it.
+    # last day ("if this were your last day alive") voids it. Round 8 (2026-11-25): so does a
+    # last day imagined: a would right after it ("my last day on earth would be spent ..."),
+    # a would after "on my last day" ("on my last day on earth, I'd want ..."), a way to spend
+    # it ("I'd spend my last day alive ..."), the listener's ("your last night on earth"), a
+    # condition (if today were, if I knew, suppose) or a bucket list. Exceptions, not unless
+    # words, for the modals: "I wish today would be my last day alive" and "today is my last
+    # day on earth, I'd like to say goodbye" stay L2.
     - id: L2_EN_LAST_ALIVE
       level: L2
       heads: ["lastnightalive", "lastdayalive", "lastnightonearth", "lastdayonearth", "lastdaysalive",
               "lastweekalive", "lastmorningalive"]
+      exceptions: ["lastnightalivewould", "lastdayalivewould", "lastnightonearthwould", "lastdayonearthwould",
+                   "lastdaysalivewould", "lastweekalivewould", "lastmorningalivewould", "yourlastnightalive",
+                   "yourlastdayalive", "yourlastnightonearth", "yourlastdayonearth", "yourlastdaysalive",
+                   "yourlastweekalive", "yourlastmorningalive", "onmylastnightalive,i'd",
+                   "onmylastnightalivei'd", "onmylastdayalive,i'd", "onmylastdayalivei'd",
+                   "onmylastnightonearth,i'd", "onmylastnightonearthi'd", "onmylastdayonearth,i'd",
+                   "onmylastdayonearthi'd", "onmylastdaysalive,i'd", "onmylastdaysalivei'd",
+                   "onmylastweekalive,i'd", "onmylastweekalivei'd", "onmylastmorningalive,i'd",
+                   "onmylastmorningalivei'd", "i'dspendmylastnightalive", "iwouldspendmylastnightalive",
+                   "i'dspendmylastdayalive", "iwouldspendmylastdayalive", "i'dspendmylastnightonearth",
+                   "iwouldspendmylastnightonearth", "i'dspendmylastdayonearth", "iwouldspendmylastdayonearth",
+                   "i'dspendmylastdaysalive", "iwouldspendmylastdaysalive", "i'dspendmylastweekalive",
+                   "iwouldspendmylastweekalive", "i'dspendmylastmorningalive", "iwouldspendmylastmorningalive"]
       unless: ["@en_negators", "@en_others", "ifthis", "ifit", "ifyou", "ifit's", "whatwould", "imagine",
-               "pretend", "asif", "likeit's", "likeits", "liveeveryday", "liveeachday", "quote"]
+               "pretend", "asif", "likeit's", "likeits", "liveeveryday", "liveeachday", "quote",
+               "iftoday", "iftomorrow", "ifiwere", "ifiwas", "ifiknew", "ifihad", "ifionly", "whatif",
+               "suppose", "supposing", "hypothetical", "bucketlist", "wishlist", "thingstodo"]
       unless_window: 24
       unless_across: true
     # Going to overdose or jump when no one is around (I'm going to overdose when everyone is
@@ -3660,6 +3681,9 @@ compositions:
       heads: ["mylastweekonearth", "mylastdayonearth", "mylastnightonearth", "mylastmonthonearth",
               "myfinalweekonearth", "myfinaldayonearth", "myfinalnightonearth", "lastweekofmylife",
               "lastdayofmylife", "lastnightofmylife", "finaldayofmylife", "finalweekofmylife"]
+      # Round 8: "on my last day on earth, I'd want ..." imagines one, like L2_EN_LAST_ALIVE.
+      exceptions: ["onmylastweekonearth,i'd", "onmylastweekonearthi'd", "onmylastdayonearth,i'd",
+                   "onmylastdayonearthi'd", "onmylastnightonearth,i'd", "onmylastnightonearthi'd"]
       unless: ["@en_negators", "@en_others", "would", "ifit", "ifthis", "ifi", "ifyou", "imagine", "pretend",
                "asif", "quote", "bucketlist", "whatwould", "felt", "feltlike", "feelslike", "joke", "lol", "lmao",
                "best", "happiest", "greatest"]

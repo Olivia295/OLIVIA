@@ -135,3 +135,50 @@ def test_model_mode_never_answers_it_as_ordinary_talk(text: str) -> None:
     # The student can only raise the rules: the question, or the crisis flow at once.
     first = _session(student=True).turn(text)
     assert first.reply_kind is ReplyKind.SAFETY_CHECK or first.in_crisis, text
+
+
+# -- an English last day said as a hypothetical (L2_EN_LAST_ALIVE) ----------------------
+# "today is my last day alive" says when; "my last day on earth would be ...", "if it were
+# my last day alive", a question about one's last day and a bucket list imagine one.
+
+LAST_DAY_NOW = [
+    "today is my last day alive",
+    "this is my last night on earth",
+    "tonight is my last night alive",
+    "this will be my last night alive",
+    "tomorrow will be my last day alive",
+    "I want this to be my last day alive",
+    "I wish today would be my last day alive",
+    "I decided today would be my last day alive",
+    "I'd rather today be my last day alive",
+    # A farewell in the next clause is no hypothetical.
+    "today is my last day on earth, I'd like to say goodbye",
+    "this is my last night alive, I would like to thank you",
+    "today is my last day alive, I'd spend it alone",
+]
+
+LAST_DAY_IMAGINED = [
+    "my last day on earth would be spent at the beach",
+    "my last day alive would be full of pizza and friends",
+    "on my last day on earth, I'd want to eat sushi",
+    "if it were my last day alive, I'd call my mom",
+    "if today were my last day on earth I would travel",
+    "what would you do on your last day alive",
+    "what would you do on your last day",
+    "my bucket list for my last day on earth",
+    "bucket list: things to do on my last day alive",
+    "suppose it's your last night on earth, what do you eat",
+    "I'd spend my last day alive with my dog",
+]
+
+
+@pytest.mark.parametrize("text", LAST_DAY_NOW)
+def test_a_last_day_said_as_now_stays_l2(text: str) -> None:
+    assert SCREEN.assess(text).level is L.L2, text
+
+
+@pytest.mark.parametrize("text", LAST_DAY_IMAGINED)
+def test_a_last_day_imagined_is_no_crisis(text: str) -> None:
+    a = SCREEN.assess(text)
+    assert a.level < L.L2, (text, a)
+    assert not {"L2_EN_LAST_ALIVE", "L2_EN_MY_LAST_ON_EARTH"} & set(a.cue_ids), (text, a)
