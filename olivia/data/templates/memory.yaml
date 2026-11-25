@@ -6,6 +6,9 @@
 #   note_saved          用户说“记住：……”后，在回复末尾简短确认（不复述内容）。
 #   note_too_long       要记的内容超过 500 字，没有保存。
 #   note_unavailable    这台电脑不能加密保存，所以这句没有记。
+#   note_read_only      （草稿：待 G-0，2026-11-25）这次的数据目录只能读、不能写（olivia chat 开场已说过
+#                       CHAT_READ_ONLY）时用户说“记住：……”：说明数据目录写不进去，所以这句记不下来。
+#                       只用于只读的这一种情况；其他存不下来的情况仍用 note_unavailable。
 #   memory_unavailable  同上原因，整个记忆功能不可用；每台电脑只在开场说一次。
 #   summary_not_saved   会话结束时小结没能写入（例如钥匙串中途被锁）。
 #   note_continue       （草稿：待 G-0，质量修复 F3）“记住：……”这一轮只回确认句，再接这一句
@@ -34,6 +37,7 @@ replies:
   note_saved: "这句我记下了。"
   note_too_long: "这段有点长，我先没有记下。可以挑最想留住的一两句，再用「记住：」开头告诉我。"
   note_unavailable: "这台电脑上暂时没办法把记忆加密保存，所以这句我先不记了。"
+  note_read_only: "这次的数据目录写不进去，所以这句我记不下来。"
   memory_unavailable: "先告诉你一件事：这台电脑上暂时没办法把记忆加密保存，所以我不会记下我们聊过什么。其他的一切都照常。"
   summary_not_saved: "这次聊天的小结没能保存下来，下次再试试。"
   note_continue: "还有什么想说的，随时告诉我，我在这里听着。"

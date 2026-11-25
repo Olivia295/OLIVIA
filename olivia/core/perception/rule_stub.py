@@ -132,6 +132,7 @@ from typing import Final, TypeVar
 
 from olivia.core.models import CrisisLevel, PerceptionContext, SafetyGrade
 from olivia.core.perception.lexicon import GRIEF_KEYS, PerceptionLexicon, strip_marks
+from olivia.core.perception.location import PresentPlaceReader
 from olivia.core.perception.signals import Answer, Command, NoteRecall, TurnSignals
 from olivia.core.safety.crisis import CrisisAssessment
 from olivia.core.safety.matcher import Match, PhraseMatcher
@@ -379,6 +380,7 @@ class RuleStub:
         self._number_patterns = lexicon.hotline_number_patterns
         self._call_script_patterns = lexicon.hotline_call_script_patterns
         self._place_hint_patterns = lexicon.hotline_place_hint_patterns
+        self._present_place = PresentPlaceReader(lexicon)
         self._place_patterns = lexicon.hotline_place_patterns
         self._which_patterns = lexicon.hotline_which_patterns
         self._hours_patterns = lexicon.hotline_hours_patterns
@@ -507,6 +509,8 @@ class RuleStub:
             which or purposes or hours_asked or self._live(phone_body, self._hotline_patterns)
         )
         help_body = _blank(body, self._help_mask_patterns)
+        # Owner decision 2026-11-25 B: where the user says they are now (a command says none).
+        here = self._present_place.read(text, folded=folded) if command is None else None
         asking = direct or bool(hits.get(_INFORMATION))
         intent = self._intent(
             assessment.level,
@@ -604,6 +608,8 @@ class RuleStub:
             hotline_place_hint=not hits.get(_PLACE)
             and self._raw_place(text) is None
             and any(p.search(text.casefold()) for p in self._place_hint_patterns),
+            present_place=None if here is None else here.region,
+            present_country=None if here is None else here.country,
         )
         return context, turn
 

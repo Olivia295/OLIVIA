@@ -10,11 +10,15 @@ A CRISIS card at L3 always leads with the region's emergency numbers; at L2 only
 region has no L2 line that can be called (ZZ has only directory links), so no crisis card
 is ever without a number to call.
 
-The mainland L2 card (owner decision 2026-10-28, beyond PRD GEO-02's 12356) also lists the
-ambulance number, CN's ``ambulance`` emergency entry in the same signed data (120; never
-the police number 110), after the hotlines: ``ResourceCard.emergency_leads`` is False, so
-12356 stays the first number and 120 follows under the L2 card's gentler emergency
-heading. Every other region's L2 card is unchanged.
+Every L2 card with a line to call also lists one local emergency number after its hotlines,
+from the same signed data: ``ResourceCard.emergency_leads`` is False, so the region's first
+hotline stays the first number and the emergency number follows under the L2 card's gentler
+emergency heading. The mainland card lists its ambulance number (owner decision 2026-10-28,
+beyond PRD GEO-02's 12356: 120, never the police number 110); Hong Kong, Macau, the US,
+Canada, Great Britain and Australia list the number for police, fire and ambulance, Taiwan
+its fire and ambulance number (owner decision 2026-11-25: HK 999, MO 999 without the 110
+and 112 that reach it, TW 119 without 110, US 911, CA 911, GB 999, AU 000). ZZ's L2 card
+already leads with 112 and is unchanged.
 """
 
 from __future__ import annotations
@@ -34,10 +38,19 @@ from olivia.core.resources.store import (
 )
 
 STALE_AFTER_DAYS: Final = 180
-# Owner decision 2026-10-28: emergency purposes an L2 crisis card lists after its lines, by
-# region. Only the purpose is named here; the number comes from the signed data.
-L2_EMERGENCY_AFTER_LINES: Final[dict[str, frozenset[EmergencyPurpose]]] = {
-    "CN": frozenset({EmergencyPurpose.AMBULANCE}),
+# Owner decisions 2026-10-28 (CN) and 2026-11-25 (the rest): the emergency purpose an L2 crisis
+# card lists after its lines, by region. Only the purpose is named here; the number is the
+# region's first emergency entry with that purpose in the signed data, so Macau's 999 is
+# listed and the 110 and 112 that reach it (the same purpose, later in the file) are not.
+L2_EMERGENCY_AFTER_LINES: Final[dict[str, EmergencyPurpose]] = {
+    "CN": EmergencyPurpose.AMBULANCE,
+    "HK": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
+    "MO": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
+    "TW": EmergencyPurpose.FIRE_AMBULANCE,
+    "US": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
+    "CA": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
+    "GB": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
+    "AU": EmergencyPurpose.POLICE_FIRE_AMBULANCE,
 }
 
 
@@ -74,9 +87,9 @@ def resolve(
         raise ValueError(f"crisis card requires L2 or L3, got {level.name}")
     else:
         emergency, lines = _crisis_entries(data, lines, level)
-        added = L2_EMERGENCY_AFTER_LINES.get(code, frozenset())
-        if level is CrisisLevel.L2 and not emergency and added:
-            emergency = tuple(e for e in data.emergency if e.purpose in added)
+        added = L2_EMERGENCY_AFTER_LINES.get(code)
+        if level is CrisisLevel.L2 and not emergency and added is not None:
+            emergency = tuple(e for e in data.emergency if e.purpose is added)[:1]
             leads = False
 
     shown: tuple[EmergencyNumber | HotlineEntry, ...] = (*emergency, *lines)

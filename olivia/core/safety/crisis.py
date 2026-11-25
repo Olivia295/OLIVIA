@@ -90,7 +90,7 @@ import numbers
 import re
 from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import accumulate
 from typing import Final, Literal, Protocol, TypeVar
 
@@ -107,7 +107,14 @@ from olivia.core.safety.lexicon import (
     SafetyLexicons,
 )
 from olivia.core.safety.matcher import Match, PhraseMatcher
-from olivia.core.safety.normalize import bidi_readings, normalize
+from olivia.core.safety.normalize import (
+    Breaks,
+    bidi_readings,
+    clause_breaks,
+    normalize,
+    repeat_copy,
+    spans_copies,
+)
 from olivia.core.safety.reported import ReportedSpeech, farewell_strength, names_death
 from olivia.core.taxonomy import Taxonomy
 
@@ -167,6 +174,10 @@ class CrisisAssessment:
     keep as a resolve anchor ("不用担心我", "don't worry about me"). Only the tracker's
     reading of an explicit safety confirmation next to it uses this; every other rule
     stays on ``rule_clear``."""
+    plan_candidate: bool = False
+    """负责人 2026-11-25 决定: the L3 rests on a means put away alone ("我不想死，刀我已经收好
+    了"; ``risk.yaml`` ``put_away_ask``). The screen still says L3; the session asks once
+    first when the session showed no other risk (``Session``, ``CrisisTracker.risk_shown``)."""
 
 
 @dataclass(frozen=True)
@@ -250,13 +261,14 @@ def arbitrate(
 
 _REMEMBERED: Final = 4
 _T = TypeVar("_T")
+_K = TypeVar("_K")
 
 
-def _remember(memo: dict[str, _T], text: str, value: _T) -> _T:
-    """Keep ``value`` for ``text`` among the last ``_REMEMBERED`` texts."""
+def _remember(memo: dict[_K, _T], key: _K, value: _T) -> _T:
+    """Keep ``value`` for ``key`` (a text) among the last ``_REMEMBERED`` keys."""
     if len(memo) >= _REMEMBERED:
         del memo[next(iter(memo))]
-    memo[text] = value
+    memo[key] = value
     return value
 
 
@@ -286,16 +298,24 @@ class _CueIndex:
             _PAIR_KEY + phrase for pair in pairs for phrase in pair.anchors
         )
         self.composer = Composer(lexicons.compositions)
+        # G2b-2: the compositions that count only in a session context, matched apart.
+        self.context_composer = Composer(
+            replace(lexicons.compositions, entries=lexicons.compositions.context_entries)
+        )
+        self._contexts: dict[str, tuple[str, ...]] = {}
         # Round 6 (2026-10-30): the last few scans, by normalized text. The rule screen and
         # a model screen share this index, and in model mode both screen each message
         # (the rule screen's level decides the mirror and the D3 answer): the second pass
         # reuses the first one's matches. Results never change once the index is built.
         self._scans: dict[str, tuple[Match, ...]] = {}
-        self._compositions: dict[str, tuple[CompositionHit, ...]] = {}
+        self._compositions: dict[tuple[str, Breaks], tuple[CompositionHit, ...]] = {}
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
         self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
         self.figure = _FigureIndex(lexicons.hyperbole_ask)
+        # 负责人 2026-11-25 决定: the means put away that may ask first, and what voids that.
+        self.put_away_ids = lexicons.put_away_ask.ids
+        self.put_away_vetoes = PhraseMatcher({p: p for p in lexicons.put_away_ask.vetoes})
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
@@ -307,7 +327,14 @@ class _CueIndex:
     def scan(self, text: str) -> list[Match]:
         found = self._scans.get(text)
         if found is None:
-            found = _remember(self._scans, text, tuple(self.matcher.find_all(text)))
+            matches = self.matcher.find_all(text)
+            copy = repeat_copy(text)
+            if copy:
+                # A message said twice over (task G3): a phrase across the place where one
+                # copy meets the next was never said (药钱我都攒够了 药钱我都攒够了).
+                n = len(text)
+                matches = [m for m in matches if not spans_copies(m.start, m.end, copy, n)]
+            found = _remember(self._scans, text, tuple(matches))
         return list(found)
 
     def figurative_only(self, matches: Sequence[Match]) -> bool:
@@ -317,11 +344,22 @@ class _CueIndex:
         cover = _MaskCover(m for m, section in sections if section == "hyperbole")
         return bool(stage2) and all(cover.contains(m) for m in stage2)
 
-    def compose(self, text: str) -> list[CompositionHit]:
-        hits = self._compositions.get(text)
+    def compose(self, text: str, breaks: Breaks = ()) -> list[CompositionHit]:
+        """The compositions of normalized ``text``; ``breaks`` are those its original
+        whitespace made (``normalize.clause_breaks``, task G3)."""
+        key = (text, breaks)
+        hits = self._compositions.get(key)
         if hits is None:
-            hits = _remember(self._compositions, text, tuple(self.composer.find(text)))
+            hits = _remember(self._compositions, key, tuple(self.composer.find(text, breaks)))
         return list(hits)
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """The ids of the context-only compositions that fire in ``text`` (G2b-2)."""
+        ids = self._contexts.get(text)
+        if ids is None:
+            found = _unique_ids(hit.entry.id for hit in self.context_composer.find(text))
+            ids = _remember(self._contexts, text, found)
+        return ids
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
         """Pair cues with a request and an anchor that none of their exceptions contains."""
@@ -462,6 +500,16 @@ _HABIT_ABOUT_PAIN: Final = re.compile(
     r"失眠|睡不着|心情|情绪|抑郁|焦虑|这样|这种|如此|这么|那样|一样|感觉|心里"
 )
 _HABIT_FILLERS: Final = re.compile(r"[都也还又就是很好真的了啊呀呢吧嘛我俺咱自己]*")
+# Round 8 (2026-11-25, 决定 B): a clause that opens with the pain as its topic ("难受的是",
+# "最累的是", "最让人崩溃的是") is about the pain itself, whatever follows; the pain word is
+# no one else's subject either.
+_PAIN_CLEFT: Final = re.compile(
+    r"(?:最|更|真正|特别|尤其)?(?:让人|令人|叫人)?"
+    r"(?:难受|难过|心累|累|心烦|烦|痛苦|痛|苦|崩溃|绝望|受不了|折磨人|折磨|煎熬|难熬|窒息|恶心|"
+    r"郁闷|憋屈|委屈|无奈|头疼|头大|抓狂|糟心|闹心|想哭|想死|讨厌|害怕|可怕|怕|气人|烦人)"
+    r"的(?:是|就是|在于)"
+)
+_CLEFT_BEFORE: Final = re.compile(_NO_SUBJECT.pattern + _PAIN_CLEFT.pattern + _NO_SUBJECT.pattern)
 
 
 def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:
@@ -472,6 +520,8 @@ def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) ->
     if any(start <= f.end and f.start <= end for f in frames):
         return False  # the figure's own clause
     clause = normalized[start:end]
+    if _PAIN_CLEFT.search(normalized, start, hit.start) is not None:
+        return False  # "累的是每天都要洗": the pain itself (round 8)
     rest = normalized[hit.end : end]
     return _HABIT_ABOUT_PAIN.search(clause) is None and _HABIT_FILLERS.fullmatch(rest) is None
 
@@ -490,6 +540,7 @@ def _someone_elses_habit(normalized: str, hit: Match, frames: Sequence[Match]) -
         bool(before)
         and not any(word in before for word in _SELF_WORDS)
         and _NO_SUBJECT.fullmatch(before) is None
+        and _CLEFT_BEFORE.fullmatch(before) is None  # "难受的是每天…" (round 8)
     )
 
 
@@ -561,9 +612,8 @@ class RuleRiskModel:
 
     def predict(self, text: str) -> RiskPrediction:
         normalized = normalize(text)
-        return self.predict_matches(
-            self._index.scan(normalized), self._index.compose(normalized), normalized
-        )
+        composed = self._index.compose(normalized, clause_breaks(text))
+        return self.predict_matches(self._index.scan(normalized), composed, normalized)
 
     def predict_matches(
         self,
@@ -770,7 +820,9 @@ class SafetyScreen:
         user_clear = (
             not self._index.fired_pairs(matches)
             and all(inside(m.start, m.end) for m in matches if m.key in cues or m.key in anchors)
-            and all(inside(h.start, h.end) for h in self._index.compose(normalized))
+            and all(
+                inside(h.start, h.end) for h in self._index.compose(normalized, clause_breaks(text))
+            )
         )
         level = CrisisLevel.L0
         plan = False
@@ -809,15 +861,22 @@ class SafetyScreen:
         matches = self._index.scan(normalized)
         cues = self._index.cues
         stage1 = [m for m in matches if m.key in cues and cues[m.key].section == "stage1"]
-        composed = self._index.compose(normalized)
+        composed = self._index.compose(normalized, clause_breaks(text))
         # Like the Stage 2 compositions, an L3 one is reported only when no Stage 1 phrase
         # already gives the plan evidence.
         plans = [] if stage1 else [h.entry for h in composed if h.entry.level is CrisisLevel.L3]
         if stage1 or plans:
             score = max([_cue_score(cues[m.key]) for m in stage1] + [c.score for c in plans])
             ids = _unique_ids([*(m.key for m in stage1), *(c.id for c in plans)])
+            candidate = not stage1 and self._put_away_alone(normalized, matches, composed)
             stage1_assessment = CrisisAssessment(
-                CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
+                CrisisLevel.L3,
+                score,
+                "STAGE1",
+                True,
+                ids,
+                rule_level=CrisisLevel.L3,
+                plan_candidate=candidate,
             )
             return stage1_assessment, None
         rule_prediction = self._rule_model.predict_matches(
@@ -930,6 +989,50 @@ class SafetyScreen:
         )
         return assessment, observed
 
+    def _put_away_alone(
+        self, normalized: str, matches: Sequence[Match], composed: Sequence[CompositionHit]
+    ) -> bool:
+        """负责人 2026-11-25 决定: the message's only Stage 1 cue is a means put away
+        (``risk.yaml`` ``put_away_ask``) and nothing else in it is a risk cue.
+
+        Every L3 composition of the message is a put-away one; no other composition fires
+        outside their words (one over the same words, such as ASK_INTENT_MEANS_OBTAINED on
+        刀片 + 收好, is the same phrase); the rule model, someone else's reported words kept,
+        rates the phrases L0; no pair anchor lies outside a negation mask (我不想死 masks
+        its 想死, a bare 自杀 does not); and no ``vetoes`` phrase (a plan, a time, a farewell,
+        a hedge, a contrast, at hand, a place) occurs anywhere. Stage 1 phrases are checked
+        by the caller."""
+        ids = self._index.put_away_ids
+        plans = [h for h in composed if h.entry.level is CrisisLevel.L3]
+        if not ids or not plans or any(h.entry.id not in ids for h in plans):
+            return False
+        if self._index.put_away_vetoes.find_all(normalized):
+            return False
+        spans = [(h.start, h.end) for h in plans]
+        if any(
+            h.entry.level is not CrisisLevel.L3
+            and not any(h.start < end and start < h.end for start, end in spans)
+            for h in composed
+        ):
+            return False
+        cues = self._index.cues
+        rules = self._rule_model.predict_matches(matches, (), normalized, void_reported=False)
+        if rules.level is not CrisisLevel.L0:
+            return False
+        negations = _MaskCover(
+            m for m in matches if m.key in cues and cues[m.key].section == "negation"
+        )
+        return not any(
+            m.key in self._index.pair_anchor_keys and not negations.contains(m) for m in matches
+        )
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """G2b-2 (2026-11-25): the ids of the ``compositions.context_entries`` that fire in
+        ``text``. They are no cue of ``assess`` (no level, no D3 cue, ``rule_clear``
+        untouched); the session reads them in its own context (``Composition.after``) and
+        asks for them only when that context could make them count."""
+        return self._index.context_cues(normalize(text))
+
     def about_others(self, text: str) -> bool:
         """The message is about a specific other person and says nothing of the user's own
         (``ReportedSpeech.about_others``; round 5). The rules' grammar only, no level."""
@@ -944,7 +1047,7 @@ class SafetyScreen:
         normalized = normalize(text)
         matches = self._index.scan(normalized)
         cues = self._index.cues
-        if self._index.compose(normalized):
+        if self._index.compose(normalized, clause_breaks(text)):
             return False
         for match in matches:
             if match.key in self._index.pair_anchor_keys:

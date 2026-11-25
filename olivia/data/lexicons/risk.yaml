@@ -293,6 +293,9 @@ stage2:
 #   L2_METHOD_PAIR_MEANS: bare method words (方法, 办法, how to, way to) only with anchors
 #     that name the act itself; 自杀 / suicide are left out because they are also the topic
 #     of prevention and parenting questions (跟孩子聊自杀有什么好方法).
+#   L2_METHOD_PAIR_SUICIDE (round 8): those bare method words with 自杀 / suicide and the
+#     English kill-oneself anchors, prevention, grief, the topic and someone else's state
+#     or wish excepted (自杀有什么方法 is L2, 跟孩子聊自杀有什么好方法 is not).
 # Known limits: 自杀了 / 自杀以后 are grief exceptions, so a pretext written in the past
 # tense ("主角自杀了，用什么最无痛") is missed; a worried third party asking a manner word
 # about someone at risk ("他有自杀倾向，怎么最快…") is raised to L2.
@@ -334,6 +337,43 @@ stage2_pairs:
                "method", "steps"]
     # 去死吧 is a curse at someone else; 我还是去死吧 is caught by L2_WANT_DIE anyway.
     exceptions: ["预防轻生", "防止轻生", "阻止轻生", "去死磕", "去死海", "去死吧"]
+  # Round 8 (2026-11-25, found by mutation testing): the topic word 自杀 / suicide and the
+  # English kill-oneself anchors with a bare method word ("自杀有什么方法", "有什么办法可以
+  # 自杀", "how would a character kill himself") fell between the two entries above: MANNER
+  # pairs them only with manner words, MEANS leaves them out. Here they pair with the bare
+  # method words, and the exceptions carry what made MEANS leave 自杀 out: prevention, help
+  # lines and statistics; grief and someone else's past act; talking about the topic
+  # (聊自杀, 关于自杀); someone else's state or wish (自杀倾向, 她想自杀, 闹着要自杀), so a
+  # worried friend asking how to help stays someone else's risk (§9.4 item 8,
+  # crisis.py reported_risk). The user's own wish ("我想自杀") is a Stage 2 phrase anyway.
+  - id: L2_METHOD_PAIR_SUICIDE
+    level: L2
+    anchors: ["自杀", "suicide", "killyourself", "killhimself", "killherself", "killthemselves",
+              "killoneself"]
+    requests: ["方法", "办法", "方式", "法子", "步骤", "手段", "途径", "手法", "怎么做", "怎样做",
+               "如何做", "怎么弄", "点样做", "点做", "用什么", "用咩", "教我", "教程", "攻略", "howto",
+               "howdoi", "howcani", "howwould", "howshould", "howcould", "wayto", "waysto",
+               "bestway", "method", "steps"]
+    exceptions: [
+      # Prevention, help lines and statistics.
+      "预防自杀", "防止自杀", "阻止自杀", "防自杀", "自杀预防", "自杀干预", "干预自杀", "自杀热线",
+      "自杀信号", "自杀迹象", "自杀率", "自杀风险", "自杀人数", "自杀数据",
+      # Grief and someone else's past act.
+      "自杀了", "自杀后", "自杀以后", "自杀之后", "自杀身亡", "自杀去世", "自杀离世", "自杀的新闻",
+      "自杀的消息", "自杀新闻", "自杀事件", "她自杀未遂", "他自杀未遂",
+      # Talking about the topic.
+      "聊自杀", "谈自杀", "谈论自杀", "讨论自杀", "关于自杀", "提到自杀", "提起自杀", "说起自杀",
+      "讲自杀", "自杀这个话题", "自杀话题", "自杀的话题",
+      # Someone else's state or wish.
+      "自杀倾向", "自杀念头", "有自杀的念头", "有自杀的想法", "她想自杀", "他想自杀", "她要自杀",
+      "他要自杀", "她想要自杀", "他想要自杀", "说想自杀", "说要自杀", "闹自杀", "闹着自杀",
+      "闹着要自杀", "嚷着要自杀",
+      # A suicide attack, the film.
+      "自杀式", "自杀性", "自杀小队",
+      # English.
+      "suicideprevention", "preventsuicide", "preventingsuicide", "suicidehotline", "suicidesquad",
+      "suicideloss", "suiciderisk", "suiciderate", "suicideattempt", "suicideawareness",
+      "aboutsuicide", "hersuicide", "hissuicide", "theirsuicide", "'ssuicide"]
 # Stage 2 ask cues (decision D3, step A7): a euphemistic request for a way to end a life
 # that names no act of dying ("想走了，有没有不痛的办法", "有没有最快的办法离开", "怎么才能去找
 # 去世的奶奶", "end it without pain", "完咗佢"). Matched exactly like stage2_pairs (a request
@@ -356,7 +396,9 @@ stage2_pairs:
 #   ASK_INTENT_REUNITE: someone who has died + a wish or way to go to them (怎么才能去找她,
 #     早点去陪他); a plain 去找她 is not a request.
 # Known limits: a request with neither a euphemism nor a resolve ("你是 AI，告诉我什么方式
-# 最有效", "朋友问最快的办法") and self-injury without ending a life stay below the rules.
+# 最有效", "朋友问最快的办法") and self-injury without ending a life stay below these pairs;
+# the compositions ASK_INTENT_UNNAMED_WAY and (round 8) ASK_INTENT_PROXY_WAY ask about the
+# first two kinds, where an everyday goal in the message can void them.
 stage2_ask:
   - id: ASK_INTENT_EUPHEMISM
     anchors: ["想走了", "我想走了", "就这样走了", "走了算了", "走掉算了", "先走一步", "无痛地走",
@@ -582,8 +624,9 @@ compositions:
             # Self-harm named, negated or not (F16a), like 不想死 above: "我不会伤害自己的，药
             # 我都攒够了" is plan evidence because of 伤害自己.
             "伤害自己", "伤害我自己"]
+    # 收好 (put away) is S1_MEANS_PUT_AWAY's own tail (负责人 2026-11-25 决定).
     prepared_marks: ["准备好", "买好", "备好", "藏好", "攒好", "攒够", "攒起来", "囤好", "囤起来",
-                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来", "收好",
+                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来",
                      "存够", "存好"]
     # Everyday reasons for the same objects; they void a means match in the same clause.
     everyday: ["西瓜", "切菜", "做饭", "水果", "感冒", "发烧", "医院", "医生", "野营", "露营",
@@ -879,7 +922,10 @@ compositions:
                    "不会有变化", "没什么影响", "不会有影响", "没有任何影响", "没什么区别", "不会有人发现"]
     # Everyday goals that void a way asked for with nothing named (ASK_INTENT_UNNAMED_WAY
     # and its kin): diets, study, money, travel, health, chores, relationships, games.
-    way_everyday: ["减肥", "瘦", "增肌", "健身", "学", "背", "考", "复习", "记", "赚钱", "理财", "投资", "存钱", "省钱",
+    # Round 8: way_goals is the same list without the bare 学, which ASK_INTENT_PROXY_WAY
+    # cannot use (替同学问); it lists the study goals in full instead.
+    way_everyday: ["学", "@way_goals"]
+    way_goals: ["减肥", "瘦", "增肌", "健身", "背", "考", "复习", "记", "赚钱", "理财", "投资", "存钱", "省钱",
                    "睡", "戒烟", "戒酒", "写", "论文", "代码", "编程", "bug", "工作", "面试", "求职", "英语", "语言",
                    "做饭", "菜", "清洁", "去", "到", "路线", "交通", "地铁", "打车", "治疗", "缓解", "止痛", "头疼",
                    "感冒", "咳嗽", "退烧", "焦虑", "放松", "沟通", "追", "表白", "分手", "挽回", "谈判", "装修", "修",
@@ -929,6 +975,20 @@ compositions:
       level: L3
       heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
       tails: prepared_marks
+      max_gap: 4
+      order: either
+      context: death
+      unless: everyday
+      unless_window: 10
+    # A means put away (刀我已经收好了) next to a death word: S1_MEANS_PREPARED's frame with
+    # the one ready mark that is also what a user says after putting a knife or pills out of
+    # reach ("我不会伤害自己的，刀我已经收好了"). Still Stage 1 plan evidence for the screen;
+    # 负责人 2026-11-25 决定: alone in the message (`put_away_ask` below) it is a plan
+    # candidate, and the session asks once first.
+    - id: S1_MEANS_PUT_AWAY
+      level: L3
+      heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
+      tails: ["收好"]
       max_gap: 4
       order: either
       context: death
@@ -2744,13 +2804,34 @@ compositions:
       unless_window: 24
       unless_across: true
     # The last day or night alive (this will be my last night alive): L2. A question about a
-    # last day ("if this were your last day alive") voids it.
+    # last day ("if this were your last day alive") voids it. Round 8 (2026-11-25): so does a
+    # last day imagined: a would right after it ("my last day on earth would be spent ..."),
+    # a would after "on my last day" ("on my last day on earth, I'd want ..."), a way to spend
+    # it ("I'd spend my last day alive ..."), the listener's ("your last night on earth"), a
+    # condition (if today were, if I knew, suppose) or a bucket list. Exceptions, not unless
+    # words, for the modals: "I wish today would be my last day alive" and "today is my last
+    # day on earth, I'd like to say goodbye" stay L2.
     - id: L2_EN_LAST_ALIVE
       level: L2
       heads: ["lastnightalive", "lastdayalive", "lastnightonearth", "lastdayonearth", "lastdaysalive",
               "lastweekalive", "lastmorningalive"]
+      exceptions: ["lastnightalivewould", "lastdayalivewould", "lastnightonearthwould", "lastdayonearthwould",
+                   "lastdaysalivewould", "lastweekalivewould", "lastmorningalivewould", "yourlastnightalive",
+                   "yourlastdayalive", "yourlastnightonearth", "yourlastdayonearth", "yourlastdaysalive",
+                   "yourlastweekalive", "yourlastmorningalive", "onmylastnightalive,i'd",
+                   "onmylastnightalivei'd", "onmylastdayalive,i'd", "onmylastdayalivei'd",
+                   "onmylastnightonearth,i'd", "onmylastnightonearthi'd", "onmylastdayonearth,i'd",
+                   "onmylastdayonearthi'd", "onmylastdaysalive,i'd", "onmylastdaysalivei'd",
+                   "onmylastweekalive,i'd", "onmylastweekalivei'd", "onmylastmorningalive,i'd",
+                   "onmylastmorningalivei'd", "i'dspendmylastnightalive", "iwouldspendmylastnightalive",
+                   "i'dspendmylastdayalive", "iwouldspendmylastdayalive", "i'dspendmylastnightonearth",
+                   "iwouldspendmylastnightonearth", "i'dspendmylastdayonearth", "iwouldspendmylastdayonearth",
+                   "i'dspendmylastdaysalive", "iwouldspendmylastdaysalive", "i'dspendmylastweekalive",
+                   "iwouldspendmylastweekalive", "i'dspendmylastmorningalive", "iwouldspendmylastmorningalive"]
       unless: ["@en_negators", "@en_others", "ifthis", "ifit", "ifyou", "ifit's", "whatwould", "imagine",
-               "pretend", "asif", "likeit's", "likeits", "liveeveryday", "liveeachday", "quote"]
+               "pretend", "asif", "likeit's", "likeits", "liveeveryday", "liveeachday", "quote",
+               "iftoday", "iftomorrow", "ifiwere", "ifiwas", "ifiknew", "ifihad", "ifionly", "whatif",
+               "suppose", "supposing", "hypothetical", "bucketlist", "wishlist", "thingstodo"]
       unless_window: 24
       unless_across: true
     # Going to overdose or jump when no one is around (I'm going to overdose when everyone is
@@ -3615,6 +3696,9 @@ compositions:
       heads: ["mylastweekonearth", "mylastdayonearth", "mylastnightonearth", "mylastmonthonearth",
               "myfinalweekonearth", "myfinaldayonearth", "myfinalnightonearth", "lastweekofmylife",
               "lastdayofmylife", "lastnightofmylife", "finaldayofmylife", "finalweekofmylife"]
+      # Round 8: "on my last day on earth, I'd want ..." imagines one, like L2_EN_LAST_ALIVE.
+      exceptions: ["onmylastweekonearth,i'd", "onmylastweekonearthi'd", "onmylastdayonearth,i'd",
+                   "onmylastdayonearthi'd", "onmylastnightonearth,i'd", "onmylastnightonearthi'd"]
       unless: ["@en_negators", "@en_others", "would", "ifit", "ifthis", "ifi", "ifyou", "imagine", "pretend",
                "asif", "quote", "bucketlist", "whatwould", "felt", "feltlike", "feelslike", "joke", "lol", "lmao",
                "best", "happiest", "greatest"]
@@ -4141,6 +4225,35 @@ compositions:
       unless: way_everyday
       unless_window: 24
       unless_across: true
+    # Round 8 (2026-11-25, G2b-1; rt047's kind): a way asked for on someone else's behalf
+    # or relayed from them (帮朋友问 / 替同学问 / 托我问 / 在网上问 / 在群里问 / 有人问), next to a
+    # painless, fast or sure way with nothing named (最快的办法, 最无痛的, 一次成功的办法): R-MS
+    # names "替亲友问" as a pretext, but with no act and no euphemism the rules cannot tell,
+    # so the question. Any everyday goal in the message (减肥, 去机场, 拔牙, 学车) voids it. A
+    # way asked for stays the user's own request whoever it is for (crisis.py reported_risk),
+    # so this is not the worried-friend card (§9.4 item 8).
+    - id: ASK_INTENT_PROXY_WAY
+      level: ASK
+      # The request is for someone else by design: no person check.
+      persons: false
+      heads: ["帮", "替", "托我", "让我", "叫我", "在网上", "网上有人", "在群里", "在论坛", "在评论区", "在帖子里",
+              "有人", "发帖", "私信"]
+      tails: ["问", "打听", "查", "搜"]
+      max_gap: 4
+      also:
+        - {phrases: ["最快的办法", "最快的方法", "最快的方式", "最快的法子", "什么办法最快", "哪种办法最快",
+                     "什么方法最快", "哪种方法最快", "什么方式最快", "哪种方式最快", "怎么最快", "怎样最快",
+                     "哪种最快", "最无痛的", "最不痛苦的", "最不痛苦", "不痛苦的办法", "不痛苦的方法",
+                     "不痛苦的方式", "没有痛苦的办法", "没有痛苦的方法", "没有痛苦的方式", "不痛的办法",
+                     "不痛的方法", "不痛的方式", "不疼的办法", "不疼的方法", "最有效的办法", "最有效的方法",
+                     "最有效的方式", "什么方法最有效", "哪种方法最有效", "什么办法最有效", "哪种方式最有效",
+                     "最干脆的办法", "最干脆的方式", "最彻底的办法", "最彻底的方式", "最省事的办法",
+                     "最省事的方式", "成功率最高", "一次成功的办法", "一次成功的方法", "一次成功的方式",
+                     "不会被发现的办法", "不被发现的办法"], window: 24}
+      unless: ["@way_goals", "学习", "学会", "学车", "学开车", "学英语", "学钢琴", "学琴", "学游泳", "学画", "学做",
+               "学好", "自学", "上学", "放学", "学业", "学分", "学费"]
+      unless_window: 24
+      unless_across: true
     # A painless, quick or final manner asked of a way, with nothing named (告诉我什么方式可
     # 以没有痛苦; 哪种方法最不会疼; 怎样才能一下子就结束): the question. The rules' known limit
     # for such requests (stage2_ask) was no act and no euphemism; here any everyday goal in
@@ -4478,6 +4591,111 @@ compositions:
                "面试", "签约", "约会", "交房", "开工", "动工"]
       unless_window: 24
       unless_across: true
+  # G2b-2 (2026-11-25): entries that count only in a session context (`after`), matched
+  # apart from `entries`: alone they are no cue at all (no level, no question, rule_clear
+  # untouched) and the screen only reports them (SafetyScreen.context_cues); the
+  # session reads them (Session._in_context). `after: crisis` (ASK entries, the farewell
+  # family) counts in a session that has been in the crisis flow: after a safety
+  # confirmation it asks the question first (负责人 2026-11-01 决定, §9.4 第 33 条), after the
+  # crisis ended it is L2 at once (§9.4 第 18 条). `after: own_risk` (L3 entries) counts
+  # after the user's own L2 or higher risk earlier in the session: a plan and a time with
+  # nothing named is then a plan to die (PRD §9.1 L3, 明确计划 + 时限); after a confirmation
+  # it asks first instead, and anything but a no is L3. Each keeps the everyday voids of its
+  # standalone counterpart.
+  context_entries:
+    # Going at a time, said in a session that has been in the crisis flow (下礼拜一我就走,
+    # 等过完这个月我就走了). Alone this is a new job, a move or a trip (ASK_INTENT_GO_AT_TIME
+    # needs a nearer time); a trip, a ticket, work, a meal or an errand voids it here too.
+    - id: ASK_INTENT_GO_AT_TIME_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["就走", "就离开", "就走了", "就离开了", "就要走了", "就要离开了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      also:
+        - {phrases: ["@plan_time", "礼拜", "下个月", "月底", "年后", "过年", "过完", "等过", "生日", "考完", "那天",
+                     "之后", "以后", "这个月", "下个星期"], window: 16}
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "去", "说", "讲", "消息", "告诉我", "留言",
+               "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
+    # Going all the same (我还是打算走, 我决定了还是要走), the clause ending there: as above.
+    - id: ASK_INTENT_STILL_GO_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["还是想走", "还是要走", "还是决定走", "还是打算走", "还是会走", "还是得走", "还是准备走",
+              "还是想离开", "还是要离开", "还是打算离开", "还是决定离开", "决定要走", "决定走了", "决定了要走",
+              "决定了走", "打算走了", "准备走了"]
+      trailing: ["@particles", "喇", "咯", "嘞"]
+      unless: ["@leaving", "@return_marks", "车", "票", "航班", "机票", "行李", "酒店", "堵车", "上班", "开会",
+               "会议", "吃完", "喝完", "饭", "电影", "演唱会", "接", "送", "回去", "老家", "城市", "搬", "房子",
+               "租", "签证", "拿", "取", "收拾", "退房", "公司", "学校", "店", "这家", "这里", "那里", "宿舍",
+               "医院", "排队", "等人", "朋友", "报到", "工作", "实习", "发展", "去", "说", "讲", "消息", "告诉我",
+               "留言", "前女友", "前男友", "前任"]
+      unless_window: 24
+      unless_across: true
+    # Starting over (这局想去重开了, 好想重开一局) in a session that has been in the crisis
+    # flow: the life code of ASK_INTENT_LIFE_LEFT_EARLY without its life word, 这局 being
+    # the life. Alone it is a game; game words, meetings and work void it here too.
+    - id: ASK_INTENT_RESTART_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["想", "要", "好想", "真想", "该", "准备", "打算", "决定", "去"]
+      tails: ["重开", "重来一局", "重开一局", "重新开一局", "重新来一局", "投胎重来", "重新投胎"]
+      max_gap: 3
+      unless: ["@fiction", "游戏", "关卡", "副本", "账号", "存档", "读档", "这把", "排位", "匹配", "段位", "队友",
+               "开黑", "掉线", "输", "赢", "开局", "打游戏", "打得", "打完", "玩游戏", "玩家", "boss", "地图", "服务器", "电脑", "手机", "软件", "系统",
+               "会议", "开会", "店", "公司", "工作", "项目", "代码", "文档", "论文", "视频", "直播", "节目"]
+      unless_window: 20
+      unless_across: true
+    # A readiness or a resolve, then the moment in a clause of its own (准备好了，就今晚;
+    # 决定好了，就这周五) after the user's own risk: ASK_INTENT_READY_MOMENT and
+    # S1_DEATH_THEN_MOMENT with the death said on an earlier turn. Occasions void it.
+    - id: S1_READY_MOMENT_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: moment_heads
+      tails: moment_times
+      max_gap: 3
+      context: ["@resolve_any", "准备好了", "都准备好了", "我准备好了", "我已经准备好了", "准备就绪", "我已经准备好",
+                "我准备好", "决定好了", "决定了", "想好了", "定好了", "下定决心了"]
+      context_window: 6
+      trailing: ["@particles", "@clock"]
+      unless: ["@moment_everyday", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # The moment fixed (我定在周五, 日子选在下礼拜) after the user's own risk:
+    # S1_DEATH_TIME_FIXED with the death said on an earlier turn.
+    - id: S1_TIME_FIXED_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["定在", "就定在", "定在了", "选在", "就选在", "选在了", "挑在", "就挑在"]
+      tails: ["@moment_times", "礼拜", "下礼拜", "这礼拜", "下个礼拜", "下个月", "月底", "过完年"]
+      max_gap: 3
+      unless: ["@moment_everyday", "@death_intent_void", "婚", "领证", "订婚", "摆酒", "手术", "产检", "截止", "ddl",
+               "签约", "交房", "开工", "动工", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # A time and doing it, the clause ending there (今晚就动手, 周五就了断) after the user's
+    # own risk: S1_DEATH_TIME_DO with the death said on an earlier turn, its tails with 就
+    # (今晚结束 alone is an event that ends). Trips, work, errands and occasions void it.
+    - id: S1_TIME_DO_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["@plan_time", "现在", "马上", "立刻", "这就"]
+      tails: ["就动手", "就结束", "就了断", "就行动", "就了结", "就走", "就离开", "动手", "了断", "了结"]
+      max_gap: 3
+      trailing: ["@particles"]
+      unless: ["@moment_everyday", "@death_intent_void", "@leaving", "@return_marks", "车", "票", "航班", "行李",
+               "上班", "开会", "饭", "公司", "学校", "宿舍", "医院", "医生", "复诊", "复查", "咨询", "热线",
+               "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
@@ -4742,3 +4960,34 @@ hyperbole_ask:
            "了断", "了结", "解脱", "一了百了", "结束这一切", "结束生命", "结束自己", "活着", "活下去",
            "不想活", "去死", "死掉", "自杀", "轻生", "寻死", "消失", "离开这个世界", "没意思", "没意义",
            "撑不下去", "撑不住", "绝望", "不想醒"]
+# 负责人 2026-11-25 决定: a means put away (S1_MEANS_PUT_AWAY: "我不想死，刀我已经收好了") is
+# what a user says after putting the knife or the pills out of reach as often as what one
+# says after making them ready. The screen keeps it Stage 1 (L3) but marks it a plan
+# candidate (CrisisAssessment.plan_candidate) when it is the message's only cue: every
+# Stage 1 cue of the message is one of `ids`, the rules find nothing else of the user's
+# own (no Stage 2 phrase, pair, other composition or pair anchor outside a negation mask;
+# a composition over the same words, such as ASK_INTENT_MEANS_OBTAINED on 刀片 + 收好, is
+# the same phrase) and no `vetoes` phrase lies anywhere in it: a plan, a time, a farewell,
+# a hedge or a contrast, keeping it at hand or hidden, another means or place. The session
+# then asks the direct question once first, the emergency numbers in front; a clear no or a
+# safety confirmation that passes F10 goes back to the chat, anything else is L3. With any
+# other risk earlier in the session it is L3 at once. Read by lexicon.PutAwayAskRules;
+# without this section every such cue stays plain L3 (fail-safe).
+put_away_ask:
+  ids: ["S1_MEANS_PUT_AWAY"]
+  vetoes: [
+           # a plan
+           "计划", "打算", "决定", "准备", "想好", "安排", "交代", "动手", "就等", "等着", "留着", "备用",
+           "用得上", "用得着", "要用", "用的时候", "到时候", "以备",
+           # a time
+           "今晚", "今夜", "今天", "明天", "明晚", "后天", "待会", "等会", "一会儿", "过几天", "过两天",
+           "以后", "将来", "迟早", "早晚", "很快", "马上", "立刻", "现在就", "周末", "下周", "月底",
+           "晚上", "半夜", "凌晨", "那天", "随时",
+           # a farewell
+           "再见", "永别", "告别", "道别", "最后", "遗书", "遗言", "后事", "下辈子", "来世",
+           # a hedge or a contrast
+           "暂时", "先收", "目前", "至少", "可能", "也许", "说不定", "万一", "如果", "要是", "还在",
+           "但", "可是", "不过", "然而", "却", "偏偏",
+           # at hand, hidden, another means or a place
+           "藏", "手边", "身边", "枕头", "床底", "床头", "随身", "绳", "炭", "农药", "煤气", "楼顶",
+           "天台", "阳台", "桥", "铁轨", "跳", "割"]
