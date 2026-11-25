@@ -246,13 +246,14 @@ cause:
   - Stage 1 只收带明确自伤锚点的说法，没有锚点的计划只到 L2
   - L3 开关 model_plan_evidence 关闭，学生模型最多给 L2（负责人决定）
   - 告别、后事类说法也用于日常，规则先直接询问而不直接定 L3
-effect: 即刻危险的人先看到心理热线，急救号码靠后或缺失（中国大陆以外地区的 L2 卡不含当地急救号码）。
+effect: 即刻危险的人先看到心理热线，急救号码靠后（L2 卡把当地急救号码列在热线之后）。
 initial: {severity: 重大, likelihood: 高, risk: 4}
 controls:
   - olivia/data/lexicons/risk.yaml 的 stage1 与 compositions 的 S1_* 计划证据组合（否定与口癖遮罩不作用于 Stage 1）
   - olivia/core/safety/crisis.py 取高仲裁与 L3 刚性要件门控（PRD §9.1，SDD §8.2）
   - olivia/core/session.py 模型判 L3 而开关关闭时，本次危机各轮卡前加急救号码（SDD §8.2 负责人决定第 4 条）
   - docs/superpowers/plans/2026-10-23-next-phase.md §9.4 第 5 条（大陆 L2 卡在 12356 之后列 120）
+  - olivia/core/resources/resolver.py 港澳台、美、加、英、澳的 L2 卡也在热线之后列当地急救号码（负责人 2026-11-25 决定 A：HK 999、MO 999、TW 119、US 911、CA 911、GB 999、AU 000）
   - olivia/data/resources/hotlines.yaml 各地区急救号码
 evidence:
   - tests/safety/test_lexicon_gaps.py::test_means_place_or_time_with_a_plan_is_stage1
@@ -261,6 +262,7 @@ evidence:
   - tests/safety/test_crisis.py::test_model_plan_evidence_is_off_by_default
   - tests/session/test_session_flow.py::test_model_l3_capped_at_l2_shows_emergency_numbers_first
   - tests/session/test_owner_decisions_1028.py::test_the_l2_crisis_reply_lists_120_after_12356
+  - tests/session/test_owner_decisions_1125.py::test_every_l2_crisis_reply_lists_the_local_emergency_number_after_its_lines
   - tests/session/test_owner_decisions_1028.py::test_a_model_only_l3_class_below_0_6_asks_first_with_the_emergency_numbers
   - tests/resources/test_resource_resolver.py::test_every_l3_card_has_an_emergency_number
   - tests/redteam/test_multiturn.py::test_scenario
@@ -273,7 +275,7 @@ known_gaps:
   - {file: tests/redteam/known_gaps_multiturn.yaml, mode: model, kind: crisis recall, ids: [mt002, mt007, mt019, mt041], count: 4}
 ```
 
-这些缺口里多数已进入 L2 危机流程，只是达不到 L3；规则模式下有几条连 L2 都没有到（同时属于 HAZ-01）。“其他地区 L2 卡是否加当地紧急号码”仍是负责人未定事项（进度表 §9.3，2026-11-01）。
+这些缺口里多数已进入 L2 危机流程，只是达不到 L3；规则模式下有几条连 L2 都没有到（同时属于 HAZ-01）。负责人 2026-11-25 决定 A 之后，所有有热线的地区 L2 卡都在热线之后列当地急救号码（台湾 L2 只列 119，澳门只列 999），这些缺口落在 L2 时卡上也有急救号码，只是不在最前。
 
 ### HAZ-05 多轮渐进表达漏判
 
@@ -620,7 +622,7 @@ cause:
 effect: 用户在危机中拨出的号码打不通或不是求助机构。
 initial: {severity: 灾难性, likelihood: 低, risk: 4}
 controls:
-  - olivia/data/resources/hotlines.yaml 每条带官方来源与核验日期，两名核对员独立核对、第三位裁决（进度表 §9.2）
+  - olivia/data/resources/hotlines.yaml 每条带官方来源与核验日期，两名核对员独立核对、第三位裁决（进度表 §9.2）；2026-11-25 季度复核全部 35 条，16 项第三方核查，号码全部正确，更正了来源与说明（docs/resources/hotline-sources.md“2026-11-25 复核记录”）
   - olivia/data/resources/hotlines.yaml.sig 对原始字节的 Ed25519 签名，公钥在 olivia/core/resources/keys.py（PRD GEO-08）
   - olivia/core/resources/bundle.py 内置数据验签失败即不用；覆盖包须签名有效、比内置新且不晚于当天、不缩小覆盖
   - olivia/core/language/gate.py 输出网关拦下不在当前卡上的号码
@@ -634,6 +636,8 @@ evidence:
   - tests/resources/test_bundle.py::test_signed_pack_that_drops_builtin_coverage_falls_back
   - tests/cli/test_cli_hotline_updates.py::test_chat_ignores_a_tampered_update
   - tests/resources/test_hotline_data.py::test_every_entry_has_an_official_source_and_date
+  - tests/resources/test_resource_store.py::test_store_is_typed_and_frozen
+  - tests/resources/test_fallback.py::test_every_region_and_emergency_number_matches_the_verified_data
   - tests/resources/test_resource_resolver.py::test_crisis_card_contents
   - tests/session/test_session_round5_hotline.py::test_a_number_not_in_the_data_is_not_guessed
   - tests/language/test_engine_gate.py::test_stray_numbers_are_blocked
@@ -642,7 +646,7 @@ status: 已控制
 known_gaps: []
 ```
 
-签名只能保证“数据就是负责人签过的那份”，号码在现实中是否正确只能靠人工核对；测试只检查每条都有来源与日期，不能验证号码本身。
+签名只能保证“数据就是负责人签过的那份”，号码在现实中是否正确只能靠人工核对；测试只检查每条都有来源与日期，不能验证号码本身。2026-11-25 复核后的数据由子代理按负责人 2026-10-25 的授权用同一把密钥重新签名，内置数据验签通过。
 
 ### HAZ-16 热线号码过期
 
@@ -663,6 +667,7 @@ controls:
   - docs/resources/hotline-sources.md 的“定期复核”（负责人与处理流程）
 evidence:
   - tests/scripts/test_check_hotline_freshness.py::test_an_entry_older_than_90_days_fails
+  - tests/scripts/test_check_hotline_freshness.py::test_the_2026_11_25_review_holds_until_the_next_quarter
   - tests/scripts/test_check_hotline_freshness.py::test_the_workflow_runs_it_quarterly_and_on_demand
   - tests/scripts/test_check_hotline_freshness.py::test_the_sources_document_names_an_owner
   - tests/resources/test_resource_resolver.py::test_entries_older_than_180_days_are_flagged
@@ -674,7 +679,7 @@ status: 部分控制
 known_gaps: []
 ```
 
-当前全部 35 个条目核验于 2026-10-25。L3 卡总是先列当地急救号码，单条热线过期时仍有其他途径；12356 夜间可能无人接听也是大陆 L2 卡加 120 的理由之一（进度表 §9.3）。
+当前全部 35 个条目核验于 2026-11-25（季度复核，重新签名），按 90 天规则 2027-02-23 之前复核检查都通过，2027-02-24 起失败，提醒下一次复核（2027-01-01 的定时运行仍通过，2027-04-01 那次会失败）。L3 卡总是先列当地急救号码，单条热线过期时仍有其他途径；12356 夜间可能无人接听也是大陆 L2 卡加 120 的理由之一（进度表 §9.3）。
 
 ### HAZ-17 给错地区的号码
 
@@ -690,6 +695,8 @@ initial: {severity: 重大, likelihood: 中, risk: 3}
 controls:
   - olivia/core/resources/resolver.py Rule R8 境外隔离（按条目所属地区而非号码数字），不支持的代码一律按 ZZ（PRD GEO-01、GEO-03）
   - olivia/core/session.py 用户提到所在地时按那个地区给卡，没有核对过的地区给通用卡与当地官方紧急号码（进度表 §9.5 第 16 条）
+  - olivia/core/perception/location.py 按语法识别用户说自己现在在某地（过去、将来、假设、别人的位置都不算；“国内”不算大陆），只记在本次会话内存里，以最新的为准（负责人 2026-11-25 决定 B）
+  - olivia/core/session.py 说过当前所在地后，本会话危机卡（危机回复、先问一句附带的号码、危机中的告别、等待确认时的号码行）先列那里的号码，再列设置地区的号码；只在 crisis.local_emergency 里有一行的国家先列那一行（决定 B）
   - docs/superpowers/plans/2026-10-23-next-phase.md §9.4 第 11 条（ZZ 的 L2 卡给 112）
 evidence:
   - tests/resources/test_resource_resolver.py::test_non_cn_cards_never_show_mainland_entries
@@ -703,12 +710,18 @@ evidence:
   - tests/session/test_session_round7_hotline.py::test_a_supported_city_gets_that_regions_card
   - tests/cli/test_cli_resources_region.py::test_the_zz_crisis_card_lists_112_like_resources
   - tests/session/test_referral_region.py::test_other_regions_name_no_mainland_only_place
+  - tests/perception/test_present_place.py::test_the_users_own_place_now_is_read
+  - tests/perception/test_present_place.py::test_the_past_the_future_a_condition_or_someone_else_is_not
+  - tests/session/test_owner_decisions_1125.py::test_a_place_said_earlier_leads_the_crisis_card
+  - tests/session/test_owner_decisions_1125.py::test_the_latest_place_counts
+  - tests/session/test_owner_decisions_1125.py::test_mainland_numbers_show_outside_cn_only_after_naming_the_mainland
+  - tests/session/test_owner_decisions_1125.py::test_no_mainland_number_without_saying_one_is_there_now
 residual: {severity: 重大, likelihood: 低, risk: 3}
 status: 部分控制
 known_gaps: []
 ```
 
-境外隔离是红队的硬期望，两种模式全部通过。仍未定（进度表 §9.3，2026-11-01）：聊天中说过当前所在地之后，危机卡是否按那里给。
+境外隔离是红队的硬期望，两种模式全部通过。负责人 2026-11-25 决定 B 已实现：聊天中说过当前所在地之后，危机卡先给那里的号码，设置地区的号码列在后面；设置地区不是 CN 的用户只有明确说自己现在在中国大陆（“大陆”“内地”“中国大陆”）时才会看到大陆号码。仍是部分控制：程序只能知道用户说出来的位置，没说、说法不在语法里、地名不在地名表里（大陆城市名、表外国家）或说“国内”时，卡片仍按设置地区给；表外国家（只认得是“别处”）不会把先前说过的地区留在最前，但也没有当地号码可先列。北爱尔兰 Lifeline 是否收录仍待负责人决定。
 
 ### HAZ-18 危机卡号码缺失、顺序错误或被遮住
 
