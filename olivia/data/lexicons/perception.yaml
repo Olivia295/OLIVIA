@@ -1570,8 +1570,12 @@ hotline_request_patterns:
   # - a phone word told to come over, after a clause start or a word naming it ("求助电话发我",
   #   "号码甩我一个"), never someone's own number ("把他电话发我" has 他 before it);
   # - the police or ambulance number asked for ("报警电话是多少", "叫救护车拨几号").
-  - "(?:给我|给个|给一个|发我|发个|发给我|告诉我|甩我|甩个|俾我|畀我|俾个|畀个|留个|来个|要个|要一个|求个|求一个|推荐个|推荐一个)(?:一?个|几个|一些|些)?(?:能打的|可以打的|求助的|帮忙的|有人接的|靠谱的)?(?:电话|号码)(?!给|号码给)"
-  - "(?:有没有|有冇|有无|有什么|有啥|有咩|有哪个|有哪些)(?:什么|啥|咩|哪个|哪些|一个|个)?(?:能|可以|可)?(?:打的)?(?:电话|号码){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话)"
+  # Round 8 (2026-11-25; 草稿：待 G-0): in the first two, a phone word followed by what makes
+  # it a product, a job or a service ("电话销售", "电话卡", "电话套餐", "电话会议", "电话面试",
+  # "电话客服") is no line asked for, as in the round-8 finding grammar below; "电话本" only
+  # when 地 or 人 does not follow ("要个电话本地能打的" asks).
+  - "(?:给我|给个|给一个|发我|发个|发给我|告诉我|甩我|甩个|俾我|畀我|俾个|畀个|留个|来个|要个|要一个|求个|求一个|推荐个|推荐一个)(?:一?个|几个|一些|些)?(?:能打的|可以打的|求助的|帮忙的|有人接的|靠谱的)?(?:电话|号码)(?!给|号码给|卡|费|套餐|手表|机|号段|簿|本(?!地|人)|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏)"
+  - "(?:有没有|有冇|有无|有什么|有啥|有咩|有哪个|有哪些)(?:什么|啥|咩|哪个|哪些|一个|个)?(?:能|可以|可)?(?:打的)?(?:电话|号码)(?!给|号码给|卡|费|套餐|手表|机|号段|簿|本(?!地|人)|亭|销售|推销|营销|客服|会议|面试|采访|回访|线路|游戏){C}{0,8}?(?:打|拨|聊|倾|搵|说话|讲话)"
   - "有(?:个)?(?:电话|号码)(?:可以|能|好)(?:打|拨){C}{0,6}?(?:吗|么|嘛|冇|\\?)"
   - "(?:^|[,.!?;~、]|把|这个|那个|求助|帮忙|援助|热线|心理|急救|报警|紧急|支援|咨询)的?(?:电话|号码)(?:号码)?(?:再|直接|快|赶紧)?(?:发|给|甩|告诉|俾|畀)(?:一下)?(?:我|过来|给我|一个|一下)"
   - "(?:报警|急救|救护车|救护|紧急|police|ambulance|emergency)(?:的|用的|要打的)?(?:电话|号码|热线|number)(?:是|系)?(?:多少|什么|啥|咩|哪个|几号|几多|来着|吗|呢|\\?)"
@@ -1963,6 +1967,53 @@ local_emergency_places:
   DK: [丹麦, denmark, 哥本哈根, copenhagen]
   FI: [芬兰, finland, 赫尔辛基, helsinki]
   SE: [瑞典, sweden, 斯德哥尔摩, stockholm]
+
+# Where the user says they are now (owner decision 2026-11-25 B; 草稿：待 G-0): "我在多伦多",
+# "我人在悉尼读书", "我现在在香港", "I'm in Toronto". The place names are those of
+# hotline_places and local_emergency_places, without `excluded` ("国内" is Taiwan to a user
+# from Taiwan, so it never says mainland China). Read one clause at a time (split at
+# punctuation), folded, no spaces:
+#   * one of `subjects`, then only `fillers`, then one of `verbs`, then the place; a clause
+#     may also start with one of `clause_subjects` ("人在悉尼"), or with one of
+#     `continuations` when an earlier clause of the message said where the user is or was
+#     ("我之前在多伦多，现在在悉尼");
+#   * never with one of `not_before` before the subject in that clause (the past, the
+#     future, a condition, a dream, someone else's belief: "以前我在", "如果我在", "下个月我就在"),
+#     one of `not_after` after the place (the past or a wish: "的时候", "待过", "就好了"), or
+#     one of `attributes` right after the place ("美国公司", "香港路", "日本料理", "在多伦多的朋友").
+# Someone else's place ("我朋友在伦敦"), the past ("我以前在多伦多") and the future ("下个月去
+# 悉尼") never match, since only `fillers` may stand between the subject and the verb.
+# English is read on the raw text (lower case, spaces kept): `english` ends right before the
+# place; one of `english_not_now` anywhere in the clause ("if", "when", "was", "next week")
+# rules it out. A crisis card then lists that region's numbers first (a country that only
+# crisis.local_emergency lists: that line first), then the profile region's; the place is
+# kept in memory for the session only, the latest one counting.
+present_place:
+  subjects: [我们, 我, 本人, 俺, 咱们, 咱]
+  clause_subjects: [人]
+  fillers: [现在, 目前, 如今, 眼下, 此刻, 此时, 这会儿, 这会, 这阵子, 这段时间, 这几天, 最近, 近来, 今年,
+            这学期, 这个学期, 已经, 正, 还, 也, 就, 都, 是, 一个人, 独自, 自己, 人, 其实, 暂时, 刚, 刚刚,
+            一直, 正好, 刚好, 恰好]
+  verbs: [住在, 待在, 呆在, 留在, 身在, 定居在, 来到了, 来到, 到了, 来了, 到, 在, 住]
+  continuations: [现在, 目前, 如今, 眼下, 这会儿, 此刻]
+  not_before: [如果, 要是, 假如, 假设, 万一, 倘若, 若是, 就算, 即使, 哪怕, 等到, 等, 梦见, 梦到, 做梦,
+               梦里, 想象, 假装, 以为, 以前, 之前, 从前, 当年, 那时, 那会, 那年, 去年, 前年, 小时候, 曾经,
+               上次, 上回, 下个月, 下周, 下礼拜, 下星期, 明年, 明天, 后天, 过几天, 过阵子, 将来, 以后,
+               到时候, 毕业后, 回头]
+  not_after: [的时候, 时候, 那时, 那会, 那阵, 那几年, 那年, 那段, 那些年, 期间, 住过, 待过, 呆过, 读过,
+              念过, 生活过, 工作过, 上过, 去过, 到过, 留过学, 就好了, 该多好, 多好, 的话, 以后, 之后,
+              的日子, 回来, 长大, 出生, 毕业]
+  attributes: [公司, 企业, 外企, 品牌, 料理, 菜, 餐厅, 餐馆, 超市, 文学, 历史, 电影, 电视剧, 综艺, 动漫,
+               大使馆, 领事馆, 使馆, 签证, 网站, 服务器, 区, 服, 时间, 人开, 路, 街, 大道, 广场,
+               的朋友, 的同学, 的室友, 的家人, 的亲戚, 的爸, 的妈, 的男朋友, 的女朋友, 的老公, 的老婆,
+               的孩子]
+  excluded: [国内]
+  english:
+    - "(?<![a-z'])(?:i'm|i am|im|we're|we are)(?:\\s+(?:currently|now|still|actually|right\\s+now|here|just|living|staying|studying|working|based|stuck|back|over|out))*\\s+in\\s+"
+    - "(?<![a-z'])(?:i|we)(?:\\s+(?:currently|now|still|actually|just))*\\s+(?:live|stay|study|work|reside)\\s+in\\s+"
+  english_not_now:
+    - "\\b(?:if|when|whenever|once|was|were|used\\s+to|will|i'll|we'll|going\\s+to|gonna|ago|tomorrow|someday|would|wish|imagine|dream|dreamt|dreamed|pretend)\\b"
+    - "\\b(?:next|last)\\s+(?:year|month|week|time|summer|winter|spring|autumn|fall|semester|term)\\b"
 
 # A distress rating, 0-10, as the whole message (round 4, 2026-10-28; PRD COLBO-07, SDD
 # §4.4; 草稿：待 G-0): every exercise card ends by asking for one ("给此刻的难受打个分：0 是

@@ -1575,7 +1575,7 @@ def _chat(
     if read_only is not None:
         # Nothing is written in this chat (no summary, rating, note, kit or care marker),
         # said once, with the kind of reason; the crisis flow and the numbers are the same.
-        recorder.discard()
+        recorder.discard(read_only=True)
         state_recorder.disabled = True
         console.say(CHAT_READ_ONLY.format(reason=read_only))
         if plan_unreadable:

@@ -347,6 +347,29 @@ def test_keychain_locking_mid_session_reports_the_lost_summary(ledger, keychain)
     assert ledger.entries() == ()
 
 
+# Session gaps (2026-11-25; draft, G-0): a chat on a data directory that cannot be written
+# (``olivia chat``'s CHAT_READ_ONLY) says so for a note, not that encryption is unavailable.
+
+
+def test_a_read_only_chat_says_the_note_cannot_be_written(ledger):
+    chat = Chat(ledger)
+    chat.recorder.discard(read_only=True)
+    result = chat.say("记住：周五要去拿快递")
+    line = TEXT.replies["note_read_only"]
+    assert result.reply == line + TEXT.replies["note_continue"]
+    assert TEXT.replies["note_unavailable"] not in result.reply
+    assert "数据目录" in line and "写不进去" in line and "加密" not in line
+    assert chat.recorder.close() is True
+    assert ledger.entries() == ()
+
+
+def test_other_ways_of_recording_nothing_keep_the_old_line(ledger):
+    chat = Chat(ledger)
+    chat.recorder.discard()  # a minor's chat (round 6, F5)
+    result = chat.say("记住：周五要去拿快递")
+    assert result.reply == TEXT.replies["note_unavailable"] + TEXT.replies["note_continue"]
+
+
 def test_observe_returns_the_result_unchanged_without_a_note(ledger):
     chat = Chat(ledger)
     turn = chat.session.turn("今天上班好累")

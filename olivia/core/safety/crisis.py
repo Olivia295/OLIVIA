@@ -90,7 +90,7 @@ import numbers
 import re
 from bisect import bisect_right
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import accumulate
 from typing import Final, Literal, Protocol, TypeVar
 
@@ -167,6 +167,10 @@ class CrisisAssessment:
     keep as a resolve anchor ("不用担心我", "don't worry about me"). Only the tracker's
     reading of an explicit safety confirmation next to it uses this; every other rule
     stays on ``rule_clear``."""
+    plan_candidate: bool = False
+    """负责人 2026-11-25 决定: the L3 rests on a means put away alone ("我不想死，刀我已经收好
+    了"; ``risk.yaml`` ``put_away_ask``). The screen still says L3; the session asks once
+    first when the session showed no other risk (``Session``, ``CrisisTracker.risk_shown``)."""
 
 
 @dataclass(frozen=True)
@@ -286,6 +290,11 @@ class _CueIndex:
             _PAIR_KEY + phrase for pair in pairs for phrase in pair.anchors
         )
         self.composer = Composer(lexicons.compositions)
+        # G2b-2: the compositions that count only in a session context, matched apart.
+        self.context_composer = Composer(
+            replace(lexicons.compositions, entries=lexicons.compositions.context_entries)
+        )
+        self._contexts: dict[str, tuple[str, ...]] = {}
         # Round 6 (2026-10-30): the last few scans, by normalized text. The rule screen and
         # a model screen share this index, and in model mode both screen each message
         # (the rule screen's level decides the mirror and the D3 answer): the second pass
@@ -296,6 +305,9 @@ class _CueIndex:
         self.recall = _RecallIndex(lexicons.recall_cap)
         self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
         self.figure = _FigureIndex(lexicons.hyperbole_ask)
+        # 负责人 2026-11-25 决定: the means put away that may ask first, and what voids that.
+        self.put_away_ids = lexicons.put_away_ask.ids
+        self.put_away_vetoes = PhraseMatcher({p: p for p in lexicons.put_away_ask.vetoes})
         self.ask_ids: frozenset[str] = frozenset(
             [
                 *(p.id for p in lexicons.ask_pairs),
@@ -322,6 +334,14 @@ class _CueIndex:
         if hits is None:
             hits = _remember(self._compositions, text, tuple(self.composer.find(text)))
         return list(hits)
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """The ids of the context-only compositions that fire in ``text`` (G2b-2)."""
+        ids = self._contexts.get(text)
+        if ids is None:
+            found = _unique_ids(hit.entry.id for hit in self.context_composer.find(text))
+            ids = _remember(self._contexts, text, found)
+        return ids
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
         """Pair cues with a request and an anchor that none of their exceptions contains."""
@@ -462,6 +482,16 @@ _HABIT_ABOUT_PAIN: Final = re.compile(
     r"失眠|睡不着|心情|情绪|抑郁|焦虑|这样|这种|如此|这么|那样|一样|感觉|心里"
 )
 _HABIT_FILLERS: Final = re.compile(r"[都也还又就是很好真的了啊呀呢吧嘛我俺咱自己]*")
+# Round 8 (2026-11-25, 决定 B): a clause that opens with the pain as its topic ("难受的是",
+# "最累的是", "最让人崩溃的是") is about the pain itself, whatever follows; the pain word is
+# no one else's subject either.
+_PAIN_CLEFT: Final = re.compile(
+    r"(?:最|更|真正|特别|尤其)?(?:让人|令人|叫人)?"
+    r"(?:难受|难过|心累|累|心烦|烦|痛苦|痛|苦|崩溃|绝望|受不了|折磨人|折磨|煎熬|难熬|窒息|恶心|"
+    r"郁闷|憋屈|委屈|无奈|头疼|头大|抓狂|糟心|闹心|想哭|想死|讨厌|害怕|可怕|怕|气人|烦人)"
+    r"的(?:是|就是|在于)"
+)
+_CLEFT_BEFORE: Final = re.compile(_NO_SUBJECT.pattern + _PAIN_CLEFT.pattern + _NO_SUBJECT.pattern)
 
 
 def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:
@@ -472,6 +502,8 @@ def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) ->
     if any(start <= f.end and f.start <= end for f in frames):
         return False  # the figure's own clause
     clause = normalized[start:end]
+    if _PAIN_CLEFT.search(normalized, start, hit.start) is not None:
+        return False  # "累的是每天都要洗": the pain itself (round 8)
     rest = normalized[hit.end : end]
     return _HABIT_ABOUT_PAIN.search(clause) is None and _HABIT_FILLERS.fullmatch(rest) is None
 
@@ -490,6 +522,7 @@ def _someone_elses_habit(normalized: str, hit: Match, frames: Sequence[Match]) -
         bool(before)
         and not any(word in before for word in _SELF_WORDS)
         and _NO_SUBJECT.fullmatch(before) is None
+        and _CLEFT_BEFORE.fullmatch(before) is None  # "难受的是每天…" (round 8)
     )
 
 
@@ -816,8 +849,15 @@ class SafetyScreen:
         if stage1 or plans:
             score = max([_cue_score(cues[m.key]) for m in stage1] + [c.score for c in plans])
             ids = _unique_ids([*(m.key for m in stage1), *(c.id for c in plans)])
+            candidate = not stage1 and self._put_away_alone(normalized, matches, composed)
             stage1_assessment = CrisisAssessment(
-                CrisisLevel.L3, score, "STAGE1", True, ids, rule_level=CrisisLevel.L3
+                CrisisLevel.L3,
+                score,
+                "STAGE1",
+                True,
+                ids,
+                rule_level=CrisisLevel.L3,
+                plan_candidate=candidate,
             )
             return stage1_assessment, None
         rule_prediction = self._rule_model.predict_matches(
@@ -929,6 +969,50 @@ class SafetyScreen:
             reassured,
         )
         return assessment, observed
+
+    def _put_away_alone(
+        self, normalized: str, matches: Sequence[Match], composed: Sequence[CompositionHit]
+    ) -> bool:
+        """负责人 2026-11-25 决定: the message's only Stage 1 cue is a means put away
+        (``risk.yaml`` ``put_away_ask``) and nothing else in it is a risk cue.
+
+        Every L3 composition of the message is a put-away one; no other composition fires
+        outside their words (one over the same words, such as ASK_INTENT_MEANS_OBTAINED on
+        刀片 + 收好, is the same phrase); the rule model, someone else's reported words kept,
+        rates the phrases L0; no pair anchor lies outside a negation mask (我不想死 masks
+        its 想死, a bare 自杀 does not); and no ``vetoes`` phrase (a plan, a time, a farewell,
+        a hedge, a contrast, at hand, a place) occurs anywhere. Stage 1 phrases are checked
+        by the caller."""
+        ids = self._index.put_away_ids
+        plans = [h for h in composed if h.entry.level is CrisisLevel.L3]
+        if not ids or not plans or any(h.entry.id not in ids for h in plans):
+            return False
+        if self._index.put_away_vetoes.find_all(normalized):
+            return False
+        spans = [(h.start, h.end) for h in plans]
+        if any(
+            h.entry.level is not CrisisLevel.L3
+            and not any(h.start < end and start < h.end for start, end in spans)
+            for h in composed
+        ):
+            return False
+        cues = self._index.cues
+        rules = self._rule_model.predict_matches(matches, (), normalized, void_reported=False)
+        if rules.level is not CrisisLevel.L0:
+            return False
+        negations = _MaskCover(
+            m for m in matches if m.key in cues and cues[m.key].section == "negation"
+        )
+        return not any(
+            m.key in self._index.pair_anchor_keys and not negations.contains(m) for m in matches
+        )
+
+    def context_cues(self, text: str) -> tuple[str, ...]:
+        """G2b-2 (2026-11-25): the ids of the ``compositions.context_entries`` that fire in
+        ``text``. They are no cue of ``assess`` (no level, no D3 cue, ``rule_clear``
+        untouched); the session reads them in its own context (``Composition.after``) and
+        asks for them only when that context could make them count."""
+        return self._index.context_cues(normalize(text))
 
     def about_others(self, text: str) -> bool:
         """The message is about a specific other person and says nothing of the user's own

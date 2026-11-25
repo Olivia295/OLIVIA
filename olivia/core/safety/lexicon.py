@@ -54,6 +54,7 @@ _REACH_SECTION: Final = "reach_out"
 _MODEL_ASK_SECTION: Final = "model_ask"
 _HYPERBOLE_ASK_SECTION: Final = "hyperbole_ask"
 _HYPERBOLE_ASK_LISTS: Final = ("stems", "links", "wishes", "vetoes")
+_PUT_AWAY_SECTION: Final = "put_away_ask"
 _REACH_LISTS: Final = ("phrases", "negators", "blocked_after", "vetoes")
 # Clause ends on normalized text (NFKC already folds ，！？；： to , ! ? ; :).
 _REACH_CLAUSE_ENDS: Final = ",.!?;:、。~…"
@@ -79,6 +80,7 @@ _COMP_KEYS: Final = frozenset(
         "negation_reach",
         "lists",
         "entries",
+        "context_entries",
         *_COMP_GLOBAL_LISTS,
     }
 )
@@ -109,6 +111,10 @@ _COMP_ENTRY_KEYS: Final = frozenset(
     }
 )
 _COMP_ALSO_KEYS: Final = frozenset({"phrases", "window", "negatable"})
+# G2b-2 (2026-11-25): what a context entry needs before it counts (``Composition.after``):
+# a session that has been in the crisis flow (an ASK entry, the farewell family), or the
+# user's own L2 or higher risk earlier in the session (an L3 entry, plan evidence).
+_COMP_AFTER: Final = {"crisis": "ASK", "own_risk": "L3"}
 # An inline composition list may name a shared list with this prefix ("@time"); the named
 # list's phrases are spliced in, so one entry can join several lists (time or plan).
 _LIST_REF: Final = "@"
@@ -232,6 +238,12 @@ class Composition:
     places, prepositions) stands between the two (我不打算这周末去楼顶跳下去: the plan is
     denied, so its time is no plan). Any other word ends the negator's reach (2026-10-28:
     我再也不想忍了我打算今晚从楼顶跳下去 is a plan; the 不 belongs to 忍)."""
+    after: str | None = None
+    """G2b-2 (2026-11-25): set only on a ``context_entries`` entry, which counts for nothing
+    on its own (the screen reports it in ``SafetyScreen.context_cues``): "crisis" (an
+    ASK entry) is a farewell-family question in a session that has been in the crisis flow,
+    "own_risk" (an L3 entry) is plan evidence after the user's own L2 or higher risk earlier
+    in the session (``Session``)."""
 
 
 @dataclass(frozen=True)
@@ -263,6 +275,9 @@ class CompositionRules:
     """What a negator reaches across to a ``clause_negation`` match: the words of the plan
     it denies (打算, 这周末, 去, 楼顶). Empty: only ``lookback`` applies."""
     entries: tuple[Composition, ...] = ()
+    context_entries: tuple[Composition, ...] = ()
+    """G2b-2: entries that count only in a session context (``Composition.after``); kept
+    apart so that no screen, mirror guard or report reads them as a cue of their own."""
 
 
 @dataclass(frozen=True)
@@ -438,6 +453,22 @@ class HyperboleAskRules:
 
 
 @dataclass(frozen=True)
+class PutAwayAskRules:
+    """The ``put_away_ask`` section (负责人 2026-11-25 决定): a means put away next to a
+    death word ("我不想死，刀我已经收好了") that the session asks about once first.
+
+    ``ids`` are L3 compositions (Stage 1 plan evidence for the screen). When every Stage 1
+    cue of a message is one of them, the rules find no other cue of the user's own and no
+    ``vetoes`` phrase (a plan, a time, a farewell, a hedge, a contrast, a place, keeping it
+    at hand) lies in it, the screen marks the L3 a plan candidate
+    (``CrisisAssessment.plan_candidate``). Empty when the section is absent: plain L3
+    (fail-safe)."""
+
+    ids: frozenset[str] = frozenset()
+    vetoes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -462,6 +493,7 @@ class SafetyLexicons:
     reach_out: ReachOutRules = ReachOutRules()
     model_ask: ModelAskRules = ModelAskRules()
     hyperbole_ask: HyperboleAskRules = HyperboleAskRules()
+    put_away_ask: PutAwayAskRules = PutAwayAskRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -488,6 +520,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     reach_out = _parse_reach_out(risk_doc)
     model_ask = _parse_model_ask(risk_doc)
     hyperbole_ask = _parse_hyperbole_ask(risk_doc, seen_ids)
+    put_away_ask = _parse_put_away_ask(risk_doc, compositions)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -503,6 +536,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         reach_out=reach_out,
         model_ask=model_ask,
         hyperbole_ask=hyperbole_ask,
+        put_away_ask=put_away_ask,
     )
 
 
@@ -605,6 +639,7 @@ def _parse_risk(
         _REACH_SECTION,
         _MODEL_ASK_SECTION,
         _HYPERBOLE_ASK_SECTION,
+        _PUT_AWAY_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -759,6 +794,12 @@ def _parse_compositions(
         _parse_composition(tax, item, lists, seen_ids)
         for item in _entry_list(node, "entries", where)
     )
+    context_entries: tuple[Composition, ...] = ()
+    if "context_entries" in node:
+        context_entries = tuple(
+            _parse_composition(tax, item, lists, seen_ids, context=True)
+            for item in _entry_list(node, "context_entries", where)
+        )
     return CompositionRules(
         stops=stops,
         lookback=lookback,
@@ -773,6 +814,7 @@ def _parse_compositions(
         listeners=shared["listeners"],
         negation_reach=negation_reach,
         entries=entries,
+        context_entries=context_entries,
     )
 
 
@@ -845,11 +887,23 @@ def _parse_composition(
     item: Mapping[str, Any],
     lists: Mapping[str, tuple[str, ...]],
     seen_ids: dict[str, str],
+    *,
+    context: bool = False,
 ) -> Composition:
     where = f"{_RISK_FILE} {_COMP_SECTION} entry {item.get('id')!r}"
     cue_id = _entry_id(item, where, seen_ids)
     where = f"{_RISK_FILE} {_COMP_SECTION} entry {cue_id}"
-    _check_keys(item, set(_COMP_ENTRY_KEYS), where)
+    _check_keys(item, {*_COMP_ENTRY_KEYS, "after"} if context else set(_COMP_ENTRY_KEYS), where)
+    after: str | None = None
+    if context:
+        raw_after = item.get("after")
+        if raw_after not in _COMP_AFTER:
+            raise LexiconError(f"{where}: 'after' must be one of {list(_COMP_AFTER)}")
+        if item.get("level") != _COMP_AFTER[raw_after]:
+            raise LexiconError(
+                f"{where}: an entry after {raw_after!r} has level {_COMP_AFTER[raw_after]}"
+            )
+        after = str(raw_after)
     raw_level = item.get("level")
     if raw_level not in _COMP_LEVELS:
         raise LexiconError(f"{where}: level must be one of {list(_COMP_LEVELS)}, got {raw_level!r}")
@@ -931,6 +985,7 @@ def _parse_composition(
         raise_with_risk=raise_with_risk,
         also=also,
         clause_negation=clause_negation,
+        after=after,
     )
 
 
@@ -1076,6 +1131,31 @@ def _parse_hyperbole_ask(doc: Mapping[str, Any], seen_ids: dict[str, str]) -> Hy
                 f"{where}: veto {veto!r} lies inside frames {inside[:3]}, so it never applies"
             )
     return HyperboleAskRules(cue_id, frames, lists["vetoes"])
+
+
+def _parse_put_away_ask(doc: Mapping[str, Any], compositions: CompositionRules) -> PutAwayAskRules:
+    """Parse the optional ``put_away_ask`` section (负责人 2026-11-25 决定): its ids must be
+    L3 compositions; its vetoes go to a matcher of their own. Without any composition
+    nothing can fire, so the section is read as absent."""
+    if _PUT_AWAY_SECTION not in doc or not compositions.entries:
+        return PutAwayAskRules()
+    where = f"{_RISK_FILE} {_PUT_AWAY_SECTION}"
+    node = doc[_PUT_AWAY_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {"ids", "vetoes"}, where)
+    raw_ids = node.get("ids")
+    if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(i, str) for i in raw_ids):
+        raise LexiconError(f"{where}: 'ids' must be a non-empty list of composition ids")
+    plans = {e.id for e in compositions.entries if e.level is CrisisLevel.L3}
+    unknown = sorted(set(raw_ids) - plans)
+    if unknown:
+        raise LexiconError(f"{where}: ids {unknown} are not L3 compositions")
+    vetoes = _normalized_list(node.get("vetoes"), f"{where} vetoes")
+    repeated = sorted({p for p in vetoes if vetoes.count(p) > 1})
+    if repeated:
+        raise LexiconError(f"{where} vetoes: phrases {repeated} are repeated")
+    return PutAwayAskRules(frozenset(raw_ids), vetoes)
 
 
 def _parse_reach_out(doc: Mapping[str, Any]) -> ReachOutRules:
