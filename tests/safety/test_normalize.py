@@ -68,8 +68,9 @@ SAME_IN_TRADITIONAL = frozenset(
     # their everyday exceptions (士兵, 英雄, 警察, 罪犯, 人渣, 哲学, 政策, 受益人, 午觉打盹 ...).
     "兵凡判否哲增士富察尿怖憾或摸政映渣犯珍畜瘦益盹碗罪肌至英警逢配金雄"
     "仰佛娩宗展康延悲懂扭拒摘撕核歇烈瘤碑陵霾骨薪"
-    # Round 8 (2026-11-25): L2_METHOD_PAIR_SUICIDE (途径, 自杀未遂, 嚷着要自杀).
-    "嚷途遂"
+    # Round 8 (2026-11-25): L2_METHOD_PAIR_SUICIDE (途径, 自杀未遂, 嚷着要自杀) and
+    # ASK_INTENT_PROXY_WAY (学钢琴).
+    "嚷途遂琴"
 )
 
 
