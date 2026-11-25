@@ -496,6 +496,12 @@ Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
   or on the safety question keeps the card and gets one plain answer
   (``substance.ask_to_drink_crisis``): first on a calm crisis turn, in place of the mirror
   of the wish; otherwise after the opening line, before the numbers.
+* §9.4 第 8 条: a few turns after the card for someone else's risk, a clue to where the
+  other person is or who they are ("只知道他在成都", "他网名叫小鱼", "IP属地显示四川";
+  ``_gives_clue``, topic ``clue``) is a follow-up: ``crisis.third_party_clue`` (call the
+  police near you, reach them or report through the platform, keep the chat records)
+  before the urgent card, whose emergency numbers are the profile region's. Never the
+  user's own safety question; in the crisis flow it is answered first, emergency first.
 
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
@@ -1676,6 +1682,13 @@ class Session:
                     or signals.hotline_which
                     or signals.hotline_police_fear
                     or (signals.hotline_call_script and self._names_emergency(text))
+                    # 2026-11-25: a clue to where the other person is, a few turns after
+                    # their card, is answered first with the police near the user.
+                    or (
+                        rules.level is CrisisLevel.L0
+                        and self._third_party_window()
+                        and _third_party_topic(text) == "clue"
+                    )
                 )
                 rendered = self._crisis(
                     status, now, confirmed=waiting, hint=hint, emergency=emergency
@@ -2810,6 +2823,8 @@ class Session:
             (topic == "police", render.third_party_police),
             (topic == "signs", render.third_party_signs),
             (signals.third_party_unreachable, render.third_party_unreachable),
+            # 2026-11-25: a clue to where the other person is or who they are.
+            (topic == "clue", render.third_party_clue),
             (signals.third_party_how_to_ask, render.third_party_how_to_ask),
         )
         for wanted, pool in pools:
@@ -3065,6 +3080,12 @@ class Session:
                 lead = [self._pick(render.third_party_unreachable)]
             elif far:
                 lead = [self._pick(render.third_party_far)]
+            elif topic == "clue" and render.third_party_clue:
+                # 2026-11-25 (§9.4 第 8 条): a clue to where they are or who they are: call
+                # the police near you (the emergency numbers lead), the platform, keep the
+                # chat records.
+                lead = [self._pick(render.third_party_clue)]
+                urgent = True
             elif stranger:
                 lead = [self._pick(render.third_party_stranger)]
             elif urgent and not signals.keep_secret:
@@ -4419,13 +4440,80 @@ _SIGNS_ASK: Final = re.compile(
 )
 
 
+# 2026-11-25 (§9.4 第 8 条, round 7 gap: "只知道他在成都" after an online farewell got an
+# ordinary reply): a clue to where the other person is or who they are, read on the folded
+# text one clause at a time. The person is 他 / 她 / ta / 对方 / 人家 (never the user), with
+# fillers and time words before the verb.
+_CLUE_PERSON: Final = r"(?:(?<!其)他|她|ta|对方|人家|那人|此人|那个人|这个人)们?"
+_CLUE_FILLERS: Final = (
+    r"(?:人|现在|目前|应该|好像|可能|大概|估计|似乎|据说|听说|说|说过|自己说|是|本人|也|就|都|还|正|"
+    r"一直|平时|一般|[今昨前明]天|最近|前几天|这几天|之前|以前|上周|那时)*"
+)
+# What 在 / 住 starts that is no place: doing something ("他在睡觉", "他在跟我聊天", "他在
+# 想办法"), a feeling, a question ("他在哪", "他在不在") or a particle.
+_NOT_A_PLACE: Final = (
+    r"(?:睡|哭|笑|忙|想|吃|喝|打|玩|看|写|做|干|听|说|讲|聊|回|发|等|找|搞|弄|整|跑|走|闹|骂|装|躲|"
+    r"洗|逛|刷|追|练|赶|搬|收|拿|买|卖|用|查|问|考|读|念|陪|气|骗|哄|熬|撑|扛|挺|割|跳|喊|叫|唱|画|"
+    r"拍|录|改|删|关|退|变|试|怕|恨|怪|输|赢|开|生|处理|考虑|犹豫|纠结|准备|计划|安排|上班|上课|上网|"
+    r"上学|加班|学习|工作|休息|努力|坚持|继续|慢慢|偷偷|默默|悄悄|拼命|故意|假装|担心|难过|伤害|直播|"
+    r"更新|屏蔽|拉黑|折腾|一起|一块|线|乎|意|理|跟|和|同|给|对|向|帮|替|把|被|让|不|没|哪|吗|呢|么|"
+    r"啊|呀|吧|了|这样|那样)"
+)
+# "他在成都", "她人在深圳", "他好像在杭州那边上大学", "她老家是湖南的", "他来自重庆".
+_CLUE_PLACE: Final = re.compile(
+    _CLUE_PERSON
+    + _CLUE_FILLERS
+    + r"(?:人在|住在|待在|呆在|定居在?|来自|老家(?:在|是)?|住|在)(?!"
+    + _NOT_A_PLACE
+    + r")(?:[一-鿿]{2,}|家)"
+)
+# "网名叫小鱼", "IP属地显示四川", "他叫阿杰" (never "他叫我别管"), "我有他的微信".
+_CLUE_ID: Final = re.compile(
+    r"(?:网名|昵称|用户名|账号|帐号|微信号?|qq号?|(?<![a-z])id|群名片|名字|真名|全名)"
+    r"(?:好像|应该|大概|可能)?(?:叫|是|为|:)"
+    r"|(?:ip属地|ip地址|(?<![a-z])ip|定位|坐标|住址|地址)(?:好像|应该|大概|可能)?"
+    r"(?:在|是|显示|为|:|写着)?[一-鿿]{2,}"
+    r"|" + _CLUE_PERSON + r"(?:好像|应该|大概|可能)?叫(?!我|你|他|她|们|大家|人|别人|了|着|过|醒)"
+    r"[一-鿿a-z0-9]"
+    r"|" + _CLUE_PERSON + r"的?(?:手机号|电话号码?|微信|qq|主页|账号|帐号|地址|学校|单位|公司)"
+)
+# "只知道他在成都", "就知道她是个大学生" (never "我只知道我很害怕").
+_CLUE_KNOWN: Final = re.compile(
+    r"(?:只|就|仅|唯一)(?:知道|晓得|清楚|了解|记得)"
+    + _CLUE_PERSON
+    + r"?的?(?:好像|应该|大概|可能|说)?"
+    r"(?:在|住|是|叫|来自|老家|姓|网名|昵称|账号|帐号|微信|qq|ip|学校|名字)"
+)
+_CLUE_CLAUSES: Final = re.compile(r"[,.!?;:。、…~]+")
+# A name or a way to reach the other person negated just before it ("我连他网名都不知道",
+# "我没有他的微信") is no clue.
+_CLUE_NEGATION: Final = re.compile(r"[没不无未]")
+_CLUE_NEGATION_SPAN: Final = 3
+
+
+def _gives_clue(text: str) -> bool:
+    """A clause of ``text`` tells where the other person is or who they are (2026-11-25)."""
+    for clause in _CLUE_CLAUSES.split(normalize(text)):
+        if _CLUE_PLACE.search(clause) is not None:
+            return True
+        for pattern in (_CLUE_KNOWN, _CLUE_ID):
+            for found in pattern.finditer(clause):
+                before = clause[max(0, found.start() - _CLUE_NEGATION_SPAN) : found.start()]
+                if _CLUE_NEGATION.search(before) is None:
+                    return True
+    return False
+
+
 def _third_party_topic(text: str) -> str | None:
-    """``police`` or ``signs`` for those two follow-ups (round 7), else None."""
+    """``police`` or ``signs`` for those two follow-ups (round 7), ``clue`` for a clue to
+    where the other person is or who they are (2026-11-25), else None."""
     normalized = normalize(text)
     if _POLICE_ASK.search(normalized) is not None:
         return "police"
     if _SIGNS_ASK.search(normalized) is not None:
         return "signs"
+    if _gives_clue(text):
+        return "clue"
     return None
 
 
