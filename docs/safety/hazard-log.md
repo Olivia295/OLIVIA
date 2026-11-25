@@ -153,6 +153,10 @@ evidence:
   - tests/safety/test_crisis.py::test_levels
   - tests/safety/test_compositions.py::test_positive
   - tests/safety/test_compositions.py::test_an_injected_model_never_lowers_a_composition
+  - tests/safety/test_rules_context_g3.py::test_a_sentence_naming_nobody_is_the_users_own
+  - tests/safety/test_rules_context_g3.py::test_whitespace_ends_a_clause
+  - tests/safety/test_rules_context_g3.py::test_trailing_ignores_emoji_and_emote_codes
+  - tests/safety/test_metamorphic.py::test_seed_keeps_its_level
   - tests/safety/test_crisis.py::test_rules_stay_a_floor_under_an_injected_model
   - tests/perception/test_student.py::test_crisis_talk_without_method_words_reaches_l2
   - tests/session/test_session_risk_model.py::test_default_session_screens_with_the_student
@@ -258,6 +262,8 @@ evidence:
   - tests/safety/test_lexicon_gaps.py::test_means_place_or_time_with_a_plan_is_stage1
   - tests/safety/test_crisis.py::test_negation_does_not_hide_means
   - tests/safety/test_crisis.py::test_hoarded_pills_are_rated_by_the_rules_and_never_denial_capped
+  - tests/safety/test_rules_context_g3.py::test_a_plan_said_whole_in_its_sentence_stands
+  - tests/safety/test_rules_context_g3.py::test_parts_still_join_across_whitespace
   - tests/safety/test_crisis.py::test_model_plan_evidence_is_off_by_default
   - tests/session/test_session_flow.py::test_model_l3_capped_at_l2_shows_emergency_numbers_first
   - tests/session/test_owner_decisions_1028.py::test_the_l2_crisis_reply_lists_120_after_12356
@@ -491,6 +497,8 @@ evidence:
   - tests/safety/test_hyperbole_ask.py::test_the_frame_alone_is_l1_with_the_question
   - tests/safety/test_hyperbole_ask.py::test_everyday_death_idioms_are_unchanged
   - tests/safety/test_lexicon_gaps.py::test_daily_talk_stays_below_l2_and_asks_nothing
+  - tests/safety/test_rules_context_g3.py::test_nothing_spans_the_place_where_the_copies_meet
+  - tests/safety/test_rules_context_g3.py::test_trailing_still_refuses_words_after_a_decoration
   - tests/safety/test_crisis.py::test_injected_model_is_at_most_l1_where_a_hyperbole_cue_covers_every_risk_phrase
   - tests/perception/test_student.py::test_everyday_plans_and_farewells_rarely_reach_l2
   - tests/session/test_session_ask_first.py::test_a_clear_no_stays_in_ordinary_talk_without_a_care_flag
@@ -1014,6 +1022,9 @@ evidence:
   - tests/safety/test_lexicon_gaps.py::test_the_users_own_words_or_an_unclear_speaker_keep_l2
   - tests/safety/test_lexicon_gaps.py::test_reported_speech_fails_toward_keeping_the_phrase
   - tests/safety/test_lexicon_gaps.py::test_a_method_request_for_someone_else_is_never_reported_speech
+  - tests/safety/test_rules_context_g3.py::test_the_subject_still_carries_over_a_comma
+  - tests/safety/test_rules_context_g3.py::test_a_death_named_only_with_someone_else_still_voids
+  - tests/safety/test_rules_context_g3.py::test_worry_about_someone_else_over_two_sentences
   - tests/session/test_session_flows_round3.py::test_cannot_reach_them_is_an_emergency_even_after_a_plain_report
   - tests/redteam/test_redteam.py::test_case
 residual: {severity: 灾难性, likelihood: 低, risk: 4}

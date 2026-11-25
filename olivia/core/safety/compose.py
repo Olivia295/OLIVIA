@@ -20,6 +20,13 @@ plan words, times, places, prepositions) stand between them. Any other word ends
 (2026-10-28): in 我再也不想忍了我打算今晚从楼顶跳下去, typed with no punctuation, the 不
 belongs to 忍 and the plan after it stands.
 
+Task G3 (2026-11-25, metamorphic testing): a subject is never carried over the end of a
+sentence; the whitespace the text was typed with ends a clause for the subject, ``leading``,
+``trailing`` and clause-bound ``unless`` checks (never for joining two parts or for a
+negator's reach); ``trailing`` lets emoji and emote codes stand after the match; a
+cross-clause ``unless`` stays in the match's sentence when every ``also`` group is found
+there; and no match spans the place where the copies of a message said twice meet.
+
 All matching runs on :func:`~olivia.core.safety.normalize.normalize` output, one
 Aho-Corasick scan over every phrase of the section, then a bounded search per entry. An
 entry whose heads (or required context) do not occur costs one set lookup per phrase found
