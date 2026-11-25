@@ -190,8 +190,10 @@ def test_the_reminder_names_the_kind_spoken_of(text: str, kind: str) -> None:
     assert result.reply_kind is not ReplyKind.CARD
 
 
+# Since 2026-11-25 (owner's decision) someone else's psychiatric medicine ("我室友说她的抗抑郁
+# 药已经停了") has a line of its own: tests/session/test_session_language_gaps_r8.py.
 @pytest.mark.parametrize(
-    "text", ["我公公自己把胰岛素停了", "我室友说她的抗抑郁药已经停了", "降压药我这周没吃"]
+    "text", ["我公公自己把胰岛素停了", "我爸偷偷把降糖药停了", "降压药我这周没吃"]
 )
 def test_someone_elses_or_a_non_psychiatric_medicine_gets_the_general_line(text: str) -> None:
     reply = _open().turn(text).reply

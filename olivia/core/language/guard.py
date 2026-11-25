@@ -297,7 +297,8 @@ class SubstanceReading:
     kind: str = ""
     """Round 7: the ``substance.yaml`` class of the drink or medicine named first ("帕罗西汀"
     -> ``antidepressant``), ``general`` for someone else's medicine or one outside the
-    classes the reminders speak of ("降压药"), "" when none is named."""
+    classes the reminders speak of ("降压药"), "" when none is named. Round 8
+    (2026-11-25): ``others_psychiatric`` for someone else's psychiatric medicine."""
 
     @property
     def any(self) -> bool:
@@ -382,6 +383,8 @@ def read_substance(cues: SubstanceCues, text: str, *, context: bool) -> Substanc
 _GENERAL: Final = "general"
 _OTHER_MEDICINE: Final = "other_medicine"
 _ALCOHOL: Final = "alcohol"
+# Round 8 (2026-11-25, owner's decision; draft, G-0): someone else's psychiatric medicine.
+_OTHERS_PSYCHIATRIC: Final = "others_psychiatric"
 
 
 def _short_names(folded: str, cues: SubstanceCues) -> list[tuple[int, str]]:
@@ -397,7 +400,9 @@ def _short_names(folded: str, cues: SubstanceCues) -> list[tuple[int, str]]:
 def _kind(folded: str, cues: SubstanceCues, short: Sequence[tuple[int, str]] = ()) -> str:
     """The class of the drink or medicine named first (round 7), ``general`` for one of
     ``other_medicine`` or (any but alcohol) someone else's; "" when no class is named.
-    ``short``: the short names found (round 8), named where their match starts."""
+    ``short``: the short names found (round 8), named where their match starts. Round 8
+    (2026-11-25, owner's decision): someone else's medicine of a ``stop_others_classes``
+    class (a psychiatric one) is ``others_psychiatric``."""
     first: tuple[int, str] | None = min(short, default=None)
     for name, words in cues.classes.items():
         for word in words:
@@ -410,7 +415,7 @@ def _kind(folded: str, cues: SubstanceCues, short: Sequence[tuple[int, str]] = (
     if name == _OTHER_MEDICINE:
         return _GENERAL
     if name != _ALCOHOL and any(p.search(folded) is not None for p in cues.stop_others):
-        return _GENERAL
+        return _OTHERS_PSYCHIATRIC if name in cues.stop_others_classes else _GENERAL
     return name
 
 

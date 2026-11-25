@@ -164,6 +164,10 @@ stopping:
   # 正则，作用于折叠后的文字。
   others:
     - "(?:妈|爸|母亲|父亲|爷爷|奶奶|外公|外婆|姥姥|姥爷|公公|婆婆|岳父|岳母|老公|老婆|丈夫|妻子|孩子|儿子|女儿|哥|姐|弟|妹|朋友|室友|同事|男朋友|女朋友|对象|家里人|老人家|他|她)(?:的|吃的|在吃的|平时吃的|一直吃的|自己|偷偷|已经|最近|又|也|总是|老是|说|把|不肯|不愿意|不想)"
+  # 第八轮（2026-11-25，负责人决定；草稿：待 G-0）：说的是别人自己停了精神科的药（下面这些 classes），
+  # 不再给通用的那句，改用 utterances.yaml substance.withdrawal_classes.others_psychiatric：建议尽快联系
+  # 开药的医生或药师，说明突然停药可能会有反应，不劝停也不劝吃。别人的其他药（止痛药、降压药……）仍给 general。
+  others_classes: [sleep, benzo, antidepressant, mood_stabilizer, antipsychotic, psychiatric]
   # 第八轮（2026-11-25，复测 r8；草稿：待 G-0）：药的俗称、简称，只有紧挨着停药、减药、断药的说法才算那一类药。
   # “安定”是地西泮的俗称，可“情绪安定”“安定下来”“生活安定”“安定医院”（北京安定医院是医院名）说的都不是药。
   # 类名（classes 里的）-> 正则，作用于折叠后的文字。命中就算说到了这一类药（停药提醒点出这一类）；
@@ -186,6 +190,7 @@ stopping:
 # 那一类（utterances.yaml substance.withdrawal_classes 里同名的一句），不再每次列一长串；没说到具体类别
 # （“我把药停了”）时用原来的 withdrawal 一句；说的是别人的药（stopping.others），或是 other_medicine 这类
 # 非精神科的药（降压药、降糖药……）时用 general 一句（问开药的医生或药师）。这些药名也都算 stopping.objects。
+# 第八轮（2026-11-25）：别人的药是 stopping.others_classes 里的精神科药时，用 others_psychiatric 一句。
 # 同一句里有几类时取最先出现的一类。折叠后“含有即算”。
 classes:
   alcohol: ["酒", "啤", "二锅头", "断片", "喝醉", "宿醉", "alcohol", "booze", "quitdrinking",
