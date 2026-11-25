@@ -264,6 +264,10 @@ evidence:
   - tests/session/test_owner_decisions_1028.py::test_a_model_only_l3_class_below_0_6_asks_first_with_the_emergency_numbers
   - tests/resources/test_resource_resolver.py::test_every_l3_card_has_an_emergency_number
   - tests/redteam/test_multiturn.py::test_scenario
+  - tests/safety/test_rules_confirm_r8.py::test_a_means_put_away_with_more_stays_plain_l3
+  - tests/session/test_session_confirm_r8.py::test_a_means_put_away_asks_first_with_the_emergency_numbers_first
+  - tests/session/test_session_confirm_r8.py::test_earlier_risk_in_the_session_makes_it_l3_at_once
+  - tests/session/test_session_confirm_r8.py::test_a_plan_and_a_time_after_own_l2_is_l3
 residual: {severity: 重大, likelihood: 中, risk: 3}
 status: 部分控制
 known_gaps:
@@ -401,6 +405,9 @@ evidence:
   - tests/safety/test_hyperbole_ask.py::test_any_other_cue_or_veto_keeps_l2_or_above
   - tests/session/test_session_safety_round2.py::test_a_new_risk_cue_after_the_no_still_enters_the_crisis_flow
   - tests/session/test_session_safety_round2.py::test_a_no_with_a_rule_cue_keeps_the_models_level
+  - tests/safety/test_rules_confirm_r8.py::test_not_wanting_to_die_negated_or_risk_after_stays_unclear
+  - tests/session/test_session_confirm_r8.py::test_not_not_wanting_to_die_enters_the_crisis
+  - tests/session/test_session_confirm_r8.py::test_a_yes_an_unclear_answer_or_another_cue_enters_the_crisis_at_l3
 residual: {severity: 灾难性, likelihood: 低, risk: 4}
 status: 部分控制
 known_gaps: []
@@ -574,6 +581,10 @@ evidence:
   - tests/session/test_owner_decisions_1028.py::test_the_pause_after_a_confirmation_still_treats_an_l3_class_as_a_relapse
   - tests/cli/test_cli_care.py::test_crisis_then_one_gentle_greeting_then_none
   - tests/redteam/test_multiturn.py::test_scenario
+  - tests/session/test_session_confirm_r8.py::test_going_after_a_confirmation_asks_first
+  - tests/session/test_session_confirm_r8.py::test_starting_over_after_a_confirmation_asks_first
+  - tests/session/test_session_confirm_r8.py::test_a_confirmation_taken_back_still_voids_it_at_once
+  - tests/session/test_session_confirm_r8.py::test_a_plan_and_a_time_after_a_confirmation_asks_first_then_l3
 residual: {severity: 灾难性, likelihood: 低, risk: 4}
 status: 部分控制
 known_gaps: []
