@@ -518,6 +518,21 @@ Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
   at L1 (``inspect["model_held"]``): no question and, as 第 22 条 says for words about
   someone else, no crisis flow on the model's word alone.
 
+Owner decisions 2026-11-25 (regional cards; new wording 草稿：待 G-0):
+
+* A: every L2 card with a line to call lists one local emergency number after its
+  hotlines (``resources/resolver.py``: HK 999, MO 999, TW 119, US 911, CA 911, GB 999,
+  AU 000, as CN's 120 since 2026-10-28).
+* B: where the user says they are now ("我在多伦多", "我人在悉尼读书", "I'm in Toronto";
+  ``perception/location.py``, never the past, the future, a condition or someone else's
+  place) is kept in memory for the session, the latest one counting. The session's crisis
+  cards (the crisis reply, the D3 question's card, a calm waiting turn's line, the crisis
+  farewell and the degraded card) then list that region's numbers first, under
+  ``crisis.here_heading``, and the profile region's after them under
+  ``crisis.home_heading``; for a country only ``crisis.local_emergency`` lists, that line
+  comes first. 12356, 120 and 12355 still show outside a CN profile only after the user
+  named mainland China ("大陆", "内地", "中国大陆"; never "国内") as where they are now.
+
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
 """
@@ -662,6 +677,13 @@ SAFETY_CHECK_CUE: Final = "SAFETY_CHECK_L2"
 MODEL_CHECK_CUE: Final = "MODEL_CHECK_L2"
 MODEL_CHECK: Final = "model"
 """``inspect["safety_check_by"]`` on the turn a model-only alarm asks and on its answer."""
+# 负责人 2026-11-25 决定: cue id added to the answer turn the session reads as L3 after the
+# question a plan candidate asked (a means put away alone, ``CrisisAssessment.plan_candidate``).
+PLAN_CHECK_CUE: Final = "PLAN_CHECK_L3"
+PLAN_CHECK: Final = "plan"
+"""``inspect["safety_check_by"]`` on the turn a plan candidate asks and on its answer."""
+# G2b-2: the ``Composition.after`` of a context-only plan cue (L3 after the user's own risk).
+_OWN_RISK: Final = "own_risk"
 CLOSING_REOPEN: Final = "CLOSING_REOPEN"
 # Round 6: ``inspect["reason"]`` of a turn that left a waiting card for a new request.
 CARD_WAIT_LEFT: Final = "CARD_WAIT_LEFT"
@@ -932,6 +954,9 @@ class Session:
         # marks the pending question as that one.
         self._model_asked = False
         self._asking_model = False
+        # 负责人 2026-11-25 决定: the pending question is one a plan candidate asked (a means
+        # put away alone); anything but a clear no to it is L3.
+        self._asking_plan = False
         # 负责人 2026-11-01 决定 (A): the turn of the last accepted no to a model-only question
         # and how many such questions this session asked (at most two).
         self._model_denied_turn: int | None = None
@@ -954,6 +979,15 @@ class Session:
         # crisis reply) and needs no asking again; cleared when a crisis turn left it open.
         self._minor_asked = False
         self._crisis_seen: CrisisLevel | None = None
+        # G2b-2 (2026-11-25): the user has said risk of their own at L2 or above in this
+        # session (a rule L2+ turn or a yes to the direct question), and what each context-only
+        # composition needs before it counts (``SafetyScreen.context_cues``).
+        self._own_risk_said = False
+        self._context_after: dict[str, str] = {
+            entry.id: entry.after
+            for entry in shared.lexicons.compositions.context_entries
+            if entry.after is not None
+        }
         self._third_party_turn: int | None = None
         # Round 3: the last report of someone else's risk was urgent (its follow-ups keep
         # the emergency numbers).
@@ -961,6 +995,8 @@ class Session:
         self._resources_turn: int | None = None
         # Round 7 (re-test q4 B5): where the user said they are now ("我现在在大阪交换"):
         # (region code, country code); a later hotline request names that place's numbers.
+        # Owner decision 2026-11-25 B: the latest one, read by grammar; the crisis cards
+        # list its numbers first. In memory only: never written, never carried over.
         self._said_place: tuple[str, str | None] | None = None
         # Round 7: the turn whose reply led with a medication or withdrawal line.
         self._boundary_turn: int | None = None
@@ -1178,8 +1214,13 @@ class Session:
     def _turn(self, text: str, now: datetime, assessment: CrisisAssessment) -> TurnResult:
         model_answer = self._asking_model
         self._asking_model = False
+        plan_answer = self._asking_plan
+        self._asking_plan = False
         steady_offered, self._steady_offered = self._steady_offered, False
-        assessment, answer = self._answer_safety_check(text, assessment, model=model_answer)
+        assessment = self._in_context(text, assessment)
+        assessment, answer = self._answer_safety_check(
+            text, assessment, model=model_answer, plan=plan_answer
+        )
         model_level, model_score = self._risk.take_turn()
         # What the screen said, for ``inspect`` and the reported level of a question turn.
         screened = assessment
@@ -1214,12 +1255,30 @@ class Session:
         # 错了，我都三十了") with only the model's alarm asks first, whatever the score.
         self._minor_denial = self._minor_asking and reads_no(text)
         model_ask = self._model_only_alarm(assessment, answer, model_level, model_score)
+        plan_ask = (
+            not model_ask
+            and reported is None
+            and not other_alarm
+            and self._plan_first(assessment, answer)
+        )
         if model_ask:
             # Owner decisions 2026-10-26: the rules found nothing and the student is unsure,
             # so ask once first. The turn goes on as an L1 only the model gives (no crisis,
             # no L1 run).
             self._asking_model = True
             assessment = replace(assessment, level=CrisisLevel.L1)
+        elif plan_ask:
+            # 负责人 2026-11-25 决定: a means put away alone and no other risk in the session:
+            # ask once first (the emergency numbers in front, below). The turn goes on as the
+            # rules' L1 question; the screen's L3 stays in ``screened`` for the report.
+            self._asking_plan = True
+            assessment = replace(
+                assessment,
+                level=CrisisLevel.L1,
+                has_plan_evidence=False,
+                rule_level=CrisisLevel.L1,
+                asks_intent=True,
+            )
         elif self._model_held:
             # 2026-11-25 (§9.4 第 22、31 条): only someone else's words and no question left
             # to ask: an L1 only the model gives, as on a question turn, without the question.
@@ -1259,6 +1318,18 @@ class Session:
         if status.in_crisis:
             entry = max(CrisisLevel.L2, status.entry_level or CrisisLevel.L2)
             self._crisis_seen = max(entry, self._crisis_seen or entry)
+        if (
+            reported is None
+            and not other_alarm
+            and not plan_ask
+            and (
+                (screened.rule_level or CrisisLevel.L0) >= CrisisLevel.L2
+                or answer is IntentAnswer.AFFIRMED
+            )
+        ):
+            # G2b-2: the user's own L2 or higher risk, said (the rules' level, not a model's
+            # alarm or an L1 run's escalation), or a yes to the direct question.
+            self._own_risk_said = True
         # Round 4: the turn after the question about recording the age is its answer: a yes
         # (or saying the age again) confirms; anything else keeps it to this session.
         # Round 6: in a crisis only a clear yes or no answers it; other words leave it for a
@@ -1327,16 +1398,27 @@ class Session:
             and status.level < CrisisLevel.L2
             and self._tracker.asks_after_confirmation(assessment)
         )
+        # G2b-2: after a confirmation, a plan and a time following the user's own risk asks
+        # first like the farewell family (§9.4 第 33 条); anything but a no to it is L3.
+        plan_followup = (
+            crisis_ask
+            and self._own_risk_said
+            and any(self._context_after.get(cue) == _OWN_RISK for cue in assessment.cue_ids)
+        )
+        if plan_followup:
+            self._asking_plan = True
         ask = (
             model_ask
+            or plan_ask
             or (answer is None and assessment.asks_intent and not status.in_crisis)
             or crisis_ask
         )
-        if ask and model_level == CrisisLevel.L3.name:
+        if ask and (model_level == CrisisLevel.L3.name or plan_ask or plan_followup):
             # Owner decision 2026-10-28: a model L3 that asks first (a score below 0.6, or a
             # figure of speech the screen capped) keeps the 2026-10-24 framing: the region's
             # emergency numbers lead the question's card, and the crisis flow that follows
             # an answer (or the farewell when there is none) keeps them in front.
+            # 负责人 2026-11-25 决定: so does a plan candidate's question (an L3 candidate).
             self._urgent = True
         # The request on an ask turn is not a request for an exercise, and the answer to the
         # question is not an answer to any other question.
@@ -1388,7 +1470,7 @@ class Session:
         reminded, self._card_reminded = self._card_reminded, False
         follow = self._follow_up(signals, status, assessment.level, pending)
         signals = follow.signals
-        signals = self._place_said(text, signals)
+        signals = self._place_said(signals)
         # Session gaps: a yes right after ``suds_high_ask`` asks for another card in place
         # of the waiting one (F16b's switch), taken from the stabilization whitelist.
         steady_yes = (
@@ -2119,7 +2201,9 @@ class Session:
             extra["third_party_followup"] = True
         if cared:
             extra["care_line"] = True
-        if model_ask or model_answer:
+        if plan_ask or plan_followup or plan_answer:
+            extra["safety_check_by"] = PLAN_CHECK
+        elif model_ask or model_answer:
             extra["safety_check_by"] = MODEL_CHECK
         if paused:
             extra["model_paused"] = True
@@ -2291,6 +2375,9 @@ class Session:
         level = CrisisLevel.L2 if seen is None else seen
         if status is not None and in_crisis:
             level = max(level, status.level, status.entry_level or CrisisLevel.L0)
+        if self._asking and self._asking_plan:
+            # 负责人 2026-11-25 决定: no answer to a plan candidate's question is read as L3.
+            level = CrisisLevel.L3
         card, urgent = self._crisis_card(level, self._now())
         self._gate_notes = []
         self._engine.last_gate = None
@@ -2307,37 +2394,75 @@ class Session:
         they are under 18 in this session, 第 5 条), and whether it is framed as urgent:
         below L3 after a capped model L3 (``_urgent``), the region's emergency numbers are
         added in front of every line of the card. A card whose emergency numbers already
-        lead it (ZZ's L2) is left as it is; the mainland L2 card's trailing 120 (owner
-        decision 2026-10-28) is replaced by every emergency number in front. Round 6:
-        ``emergency`` (the user asked for the police or ambulance number, or how to talk
-        on that call, in the crisis flow) frames it the same way for that turn."""
+        lead it (ZZ's L2) is left as it is; an L2 card's one trailing emergency number
+        (owner decisions 2026-10-28 and 2026-11-25: CN 120, HK 999, ...) is replaced by
+        every emergency number in front. Round 6: ``emergency`` (the user asked for the
+        police or ambulance number, or how to talk on that call, in the crisis flow) frames
+        it the same way for that turn.
+
+        Owner decision 2026-11-25 B: after the user said in this session where they are
+        now (``_place_said``), that region's card at the same level, framed the same way,
+        comes first (``ResourceCard.here``), or, for a country with no verified lines here,
+        its ``crisis.local_emergency`` line (``ResourceCard.here_note``); the profile
+        region's card follows. A place in the profile's region adds nothing."""
+        want = (self._urgent or emergency) and level < CrisisLevel.L3
+        card, urgent = self._region_crisis_card(self._profile.region, level, now, urgent=want)
+        return self._here_first(card, level, now, urgent=want), urgent
+
+    def _region_crisis_card(
+        self, region: UserRegion | None, level: CrisisLevel, now: datetime, *, urgent: bool
+    ) -> tuple[ResourceCard, bool]:
+        """``region``'s CRISIS card at ``level``, and whether it was framed as urgent (see
+        :meth:`_crisis_card`)."""
         card = resolve(
             self._shared.store,
-            self._profile.region,
+            region,
             level,
             mode=CardMode.CRISIS,
             today=now.date(),
             is_minor=self._minor,
         )
         leading = bool(card.emergency) and card.emergency_leads
-        if not (self._urgent or emergency) or level >= CrisisLevel.L3 or leading:
+        if not urgent or leading:
             return card, False
         l3 = resolve(
             self._shared.store,
-            self._profile.region,
+            region,
             CrisisLevel.L3,
             mode=CardMode.CRISIS,
             today=now.date(),
             is_minor=False,
         )
         stale = tuple(e.id for e in l3.emergency if e.id in l3.stale_entries)
-        urgent = replace(
+        framed = replace(
             card,
             emergency=l3.emergency,
             emergency_leads=True,
             stale_entries=tuple(dict.fromkeys((*stale, *card.stale_entries))),
         )
-        return urgent, True
+        return framed, True
+
+    def _here_first(
+        self, card: ResourceCard, level: CrisisLevel, now: datetime, *, urgent: bool
+    ) -> ResourceCard:
+        """``card`` with where the user said they are now in front of it (owner decision
+        2026-11-25 B; see :meth:`_crisis_card`). R8 holds: a mainland card is only ever
+        added when the user named mainland China as where they are now."""
+        if self._said_place is None:
+            return card
+        place, country = self._said_place
+        store = self._shared.store
+        if place != UNKNOWN_COUNTRY and store.has_region(place):
+            if place == card.region_used:
+                return card
+            zone = self._profile.region.timezone if self._profile.region is not None else "UTC"
+            here, _ = self._region_crisis_card(UserRegion(place, zone), level, now, urgent=urgent)
+            return replace(card, here=here)
+        render = self._engine.data.render
+        local = None if country is None else render.local_emergency.get(country)
+        if local is None or not render.hotline_local_emergency_intro:
+            return card
+        return replace(card, here_note=local, here_numbers=tuple(_DIGIT_RUNS.findall(local)))
 
     def _crisis(
         self,
@@ -2544,17 +2669,26 @@ class Session:
     def _compact_numbers(self, card: ResourceCard) -> str | None:
         """Every number of ``card`` in one line (``crisis.care_hotline`` first), through
         the gate with those numbers allowed; None when it is blocked. Emergency numbers
-        come first unless they follow the lines on the card (the mainland L2 card's 120)."""
+        come first unless they follow the lines on the card (an L2 card's one emergency
+        number). Where the user said they are now comes first (owner decision 2026-11-25
+        B): its ``crisis.local_emergency`` line or its card's numbers."""
         render = self._engine.data.render
-        urgent = [
-            f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in card.emergency
-        ]
-        lines = [f"{ln.name_zh} {ln.number}" for ln in card.lines]
-        items = [*urgent, *lines] if card.emergency_leads else [*lines, *urgent]
+
+        def items_of(shown: ResourceCard) -> list[str]:
+            urgent = [
+                f"{em.number}（{render.emergency_purposes[em.purpose]}）" for em in shown.emergency
+            ]
+            lines = [f"{ln.name_zh} {ln.number}" for ln in shown.lines]
+            return [*urgent, *lines] if shown.emergency_leads else [*lines, *urgent]
+
+        ahead = [card.here_note] if card.here_note else []
+        if card.here is not None:
+            ahead += items_of(card.here)
+        items = [*ahead, *items_of(card)]
         if not items or not render.care_hotline:
             return None
         text = f"{render.care_hotline}{'；'.join(items)}"
-        numbers = [em.number for em in card.emergency] + [ln.number for ln in card.lines]
+        numbers = list(card.numbers())
         result = self._engine.gate.check(
             text, kind=ContentKind.CRISIS, stage=HelpStage.S_CRISIS, allowed_numbers=numbers
         )
@@ -2729,8 +2863,80 @@ class Session:
             return False
         return self._shared.lexicons.model_ask.pauses(CrisisLevel[model_level], model_score)
 
+    def _in_context(self, text: str, assessment: CrisisAssessment) -> CrisisAssessment:
+        """G2b-2 (2026-11-25): the context-only cues of ``text`` (``SafetyScreen.context_cues``,
+        risk.yaml ``compositions.context_entries``) read in this session's context. They count
+        for nothing in a session without it, so "下礼拜一我就走" (a new job) and "准备好了，就
+        今晚" stay as they are on their own, and they are looked for only in a session that has
+        been in the crisis flow or heard the user's own risk.
+
+        * An ``own_risk`` cue (a plan and a time with nothing named: "准备好了，就今晚", "我
+          定在周五") after the user's own L2 or higher risk in this session
+          (``_own_risk_said``) is Stage 1 plan evidence, L3: the context says what the plan
+          is (PRD §9.1 L3). In a crisis after a safety confirmation it asks first instead,
+          as the farewell family (§9.4 第 33 条), and anything but a no is L3 (``_turn``).
+        * Any other context cue in a session that has been in the crisis flow is the
+          farewell family's D3 cue (an ``ASK_INTENT`` id, ``raise_with_risk``): after a
+          confirmation it asks first (§9.4 第 33 条: "下礼拜一我就走", "我还是打算走",
+          "这局想去重开了"), after the crisis ended it is L2 at once (§9.4 第 18 条), and while
+          a confirmation is awaited it is an L1 turn of the crisis flow.
+        """
+        if self._crisis_seen is None and not self._own_risk_said:
+            return assessment
+        cues = self._shared.screen.context_cues(text)
+        if not cues:
+            return assessment
+        before = self._last_status
+        confirmed = before is not None and before.in_crisis and not before.awaiting_confirmation
+        plans = [cue for cue in cues if self._context_after.get(cue) == _OWN_RISK]
+        if plans and self._own_risk_said and not confirmed:
+            if assessment.level >= CrisisLevel.L3:
+                return assessment
+            return replace(
+                assessment,
+                level=CrisisLevel.L3,
+                score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L3")),
+                stage="STAGE1",
+                has_plan_evidence=True,
+                cue_ids=tuple(dict.fromkeys((*assessment.cue_ids, *plans))),
+                rule_level=CrisisLevel.L3,
+                uncapped_level=None,
+                rule_clear=False,
+            )
+        if self._crisis_seen is None:
+            return assessment
+        return replace(
+            assessment,
+            level=max(assessment.level, CrisisLevel.L1),
+            score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L1")),
+            cue_ids=tuple(dict.fromkeys((*assessment.cue_ids, *cues))),
+            asks_intent=True,
+            rule_level=max(assessment.rule_level or CrisisLevel.L0, CrisisLevel.L1),
+            rule_clear=False,
+        )
+
+    def _context_screen(self, text: str) -> CrisisAssessment:
+        """The rule screen of ``text`` read in this session's context (``_in_context``)."""
+        return self._in_context(text, self._shared.screen.assess(text))
+
+    def _plan_first(self, assessment: CrisisAssessment, answer: IntentAnswer | None) -> bool:
+        """负责人 2026-11-25 决定: this turn asks once first instead of entering the crisis
+        flow at L3. The screen's L3 rests on a means put away alone ("我不想死，刀我已经收好
+        了": ``CrisisAssessment.plan_candidate``, ``risk.yaml`` ``put_away_ask``), the turn
+        is no answer to a question, the session is outside a crisis (as of the turn before)
+        and showed no other risk before (``CrisisTracker.risk_shown``: a rule L1 or a D3
+        cue on an earlier turn, or a crisis). Otherwise the L3 stands, as before."""
+        before = self._last_status
+        return (
+            assessment.plan_candidate
+            and assessment.level is CrisisLevel.L3
+            and answer is None
+            and not (before is not None and before.in_crisis)
+            and not self._tracker.risk_shown
+        )
+
     def _answer_safety_check(
-        self, text: str, assessment: CrisisAssessment, *, model: bool = False
+        self, text: str, assessment: CrisisAssessment, *, model: bool = False, plan: bool = False
     ) -> tuple[CrisisAssessment, IntentAnswer | None]:
         """Read this turn as the answer to the question asked on the turn before.
 
@@ -2745,13 +2951,23 @@ class Session:
         denial conditions (``SafetyScreen.clear_denial``: no veto, no contrast, no negated
         denial, no rule cue outside a denial), and it sets no gentle-care flag, so the next
         session does not open by asking about safety (I9).
+
+        负责人 2026-11-25 决定: the question a plan candidate asked (``plan``: a means put
+        away alone) is read as strictly as the model-only one (the F10 no, or a safety
+        confirmation that passes F10), and anything but a no to it is L3 with plan evidence
+        (``PLAN_CHECK_CUE``); a no sets the gentle-care flag, as for the D3 question.
         """
         self._answer_rules = None
         if not self._asking:
             return assessment, None
         shared = self._shared.screen
-        rules = assessment if self._screen is shared else shared.assess(text)
+        # G2b-2: the rules read in this session's context (context-only cues), as the turn's
+        # own assessment already is.
+        rules = (
+            assessment if self._screen is shared else self._in_context(text, shared.assess(text))
+        )
         self._answer_rules = rules
+        strict = model or plan
         # Round 3: the D3 question also reads a first-person negated intent ("我没有想结束
         # 生命，只是……") with the rest of the message screened by the rules; the question a
         # model-only alarm asked keeps the stricter F10 no (owner decision 2026-10-26).
@@ -2759,11 +2975,11 @@ class Session:
             self._shared.lexicons.intent_answers,
             text,
             rules,
-            None if model else shared.assess,
+            None if strict else self._context_screen,
         )
         answer = reading.answer
         if (
-            model
+            strict
             and answer is IntentAnswer.UNCLEAR
             and rules.rule_clear
             and self._tracker.confirms_safety(text, rules)
@@ -2777,7 +2993,7 @@ class Session:
             answer = IntentAnswer.DENIED
         guarded = text if reading.guard_text is None else reading.guard_text
         if (
-            (model or reading.reason_split)
+            (strict or reading.reason_split)
             and answer is IntentAnswer.DENIED
             and guarded
             and not shared.clear_denial(guarded)
@@ -2791,6 +3007,17 @@ class Session:
             if reading.negated:
                 return self._negation_capped(assessment), answer
             return self._denial_capped(text, assessment, rules), answer
+        if plan:
+            # 负责人 2026-11-25 决定: a yes, an unclear answer or any other cue: L3.
+            l3 = replace(
+                assessment,
+                level=CrisisLevel.L3,
+                score=max(assessment.score, self._tax.threshold("risk.lexicon_scores.L3")),
+                has_plan_evidence=True,
+                cue_ids=(*assessment.cue_ids, PLAN_CHECK_CUE),
+                rule_clear=False,
+            )
+            return l3, answer
         if assessment.level >= CrisisLevel.L2:
             return replace(assessment, rule_clear=False), answer
         l2 = replace(
@@ -3314,15 +3541,20 @@ class Session:
             rendered.reply = f"{rendered.reply}\n\n{local}"
         return rendered
 
-    def _place_said(self, text: str, signals: TurnSignals) -> TurnSignals:
+    def _place_said(self, signals: TurnSignals) -> TurnSignals:
         """Round 7 (re-test q4 B5): a place the user says they are in now ("我现在在大阪交
         换") is kept for the session; a later hotline request with no place of its own names
         that place, so a place without verified numbers gets the general card, never the
-        profile region's numbers as if they were local."""
+        profile region's numbers as if they were local.
+
+        Owner decision 2026-11-25 B: the place is read by grammar (``present_place``,
+        ``perception/location.py``: never the past, the future, a condition or someone
+        else's place), the latest one counting, and kept in memory only (never written);
+        the session's crisis cards then list that region's numbers first
+        (:meth:`_crisis_card`)."""
+        if signals.present_place is not None:
+            self._said_place = (signals.present_place, signals.present_country)
         if signals.hotline_place is not None:
-            folded = normalize(text)
-            if _PRESENT_PLACE.search(folded) and not _PAST_PLACE.search(folded):
-                self._said_place = (signals.hotline_place, signals.hotline_country)
             return signals
         if self._said_place is None or not (
             signals.hotline_request or signals.hotline_number is not None
@@ -4351,7 +4583,7 @@ class Session:
             entry = status.entry_level if status is not None else None
             level = max(CrisisLevel.L2, assessment.level, entry or CrisisLevel.L0)
             card, _ = self._crisis_card(level, now)
-            numbers = [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+            numbers = card.numbers()
             minimal = self._shared.language.render.crisis_minimal
             reply = "\n".join([minimal, *(f"· {n}" for n in numbers)])
             kind = ReplyKind.CRISIS
@@ -4547,12 +4779,6 @@ _MIN_NUMBER_DIGITS: Final = 3
 _ASK_WHAT: Final = re.compile(
     r"什么|啥|咩|乜|怎样|如何|点样|(?<!一)点(?=帮|做|讲|算|办|同|先|去|开口|劝|搞)|how(?:do|can|should)|what(?:do|can|should)"
 )
-# Round 7 (re-test q4 B5): the user says where they are now ("我现在在大阪交换", "人在首尔"),
-# not where they were ("我在日本留学的时候").
-_PRESENT_PLACE: Final = re.compile(
-    r"(?:我|人|我们)(?:现在|目前|如今|最近|这学期|今年|正|还)?(?:人)?(?:在|住在|待在|呆在|来了|到了)"
-)
-_PAST_PLACE: Final = re.compile(r"的时候|那时|那会|以前|之前|去年|曾经|当年|小时候|回来")
 # Round 7 (re-test q2 第 6 节): the first words of a call ("第一句说什么", "开口第一句").
 _FIRST_WORDS: Final = re.compile(r"第一句|头一句|开场白|开口第一|firstthing|firstwords")
 _SAY_WHAT: Final = re.compile(

@@ -24,6 +24,7 @@ REPLY_KEYS: Final = (
     "note_saved",
     "note_too_long",
     "note_unavailable",
+    "note_read_only",
     "memory_unavailable",
     "summary_not_saved",
     "note_continue",

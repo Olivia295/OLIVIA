@@ -24,9 +24,11 @@ from cli_support import L3_SENTENCE, ONBOARD_CN
 
 from olivia import cli
 from olivia.core.datalock import DataDirLock
+from olivia.core.memory.text import load_memory_text
 
 CHAT = [*ONBOARD_CN, "下班路上买了一袋橘子", "/exit"]
 TALK = ["周末打算把书架重新整理一下", "最近工作压力好大，能给我一个练习试试吗", "/done", "/exit"]
+MEMORY = load_memory_text()
 POSIX_ONLY = pytest.mark.skipif(
     sys.platform == "win32" or getattr(os, "geteuid", lambda: 1)() == 0,
     reason="POSIX permissions, and root writes everything",
@@ -122,6 +124,26 @@ def test_a_read_only_disk_is_named_and_nothing_is_written(run_cli, data_home, mo
     # No self-rating is asked when it cannot be kept, and no summary is said to be lost.
     assert "0 到 10" not in run.out
     assert "小结没能保存" not in run.out
+    assert _contents(data_home) == before
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [OSError(errno.EROFS, "Read-only file system"), PermissionError(errno.EACCES, "Denied")],
+    ids=["disk", "permissions"],
+)
+def test_a_note_asked_for_read_only_says_the_directory_cannot_be_written(
+    run_cli, data_home, monkeypatch, exc
+):
+    _set_up(run_cli)
+    before = _contents(data_home)
+    _no_lock(monkeypatch, exc)
+    run = run_cli(["chat", "--rules"], ["记住：周五要去拿快递", "/exit"])
+    assert run.code == 0
+    # The recorder answers the note in place of the session's reply.
+    assert MEMORY.replies["note_read_only"] + MEMORY.replies["note_continue"] in run.out
+    assert MEMORY.replies["note_unavailable"] not in run.out
+    assert MEMORY.replies["note_saved"] not in run.out
     assert _contents(data_home) == before
 
 

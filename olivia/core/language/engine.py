@@ -260,6 +260,10 @@ class LanguageEngine:
         # Round 7: the kind of drink or medicine the last reminder spoke of, for a later
         # sign with no kind named ("手还在抖").
         self._substance_kind = ""
+        # Round 8 (2026-11-25; draft, G-0): whether the turn before and this turn spoke of
+        # alcohol, for a drink asked for without 喝 ("就一小杯行不行"); moved on by note_risk.
+        self._alcohol_before = False
+        self._alcohol_now = False
         self._words_read: tuple[str, bool] | None = None
         # Round 6: this turn's text came with direction controls that change its order.
         self._scrambled = False
@@ -422,9 +426,13 @@ class LanguageEngine:
         Round 3: from L1 up the user's words were not said back. Round 4 (复测 q3): an L1
         that only the risk model gives, to a message with no risk component of its own
         ("吼了孩子，现在很后悔"), is answered like any other turn; the rule screen's L1 and
-        any L2 or higher still say nothing back."""
+        any L2 or higher still say nothing back.
+
+        Round 8 (2026-11-25): a new turn, so what the last one said of alcohol is now the
+        turn before's (:meth:`substance`)."""
         self._turn_level = level
         self._rules_level = level if rules is None else rules
+        self._alcohol_before, self._alcohol_now = self._alcohol_now, False
 
     def guarded(self, user_text: str) -> bool:
         """None of the user's words this turn are said back: an L2+ turn, a turn the rule
@@ -463,11 +471,14 @@ class LanguageEngine:
         """What ``user_text`` says about drinking (``lexicons/substance.yaml``). Drinking is
         the session's context once a message mentioned it or its image topic came up
         (``image_topic``: the substance spectrum, its situation, its referral card or a
-        cue such as "喝了"), and stays so."""
+        cue such as "喝了"), and stays so. Round 8 (2026-11-25; draft, G-0): a drink asked for
+        without 喝 ("来一口没事吧") counts only when this turn or the one before spoke of
+        alcohol (``recent``; the session marks each turn with :meth:`note_risk`)."""
         cues = self._data.substance
         context = self._drinking or cues.image_topic in self._image_topics
-        reading = read_substance(cues, user_text, context=context)
+        reading = read_substance(cues, user_text, context=context, recent=self._alcohol_before)
         self._drinking = context or reading.mentioned
+        self._alcohol_now = self._alcohol_now or reading.alcohol
         if reading.kind:
             self._substance_kind = reading.kind
         return reading
@@ -509,7 +520,9 @@ class LanguageEngine:
         it."""
         cues = self._data.substance
         context = self._drinking or cues.image_topic in self._image_topics
-        return read_substance(cues, user_text, context=context).symptoms
+        return read_substance(
+            cues, user_text, context=context, recent=self._alcohol_before
+        ).symptoms
 
     def note_image(self, text: str, image: str) -> None:
         """Remember that a reply showed ``image`` (F5b), if ``text`` holds it."""
@@ -1326,10 +1339,54 @@ class LanguageEngine:
         ``urgent`` frames the emergency numbers as an L3 card does (:meth:`render_crisis`).
         ``emergency_heading`` / ``lines_heading`` replace the headings; without
         ``contact_people`` an L3 framing leaves out the line asking to call someone close.
-        A card whose emergency numbers do not lead (``ResourceCard.emergency_leads``: the
-        mainland L2 card's 120, owner decision 2026-10-28) lists them after the lines under
-        the L2 emergency heading, unless ``urgent`` puts them first.
+        A card whose emergency numbers do not lead (``ResourceCard.emergency_leads``: an L2
+        card's one local emergency number, owner decisions 2026-10-28 and 2026-11-25) lists
+        them after the lines under the L2 emergency heading, unless ``urgent`` puts them
+        first.
+
+        Owner decision 2026-11-25 B: where the user said they are now comes first, its
+        ``here_note`` (after ``hotline_local_emergency_intro``) or its ``here`` card (under
+        ``here_heading``; the line asking to call someone close only there), then this
+        card's numbers under ``home_heading``.
         """
+        r = self._data.render
+        ahead: list[str] = []
+        if card.here_note:
+            ahead.append(f"{r.hotline_local_emergency_intro}{card.here_note}")
+        if card.here is not None:
+            inner = self._resource_blocks(
+                card.here,
+                urgent=urgent,
+                emergency_heading=emergency_heading,
+                lines_heading=lines_heading,
+                contact_people=contact_people,
+            )
+            if inner and r.here_heading:
+                inner[0] = f"{r.here_heading}\n{inner[0]}"
+            ahead += inner
+            framed = urgent or card.here.level >= CrisisLevel.L3
+            contact_people = contact_people and not (framed and card.here.emergency)
+        own = self._own_blocks(
+            card,
+            urgent=urgent,
+            emergency_heading=emergency_heading,
+            lines_heading=lines_heading,
+            contact_people=contact_people,
+        )
+        if ahead and own and r.home_heading:
+            own[0] = f"{r.home_heading}\n{own[0]}"
+        return [*ahead, *own]
+
+    def _own_blocks(
+        self,
+        card: ResourceCard,
+        *,
+        urgent: bool,
+        emergency_heading: str | None,
+        lines_heading: str | None,
+        contact_people: bool,
+    ) -> list[str]:
+        """The card's own numbers (:meth:`_resource_blocks` without where the user is)."""
         r = self._data.render
         stale = set(card.stale_entries)
         mark = r.crisis_stale_mark
@@ -1374,7 +1431,7 @@ class LanguageEngine:
 
 
 def _numbers(card: ResourceCard) -> list[str]:
-    return [e.number for e in card.emergency] + [ln.number for ln in card.lines]
+    return list(card.numbers())
 
 
 def _info_kind(entry: InfoEntry) -> ContentKind:

@@ -50,6 +50,12 @@ said once (不是不是 holds the unsure 不是不). After the no, "只不过" i
 unsure 不过) and 有点 / 有一点 before a feeling (有点烦, 有一点累) is a degree, not the
 hedge 有一点 (that stays unsure alone, before a particle or before 想 / 会 / 要). What
 follows is still screened: any risk cue there keeps the answer unclear.
+
+G2b-2 (2026-11-25): the feeling no of 负责人 2026-11-01 决定 (C) also takes the double negation
+of not wanting to live or of an unhappy feeling as its first clause ("不是不想活，就是太累了",
+"我不是不开心，只是累": ``_DOUBLE_NO``). The unsure 不是不 is read only in what follows such a
+first clause, and so are the F10 conditions (``IntentReading.guard_text``). "不是不想死" is a
+wish to die (the rules rate it L2_DOUBLE_NEGATION), so it never reads as a no.
 """
 
 from __future__ import annotations
@@ -141,6 +147,15 @@ _FEELING_NO: Final = re.compile(
     r"想不开|心情不好)"
 )
 _JUST_LEAD: Final = re.compile(r"\s*(?:就是|只是|单纯是|单纯|纯粹是|只不过|主要是)")
+# G2b-2 (2026-11-25): the double negation of not wanting to live, or of an unhappy feeling,
+# as the whole first clause ("不是不想活，就是太累了", "我不是不开心，只是累"), then a clause
+# that opens with 就是 / 只是: a no like the feeling no above. Its 不是不 is no hedge (the
+# unsure 不是不 is read in what follows only). 不是不想死 is no part of it: it is a wish to die,
+# which the rules rate L2 (L2_DOUBLE_NEGATION), so the reading never gets here.
+_DOUBLE_NO: Final = re.compile(
+    r"(?:我|俺)?(?:并|也|倒|其实)?不是(?:说)?(?:我)?"
+    r"(?:不想活着?|不想继续活着?|不开心|不高兴|不快乐|不舒服)"
+)
 
 
 class IntentAnswer(StrEnum):
@@ -216,10 +231,23 @@ def read_answer(
         and not living
         and (whole_no or rhetorical or _starts(clause, answers.deny_start))
     )
+    if not denies and _EN_NO_FINE.fullmatch(plain.strip()) is not None:
+        denies = not sarcastic
+    feeling_no = (
+        not denies
+        and not sarcastic
+        and (_FEELING_NO.fullmatch(plain) is not None or _DOUBLE_NO.fullmatch(plain) is not None)
+        and _JUST_LEAD.match(rest) is not None
+    )
+    denies = denies or feeling_no
     # Unsure words are looked for in the no as said once and in what follows it.
     said = folded if repeated is None else f"{base}{clause[len(plain) :]},{rest}"
     if rhetorical:
         said = rest  # 怎么可能 holds the unsure 可能; the rhetorical no is the whole clause
+    elif feeling_no:
+        # G2b-2: the first clause is a closed grammar ("不是不开心", "不是不想活") whose 不是不 is
+        # the double negation itself, not the hedge 不是不; what follows is read as said.
+        said = rest
     elif reassured is not None and repeated is None:
         said = f"{plain},{rest}"  # 放心吧 holds the unsure 吧
     said = _DEGREE.sub("", _JUST_BUT.sub("只是", said))
@@ -230,15 +258,6 @@ def read_answer(
         and not living
         and _NEGATED_INTENT.match(clause) is not None
     )
-    if not denies and _EN_NO_FINE.fullmatch(plain.strip()) is not None:
-        denies = not sarcastic
-    feeling_no = (
-        not denies
-        and not sarcastic
-        and _FEELING_NO.fullmatch(plain) is not None
-        and _JUST_LEAD.match(rest) is not None
-    )
-    denies = denies or feeling_no
     if not denies and not negated:
         yes = _starts(clause, answers.affirm_start) and _QUESTION_FORM.search(clause) is None
         return IntentReading(IntentAnswer.AFFIRMED if yes else IntentAnswer.UNCLEAR)
@@ -251,7 +270,9 @@ def read_answer(
         # Round 6: a rhetorical or reassured no also passes the F10 denial conditions in the
         # session, as a split one does ("没有你放心，反正药都备好了" is no no).
         checked = split or rhetorical or reassured is not None or feeling_no
-        guard = rest.strip() if rhetorical else None
+        # G2b-2: after a feeling no the F10 conditions are read on what follows it, as after
+        # a rhetorical one (不是不想活 holds the F10 veto 不是不, as its own grammar).
+        guard = rest.strip() if rhetorical or feeling_no else None
         return IntentReading(IntentAnswer.DENIED, reason_split=checked, guard_text=guard)
     plan = assessment.has_plan_evidence or assessment.level is CrisisLevel.L3
     if negated and not unsure and not plan and rest_screen is not None:

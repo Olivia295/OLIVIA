@@ -172,7 +172,7 @@ def _pair(d, cue_id="L2_METHOD_PAIR_MANNER"):
 def test_loads_pair_cues(tax):
     lex = load_safety_lexicons(tax)
     by_id = {p.id: p for p in lex.pairs}
-    assert set(by_id) == {"L2_METHOD_PAIR_MANNER", "L2_METHOD_PAIR_MEANS"}
+    assert set(by_id) == {"L2_METHOD_PAIR_MANNER", "L2_METHOD_PAIR_MEANS", "L2_METHOD_PAIR_SUICIDE"}
     manner = by_id["L2_METHOD_PAIR_MANNER"]
     assert manner.level is CrisisLevel.L2 and manner.score == pytest.approx(0.7)
     assert "自杀" in manner.anchors and "无痛" in manner.requests
@@ -220,8 +220,11 @@ def test_pair_phrase_may_repeat_across_entries(tax):
     # The two entries share anchors (轻生, 结束生命 ...); the matcher keys pair phrases by
     # phrase, so one phrase can serve several entries.
     lex = load_safety_lexicons(tax)
-    manner, means = sorted(lex.pairs, key=lambda p: p.id)
+    by_id = {p.id: p for p in lex.pairs}
+    manner, means = by_id["L2_METHOD_PAIR_MANNER"], by_id["L2_METHOD_PAIR_MEANS"]
     assert set(manner.anchors) & set(means.anchors)
+    # Round 8: the topic word 自杀 serves the manner entry and the suicide entry.
+    assert "自杀" in manner.anchors and "自杀" in by_id["L2_METHOD_PAIR_SUICIDE"].anchors
 
 
 def test_denial_section_loads(tax):
