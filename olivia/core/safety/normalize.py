@@ -217,7 +217,10 @@ def normalize(text: str) -> str:
     -> "'", then drop all whitespace, invisible characters and leftover combining marks,
     and a single ASCII letter standing between two Han characters (a colour code's
     leftover)."""
-    return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
+    if _WHITESPACE.search(text) is None or not _MARK_SET.isdisjoint(text):
+        return _drop_stray_letters(unicodedata.normalize("NFKC", text).casefold().translate(_FOLD))
+    # The same fold, shared with clause_breaks: the marks stand where _FOLD drops whitespace.
+    return _drop_stray_letters(_MARKS.sub("", _marked_fold(text)))
 
 
 # 2026-11-25 (metamorphic testing, task G3): where the whitespace :func:`normalize` drops
@@ -229,15 +232,37 @@ def normalize(text: str) -> str:
 # a clause of their own. Not a break: whitespace between two ASCII characters (the spaces of
 # English words; their phrases are written without them), and whitespace next to a word of
 # one character (letter spacing, "我 想 死", or a stray character).
-_WHITESPACE: Final = re.compile(f"([\\s{_BLANKS}]+)")
+_WHITESPACE: Final = re.compile(f"[\\s{_BLANKS}]")
 # ``(position, line)`` pairs of :func:`clause_breaks`.
 Breaks = tuple[tuple[int, bool], ...]
-_LINE_BREAKS: Final = frozenset("\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
+_LINE_BREAKS: Final = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+# The fold with each whitespace character (as NFKC leaves it) and blank filler marked
+# instead of dropped, a line break with its own mark: one fold of the whole text gives
+# both normalize's characters (the marks removed) and where the whitespace stood. Every
+# marked code point is one _FOLD drops. The marks are private-use characters; a text that
+# holds one itself is folded the old way and has no breaks.
+_SPACE_MARK: Final = "\ue000"
+_LINE_MARK: Final = "\ue001"
+_FOLD_MARKED: Final[dict[int, str | None]] = {
+    **_FOLD,
+    **{
+        cp: _SPACE_MARK
+        for first, last in _DROPPED_RANGES
+        for cp in range(first, last + 1)
+        if chr(cp).isspace()
+    },
+    **{ord(blank): _SPACE_MARK for blank in _BLANKS},
+    **{ord(ch): _LINE_MARK for ch in _LINE_BREAKS},
+}
+_MARKS: Final = re.compile(f"[{_SPACE_MARK}{_LINE_MARK}]+")
+_MARK_SET: Final = frozenset((_SPACE_MARK, _LINE_MARK))
 
 
-def _fold(text: str) -> str:
-    """:func:`normalize` before the stray letters are dropped."""
-    return unicodedata.normalize("NFKC", text).casefold().translate(_FOLD)
+@functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
+def _marked_fold(text: str) -> str:
+    """NFKC, casefold and _FOLD_MARKED: normalize's fold before the marks and the stray
+    letters go (for a text with whitespace and no mark of its own)."""
+    return unicodedata.normalize("NFKC", text).casefold().translate(_FOLD_MARKED)
 
 
 @functools.lru_cache(maxsize=_FOLD_CACHE_SIZE)
@@ -245,39 +270,34 @@ def clause_breaks(text: str) -> Breaks:
     """The breaks the whitespace of ``text`` makes in ``normalize(text)``, in order: each is
     ``(position, line)``, the break standing right before ``normalize(text)[position]``;
     ``line`` when the whitespace holds a line break (the end of a sentence), else it is a
-    clause break. Empty when the text has none, and (never seen; the old reading then
-    stands) when the words folded one by one do not join into ``normalize(text)``."""
-    if _WHITESPACE.search(text) is None:
+    clause break. Empty when the text has none, and when it holds a private-use mark itself
+    (or, never seen, when the marked fold does not give ``normalize(text)`` back)."""
+    if _WHITESPACE.search(text.strip()) is None or not _MARK_SET.isdisjoint(text):
         return ()
-    pieces = _WHITESPACE.split(text)  # words at even indices, the whitespace between at odd
-    words: list[str] = []
-    lines: list[bool] = []  # lines[i]: the whitespace before words[i + 1] holds a line break
-    line = False
-    for i in range(0, len(pieces), 2):
-        if i:
-            line = line or not _LINE_BREAKS.isdisjoint(pieces[i - 1])
-        folded = _fold(pieces[i])
-        if not folded:
-            continue  # nothing left of it: the whitespace on both sides is one run
-        if words:
-            lines.append(line)
-        words.append(folded)
-        line = False
-    joined = "".join(words)
-    if len(words) < 2 or joined != _fold(text):
+    marked = _marked_fold(text)
+    runs = list(_MARKS.finditer(marked))
+    joined = _MARKS.sub("", marked)
+    if not runs or _drop_stray_letters(joined) != normalize(text):
         return ()
     stray = [] if joined.isascii() else [m.start() for m in _STRAY_LETTER.finditer(joined)]
     breaks: list[tuple[int, bool]] = []
-    end = 0
-    for left, right, line in zip(words[:-1], words[1:], lines, strict=True):
-        end += len(left)
-        if not line and (left[-1].isascii() and right[0].isascii()):
+    removed = 0  # marks before the current run
+    word_start = 0  # where the word before the current run starts, in ``marked``
+    for i, run in enumerate(runs):
+        a, b = run.span()
+        following = runs[i + 1].start() if i + 1 < len(runs) else len(marked)
+        left, right = a - word_start, following - b
+        position = a - removed
+        removed += b - a
+        word_start = b
+        if not left or not right:
+            continue  # whitespace at either end of the text
+        line = _LINE_MARK in run.group()
+        if not line and marked[a - 1].isascii() and marked[b].isascii():
             continue  # the space between two English words
-        if len(left) < 2 or len(right) < 2:
+        if left < 2 or right < 2:
             continue  # letter spacing
-        breaks.append((end - bisect_left(stray, end), line))
-    if _drop_stray_letters(joined) != normalize(text):
-        return ()
+        breaks.append((position - bisect_left(stray, position), line))
     return tuple(breaks)
 
 

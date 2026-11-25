@@ -22,17 +22,20 @@ files); none is from an evaluation set or the red-team suite.
 from __future__ import annotations
 
 import random
+import unicodedata
 from datetime import UTC, datetime
 
 import pytest
 
 from olivia.core.models import CrisisLevel as L
 from olivia.core.models import PersonaProfile, UserRegion
+from olivia.core.safety import normalize as fold
 from olivia.core.safety.crisis import SafetyScreen
 from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.safety.normalize import clause_breaks, normalize, repeat_copy, spans_copies
 from olivia.core.session import ReplyKind, Session
 from olivia.core.taxonomy import load_taxonomy
+from tests.safety.metamorphic import TRANSFORMS, load_seeds
 
 TAX = load_taxonomy()
 LEX = load_safety_lexicons(TAX)
@@ -88,6 +91,28 @@ def test_clause_breaks(text: str, breaks: tuple[tuple[int, bool], ...]) -> None:
     assert clause_breaks(text) == breaks
     for position, _ in breaks:
         assert 0 < position < len(normalize(text))
+
+
+def _plain_fold(text: str) -> str:
+    """normalize as it was written before task G3: one fold dropping the whitespace."""
+    nfkc = unicodedata.normalize("NFKC", text).casefold()
+    return fold._drop_stray_letters(nfkc.translate(fold._FOLD))
+
+
+def test_the_shared_marked_fold_gives_normalize_unchanged() -> None:
+    # normalize folds a text with whitespace through the marked fold clause_breaks reads;
+    # every seed and every rewrite of it must fold exactly as before.
+    texts = {transform(seed.text) for seed in load_seeds() for transform in TRANSFORMS}
+    texts |= {"好累\u2028今天\r\n明天\u3000后天\u3164完", "\u00a8 好累", " 前后有空格 ", "\n"}
+    assert len(texts) > 10_000
+    differ = [t for t in texts if normalize(t) != _plain_fold(t)]
+    assert not differ, differ[:5]
+
+
+def test_a_text_holding_a_mark_itself_is_folded_the_old_way() -> None:
+    text = "好累\ue000 今天\ue001 明天"
+    assert normalize(text) == _plain_fold(text) == "好累\ue000今天\ue001明天"
+    assert clause_breaks(text) == ()
 
 
 @pytest.mark.parametrize(

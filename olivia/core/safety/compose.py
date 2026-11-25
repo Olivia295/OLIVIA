@@ -45,7 +45,7 @@ from weakref import WeakValueDictionary
 
 from olivia.core.safety.lexicon import Composition, CompositionRules
 from olivia.core.safety.matcher import Match, PhraseMatcher
-from olivia.core.safety.normalize import Breaks, repeat_copy, spans_copies
+from olivia.core.safety.normalize import Breaks, repeat_copy
 
 # What may follow a name said alone to address someone (哥哥，妈啊，).
 _VOCATIVE_TAILS: Final = frozenset({"", "啊", "呀", "哇", "哈", "喂", "呐", "嘛", "啦", "哦"})
@@ -203,50 +203,60 @@ class _Text:
         # ``unless`` kept to its clause. Two parts still join across whitespace, and a
         # negator still reaches across it, because a space is as often typed between the
         # words of one clause (我打算 今晚 去死, 我没有 想死) as between two clauses.
-        cuts = {p: line for p, line in breaks if 0 < p < n}
+        stops = rules.stops
         # clause_start[i]: first index of the clause holding position i; clause_end[i]: the
         # index of the first stop at or after i, or of the first break after i (n when
-        # none). stop_start[i]: the same start with stops alone (negation reads that one).
-        # sentence_start[i] / sentence_end[i]: the same for the sentence holding i.
-        self.clause_start = [0] * (n + 1)
-        self.clause_end = [n] * (n + 1)
-        self.stop_start = [0] * (n + 1)
-        self.sentence_start = [0] * (n + 1)
-        self.sentence_end = [n] * (n + 1)
+        # none). stop_start[i]: the same start with stops alone (negation reads that one; the
+        # same list when there is no break). Sentences are rarer: the sorted indexes where
+        # one starts and where one ends (a sentence-end stop's index, or a line break's
+        # position), read by bisection.
+        self.clause_start = clause_start = [0] * (n + 1)
+        self.clause_end = clause_end = [n] * (n + 1)
         self._stops_before = [0] * (n + 1)
-        start = stop_start = sentence = 0
+        self._sentence_starts = [0]
+        self._sentence_ends: list[int] = []
+        start = 0
         for i, ch in enumerate(text):
-            if i in cuts:
-                start = i
-                if cuts[i]:
-                    sentence = i
-            self.clause_start[i] = start
-            self.stop_start[i] = stop_start
-            self.sentence_start[i] = sentence
-            stop = ch in rules.stops
+            clause_start[i] = start
+            stop = ch in stops
             self._stops_before[i + 1] = self._stops_before[i] + stop
             if stop:
-                start = stop_start = i + 1
+                start = i + 1
                 if ch in _SENTENCE_ENDS:
-                    sentence = i + 1
-        self.clause_start[n] = start
-        self.stop_start[n] = stop_start
-        self.sentence_start[n] = sentence
-        end = sentence_end = n
+                    self._sentence_ends.append(i)
+                    self._sentence_starts.append(i + 1)
+        clause_start[n] = start
+        end = n
         for i in range(n - 1, -1, -1):
-            if text[i] in rules.stops:
+            if text[i] in stops:
                 end = i
-                if text[i] in _SENTENCE_ENDS:
-                    sentence_end = i
-            self.clause_end[i] = end
-            self.sentence_end[i] = sentence_end
-            if i in cuts:
-                end = i
-                if cuts[i]:
-                    sentence_end = i
+            clause_end[i] = end
+        self.stop_start = clause_start
+        cuts = sorted((p, line) for p, line in breaks if 0 < p < n)
+        if cuts:
+            # Each break starts a clause at its position and ends the one before it there,
+            # up to the nearest stop on either side (a later break takes over from it).
+            self.stop_start = clause_start.copy()
+            for p, line in cuts:
+                i = p
+                while i <= n and clause_start[i] < p:
+                    clause_start[i] = p
+                    i += 1
+                if line:
+                    self._sentence_ends.append(p)
+                    self._sentence_starts.append(p)
+            for p, _ in reversed(cuts):
+                i = p - 1
+                while i >= 0 and clause_end[i] > p:
+                    clause_end[i] = p
+                    i -= 1
+            self._sentence_starts.sort()
+            self._sentence_ends.sort()
         # A message said twice or more over (整句重复): no match may span the place where one
-        # copy meets the next (normalize.repeat_copy; 0 when it is no such message).
+        # copy meets the next (normalize.repeat_copy, normalize.spans_copies; 0 when it is
+        # no such message).
         self.copy = repeat_copy(text)
+        self.size = n
         real = self._real_negators(text, lists)
         self.negators = _Spans(real)
         self._unless_negator_ends = sorted(
@@ -288,14 +298,16 @@ class _Text:
         ``end`` ends it there)."""
         return self.clause_end[max(end - 1, 0)]
 
+    def sentence_start(self, i: int) -> int:
+        """The first index of the sentence holding position ``i``."""
+        starts = self._sentence_starts
+        return starts[bisect_right(starts, i) - 1]
+
     def end_of_sentence(self, end: int) -> int:
         """The end of the sentence holding ``text[:end]``'s last character."""
-        return self.sentence_end[max(end - 1, 0)]
-
-    def across_copies(self, start: int, end: int) -> bool:
-        """Does ``text[start:end]`` span the place where one copy of a repeated message
-        meets the next?"""
-        return spans_copies(start, end, self.copy, len(self.text))
+        ends = self._sentence_ends
+        k = bisect_right(ends, max(end - 1, 0))
+        return ends[k] if k < len(ends) else len(self.text)
 
     def spans(self, phrases: Set[str]) -> list[Match]:
         """Every occurrence of ``phrases``, in no particular order."""
@@ -500,8 +512,9 @@ class Composer:
         rules = self._rules
         if own.blockers.any_inside(first.end, second.start):
             return False
-        if facts.copy and facts.across_copies(first.start, second.end):
-            return False
+        copy = facts.copy
+        if copy and first.start < (second.end - 1) // copy * copy < facts.size:
+            return False  # across the place where the copies of a repeated message meet
         clause = facts.clause_start[first.start]
         # A negator reaches across whitespace (我没有 想死): its clause ends at stops alone.
         negation_from = facts.stop_start[first.start]
@@ -518,7 +531,7 @@ class Composer:
         if entry.persons:
             subject_from = max(clause, second.start - rules.subject_window)
             person = facts.last_person(subject_from, second.start, (first, second))
-            sentence = facts.sentence_start[clause]
+            sentence = 0 if person is not None else facts.sentence_start(clause)
             if person is None and subject_from == clause > sentence:
                 # A clause that names nobody keeps the subject of the clause before it
                 # (我朋友最近很难过，总说要自杀); a listener (谢谢你，) is not carried over.
@@ -556,7 +569,7 @@ class Composer:
                     # so another sentence's words do not void it: in "室友今天搬走了。我想
                     # 死，今晚就动手" the roommate has no part in the plan. When that is said
                     # only in another sentence (我弟弟不想活了。我今晚就走), they still do.
-                    a = max(a, facts.sentence_start[first.start])
+                    a = max(a, facts.sentence_start(first.start))
                     b = min(b, facts.end_of_sentence(second.end))
             else:
                 a, b = max(clause, a), min(facts.end_of_clause(second.end), b)
@@ -578,7 +591,7 @@ class Composer:
     ) -> bool:
         """Every ``also`` group (and the context, if any) has an occurrence within its
         window inside the sentence that holds the match."""
-        lo = facts.sentence_start[first.start]
+        lo = facts.sentence_start(first.start)
         hi = facts.end_of_sentence(second.end)
         needs = [(group.window, spans) for group, spans in zip(entry.also, own.also, strict=True)]
         if entry.context:
