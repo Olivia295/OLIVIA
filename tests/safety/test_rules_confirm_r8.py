@@ -23,6 +23,7 @@ red-team suite.
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -181,17 +182,24 @@ CONTEXT_ONLY = [
     ("我还是打算走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
     ("我决定了还是要走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
     ("这局想去重开了", "ASK_INTENT_RESTART_AFTER_CRISIS"),
+    ("准备好了，就今晚", "S1_READY_MOMENT_AFTER_RISK"),
+    ("决定好了，就这周五", "S1_READY_MOMENT_AFTER_RISK"),
+    ("我定在周五", "S1_TIME_FIXED_AFTER_RISK"),
+    ("东西都弄好了，周五就动手", "S1_TIME_DO_AFTER_RISK"),
+    ("今晚就结束吧", "S1_TIME_DO_AFTER_RISK"),
 ]
+
+
+BARE = SafetyScreen(TAX, replace(LEX, compositions=replace(LEX.compositions, context_entries=())))
 
 
 @pytest.mark.parametrize(("text", "cue"), CONTEXT_ONLY)
 def test_a_context_only_cue_is_reported_and_counts_for_nothing(text: str, cue: str) -> None:
+    # The screen says exactly what it says without the context entries.
     result = SCREEN.assess(text)
     assert cue in SCREEN.context_cues(text)
     assert cue not in result.cue_ids
-    assert result.level is L.L0
-    assert result.rule_clear
-    assert not result.asks_intent
+    assert result == BARE.assess(text)
 
 
 @pytest.mark.parametrize(
@@ -200,6 +208,10 @@ def test_a_context_only_cue_is_reported_and_counts_for_nothing(text: str, cue: s
         "下礼拜一我就走，去新公司报到",
         "我还是打算走，回老家发展",
         "这把游戏输了，想重开",
+        "准备好了，就今晚的考试",
+        "我定在周五去医院复诊",
+        "我还没准备好，明天再说",
+        "他说他准备好了，就今晚",
     ],
 )
 def test_everyday_denied_or_someone_elses_words_are_no_context_cue(text: str) -> None:

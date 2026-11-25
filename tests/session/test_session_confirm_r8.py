@@ -15,6 +15,11 @@
    job, a move) they are ordinary talk.
 4. "这局想去重开了" in a session that has been in the crisis flow is a euphemism and asks
    first like the farewell family; on its own, and with game words, it is ordinary talk.
+5. A plan and a time with nothing named ("准备好了，就今晚", "我定在周五") after the user's
+   own L2 or higher risk earlier in the session (a rule L2+ turn or a yes to the direct
+   question) is L3: the context says what the plan is. On its own it stays as it was (the
+   red-team single sentences rt141, rt143-rt145 keep their expectations and known gaps).
+   After a safety confirmation it asks first (§9.4 第 33 条), and anything but a no is L3.
 
 Every sentence here was written for this round; none comes from an evaluation set or the
 red-team suite.
@@ -323,3 +328,75 @@ def test_starting_over_on_its_own_is_ordinary_talk(text: str) -> None:
 def test_starting_over_a_game_after_a_confirmation_asks_nothing(text: str) -> None:
     session = _confirmed()
     assert session.turn(text).reply_kind is not ReplyKind.SAFETY_CHECK
+
+
+# -- 5. a plan and a time after the user's own risk --------------------------------------------
+
+PLAN_TIME = ["准备好了，就今晚", "我定在周五", "我已经准备好了，就在今晚", "决定好了，就这周五"]
+
+
+@pytest.mark.parametrize("text", [*PLAN_TIME, "东西都弄好了，周五就动手", "今晚就结束吧"])
+def test_a_plan_and_a_time_after_own_l2_is_l3(text: str) -> None:
+    session = _session()
+    assert session.turn("我真的不想活了").in_crisis
+    result = session.turn(text)
+    assert result.in_crisis
+    assert result.crisis_level is L.L3
+    assert result.reply_kind is ReplyKind.CRISIS
+    _urgent(result.reply)
+
+
+@pytest.mark.parametrize("text", PLAN_TIME[:2])
+def test_a_plan_and_a_time_after_a_yes_to_the_question_is_l3(text: str) -> None:
+    session = _session()
+    _asked(session.turn(D3_CUE))
+    assert session.turn("是的").in_crisis
+    assert session.turn(text).crisis_level is L.L3
+
+
+@pytest.mark.parametrize("text", PLAN_TIME)
+def test_a_plan_and_a_time_on_its_own_stays_as_it_was(text: str) -> None:
+    result = _session().turn(text)
+    assert result.crisis_level < L.L3
+    assert not result.in_crisis
+
+
+@pytest.mark.parametrize("text", PLAN_TIME)
+def test_a_plan_and_a_time_after_an_l1_only_is_no_l3(text: str) -> None:
+    session = _session()
+    session.turn("活着好累")
+    assert session.turn(text).crisis_level < L.L3
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "准备好了，就今晚的考试",
+        "我定在周五去医院复诊",
+        "我还没准备好，明天再说",
+        "他说他准备好了，就今晚",
+        "决定好了，周五给热线打电话",
+    ],
+)
+def test_an_everyday_plan_a_denied_one_or_someone_elses_after_own_l2_is_no_l3(text: str) -> None:
+    session = _session()
+    assert session.turn("我真的不想活了").in_crisis
+    assert session.turn(text).crisis_level < L.L3
+
+
+def test_a_plan_and_a_time_after_a_confirmation_asks_first_then_l3() -> None:
+    session = _confirmed()
+    asked = session.turn(PLAN_TIME[0])
+    assert asked.in_crisis
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    _urgent(asked.reply)
+    result = session.turn("嗯")
+    assert result.in_crisis
+    assert result.crisis_level is L.L3
+
+
+def test_a_plan_and_a_time_after_a_confirmation_then_a_clear_no_keeps_it() -> None:
+    session = _confirmed()
+    session.turn(PLAN_TIME[1])
+    answered = session.turn("没有，我是说周五去复查")
+    assert answered.crisis_level < L.L2

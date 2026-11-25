@@ -4555,6 +4555,49 @@ compositions:
                "会议", "开会", "店", "公司", "工作", "项目", "代码", "文档", "论文", "视频", "直播", "节目"]
       unless_window: 20
       unless_across: true
+    # A readiness or a resolve, then the moment in a clause of its own (准备好了，就今晚;
+    # 决定好了，就这周五) after the user's own risk: ASK_INTENT_READY_MOMENT and
+    # S1_DEATH_THEN_MOMENT with the death said on an earlier turn. Occasions void it.
+    - id: S1_READY_MOMENT_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: moment_heads
+      tails: moment_times
+      max_gap: 3
+      context: ["@resolve_any", "准备好了", "都准备好了", "我准备好了", "我已经准备好了", "准备就绪", "我已经准备好",
+                "我准备好", "决定好了", "决定了", "想好了", "定好了", "下定决心了"]
+      context_window: 6
+      trailing: ["@particles", "@clock"]
+      unless: ["@moment_everyday", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # The moment fixed (我定在周五, 日子选在下礼拜) after the user's own risk:
+    # S1_DEATH_TIME_FIXED with the death said on an earlier turn.
+    - id: S1_TIME_FIXED_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["定在", "就定在", "定在了", "选在", "就选在", "选在了", "挑在", "就挑在"]
+      tails: ["@moment_times", "礼拜", "下礼拜", "这礼拜", "下个礼拜", "下个月", "月底", "过完年"]
+      max_gap: 3
+      unless: ["@moment_everyday", "@death_intent_void", "婚", "领证", "订婚", "摆酒", "手术", "产检", "截止", "ddl",
+               "签约", "交房", "开工", "动工", "医院", "医生", "复诊", "复查", "咨询", "热线", "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
+    # A time and doing it, the clause ending there (今晚就动手, 周五就了断) after the user's
+    # own risk: S1_DEATH_TIME_DO with the death said on an earlier turn, its tails with 就
+    # (今晚结束 alone is an event that ends). Trips, work, errands and occasions void it.
+    - id: S1_TIME_DO_AFTER_RISK
+      level: L3
+      after: own_risk
+      heads: ["@plan_time", "现在", "马上", "立刻", "这就"]
+      tails: ["就动手", "就结束", "就了断", "就行动", "就了结", "就走", "就离开", "动手", "了断", "了结"]
+      max_gap: 3
+      trailing: ["@particles"]
+      unless: ["@moment_everyday", "@death_intent_void", "@leaving", "@return_marks", "车", "票", "航班", "行李",
+               "上班", "开会", "饭", "公司", "学校", "宿舍", "医院", "医生", "复诊", "复查", "咨询", "热线",
+               "打电话", "求助", "治疗"]
+      unless_window: 24
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]
