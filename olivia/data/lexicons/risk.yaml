@@ -4540,6 +4540,21 @@ compositions:
                "留言", "前女友", "前男友", "前任"]
       unless_window: 24
       unless_across: true
+    # Starting over (这局想去重开了, 好想重开一局) in a session that has been in the crisis
+    # flow: the life code of ASK_INTENT_LIFE_LEFT_EARLY without its life word, 这局 being
+    # the life. Alone it is a game; game words, meetings and work void it here too.
+    - id: ASK_INTENT_RESTART_AFTER_CRISIS
+      level: ASK
+      after: crisis
+      raise_with_risk: true
+      heads: ["想", "要", "好想", "真想", "该", "准备", "打算", "决定", "去"]
+      tails: ["重开", "重来一局", "重开一局", "重新开一局", "重新来一局", "投胎重来", "重新投胎"]
+      max_gap: 3
+      unless: ["@fiction", "游戏", "关卡", "副本", "账号", "存档", "读档", "这把", "排位", "匹配", "段位", "队友",
+               "开黑", "掉线", "输", "赢", "开局", "打游戏", "打得", "打完", "玩游戏", "玩家", "boss", "地图", "服务器", "电脑", "手机", "软件", "系统",
+               "会议", "开会", "店", "公司", "工作", "项目", "代码", "文档", "论文", "视频", "直播", "节目"]
+      unless_window: 20
+      unless_across: true
 hyperbole:
   - id: HYP_DEATH_IDIOM
     patterns: ["想死的心都有了", "要死要死"]

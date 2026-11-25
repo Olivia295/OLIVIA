@@ -180,6 +180,7 @@ CONTEXT_ONLY = [
     ("下礼拜一我就走", "ASK_INTENT_GO_AT_TIME_AFTER_CRISIS"),
     ("我还是打算走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
     ("我决定了还是要走", "ASK_INTENT_STILL_GO_AFTER_CRISIS"),
+    ("这局想去重开了", "ASK_INTENT_RESTART_AFTER_CRISIS"),
 ]
 
 
@@ -198,6 +199,7 @@ def test_a_context_only_cue_is_reported_and_counts_for_nothing(text: str, cue: s
     [
         "下礼拜一我就走，去新公司报到",
         "我还是打算走，回老家发展",
+        "这把游戏输了，想重开",
     ],
 )
 def test_everyday_denied_or_someone_elses_words_are_no_context_cue(text: str) -> None:

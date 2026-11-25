@@ -13,6 +13,8 @@
    asks the direct question first; a confirmation taken back still voids it at once. These
    words count only in a session that has been in the crisis flow: on their own (a new
    job, a move) they are ordinary talk.
+4. "这局想去重开了" in a session that has been in the crisis flow is a euphemism and asks
+   first like the farewell family; on its own, and with game words, it is ordinary talk.
 
 Every sentence here was written for this round; none comes from an evaluation set or the
 red-team suite.
@@ -294,3 +296,30 @@ def test_going_after_a_crisis_that_ended_is_the_farewell_family() -> None:
     result = session.turn(GOING[0])
     assert result.in_crisis
     assert result.crisis_level >= L.L2
+
+
+# -- 4. "这局想去重开了" -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["这局想去重开了", "这一局我想重开了", "好想重开一局"])
+def test_starting_over_after_a_confirmation_asks_first(text: str) -> None:
+    session = _confirmed()
+    asked = session.turn(text)
+    assert asked.in_crisis
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    assert session.turn("嗯").crisis_level >= L.L2
+
+
+@pytest.mark.parametrize(
+    "text", ["这局想去重开了", "这把游戏输了，想重开", "队友太坑了，这局想重开", "好想重开一局"]
+)
+def test_starting_over_on_its_own_is_ordinary_talk(text: str) -> None:
+    result = _session().turn(text)
+    assert result.reply_kind is not ReplyKind.SAFETY_CHECK
+    assert not result.in_crisis
+
+
+@pytest.mark.parametrize("text", ["这把游戏输了，想重开", "队友太坑了，这局排位想重开"])
+def test_starting_over_a_game_after_a_confirmation_asks_nothing(text: str) -> None:
+    session = _confirmed()
+    assert session.turn(text).reply_kind is not ReplyKind.SAFETY_CHECK
