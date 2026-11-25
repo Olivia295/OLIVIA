@@ -92,7 +92,10 @@ waiting gets ``followups.no_pending_feedback`` and a short request to wipe the m
 ("清空所有记忆", below L1) gets ``followups.forget_hint`` (``olivia forget --all``,
 ``olivia memory``); neither is mirrored, and the stage holds (unless the battery or a
 crisis moves it). ``/unhelpful`` or aversion on a waiting card leads the reply with
-``followups.unhelpful_ack``.
+``followups.unhelpful_ack``. Session gaps (draft, G-0): a done phrase ("做完了") of at most
+``_DONE_AGAIN_MAX_CHARS`` characters within ``_DONE_AGAIN_WINDOW`` turns of a card's
+done, with no card waiting now and not leave-taking, is a meta turn of the same kind in
+S_explore, S_clarify or S_empower: ``notices.already_done``, no mirror, no card.
 
 Leaving for now (F5d): with no card waiting for feedback, a turn whose message takes
 leave (``TurnSignals.leave_taking``: "我去睡了", "今天就到这里吧") gets one
@@ -684,6 +687,13 @@ _MODEL_ASK_GAP: Final = 3
 _CARE_GAP: Final = 3
 # Round 4 (SDD §4.4): Arousal = SUDS / 10.
 _SUDS_SCALE: Final = 10
+# Session gaps: "做完了" again is heard as done up to this many turns after the card's done,
+# in a message of at most this many characters, outside these stages (they keep their own).
+_DONE_AGAIN_WINDOW: Final = 2
+_DONE_AGAIN_MAX_CHARS: Final = 12
+_DONE_AGAIN_OWN_STAGES: Final = frozenset(
+    {HelpStage.S_CRISIS, HelpStage.S_HAVEN, HelpStage.S_CLOSING, HelpStage.S_READY}
+)
 # Round 4: ``ReportedRisk.farewell`` of a farewell that opens the card alone ("永别了").
 _STRONG_FAREWELL: Final = 2
 
@@ -936,6 +946,9 @@ class Session:
         # Round 7 (re-test q3 第四节): the last reply was the waiting card's /done prompt; a
         # second message with words of its own then leaves the wait (``_new_request``).
         self._card_reminded = False
+        # Session gaps: the turn on which a waiting card was last marked done (/done or a
+        # done phrase); a short "做完了" soon after, with no card waiting, is heard as done.
+        self._done_turn: int | None = None
         # Round 6: the rule screen of this turn's answer to the question (or None).
         self._answer_rules: CrisisAssessment | None = None
         # The user said no to the D3 question this session (kept across sessions by A3/B3).
@@ -1468,12 +1481,30 @@ class Session:
                 or signals.hotline_police_fear
             )
         )
+        # Session gaps: "做完了" again soon after the card was marked done, with no card
+        # waiting now, is heard as done (one line, the stage holds), as a stray /done is;
+        # words of its own, leave-taking or the closing ritual's stages keep their replies.
+        done_again = (
+            calm_meta
+            and not privacy
+            and not why
+            and not (help_now or minor_now or third_now or hotline_now)
+            and pending is None
+            and signals.command is None
+            and signals.feedback is Command.DONE
+            and not signals.leave_taking
+            and self._done_turn is not None
+            and before_turns - self._done_turn <= _DONE_AGAIN_WINDOW
+            and len(normalize(text)) <= _DONE_AGAIN_MAX_CHARS
+            and self._state.current_stage not in _DONE_AGAIN_OWN_STAGES
+        )
         transition = step(
             self._tax,
             self._state,
             TurnInput(perception, status, signals, self._profile.persona_spectrum),
         )
-        if no_pending or forget or privacy or why or minor_now or hotline_now or help_now:
+        held = no_pending or forget or privacy or why or minor_now or hotline_now or help_now
+        if held or done_again:
             transition = self._held(transition)
         # Ruling 5 at L1: a requested card comes from the stabilization whitelist only (F2a).
         # A masked calming practice asked for by name (dogfood I2) is replaced by one from
@@ -1543,7 +1574,10 @@ class Session:
             and stage not in _OWN_REPLY_STAGES
         )
         info = None
-        if not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now):
+        if (
+            not (leaving or privacy or why or minor_now or third_now or hotline_now or help_now)
+            and not done_again
+        ):
             info = self._info_choice(
                 stage, perception, flags, signals, status, assessment.level, feedback, transition
             )
@@ -1564,6 +1598,7 @@ class Session:
             or ask
             or answer is not None
             or no_pending
+            or done_again
             or forget
             or privacy
             or why
@@ -1715,6 +1750,8 @@ class Session:
             rendered = self._hotline_reply(stage, now, signals, text)
         elif no_pending:
             rendered = self._followup(templates.no_pending_feedback, stage)
+        elif done_again and stage is transition.previous:
+            rendered = self._followup(self._notice("already_done"), stage)
         elif forget:
             rendered = self._followup(templates.forget_hint, stage)
         elif privacy:
@@ -1960,6 +1997,8 @@ class Session:
 
         if pending is not None and feedback is not None and not switch:
             self._apply_feedback(pending, feedback, now)
+            if feedback is Feedback.HELPFUL:
+                self._done_turn = turn_no
         # A card waits only while the session stays in the stage it was shown in. An
         # S_explore stabilization card also expires after one turn that is not about it
         # (no feedback, no clarification question), so a later request gets a new card.

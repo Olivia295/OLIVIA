@@ -110,13 +110,15 @@ _WELLBEING: Final = (
     "real_support",
 )
 _PLAIN_SLOTS: Final = frozenset({"user_name", "agent_name"})
-# utterances.yaml ``notices`` (dogfood I1, I2; 草稿：待 G-0): one paragraph each.
+# utterances.yaml ``notices`` (dogfood I1, I2; session gaps: already_done; 草稿：待 G-0): one
+# paragraph each.
 NOTICES: Final = (
     "advice_heard",
     "hotline_heard",
     "masked_practice",
     "masked_practice_why",
     "cardiac_care",
+    "already_done",
 )
 _NOTICE_MAX: Final = 80
 # utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
