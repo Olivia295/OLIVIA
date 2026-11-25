@@ -107,7 +107,14 @@ from olivia.core.safety.lexicon import (
     SafetyLexicons,
 )
 from olivia.core.safety.matcher import Match, PhraseMatcher
-from olivia.core.safety.normalize import bidi_readings, normalize
+from olivia.core.safety.normalize import (
+    Breaks,
+    bidi_readings,
+    clause_breaks,
+    normalize,
+    repeat_copy,
+    spans_copies,
+)
 from olivia.core.safety.reported import ReportedSpeech, farewell_strength, names_death
 from olivia.core.taxonomy import Taxonomy
 
@@ -250,13 +257,14 @@ def arbitrate(
 
 _REMEMBERED: Final = 4
 _T = TypeVar("_T")
+_K = TypeVar("_K")
 
 
-def _remember(memo: dict[str, _T], text: str, value: _T) -> _T:
-    """Keep ``value`` for ``text`` among the last ``_REMEMBERED`` texts."""
+def _remember(memo: dict[_K, _T], key: _K, value: _T) -> _T:
+    """Keep ``value`` for ``key`` (a text) among the last ``_REMEMBERED`` keys."""
     if len(memo) >= _REMEMBERED:
         del memo[next(iter(memo))]
-    memo[text] = value
+    memo[key] = value
     return value
 
 
@@ -291,7 +299,7 @@ class _CueIndex:
         # (the rule screen's level decides the mirror and the D3 answer): the second pass
         # reuses the first one's matches. Results never change once the index is built.
         self._scans: dict[str, tuple[Match, ...]] = {}
-        self._compositions: dict[str, tuple[CompositionHit, ...]] = {}
+        self._compositions: dict[tuple[str, Breaks], tuple[CompositionHit, ...]] = {}
         self.denial = _DenialIndex(lexicons.denial)
         self.recall = _RecallIndex(lexicons.recall_cap)
         self.reported = ReportedSpeech(lexicons.reported_speech, lexicons.compositions)
@@ -307,7 +315,14 @@ class _CueIndex:
     def scan(self, text: str) -> list[Match]:
         found = self._scans.get(text)
         if found is None:
-            found = _remember(self._scans, text, tuple(self.matcher.find_all(text)))
+            matches = self.matcher.find_all(text)
+            copy = repeat_copy(text)
+            if copy:
+                # A message said twice over (task G3): a phrase across the place where one
+                # copy meets the next was never said (药钱我都攒够了 药钱我都攒够了).
+                n = len(text)
+                matches = [m for m in matches if not spans_copies(m.start, m.end, copy, n)]
+            found = _remember(self._scans, text, tuple(matches))
         return list(found)
 
     def figurative_only(self, matches: Sequence[Match]) -> bool:
@@ -317,10 +332,13 @@ class _CueIndex:
         cover = _MaskCover(m for m, section in sections if section == "hyperbole")
         return bool(stage2) and all(cover.contains(m) for m in stage2)
 
-    def compose(self, text: str) -> list[CompositionHit]:
-        hits = self._compositions.get(text)
+    def compose(self, text: str, breaks: Breaks = ()) -> list[CompositionHit]:
+        """The compositions of normalized ``text``; ``breaks`` are those its original
+        whitespace made (``normalize.clause_breaks``, task G3)."""
+        key = (text, breaks)
+        hits = self._compositions.get(key)
         if hits is None:
-            hits = _remember(self._compositions, text, tuple(self.composer.find(text)))
+            hits = _remember(self._compositions, key, tuple(self.composer.find(text, breaks)))
         return list(hits)
 
     def fired_pairs(self, matches: Sequence[Match]) -> list[PairCue]:
@@ -561,9 +579,8 @@ class RuleRiskModel:
 
     def predict(self, text: str) -> RiskPrediction:
         normalized = normalize(text)
-        return self.predict_matches(
-            self._index.scan(normalized), self._index.compose(normalized), normalized
-        )
+        composed = self._index.compose(normalized, clause_breaks(text))
+        return self.predict_matches(self._index.scan(normalized), composed, normalized)
 
     def predict_matches(
         self,
@@ -770,7 +787,9 @@ class SafetyScreen:
         user_clear = (
             not self._index.fired_pairs(matches)
             and all(inside(m.start, m.end) for m in matches if m.key in cues or m.key in anchors)
-            and all(inside(h.start, h.end) for h in self._index.compose(normalized))
+            and all(
+                inside(h.start, h.end) for h in self._index.compose(normalized, clause_breaks(text))
+            )
         )
         level = CrisisLevel.L0
         plan = False
@@ -809,7 +828,7 @@ class SafetyScreen:
         matches = self._index.scan(normalized)
         cues = self._index.cues
         stage1 = [m for m in matches if m.key in cues and cues[m.key].section == "stage1"]
-        composed = self._index.compose(normalized)
+        composed = self._index.compose(normalized, clause_breaks(text))
         # Like the Stage 2 compositions, an L3 one is reported only when no Stage 1 phrase
         # already gives the plan evidence.
         plans = [] if stage1 else [h.entry for h in composed if h.entry.level is CrisisLevel.L3]
@@ -944,7 +963,7 @@ class SafetyScreen:
         normalized = normalize(text)
         matches = self._index.scan(normalized)
         cues = self._index.cues
-        if self._index.compose(normalized):
+        if self._index.compose(normalized, clause_breaks(text)):
             return False
         for match in matches:
             if match.key in self._index.pair_anchor_keys:

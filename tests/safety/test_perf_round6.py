@@ -70,9 +70,9 @@ def test_the_shared_index_scans_a_message_once_for_both_screens(monkeypatch) -> 
         calls.append("scan")
         return real_find(text)
 
-    def counting_compose(text: str):  # type: ignore[no-untyped-def]
+    def counting_compose(text: str, breaks=()):  # type: ignore[no-untyped-def]
         calls.append("compose")
-        return real_compose(text)
+        return real_compose(text, breaks)
 
     monkeypatch.setattr(index.matcher, "find_all", counting_find)
     monkeypatch.setattr(index.composer, "find", counting_compose)

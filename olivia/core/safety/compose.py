@@ -28,6 +28,7 @@ in the message, not per phrase of the entry (F6a: the entries keep growing).
 
 from __future__ import annotations
 
+import unicodedata
 from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass
@@ -37,9 +38,14 @@ from weakref import WeakValueDictionary
 
 from olivia.core.safety.lexicon import Composition, CompositionRules
 from olivia.core.safety.matcher import Match, PhraseMatcher
+from olivia.core.safety.normalize import Breaks, repeat_copy, spans_copies
 
 # What may follow a name said alone to address someone (哥哥，妈啊，).
 _VOCATIVE_TAILS: Final = frozenset({"", "啊", "呀", "哇", "哈", "喂", "呐", "嘛", "啦", "哦"})
+
+# The stops that end a sentence as well as a clause (task G3, 2026-11-25): a subject is
+# never carried over one. In normalized text ！？ are !? and … is "...".
+_SENTENCE_ENDS: Final = frozenset("。.!?！？…")
 
 
 @dataclass(frozen=True)
@@ -168,32 +174,72 @@ class _EntrySets:
 
 
 class _Text:
-    """Per-message facts shared by every entry: clauses, negators and person words."""
+    """Per-message facts shared by every entry: clauses, sentences, negators and person
+    words."""
 
     def __init__(
-        self, text: str, rules: CompositionRules, lists: _Lists, found: dict[str, list[Match]]
+        self,
+        text: str,
+        rules: CompositionRules,
+        lists: _Lists,
+        found: dict[str, list[Match]],
+        breaks: Breaks = (),
     ) -> None:
         n = len(text)
         self.text = text
         self.found = found
+        # Task G3 (2026-11-25): a break of the whitespace the text was typed with
+        # (normalize.clause_breaks) ends a clause right before its position, like a stop that
+        # takes no room, and a line break ends the sentence too; a stop of the sentence-end
+        # kind (_SENTENCE_ENDS) does as well. Only the checks that read a clause as the room
+        # of one statement see these breaks: the subject, ``leading``, ``trailing`` and an
+        # ``unless`` kept to its clause. Two parts still join across whitespace, and a
+        # negator still reaches across it, because a space is as often typed between the
+        # words of one clause (我打算 今晚 去死, 我没有 想死) as between two clauses.
+        cuts = {p: line for p, line in breaks if 0 < p < n}
         # clause_start[i]: first index of the clause holding position i; clause_end[i]: the
-        # index of the first stop at or after i (n when none).
+        # index of the first stop at or after i, or of the first break after i (n when
+        # none). stop_start[i]: the same start with stops alone (negation reads that one).
+        # sentence_start[i] / sentence_end[i]: the same for the sentence holding i.
         self.clause_start = [0] * (n + 1)
         self.clause_end = [n] * (n + 1)
+        self.stop_start = [0] * (n + 1)
+        self.sentence_start = [0] * (n + 1)
+        self.sentence_end = [n] * (n + 1)
         self._stops_before = [0] * (n + 1)
-        start = 0
+        start = stop_start = sentence = 0
         for i, ch in enumerate(text):
+            if i in cuts:
+                start = i
+                if cuts[i]:
+                    sentence = i
             self.clause_start[i] = start
+            self.stop_start[i] = stop_start
+            self.sentence_start[i] = sentence
             stop = ch in rules.stops
             self._stops_before[i + 1] = self._stops_before[i] + stop
             if stop:
-                start = i + 1
+                start = stop_start = i + 1
+                if ch in _SENTENCE_ENDS:
+                    sentence = i + 1
         self.clause_start[n] = start
-        end = n
+        self.stop_start[n] = stop_start
+        self.sentence_start[n] = sentence
+        end = sentence_end = n
         for i in range(n - 1, -1, -1):
             if text[i] in rules.stops:
                 end = i
+                if text[i] in _SENTENCE_ENDS:
+                    sentence_end = i
             self.clause_end[i] = end
+            self.sentence_end[i] = sentence_end
+            if i in cuts:
+                end = i
+                if cuts[i]:
+                    sentence_end = i
+        # A message said twice or more over (整句重复): no match may span the place where one
+        # copy meets the next (normalize.repeat_copy; 0 when it is no such message).
+        self.copy = repeat_copy(text)
         real = self._real_negators(text, lists)
         self.negators = _Spans(real)
         self._unless_negator_ends = sorted(
@@ -216,7 +262,7 @@ class _Text:
     def negated(self, phrase: Match, lookback: int) -> bool:
         """A real negator ends within ``lookback`` characters before ``phrase``, in its
         clause (不打算, 没想好)."""
-        look = max(self.clause_start[phrase.start], phrase.start - lookback)
+        look = max(self.stop_start[phrase.start], phrase.start - lookback)
         return self.negators.any_inside(look, phrase.start)
 
     def vocative(self, person: _Person) -> bool:
@@ -227,7 +273,22 @@ class _Text:
         return start == person.start and rest in _VOCATIVE_TAILS
 
     def no_stop(self, a: int, b: int) -> bool:
+        """No stop in ``text[a:b]`` (whitespace breaks do not count)."""
         return self._stops_before[b] == self._stops_before[a]
+
+    def end_of_clause(self, end: int) -> int:
+        """The end of the clause holding ``text[:end]``'s last character (a break right at
+        ``end`` ends it there)."""
+        return self.clause_end[max(end - 1, 0)]
+
+    def end_of_sentence(self, end: int) -> int:
+        """The end of the sentence holding ``text[:end]``'s last character."""
+        return self.sentence_end[max(end - 1, 0)]
+
+    def across_copies(self, start: int, end: int) -> bool:
+        """Does ``text[start:end]`` span the place where one copy of a repeated message
+        meets the next?"""
+        return spans_copies(start, end, self.copy, len(self.text))
 
     def spans(self, phrases: Set[str]) -> list[Match]:
         """Every occurrence of ``phrases``, in no particular order."""
@@ -343,8 +404,10 @@ class Composer:
         self._by_part = {phrase: tuple(roles) for phrase, roles in by_part.items()}
         self._needed = tuple(needed)
 
-    def find(self, text: str) -> list[CompositionHit]:
-        """The first accepted match of each entry that fires, in entry order."""
+    def find(self, text: str, breaks: Breaks = ()) -> list[CompositionHit]:
+        """The first accepted match of each entry that fires, in entry order. ``breaks``
+        are the clause and sentence breaks the original whitespace made in ``text``
+        (:func:`~olivia.core.safety.normalize.clause_breaks`)."""
         if not self._rules.entries or not text:
             return []
         found: dict[str, list[Match]] = {}
@@ -359,7 +422,7 @@ class Composer:
         candidates = sorted(i for i, mask in seen.items() if mask == needed[i])
         if not candidates:
             return []
-        facts = _Text(text, self._rules, self._lists, found)
+        facts = _Text(text, self._rules, self._lists, found, breaks)
         hits: list[CompositionHit] = []
         for index in candidates:
             entry, sets = self._sets[index]
@@ -430,24 +493,32 @@ class Composer:
         rules = self._rules
         if own.blockers.any_inside(first.end, second.start):
             return False
+        if facts.copy and facts.across_copies(first.start, second.end):
+            return False
         clause = facts.clause_start[first.start]
-        look = max(clause, first.start - rules.lookback)
+        # A negator reaches across whitespace (我没有 想死): its clause ends at stops alone.
+        negation_from = facts.stop_start[first.start]
+        look = max(negation_from, first.start - rules.lookback)
         if facts.negators.any_inside(look, first.start) or facts.negators.any_inside(
             first.end, second.start
         ):
             return False
         if entry.clause_negation and any(
             _covered(facts.text, negator.end, first.start, self._reach)
-            for negator in facts.negators.inside(clause, look)
+            for negator in facts.negators.inside(negation_from, look)
         ):
             return False
         if entry.persons:
             subject_from = max(clause, second.start - rules.subject_window)
             person = facts.last_person(subject_from, second.start, (first, second))
-            if person is None and subject_from == clause > 0:
+            sentence = facts.sentence_start[clause]
+            if person is None and subject_from == clause > sentence:
                 # A clause that names nobody keeps the subject of the clause before it
                 # (我朋友最近很难过，总说要自杀); a listener (谢谢你，) is not carried over.
-                earlier = max(0, clause - 2 * rules.subject_window)
+                # Never across the end of a sentence (task G3, 2026-11-25): in "室友今天搬走
+                # 了。下班就去那座桥上跳下去" the plan is the user's own. A sentence that
+                # names nobody is read as the user's, the more sensitive reading.
+                earlier = max(sentence, clause - 2 * rules.subject_window)
                 person = facts.last_person(earlier, clause, (), carried=True)
                 if person is not None and facts.vocative(person):
                     # A clause that is only a name (哥哥，等我死了…) addresses someone; it
@@ -472,8 +543,16 @@ class Composer:
             b = second.end + entry.unless_window
             if entry.unless_across:
                 a, b = max(0, a), min(len(facts.text), b)
+                if entry.also and self._own_sentence(entry, own, facts, first, second):
+                    # Task G3 (2026-11-25): what the entry needs besides the match (a death
+                    # named, for S1_DEATH_THEN_MOMENT) is said in the match's own sentence,
+                    # so another sentence's words do not void it: in "室友今天搬走了。我想
+                    # 死，今晚就动手" the roommate has no part in the plan. When that is said
+                    # only in another sentence (我弟弟不想活了。我今晚就走), they still do.
+                    a = max(a, facts.sentence_start[first.start])
+                    b = min(b, facts.end_of_sentence(second.end))
             else:
-                a, b = max(clause, a), min(facts.clause_end[second.end], b)
+                a, b = max(clause, a), min(facts.end_of_clause(second.end), b)
             gap = self._rules.unless_negation_gap
             span = (first.start, second.end)
             if any(not facts.denied(m, gap, span) for m in own.unless.inside(a, b)):
@@ -482,7 +561,26 @@ class Composer:
         if entry.leading is not None and not _only(text, clause, first.start, entry.leading):
             return False
         if entry.trailing is not None:
-            return _only(text, second.end, facts.clause_end[second.end], entry.trailing)
+            end = facts.end_of_clause(second.end)
+            return _only(text, second.end, end, entry.trailing, decorations=True)
+        return True
+
+    @staticmethod
+    def _own_sentence(
+        entry: Composition, own: _EntryFacts, facts: _Text, first: Match, second: Match
+    ) -> bool:
+        """Every ``also`` group (and the context, if any) has an occurrence within its
+        window inside the sentence that holds the match."""
+        lo = facts.sentence_start[first.start]
+        hi = facts.end_of_sentence(second.end)
+        needs = [(group.window, spans) for group, spans in zip(entry.also, own.also, strict=True)]
+        if entry.context:
+            needs.append((entry.context_window, own.context))
+        for window, spans in needs:
+            a = lo if window is None else max(lo, first.start - window)
+            b = hi if window is None else min(hi, second.end + window)
+            if not spans.overlaps(a, b):
+                return False
         return True
 
 
@@ -503,9 +601,12 @@ def _covered(text: str, start: int, end: int, by_first: Mapping[str, tuple[str, 
     return start == end
 
 
-def _only(text: str, start: int, end: int, phrases: tuple[str, ...]) -> bool:
+def _only(
+    text: str, start: int, end: int, phrases: tuple[str, ...], *, decorations: bool = False
+) -> bool:
     """Is ``text[start:end]`` made of ``phrases`` alone (any number, any order, possibly
-    none)?
+    none)? With ``decorations``, emoji, other symbols, punctuation and emote codes may stand
+    among them too (:func:`_decoration_end`).
 
     Any split counts, not only the greedy one: with i and i'm listed, i'mgonna is read as
     i'm + gonna. Nothing is copied and the scan stops at the first position no split
@@ -521,4 +622,29 @@ def _only(text: str, start: int, end: int, phrases: tuple[str, ...]) -> bool:
                 if j <= end and text.startswith(phrase, i):
                     reachable.add(j)
                     furthest = max(furthest, j)
+            if decorations:
+                j = _decoration_end(text, i, end)
+                if j > i:
+                    reachable.add(j)
+                    furthest = max(furthest, j)
     return end in reachable
+
+
+# Task G3 (2026-11-25, metamorphic testing): what may follow a match with ``trailing``
+# besides its phrases. An emoji (😭, 🙃, 😮‍💨 once normalize has dropped the joiner), any
+# other symbol or punctuation mark that does not end the clause (——, 》), and an emote
+# code of a chat app ([哭], [捂脸], 【doge】) add no words: "我想死，今晚就动手😭" still
+# ends there.
+_EMOTE_BRACKETS: Final = {"[": "]", "【": "】"}
+_EMOTE_MAX: Final = 6
+
+
+def _decoration_end(text: str, i: int, end: int) -> int:
+    """Where the decoration at ``text[i]`` ends (``i`` when none starts there)."""
+    ch = text[i]
+    close = _EMOTE_BRACKETS.get(ch)
+    if close is not None:
+        j = text.find(close, i + 1, min(end, i + _EMOTE_MAX + 2))
+        if j > i + 1:
+            return j + 1
+    return i + 1 if unicodedata.category(ch)[0] in "PS" else i
