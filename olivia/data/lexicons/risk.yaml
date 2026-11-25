@@ -582,8 +582,9 @@ compositions:
             # Self-harm named, negated or not (F16a), like 不想死 above: "我不会伤害自己的，药
             # 我都攒够了" is plan evidence because of 伤害自己.
             "伤害自己", "伤害我自己"]
+    # 收好 (put away) is S1_MEANS_PUT_AWAY's own tail (负责人 2026-11-25 决定).
     prepared_marks: ["准备好", "买好", "备好", "藏好", "攒好", "攒够", "攒起来", "囤好", "囤起来",
-                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来", "收好",
+                     "挂好", "系好", "磨好", "准备齐", "备齐", "凑齐", "凑够", "买回来",
                      "存够", "存好"]
     # Everyday reasons for the same objects; they void a means match in the same clause.
     everyday: ["西瓜", "切菜", "做饭", "水果", "感冒", "发烧", "医院", "医生", "野营", "露营",
@@ -929,6 +930,20 @@ compositions:
       level: L3
       heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
       tails: prepared_marks
+      max_gap: 4
+      order: either
+      context: death
+      unless: everyday
+      unless_window: 10
+    # A means put away (刀我已经收好了) next to a death word: S1_MEANS_PREPARED's frame with
+    # the one ready mark that is also what a user says after putting a knife or pills out of
+    # reach ("我不会伤害自己的，刀我已经收好了"). Still Stage 1 plan evidence for the screen;
+    # 负责人 2026-11-25 决定: alone in the message (`put_away_ask` below) it is a plan
+    # candidate, and the session asks once first.
+    - id: S1_MEANS_PUT_AWAY
+      level: L3
+      heads: ["绳子", "绳", "刀片", "刀", "药", "药片", "安眠药", "炭", "木炭", "农药", "东西"]
+      tails: ["收好"]
       max_gap: 4
       order: either
       context: death
@@ -4742,3 +4757,34 @@ hyperbole_ask:
            "了断", "了结", "解脱", "一了百了", "结束这一切", "结束生命", "结束自己", "活着", "活下去",
            "不想活", "去死", "死掉", "自杀", "轻生", "寻死", "消失", "离开这个世界", "没意思", "没意义",
            "撑不下去", "撑不住", "绝望", "不想醒"]
+# 负责人 2026-11-25 决定: a means put away (S1_MEANS_PUT_AWAY: "我不想死，刀我已经收好了") is
+# what a user says after putting the knife or the pills out of reach as often as what one
+# says after making them ready. The screen keeps it Stage 1 (L3) but marks it a plan
+# candidate (CrisisAssessment.plan_candidate) when it is the message's only cue: every
+# Stage 1 cue of the message is one of `ids`, the rules find nothing else of the user's
+# own (no Stage 2 phrase, pair, other composition or pair anchor outside a negation mask;
+# a composition over the same words, such as ASK_INTENT_MEANS_OBTAINED on 刀片 + 收好, is
+# the same phrase) and no `vetoes` phrase lies anywhere in it: a plan, a time, a farewell,
+# a hedge or a contrast, keeping it at hand or hidden, another means or place. The session
+# then asks the direct question once first, the emergency numbers in front; a clear no or a
+# safety confirmation that passes F10 goes back to the chat, anything else is L3. With any
+# other risk earlier in the session it is L3 at once. Read by lexicon.PutAwayAskRules;
+# without this section every such cue stays plain L3 (fail-safe).
+put_away_ask:
+  ids: ["S1_MEANS_PUT_AWAY"]
+  vetoes: [
+           # a plan
+           "计划", "打算", "决定", "准备", "想好", "安排", "交代", "动手", "就等", "等着", "留着", "备用",
+           "用得上", "用得着", "要用", "用的时候", "到时候", "以备",
+           # a time
+           "今晚", "今夜", "今天", "明天", "明晚", "后天", "待会", "等会", "一会儿", "过几天", "过两天",
+           "以后", "将来", "迟早", "早晚", "很快", "马上", "立刻", "现在就", "周末", "下周", "月底",
+           "晚上", "半夜", "凌晨", "那天", "随时",
+           # a farewell
+           "再见", "永别", "告别", "道别", "最后", "遗书", "遗言", "后事", "下辈子", "来世",
+           # a hedge or a contrast
+           "暂时", "先收", "目前", "至少", "可能", "也许", "说不定", "万一", "如果", "要是", "还在",
+           "但", "可是", "不过", "然而", "却", "偏偏",
+           # at hand, hidden, another means or a place
+           "藏", "手边", "身边", "枕头", "床底", "床头", "随身", "绳", "炭", "农药", "煤气", "楼顶",
+           "天台", "阳台", "桥", "铁轨", "跳", "割"]

@@ -54,6 +54,7 @@ _REACH_SECTION: Final = "reach_out"
 _MODEL_ASK_SECTION: Final = "model_ask"
 _HYPERBOLE_ASK_SECTION: Final = "hyperbole_ask"
 _HYPERBOLE_ASK_LISTS: Final = ("stems", "links", "wishes", "vetoes")
+_PUT_AWAY_SECTION: Final = "put_away_ask"
 _REACH_LISTS: Final = ("phrases", "negators", "blocked_after", "vetoes")
 # Clause ends on normalized text (NFKC already folds ，！？；： to , ! ? ; :).
 _REACH_CLAUSE_ENDS: Final = ",.!?;:、。~…"
@@ -438,6 +439,22 @@ class HyperboleAskRules:
 
 
 @dataclass(frozen=True)
+class PutAwayAskRules:
+    """The ``put_away_ask`` section (负责人 2026-11-25 决定): a means put away next to a
+    death word ("我不想死，刀我已经收好了") that the session asks about once first.
+
+    ``ids`` are L3 compositions (Stage 1 plan evidence for the screen). When every Stage 1
+    cue of a message is one of them, the rules find no other cue of the user's own and no
+    ``vetoes`` phrase (a plan, a time, a farewell, a hedge, a contrast, a place, keeping it
+    at hand) lies in it, the screen marks the L3 a plan candidate
+    (``CrisisAssessment.plan_candidate``). Empty when the section is absent: plain L3
+    (fail-safe)."""
+
+    ids: frozenset[str] = frozenset()
+    vetoes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RedFlagCue:
     id: str
     code: str
@@ -462,6 +479,7 @@ class SafetyLexicons:
     reach_out: ReachOutRules = ReachOutRules()
     model_ask: ModelAskRules = ModelAskRules()
     hyperbole_ask: HyperboleAskRules = HyperboleAskRules()
+    put_away_ask: PutAwayAskRules = PutAwayAskRules()
 
     def cues(self, section: RiskSection) -> tuple[RiskCue, ...]:
         return tuple(cue for cue in self.risk.values() if cue.section == section)
@@ -488,6 +506,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
     reach_out = _parse_reach_out(risk_doc)
     model_ask = _parse_model_ask(risk_doc)
     hyperbole_ask = _parse_hyperbole_ask(risk_doc, seen_ids)
+    put_away_ask = _parse_put_away_ask(risk_doc, compositions)
     red_flags, negations = _parse_red_flags(tax, flag_doc, seen_ids)
     return SafetyLexicons(
         risk=MappingProxyType(risk),
@@ -503,6 +522,7 @@ def load_safety_lexicons(tax: Taxonomy, directory: Path | None = None) -> Safety
         reach_out=reach_out,
         model_ask=model_ask,
         hyperbole_ask=hyperbole_ask,
+        put_away_ask=put_away_ask,
     )
 
 
@@ -605,6 +625,7 @@ def _parse_risk(
         _REACH_SECTION,
         _MODEL_ASK_SECTION,
         _HYPERBOLE_ASK_SECTION,
+        _PUT_AWAY_SECTION,
     }
     _check_keys(doc, allowed, _RISK_FILE)
     owners: dict[str, str] = {}
@@ -1076,6 +1097,31 @@ def _parse_hyperbole_ask(doc: Mapping[str, Any], seen_ids: dict[str, str]) -> Hy
                 f"{where}: veto {veto!r} lies inside frames {inside[:3]}, so it never applies"
             )
     return HyperboleAskRules(cue_id, frames, lists["vetoes"])
+
+
+def _parse_put_away_ask(doc: Mapping[str, Any], compositions: CompositionRules) -> PutAwayAskRules:
+    """Parse the optional ``put_away_ask`` section (负责人 2026-11-25 决定): its ids must be
+    L3 compositions; its vetoes go to a matcher of their own. Without any composition
+    nothing can fire, so the section is read as absent."""
+    if _PUT_AWAY_SECTION not in doc or not compositions.entries:
+        return PutAwayAskRules()
+    where = f"{_RISK_FILE} {_PUT_AWAY_SECTION}"
+    node = doc[_PUT_AWAY_SECTION]
+    if not isinstance(node, dict):
+        raise LexiconError(f"{where}: must be a mapping")
+    _check_keys(node, {"ids", "vetoes"}, where)
+    raw_ids = node.get("ids")
+    if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(i, str) for i in raw_ids):
+        raise LexiconError(f"{where}: 'ids' must be a non-empty list of composition ids")
+    plans = {e.id for e in compositions.entries if e.level is CrisisLevel.L3}
+    unknown = sorted(set(raw_ids) - plans)
+    if unknown:
+        raise LexiconError(f"{where}: ids {unknown} are not L3 compositions")
+    vetoes = _normalized_list(node.get("vetoes"), f"{where} vetoes")
+    repeated = sorted({p for p in vetoes if vetoes.count(p) > 1})
+    if repeated:
+        raise LexiconError(f"{where} vetoes: phrases {repeated} are repeated")
+    return PutAwayAskRules(frozenset(raw_ids), vetoes)
 
 
 def _parse_reach_out(doc: Mapping[str, Any]) -> ReachOutRules:

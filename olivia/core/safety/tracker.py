@@ -540,10 +540,18 @@ class CrisisTracker:
             and (self._risk_seen or self._had_crisis)
         )
 
+    @property
+    def risk_shown(self) -> bool:
+        """The session showed risk before this turn: an earlier turn whose rules saw risk
+        (rule level L1 or above, or a D3 cue; the figure of speech and a means put away
+        alone excepted) or an earlier crisis. 负责人 2026-11-25 决定: a means put away alone
+        (``CrisisAssessment.plan_candidate``) asks first only without it."""
+        return self._risk_seen or self._had_crisis
+
     def _note_risk(self, assessment: CrisisAssessment) -> None:
         """Remember a turn whose rules saw risk (rule level L1 or above, or a D3 cue), the
-        figure of speech alone excepted."""
-        if self._is_figure(assessment):
+        figure of speech alone and a means put away alone (a plan candidate) excepted."""
+        if self._is_figure(assessment) or assessment.plan_candidate:
             return
         rule = assessment.rule_level or CrisisLevel.L0
         if rule >= CrisisLevel.L1 or assessment.asks_intent:
