@@ -6,6 +6,8 @@
    passes F10 (§9.4 第 17、26 条) returns to the ordinary chat; a yes, an unclear answer, no
    answer or any other cue enters the crisis flow at L3. With other risk earlier in the
    session (a rule L1 or a D3 cue, or a crisis) it is L3 at once, as before.
+2. "不是不想活，就是太累了" answers a direct question (D3 or a model-only alarm's) with a no;
+   "不是不想死，就是太累了" (a wish to die) still enters the crisis flow.
 
 Every sentence here was written for this round; none comes from an evaluation set or the
 red-team suite.
@@ -21,6 +23,7 @@ import pytest
 from olivia.core.language.engine import load_language_data
 from olivia.core.models import CrisisLevel as L
 from olivia.core.models import PersonaProfile, UserRegion
+from olivia.core.safety.crisis import RiskPrediction
 from olivia.core.session import ReplyKind, Session, TurnResult
 from olivia.core.taxonomy import load_taxonomy
 
@@ -28,6 +31,19 @@ TAX = load_taxonomy()
 NOW = datetime(2026, 10, 22, 15, 0, tzinfo=UTC)
 RENDER = load_language_data(TAX).render
 L3_HEADING = RENDER.crisis_emergency_heading[L.L3]
+
+
+class Scripted:
+    """A risk model that rates the listed messages an unsure L2 and everything else L0."""
+
+    def __init__(self, unsure: dict[str, float]) -> None:
+        self.unsure = unsure
+
+    def predict(self, text: str) -> RiskPrediction:
+        score = self.unsure.get(text)
+        if score is None:
+            return RiskPrediction(L.L0, 0.05, ())
+        return RiskPrediction(L.L2, score, ())
 
 
 def _profile(region: str = "CN") -> PersonaProfile:
@@ -43,6 +59,16 @@ def _profile(region: str = "CN") -> PersonaProfile:
 def _session(region: str = "CN") -> Session:
     return Session.open(
         TAX, _profile(region), rng=random.Random(13), now=lambda: NOW, student=False
+    )
+
+
+def _scripted(unsure: dict[str, float]) -> Session:
+    return Session.open(
+        TAX,
+        _profile(),
+        rng=random.Random(13),
+        now=lambda: NOW,
+        model=Scripted(unsure),  # type: ignore[arg-type]
     )
 
 
@@ -149,3 +175,47 @@ def test_with_more_in_the_message_it_is_l3_at_once() -> None:
     result = _session().turn("我不想死，刀我已经收好了，今晚再说")
     assert result.in_crisis
     assert result.crisis_level is L.L3
+
+
+# -- 2. "不是……就是……" -------------------------------------------------------------------------
+
+D3_CUE = "我觉得自己是个累赘"
+MODEL_ONLY = "心里一直闷闷的"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "不是，就是不开心",
+        "不是那个意思，就是有点累",
+        "不是不想活，就是太累了",
+        "不是不开心，就是累",
+    ],
+)
+def test_not_that_just_tired_answers_the_d3_question_with_a_no(answer: str) -> None:
+    session = _session()
+    _asked(session.turn(D3_CUE))
+    result = session.turn(answer)
+    assert result.inspect["safety_check"] == "denied"
+    assert not result.in_crisis
+
+
+@pytest.mark.parametrize(
+    "answer", ["不是那个意思，就是有点累", "不是不想活，就是太累了", "我不是不想活，只是太累了"]
+)
+def test_not_that_just_tired_answers_a_model_only_question_with_a_no(answer: str) -> None:
+    session = _scripted({MODEL_ONLY: 0.42})
+    asked = session.turn(MODEL_ONLY)
+    assert asked.reply_kind is ReplyKind.SAFETY_CHECK
+    result = session.turn(answer)
+    assert result.inspect["safety_check"] == "denied"
+    assert not result.in_crisis
+
+
+@pytest.mark.parametrize("answer", ["不是不想死，就是太累了", "我不是不想死，就是没力气"])
+def test_not_not_wanting_to_die_enters_the_crisis(answer: str) -> None:
+    for session, first in ((_session(), D3_CUE), (_scripted({MODEL_ONLY: 0.42}), MODEL_ONLY)):
+        assert session.turn(first).reply_kind is ReplyKind.SAFETY_CHECK
+        result = session.turn(answer)
+        assert result.in_crisis
+        assert result.crisis_level >= L.L2
