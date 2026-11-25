@@ -338,6 +338,10 @@ def test_leading_is_read_from_the_lexicon() -> None:
         # 2026-10-28: doing it at a set time, meaninglessness as a clause of its own.
         "S1_TIME_DO_IT",
         "L1_NO_MEANING_ALONE",
+        # Round 8 (2026-11-25): a time or a waiting moment as a clause of its own after a
+        # resolve.
+        "ASK_INTENT_RESOLVED_TIME",
+        "ASK_INTENT_RESOLVED_WHEN",
     }
 
 

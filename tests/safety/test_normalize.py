@@ -64,6 +64,10 @@ SAME_IN_TRADITIONAL = frozenset(
     # Round 7 (2026-11-01): the round-7 frames (Wu 覅 / 毋, Cantonese 瞓 / 嘞 / 返, 熄灭, 菩萨,
     # 保姆, 烘焙 ...) and their everyday exceptions.
     "介佑刷剖勤喘嘞噪坑姆巡席庇抵擦毋汰洞涯液淘混漆烘焙熄王瞓章缺菩覅趴返"
+    # Round 8 (2026-11-25): passive ideation, the unnamed way and the plan with a time, and
+    # their everyday exceptions (士兵, 英雄, 警察, 罪犯, 人渣, 哲学, 政策, 受益人, 午觉打盹 ...).
+    "兵凡判否哲增士富察尿怖憾或摸政映渣犯珍畜瘦益盹碗罪肌至英警逢配金雄"
+    "仰佛娩宗展康延悲懂扭拒摘撕核歇烈瘤碑陵霾骨薪"
 )
 
 
