@@ -195,10 +195,9 @@ residual: {severity: 灾难性, likelihood: 中, risk: 4}
 status: 部分控制
 known_gaps:
   - {file: tests/redteam/known_gaps.yaml, kind: crisis recall, category: passive_ideation, count: 9}
-  - {file: tests/redteam/known_gaps_model.yaml, kind: crisis recall, category: passive_ideation, count: 1}
 ```
 
-默认的模型模式下仍有 1 条漏判（粤语），另有 4 条只得到直接询问（附热线），回答“是”、含糊或不回答才进危机流程。规则模式几乎全部漏掉，所以模型不可用或用户选 `--rules` 时这一危害明显加重（见 HAZ-34）。
+默认的模型模式下红队被动念头已没有登记的漏判：最后一条 rt242（粤语，繁体书写）在 2026-11-25 学生的输入改为先折叠繁体后通过（HAZ-07）；第八轮起原先只得到直接询问的 4 条（rt238、rt241、rt244、rt245）也直接进危机流程（`tests/redteam/known_gaps_model.yaml` 文件头）。规则模式几乎全部漏掉，所以模型不可用或用户选 `--rules` 时这一危害明显加重（见 HAZ-34）。
 
 ### HAZ-03 问方法未被拦截
 
@@ -346,11 +345,10 @@ evidence:
   - tests/safety/test_rules_method_r8.py::test_a_last_day_said_as_now_stays_l2
 residual: {severity: 灾难性, likelihood: 中, risk: 4}
 status: 部分控制
-known_gaps:
-  - {file: tests/redteam/known_gaps_model.yaml, kind: crisis recall, ids: [rt242], count: 1}
+known_gaps: []
 ```
 
-英文与粤语没有独立的成套用例与召回数字：`tests/safety/cases.yaml` 里英文句子只有零星几条，EVAL-4 也以普通话为主。登记的这条缺口是粤语被动念头（同时计入 HAZ-02）。
+英文与粤语没有独立的成套用例与召回数字：`tests/safety/cases.yaml` 里英文句子只有零星几条，EVAL-4 也以普通话为主。原先登记的那条模型模式缺口 rt242（粤语被动念头，繁体书写，同时计入 HAZ-02）在 2026-11-25 学生的输入先折叠繁体后通过（HAZ-07）；规则模式仍漏掉它（`tests/redteam/known_gaps.yaml`）。
 
 ### HAZ-07 繁体、异体与不可见字符绕过
 
@@ -361,12 +359,13 @@ hazard: 用户用繁体字、全角字符、零宽字符、方向控制符或非
 cause:
   - 词表只写简体
   - 粘贴的文本可能带不可见字符；终端可能送来 GBK 字节
-  - 学生模型收到的是原始文本（不经过繁简折叠），其字表几乎没有繁体字
+  - 学生模型的字表几乎没有繁体字；乾、著、後、於、覆、藉等 11 个繁体写法同时是合法简体字，只能原样交给学生
 effect: 同 HAZ-01；港澳台用户最可能受影响。
 initial: {severity: 灾难性, likelihood: 中, risk: 4}
 controls:
   - olivia/core/safety/normalize.py 规范化（去掉不可见字符、全角半角、方向控制符按两种读法都筛并取高）
-  - olivia/core/safety/_trad2simp.py 繁简折叠表（词表里每个字都已分类）
+  - olivia/core/safety/_trad2simp.py 繁简折叠表：手写 1540 对，加 scripts/gen_trad2simp.py 用 macOS 自带 ICU 生成的 1070 对（只收不能用 GB2312 编码的源字，排除 讎、囍、榖 这类有歧义或并非繁体的字；提交的是生成结果，各平台都只读这张表）；词表里每个字都已分类
+  - olivia/core/perception/student.py model_input（2026-11-25）：学生的输入在训练时的预处理之外只多两步，把源字不是合法简体字的 2599 对繁体折成简体，去掉不可见、格式字符与组合附加符；不做 NFKC、不去标点、空白仍按训练时合并（crisis.py 不用改）
   - olivia/cli.py clean_input（GBK 与残缺 UTF-8 输入）
 evidence:
   - tests/safety/test_crisis.py::test_traditional_chinese_is_screened
@@ -377,12 +376,20 @@ evidence:
   - tests/safety/test_compositions.py::test_traditional_script_is_composed
   - tests/safety/test_red_flags.py::test_traditional_chinese_red_flags
   - tests/cli/test_cli_hotlines_under_failure.py::test_a_gbk_crisis_sentence_on_the_pipe_shows_the_crisis_card
+  - tests/safety/test_normalize.py::test_generated_pairs_follow_the_generation_rules
+  - tests/safety/test_normalize.py::test_the_icu_block_folds_no_character_of_the_data_files
+  - tests/safety/test_metamorphic.py::test_seed_keeps_its_level
+  - tests/perception/test_student_input.py::test_golden_texts_read_as_in_training
+  - tests/perception/test_student_input.py::test_traditional_view_of_every_seed_reads_back
+  - tests/perception/test_student_input.py::test_invisible_rewrites_of_every_seed_read_as_the_seed
+  - tests/perception/test_student_input.py::test_a_model_only_alarm_takes_the_same_turn_in_either_script
+  - scripts/metamorphic_report.py
 residual: {severity: 灾难性, likelihood: 低, risk: 4}
 status: 部分控制
 known_gaps: []
 ```
 
-规则侧对繁体是完整的（词表每个短语的繁体写法都能折回）。缺口在模型侧：`SafetyScreen` 把原始文本交给学生（`olivia/core/safety/crisis.py` 的 `_predict_safely(self._model, text)`），而学生字表里几乎没有繁体字。2026-11-25 用 4 句自拟的同义句对（简体 / 繁体）在打包学生上试过：等级都还是 L2 及以上，但有两句的分数从 0.6 以上掉到 0.6 以下，按 §9.4 第 2 条会从“直接进危机”变成“先问一句”。这只是 4 句的抽查，不是评估；没有测试锁定模型模式对繁体的表现。
+规则侧对繁体是完整的（词表每个短语的繁体写法都能折回）。2026-11-25 起模型侧也折叠：`StudentModel.encode` 读 `model_input`，不含繁体、不可见或组合字符的文本与训练时逐字相同（学生的 golden 测试 48 条一条没变，开发集两种模式的数字不变）。变形测试模型模式（`scripts/metamorphic_report.py --mode model`）：繁体 99.27% → 100%，零宽与不可见填充字符五种各 99.27% → 100%，组合下划线 99.27% → 100%，总不变率 98.37% → 98.54%。会话层：规则单独判不到 L2 的危机种子里取 12 条，改动前繁体写法有 8 条、零宽混排有 11 条与简体走的不是同一轮（进危机 / 先问一句 / 都不），改动后都一致。残余：乾、著、後、於、覆、藉、徵、夥、拚、麴、麽 这 11 个字同时是合法简体字（能用 GB2312 编码），学生仍看到原字（著、後在字表里，其余是未知字）；用变形测试的繁体写法试 564 个期望 L2/L3 且有繁体写法的种子，学生单独给出的等级变了 2 条、分数跨过 0.6 的 2 条（改动前分别是 321 条和 362 条），都因为 著 或 後；这些种子在模型模式下的变形测试不变性全部成立（规则侧照常折叠）。红队 rt242（粤语被动念头，繁体书写）因此在模型模式通过，已从 `tests/redteam/known_gaps_model.yaml` 删除（HAZ-02、HAZ-06 同步）。另外 帳、鍊、鉅、祇、瞭 等手写对有第二种读法，学生按常见读法折叠（帳號 → 账号，鍛鍊 → 锻炼），少见的那种读法（帳篷、項鍊、神祇、瞭望）会被折错。字间插空格时学生仍按训练读到空格，模型模式不变率 91.99%，不在这次改动范围。
 
 ### HAZ-08 否认、否定与口癖遮罩掩盖真实风险
 
@@ -1357,7 +1364,7 @@ known_gaps: []
 
 下面这些条目的控制措施有测试，但测试没有覆盖到危害里最要紧的那一部分。本次只记录，没有新增测试：
 
-1. **HAZ-07 繁体输入的模型侧**：学生收到的是未折叠的原始文本，字表几乎没有繁体字；没有测试锁定模型模式对繁体危机句的表现。建议补一组繁简对照句，在会话层断言两种写法的进危机 / 先问结果一致（或先决定是否把折叠后的文本交给学生，这需要在开发集上重新选型）。
+1. **HAZ-07 繁体输入的模型侧**（2026-11-25 已补大部分）：学生的输入现在也折叠，会话层有繁简对照测试（`tests/perception/test_student_input.py`）。仍没有测试锁定的是 著、後、於、乾 等 11 个同时是合法简体字的繁体写法对学生分数的影响；要处理只能在开发集上重新选型（例如重训时把这些字的繁体用法加进训练数据）。
 2. **HAZ-36 长消息中段的危机表达**：只有“线索在末尾”的规则测试；没有“线索在中段、规则未命中、模型窗口外”的测试，也没有说明这种情况下的预期。
 3. **HAZ-06 英文与粤语**：只有零散用例，没有成套的召回用例或计数；建议按句式类各补一组（遵守红队写作规则），并在 `scripts/eval_crisis.py` 的报告里单列。
 4. **HAZ-35 提示注入**：证据只有红队单轮用例；没有“危机中伪造确认”（如以系统口吻声称用户已安全）的多轮测试。
