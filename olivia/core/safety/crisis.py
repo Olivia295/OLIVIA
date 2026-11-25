@@ -462,6 +462,16 @@ _HABIT_ABOUT_PAIN: Final = re.compile(
     r"失眠|睡不着|心情|情绪|抑郁|焦虑|这样|这种|如此|这么|那样|一样|感觉|心里"
 )
 _HABIT_FILLERS: Final = re.compile(r"[都也还又就是很好真的了啊呀呢吧嘛我俺咱自己]*")
+# Round 8 (2026-11-25, 决定 B): a clause that opens with the pain as its topic ("难受的是",
+# "最累的是", "最让人崩溃的是") is about the pain itself, whatever follows; the pain word is
+# no one else's subject either.
+_PAIN_CLEFT: Final = re.compile(
+    r"(?:最|更|真正|特别|尤其)?(?:让人|令人|叫人)?"
+    r"(?:难受|难过|心累|累|心烦|烦|痛苦|痛|苦|崩溃|绝望|受不了|折磨人|折磨|煎熬|难熬|窒息|恶心|"
+    r"郁闷|憋屈|委屈|无奈|头疼|头大|抓狂|糟心|闹心|想哭|想死|讨厌|害怕|可怕|怕|气人|烦人)"
+    r"的(?:是|就是|在于)"
+)
+_CLEFT_BEFORE: Final = re.compile(_NO_SUBJECT.pattern + _PAIN_CLEFT.pattern + _NO_SUBJECT.pattern)
 
 
 def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) -> bool:
@@ -472,6 +482,8 @@ def _habit_on_the_cause(normalized: str, hit: Match, frames: Sequence[Match]) ->
     if any(start <= f.end and f.start <= end for f in frames):
         return False  # the figure's own clause
     clause = normalized[start:end]
+    if _PAIN_CLEFT.search(normalized, start, hit.start) is not None:
+        return False  # "累的是每天都要洗": the pain itself (round 8)
     rest = normalized[hit.end : end]
     return _HABIT_ABOUT_PAIN.search(clause) is None and _HABIT_FILLERS.fullmatch(rest) is None
 
@@ -490,6 +502,7 @@ def _someone_elses_habit(normalized: str, hit: Match, frames: Sequence[Match]) -
         bool(before)
         and not any(word in before for word in _SELF_WORDS)
         and _NO_SUBJECT.fullmatch(before) is None
+        and _CLEFT_BEFORE.fullmatch(before) is None  # "难受的是每天…" (round 8)
     )
 
 
