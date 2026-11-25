@@ -1,10 +1,21 @@
 import sys
 import unicodedata
 from collections import defaultdict
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 
-from olivia.core.safety._trad2simp import TRAD_TO_SIMP
+from olivia.core.safety._trad2simp import (
+    AMBIGUOUS,
+    GENERATED_PAIRS,
+    HAND_PAIRS,
+    TRAD_TO_SIMP,
+    is_simplified,
+    strict_pairs,
+)
 from olivia.core.safety.lexicon import load_safety_lexicons
 from olivia.core.safety.normalize import (
     PERCEPTION_HEAD,
@@ -17,57 +28,60 @@ from olivia.core.taxonomy import load_taxonomy
 
 # Lexicon characters written the same way in Traditional Chinese, so the fold table has no
 # entry mapping to them. A lexicon character that is neither here nor a fold-table target
-# fails test_every_lexicon_character_is_classified until someone checks its Traditional form.
+# fails test_every_lexicon_character_is_classified until someone checks its Traditional form,
+# and one that becomes a fold target leaves the list (test_same_in_traditional_has_no_fold_target).
+# 2026-11-25: 仪 凳 头 注 灵 馆 (already targets of hand-built pairs) and the 26 characters
+# the ICU block gave a Traditional or variant form (亮 喨, 佛 彿, 局 侷, 果 菓, 麻 蔴 ...) left.
 SAME_IN_TRADITIONAL = frozenset(
-    "一三上下不世之乎也事二五些交人什今他代以任但住何作依保信修倒候值做停偷傻像全公再冷凳刀切"
+    "一三上下不世之乎也事二五些交人什今他代以任但住何作依保信修倒候值做停偷傻像全公再冷刀切"
     "到割力十半去又友反受另可司吞吵命和哪哭啥啦喝噩四囤在地型多大天太失套好如子孕存孩安完定室害"
     "封少尬就屋己已希年底很得心忍忙快怎怕思急性怪恨想惹意感成我手打找把抑抖拖拿挺掉接搬撞放故整"
-    "方日早明是晚最月有朋望期木束果枯查格次止正死每毒比永江河法洗活浪浴消激灰炭焦然煤照熬爸片物"
-    "狂玻璃瓶生用界畏留疼痛百的盆盒直相盼看眠眼睡知磨社神空突窗站笑等算精累罐聊肉胃胎能脖腕臂自"
+    "方日早明是晚最月有朋望期木束枯查格次止正死每毒比永江河法洗活浪浴消激灰炭焦然煤照熬爸片物"
+    "狂玻璃瓶生用界畏留疼痛百的盆盒直相盼看眠眼睡知磨社神空突窗站笑等算精罐聊肉胃胎能脖腕臂自"
     "草蒸藏血行被西要解言走起跟跳躁身躺送逃通道那部都酒醒量陪隔障需非食高魂毛病唯泥海砂磕紫茶路陶常老"
     "亡先具冇功咋咩唔啲嘅妥容弄式息操攻效救新易服步段率略省短程粒舒苦防阻靠平悄此默吧旁"
     # Round 5 (2026-10-29): characters of the round-5 compositions.
-    "伸似位便充列剃咖售啡喜堤堵宵尺度必拆挑枕根民汽油深渡番眉稼篷糕置茄蛋袋裙趁越踩限鞋"
+    "伸似位便充列咖售啡喜堵宵尺度必拆挑枕根民汽油深渡番眉稼篷糕置茄蛋袋裙趁越踩限鞋"
     # fix F1: characters of the compositions section of risk.yaml.
-    "七中主久乘九亮付件休俺假健兄八六冒凌分初刺刻前勿包匙午博卡印取同告咱哥唱坐墓外夜女奶她"
-    "妹始姐姥姻婆婚客宴密小居岩崖工差巴幸弟影待律患您情戒戳房所抓抗拍拜掐排攀收散文施旅星春"
-    "晨景晾暖更曾替未末本李案楚款歌母毫水求清演火烤爬父班理瓜甩甭由男目研破禁福究立策管翻考"
+    "七中主久乘九付件休俺假健兄八六冒凌分初刺刻前勿包匙午博卡印取同告咱哥唱坐墓外夜女奶她"
+    "妹始姐姥姻婆婚客密小居崖工差巴弟影待律患您情戒戳房所抓抗拍拜掐排攀收散文施旅星春"
+    "晨景晾暖更曾替未末本李案楚歌母毫水求清演火烤爬父班理瓜甩甭由男目破禁福究立策管翻考"
     "者聚脆船色花莫菜落蓄蜜衣角象跑蹲退重野院露"
     # fix F5a: ASK_INTENT_WORDS_LEFT (时光胶囊, 中秋) and the trailing particles.
     "光囊秋呀哦啊嘛"
     # fix F6a: the veiled-request, farewell and Cantonese 完咗佢 cues and their exceptions.
-    "份佢剪加卸原吖咗咯喇嘢圈圾垃店搞改校煮玩痘睇篇耗餐餸麻黑"
+    "份佢剪加卸原吖咗咯喇嘢圈圾垃店搞改校煮痘睇篇耗餐餸黑"
     # fix F16a: L2_MEANS_HOARDED and its everyday stock (布洛芬, 降压, 胰岛素, 药箱 ...).
     "丸惠慢折敏洛狗疫箱糖素胰芬降"
     # 2026-10-26: means made ready, a time before an act, jumping from a height, Cantonese
     # weariness and reported speech, with their everyday exceptions.
-    "串乜使免入冬冰助化叔口吐吹呢味喺姨山往怨悼抱抽拔拾捆捱控描攰槽歉池泳派淡滑版甲登移竹"
-    "答粗索缸翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑娘帖座微提昨近阿「『"
-    "名街逛头墓灵仪馆堂"
+    "串乜使免入冰助化叔口吐吹呢味喺姨山往怨悼抱抽拔拾捱控描攰槽歉池泳派淡滑版甲登移竹"
+    "答索缸翔舅葬蹦辛追逼避醛除雨雪伯其利句叨吉哋姑帖座微提昨近阿「『"
+    "名街逛墓堂"
     # Round 2 (2026-10-26): heights, farewells, slang, the 别 non-negators and their
     # everyday exceptions.
-    "令剁副合品哈埋培墅夏宿寄局恩截扔扛拉持探推播曝沉注流淹特球申白粉肥辣辨逑醉震音"
+    "令剁副合品哈埋培墅夏宿寄恩截扔扛拉持探推播曝沉流淹特申白粉肥辣辨逑醉震音"
     # Round 3 (2026-10-27): plan, farewell and passive-ideation frames, slang (噶, 嚟) and
     # their everyday exceptions (蟑螂, 蚊子, 魔兽世界 ...).
-    "元典各商噶嚟孝季寒建彩忘扮投按支敬暑架植泡渴湖漫牌甜祝租童美而胞舞苟蚊螂蟑迷集零首魔鼠桌梯椅沙器官捐稿"
+    "元典各商噶嚟孝季寒建忘扮投按支敬暑架植泡渴湖漫牌甜祝租童美而胞舞苟蚊螂蟑迷集零首魔鼠桌梯椅沙器官捐稿"
     # 2026-10-28: dose questions and their pets and plants (仙人掌, 葡萄, 兔), PRD L1 wording
     # (心力交瘁, 身心俱疲, 努力), and the chores and fights that void 动手 (揍, 循环).
     "仙俱兔努嗑射巧循掌揍洋疲瘁皮菌萄葡指"
     # Round 6 (2026-10-29): the frames by meaning (calamities, a voice, starving, wiping
     # accounts, cuts) and their everyday exceptions (plants, places, chores, sport).
     "京仇伏例偶催共冤削劈北古叫史啤圳城塔孔宇屏州左市帝幕廊徒恐承括挨援摔敢斑普晶栽椎治溺澡炎爽牙"
-    "牛狠猝疤痕癌砸碘祈票秀私科竟箭羞耳肚股肪脂腰航苗茉荷莉薄迎透逐速遇雷韭香鬼鼻嘻握攥裹雕勇孢材棵棺第肝螃蟹超跨"
+    "牛狠猝疤痕癌砸碘祈票秀科竟箭羞耳肚股肪脂腰航苗茉荷莉薄迎透逐速遇雷香鬼鼻嘻握攥裹雕勇孢材棵棺第肝螃蟹超跨"
     # 负责人 2026-10-30 决定: the everyday injuries that void S1_BLEEDING_UNSTOPPED.
     "碰"
     # 2026-10-30: the illnesses and preparations that void ASK_INTENT_PILLS_READY.
     "南咳嗽炸煎睛腹膏"
     # Round 7 (2026-11-01): the round-7 frames (Wu 覅 / 毋, Cantonese 瞓 / 嘞 / 返, 熄灭, 菩萨,
     # 保姆, 烘焙 ...) and their everyday exceptions.
-    "介佑刷剖勤喘嘞噪坑姆巡席庇抵擦毋汰洞涯液淘混漆烘焙熄王瞓章缺菩覅趴返"
+    "介佑刷剖喘嘞坑姆巡庇抵擦毋汰洞涯液淘混漆烘焙熄王瞓章缺菩覅趴返"
     # Round 8 (2026-11-25): passive ideation, the unnamed way and the plan with a time, and
     # their everyday exceptions (士兵, 英雄, 警察, 罪犯, 人渣, 哲学, 政策, 受益人, 午觉打盹 ...).
     "兵凡判否哲增士富察尿怖憾或摸政映渣犯珍畜瘦益盹碗罪肌至英警逢配金雄"
-    "仰佛娩宗展康延悲懂扭拒摘撕核歇烈瘤碑陵霾骨薪"
+    "仰娩宗展康延悲懂扭拒摘撕歇烈瘤碑陵霾骨薪"
     # Round 8 (2026-11-25): L2_METHOD_PAIR_SUICIDE (途径, 自杀未遂, 嚷着要自杀) and
     # ASK_INTENT_PROXY_WAY (学钢琴).
     "嚷途遂琴"
@@ -274,6 +288,112 @@ def test_traditional_view_of_every_lexicon_phrase_normalizes_back():
         for pick in (0, -1):  # first and last Traditional variant of each character
             trad = "".join(views[ch][pick] if ch in views else ch for ch in phrase)
             assert normalize(trad) == phrase, (phrase, trad)
+
+
+def test_same_in_traditional_has_no_fold_target():
+    # A character some fold-table entry maps to has a distinct Traditional or variant form.
+    assert not SAME_IN_TRADITIONAL & set(TRAD_TO_SIMP.values())
+
+
+# --- the ICU block and the strict pairs (2026-11-25, HAZ-07) -------------------------------
+
+DATA = Path(__file__).resolve().parents[2] / "olivia" / "data"
+
+# Hand-built pairs whose source is also a valid Simplified character (it can be encoded in
+# GB2312): 乾坤, 著名, 覆盖, 慰藉 ... The rule fold applies them to the user's text and to
+# every lexicon phrase alike, so a match never depends on them; the student's input, folded
+# on one side only, never gets them (strict_pairs). No other pair may fold such a character.
+DUAL_HAND_SOURCES = frozenset("乾夥後徵拚於著藉覆麴麽")
+
+
+def _strings(node: Any) -> Iterator[str]:
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            yield from _strings(key)
+            yield from _strings(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _strings(item)
+
+
+def _data_strings() -> list[str]:
+    """Every string (keys too) of every YAML file under olivia/data."""
+    return [
+        text
+        for path in sorted(DATA.rglob("*.yaml"))
+        for text in _strings(yaml.safe_load(path.read_text(encoding="utf-8")))
+    ]
+
+
+def test_generated_pairs_follow_the_generation_rules():
+    # scripts/gen_trad2simp.py's rules, checked on the committed block on every platform.
+    assert len(GENERATED_PAIRS) > 1000
+    assert list(GENERATED_PAIRS) == sorted(GENERATED_PAIRS)
+    for trad, simp in GENERATED_PAIRS.items():
+        assert 0x4E00 <= ord(trad) <= 0x9FFF, trad
+        assert not is_simplified(trad) and is_simplified(simp), trad
+        assert trad not in HAND_PAIRS and trad not in AMBIGUOUS, trad
+    assert TRAD_TO_SIMP == {**HAND_PAIRS, **GENERATED_PAIRS}
+
+
+def test_only_the_listed_hand_pairs_fold_a_valid_simplified_character():
+    assert {trad for trad in TRAD_TO_SIMP if is_simplified(trad)} == DUAL_HAND_SOURCES
+    assert set(HAND_PAIRS) >= DUAL_HAND_SOURCES
+
+
+def test_strict_pairs_keep_simplified_characters_out():
+    strict = strict_pairs()
+    assert set(strict) == set(TRAD_TO_SIMP) - DUAL_HAND_SOURCES
+    assert all(TRAD_TO_SIMP[trad] == simp for trad, simp in strict.items())
+    assert GENERATED_PAIRS.items() <= strict.items()
+    for char in "乾著後於覆藉沈后":
+        assert char not in strict, char
+
+
+def test_ambiguous_characters_are_in_no_part_of_the_table():
+    assert set(AMBIGUOUS) == set("囍榖讎")
+    for char, reason in AMBIGUOUS.items():
+        assert len(char) == 1 and reason, char
+        assert char not in TRAD_TO_SIMP and normalize(char) == char, char
+
+
+def test_every_lexicon_phrase_is_a_fixed_point_of_the_fold():
+    # The loaded phrases are normalized; folding them again changes nothing.
+    for phrase in _lexicon_phrases():
+        assert normalize(phrase) == phrase, phrase
+        assert not set(phrase) & set(TRAD_TO_SIMP), phrase
+
+
+def test_the_fold_is_idempotent_on_every_data_string():
+    for text in _data_strings():
+        once = normalize(text)
+        assert normalize(once) == once, text
+
+
+def test_the_icu_block_folds_no_character_of_the_data_files():
+    # No lexicon, template or resource string holds a source of the ICU block, so the new
+    # pairs cannot turn one of their Simplified characters into another.
+    used = {ch for text in _data_strings() for ch in text}
+    assert not used & set(GENERATED_PAIRS)
+    simplified = {ch for ch in used if ord(ch) >= 0x3400 and is_simplified(ch)}
+    assert simplified & set(TRAD_TO_SIMP) <= DUAL_HAND_SOURCES
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("心裡很亂", "心里很乱"),
+        ("被審判的感覺", "被审判的感觉"),
+        ("寬恕不了自己", "宽恕不了自己"),
+        ("償還不了", "偿还不了"),
+        ("搖搖欲墜", "摇摇欲坠"),
+    ],
+)
+def test_the_icu_block_folds_common_characters(raw, expected):
+    # 亂 審 寬 償 搖 were missing before the ICU block.
+    assert normalize(raw) == expected
 
 
 def test_clip_short_text_unchanged():

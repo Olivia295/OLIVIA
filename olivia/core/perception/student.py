@@ -23,7 +23,11 @@ Two config formats load:
   supported here and leave the model unavailable.
 
 Forward pass (the training notebooks' NumPy reference): ``html.unescape`` -> NBSP to
-space -> collapse whitespace -> strip; one id per code point (UNK for unknown); texts
+space -> collapse whitespace -> strip; one id per code point (UNK for unknown). The input
+gets two steps on top, between the NBSP and the whitespace (:func:`model_input`, 2026-11-25,
+hazard HAZ-07): Traditional characters that are not valid Simplified ones fold to
+Simplified, and invisible, format and leftover combining characters are dropped
+(:func:`fold_input`); text without them reads exactly as in training. Texts
 longer than ``max_len`` keep the first ``head_chars`` and the last ``max_len - head_chars``
 ids, and short ones are right-padded with PAD to ``min_len``. A CNN runs embedding -> for
 each kernel a valid convolution, ReLU and global max pool -> concatenation -> dense + ReLU
@@ -54,6 +58,7 @@ import io
 import json
 import math
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import resources
@@ -62,7 +67,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from olivia.core.models import CrisisLevel
+from olivia.core.safety._trad2simp import strict_pairs
 from olivia.core.safety.crisis import RiskModel, RiskPrediction
+from olivia.core.safety.normalize import _DROPPED_RANGES
 
 MANIFEST_VERSION: Final = 1
 CNN_VERSION: Final = 1
@@ -79,6 +86,7 @@ _ENSEMBLE_PREFIX: Final = "m{i}_"
 _ENSEMBLE_EPS: Final = 1e-6
 _COMBINE_KINDS: Final = frozenset({"class", "tanh", "sigmoid"})
 _WHITESPACE: Final = re.compile(r"\s+")
+_VS16: Final = 0xFE0F
 RULES_ONLY: Final = "rules-only"
 MODEL_FAILURE_LEVEL: Final = "MODEL_FAILURE"
 
@@ -158,6 +166,52 @@ def preprocess(text: str) -> str:
     return _WHITESPACE.sub(" ", text).strip()
 
 
+@functools.cache
+def _input_fold() -> dict[int, str | None]:
+    """:func:`fold_input`'s translate table, built on first use (model mode only)."""
+    table: dict[int, str | None] = {ord(t): s for t, s in strict_pairs().items()}
+    for first, last in _DROPPED_RANGES:
+        for cp in range(first, last + 1):
+            if not chr(cp).isspace() and cp != _VS16:
+                table[cp] = None
+    return table
+
+
+def fold_input(text: str) -> str:
+    """The two steps the student's input gets on top of the training preprocessing.
+
+    * Traditional to Simplified, with only the pairs whose source is not itself a valid
+      Simplified character (``_trad2simp.strict_pairs``): the student's vocabulary has
+      almost no Traditional characters, and 著, 乾 or 覆 must stay as written in
+      Simplified text.
+    * Every code point the safety fold drops (``normalize._DROPPED_RANGES``: format and
+      other default-ignorable characters, the blank fillers, leftover combining marks)
+      except whitespace, which the training preprocessing collapses into one space. The
+      emoji variation selector U+FE0F stays right after a symbol, where the training text
+      had it (it is in the vocabulary), and goes everywhere else.
+
+    No NFKC, casefold, punctuation or whitespace removal: training did none of them. Text
+    with no Traditional, invisible or combining character comes back unchanged.
+    """
+    folded = text.translate(_input_fold())
+    if chr(_VS16) not in folded:
+        return folded
+    out: list[str] = []
+    for char in folded:
+        if ord(char) == _VS16 and not (out and unicodedata.category(out[-1]) == "So"):
+            continue
+        out.append(char)
+    return "".join(out)
+
+
+def model_input(text: str) -> str:
+    """What the student reads: :func:`preprocess` with :func:`fold_input` after the
+    unescape (so an escaped invisible character goes too) and before the whitespace is
+    collapsed (so dropping one between two spaces leaves one space, as in training)."""
+    text = fold_input(html.unescape(text).replace("\u00a0", " "))
+    return _WHITESPACE.sub(" ", text).strip()
+
+
 class StudentModel:
     """The loaded student (one CNN or an ensemble of CNNs); build it with :func:`load_student`."""
 
@@ -191,8 +245,8 @@ class StudentModel:
         self.threshold_l3 = threshold_l3
 
     def encode(self, text: str) -> list[int]:
-        """Token ids after preprocessing, truncation and padding."""
-        ids = [self._vocab.get(char, self._unk) for char in preprocess(text)]
+        """Token ids of :func:`model_input`, after truncation and padding."""
+        ids = [self._vocab.get(char, self._unk) for char in model_input(text)]
         if len(ids) > self._max_len:
             ids = ids[: self._head_chars] + ids[len(ids) - (self._max_len - self._head_chars) :]
         if len(ids) < self._min_len:
