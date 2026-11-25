@@ -121,8 +121,9 @@ _PAIRS: Final = (
     # Round 7 (2026-11-01): 乔迁 of ASK_INTENT_DAY_SET_SELF.
     "喬乔 "
     # 2026-11-25 (metamorphic testing): two lexicon characters whose Traditional form was
-    # missing (註銷 of 注销, 殯儀館 of 殡仪馆), and characters of the safety test sentences.
-    "註注 殯殡 參参 達达 嚴严 爾尔 嚕噜 屜屉 燉炖 螄蛳 "
+    # missing (註銷 of 注销, 殯儀館 of 殡仪馆), characters of the safety test sentences, and
+    # 亞 and 倫 of the Canadian and Australian place names in perception.yaml.
+    "註注 殯殡 參参 達达 嚴严 爾尔 嚕噜 屜屉 燉炖 螄蛳 亞亚 倫伦 "
 )
 
 TRAD_TO_SIMP: Final[dict[str, str]] = {pair[0]: pair[1] for pair in _PAIRS.split()}

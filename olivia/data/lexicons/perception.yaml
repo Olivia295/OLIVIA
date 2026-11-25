@@ -1915,18 +1915,16 @@ hotline_places:
   # Round 8 (2026-11-25; 草稿：待 G-0): more names for Canada and Australia, their provinces
   # and states, the Hong Kong and Taiwan names of their cities ("满地可", "卡加利", "坎培拉",
   # "布里斯本"), and the common nicknames ("枫叶国", "土澳", "袋鼠国"; "加国" is in
-  # hotline_place_patterns, since 参加国际 holds it). 亞, 倫 and 爾 do not fold to Simplified
-  # (safety/_trad2simp.py has no entry for them), so the names with them are listed as they
-  # fold ("澳大利亞", "多倫多", "墨爾本").
+  # hotline_place_patterns, since 参加国际 holds it). Traditional spellings ("澳大利亞", "多倫多",
+  # "墨爾本") fold to these through safety/_trad2simp.py.
   CA: [加拿大, canada, 多伦多, 温哥华, 蒙特利尔, 渥太华, 卡尔加里, toronto, vancouver, montreal,
        ottawa, 枫叶国, 满地可, 卡加利, 埃德蒙顿, 爱德蒙顿, 本拿比, 安大略, 魁北克, 卑诗省, 不列颠哥伦比亚,
-       calgary, edmonton, ontario, quebec, 多倫多, 蒙特利爾, 卡爾加里]
+       calgary, edmonton, ontario, quebec]
   GB: [英国, theuk, britain, england, scotland, wales, london, 伦敦, 曼彻斯特, 爱丁堡, 伯明翰, 利兹,
        格拉斯哥, 利物浦, 布里斯托, 诺丁汉, 谢菲尔德, 南安普顿, manchester, edinburgh, glasgow]
   AU: [澳大利亚, 澳洲, australia, 悉尼, 墨尔本, sydney, melbourne, 布里斯班, 珀斯, 阿德莱德, 堪培拉,
        黄金海岸, brisbane, adelaide, canberra, 土澳, 袋鼠国, 布里斯本, 坎培拉, 阿得雷德, 昆士兰,
-       新南威尔士, 塔斯马尼亚, 霍巴特, perth, queensland, tasmania, 澳大利亞, 墨爾本, 新南威爾士,
-       塔斯马尼亞]
+       新南威尔士, 塔斯马尼亚, 霍巴特, perth, queensland, tasmania]
   ZZ: [日本, japan, 韩国, korea, 新加坡, singapore, 德国, germany, 法国, france, 意大利, italy,
        西班牙, spain, 荷兰, netherlands, 新西兰, newzealand, 马来西亚, malaysia, 泰国, thailand,
        越南, vietnam, 菲律宾, philippines, 印度, india, 俄罗斯, russia, 爱尔兰, ireland, 瑞士,
