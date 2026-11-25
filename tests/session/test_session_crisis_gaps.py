@@ -8,6 +8,12 @@
   ordinary reply. It gets what to do with it (call the police near you, reach them or
   report through the platform, keep the chat records), the emergency numbers of the
   user's region first; the user is not asked about their own safety.
+* #139: a model-only alarm on a message that reports someone else's words asked the user
+  every time ("whatever the score and however often"). It now asks as §9.4 第 1、31 条
+  allow (the first time whatever the score, a second time only after a clear no, at least
+  3 turns on, with a score below 0.6; at most two questions a session, counted with the
+  user's own alarms); any other such alarm is held at L1: no question and, as §9.4 第 22
+  条 says for words about someone else, no crisis flow on the model's word alone.
 
 Every example message is written here; none comes from an evaluation set or the re-test.
 """
@@ -67,7 +73,7 @@ def _open(
         rng=random.Random(5),
         now=lambda: NOW,
         student=student,
-        model=model,  # type: ignore[arg-type]
+        model=model,
     )
 
 
@@ -276,3 +282,110 @@ def test_in_the_crisis_flow_a_clue_is_answered_first() -> None:
     assert result.in_crisis
     assert result.reply.startswith(tuple(line[:12] for line in RENDER.third_party_clue))
     assert "110" in result.reply
+
+
+# -- #139: a model-only alarm on someone else's words asks at most as §9.4 第 1、31 条 allow --
+
+REPORTED_WORDS = [
+    "我舅舅发消息说：累了就歇歇吧",
+    "我姐在微信上跟我说：别想太多，早点睡",
+    "我爸留言说：有空就回来看看",
+]
+OWN_WORDS = "心里总是闷闷的"
+CALM = ["早上喝了杯豆浆", "中午和同事吃了面", "下班路上听了歌"]
+NO = "没有，我没那么想"
+
+
+def _alarms(*texts: str, score: float = 0.45) -> Session:
+    return _open(model=Scripted({t: (CrisisLevel.L2, score) for t in texts}))
+
+
+def _asked(result: TurnResult) -> bool:
+    return result.reply_kind is ReplyKind.SAFETY_CHECK and not result.in_crisis
+
+
+def _held(result: TurnResult) -> bool:
+    """Not asked and not the crisis flow: the user stays at L1 at most (§9.4 第 22 条)."""
+    return (
+        result.reply_kind is not ReplyKind.SAFETY_CHECK
+        and not result.in_crisis
+        and result.crisis_level <= CrisisLevel.L1
+        and not _asks_safety(result.reply)
+    )
+
+
+@pytest.mark.parametrize("score", [0.45, 0.8])
+def test_the_first_alarm_on_someone_elses_words_asks_whatever_the_score(score: float) -> None:
+    session = _alarms(REPORTED_WORDS[0], score=score)
+    result = session.turn(REPORTED_WORDS[0])
+    assert _asked(result)
+    assert result.inspect.get("safety_check_by") == "model"
+
+
+@pytest.mark.parametrize("calm", [0, 1, 2])
+def test_too_soon_after_the_no_it_is_not_asked_again(calm: int) -> None:
+    session = _alarms(*REPORTED_WORDS)
+    assert _asked(session.turn(REPORTED_WORDS[0]))
+    assert not session.turn(NO).in_crisis
+    for text in CALM[:calm]:
+        session.turn(text)
+    result = session.turn(REPORTED_WORDS[1])
+    assert _held(result), result.reply
+    assert result.inspect.get("model_held") is True
+
+
+def test_three_turns_after_the_no_an_unsure_alarm_asks_once_more() -> None:
+    session = _alarms(*REPORTED_WORDS)
+    assert _asked(session.turn(REPORTED_WORDS[0]))
+    assert not session.turn(NO).in_crisis
+    for text in CALM:
+        session.turn(text)
+    assert _asked(session.turn(REPORTED_WORDS[1]))
+
+
+def test_a_sure_alarm_after_the_gap_is_held_not_asked() -> None:
+    session = _open(
+        model=Scripted(
+            {REPORTED_WORDS[0]: (CrisisLevel.L2, 0.45), REPORTED_WORDS[1]: (CrisisLevel.L3, 0.8)}
+        )
+    )
+    assert _asked(session.turn(REPORTED_WORDS[0]))
+    session.turn(NO)
+    for text in CALM:
+        session.turn(text)
+    assert _held(session.turn(REPORTED_WORDS[1]))
+
+
+def test_without_a_clear_no_there_is_no_second_question() -> None:
+    session = _alarms(*REPORTED_WORDS)
+    assert _asked(session.turn(REPORTED_WORDS[0]))
+    # An unclear answer is the crisis flow (§9.4 第 1 条), which ends only by its own rules.
+    assert session.turn("嗯……说不好").in_crisis
+
+
+def test_at_most_two_questions_per_session_with_someone_elses_words() -> None:
+    session = _alarms(*REPORTED_WORDS)
+    assert _asked(session.turn(REPORTED_WORDS[0]))
+    session.turn(NO)
+    for text in CALM:
+        session.turn(text)
+    assert _asked(session.turn(REPORTED_WORDS[1]))
+    assert not session.turn("没有，真的没有").in_crisis
+    for text in CALM:
+        session.turn(text)
+    assert _held(session.turn(REPORTED_WORDS[2]))
+
+
+def test_the_two_questions_are_counted_across_both_kinds_of_alarm() -> None:
+    session = _alarms(OWN_WORDS, *REPORTED_WORDS)
+    assert _asked(session.turn(OWN_WORDS))
+    session.turn(NO)
+    # One turn after the no: too soon for a second question, and no crisis either.
+    assert _held(session.turn(REPORTED_WORDS[0]))
+    for text in CALM:
+        session.turn(text)
+    assert _asked(session.turn(REPORTED_WORDS[1]))
+    session.turn("没有，真的没有")
+    for text in CALM:
+        session.turn(text)
+    assert _held(session.turn(REPORTED_WORDS[2]))

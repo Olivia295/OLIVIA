@@ -502,6 +502,12 @@ Session gaps, 2026-11-25 (new wording 草稿：待 G-0):
   police near you, reach them or report through the platform, keep the chat records)
   before the urgent card, whose emergency numbers are the profile region's. Never the
   user's own safety question; in the crisis flow it is answered first, emergency first.
+* #139: a model-only alarm on a message that reports someone else's words
+  (``_reported_words``) asks the first time whatever the score, and later only as §9.4
+  第 1、31 条 allow (an accepted no, more than 3 turns on, a score below 0.6, at most two
+  questions a session counted with the user's own alarms). Any other such alarm is held
+  at L1 (``inspect["model_held"]``): no question and, as 第 22 条 says for words about
+  someone else, no crisis flow on the model's word alone.
 
 The session keeps no user text: ``inspect`` and ``snapshot`` hold ids, levels and numbers
 only, and gate reasons are reduced to their check names.
@@ -911,6 +917,9 @@ class Session:
         # and how many such questions this session asked (at most two).
         self._model_denied_turn: int | None = None
         self._model_ask_count = 0
+        # 2026-11-25 (#139 gap): this turn's model-only alarm on someone else's words asks no
+        # question (none is left) and is held at L1 (set per turn by ``_model_only_alarm``).
+        self._model_held = False
         # Safety replies round 2 (2026-10-26): the user said they are under 18 in this
         # session (第 5 条; never written anywhere) and was told so once; the highest crisis
         # entry level of this session (第 11 条); the turn count when the user last reported
@@ -1148,6 +1157,7 @@ class Session:
         # What the screen said, for ``inspect`` and the reported level of a question turn.
         screened = assessment
         self._reported_words = False
+        self._model_held = False
         # 问题单第 6 条: someone else's risk, reported by the user. The user is not put into
         # the crisis flow for it (nor asked the D3 question); the reply is the region's card
         # to pass on, with the emergency numbers first when the words carry a plan.
@@ -1182,6 +1192,10 @@ class Session:
             # so ask once first. The turn goes on as an L1 only the model gives (no crisis,
             # no L1 run).
             self._asking_model = True
+            assessment = replace(assessment, level=CrisisLevel.L1)
+        elif self._model_held:
+            # 2026-11-25 (§9.4 第 22、31 条): only someone else's words and no question left
+            # to ask: an L1 only the model gives, as on a question turn, without the question.
             assessment = replace(assessment, level=CrisisLevel.L1)
         perception, signals = self._shared.stub.perceive(text, assessment)
         perception = self._shared.introspector.apply(text, perception)
@@ -2024,6 +2038,8 @@ class Session:
             extra["safety_check_by"] = MODEL_CHECK
         if paused:
             extra["model_paused"] = True
+        if self._model_held:
+            extra["model_held"] = True
         if heard:
             extra["heard"] = True
         if rendered.plan_reminded:
@@ -2515,18 +2531,6 @@ class Session:
             return False
         first = not self._model_asked
         self._model_asked = True
-        if self._reported_words:
-            # Round 4 (re-test q2 第 1 节): the message reports someone else's words, the
-            # rules find nothing in them or in the user's own, and the model's alarm is
-            # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
-            # so the user is asked, whatever the score and however often, never put into
-            # the crisis flow on the model's word alone ("我妈留言：累了就回家……").
-            return True
-        if self._minor_denial:
-            # 负责人 2026-10-30 决定 (round 6, re-test q2 F4-5): the turn answers whether the
-            # user is under 18 with a no and the rules find no risk cue in it; a sure model
-            # (score >= 0.6) asks first too, never the crisis flow on its word alone.
-            return True
         # 负责人 2026-11-01 决定 (A): after an accepted no (it passed F10), a later unsure alarm
         # with no rule cue asks once more when at least 3 turns lie between; at most two
         # such questions per session.
@@ -2536,7 +2540,29 @@ class Session:
             and self._model_ask_count < _MODEL_ASKS_MAX
             and self._state.global_turn_count - denied > _MODEL_ASK_GAP
         )
-        if not (first or again) or not self._shared.lexicons.model_ask.asks_first(model_score):
+        unsure = self._shared.lexicons.model_ask.asks_first(model_score)
+        if self._reported_words:
+            # Round 4 (re-test q2 第 1 节): the message reports someone else's words, the
+            # rules find nothing in them or in the user's own, and the model's alarm is
+            # not on the words alone (``_reported_risk``). Whose risk it is stays unclear,
+            # so the first question is asked whatever the score, never the crisis flow on
+            # the model's word alone ("我妈留言：累了就回家……"; §9.4 第 22 条).
+            # 2026-11-25 (#139 gap, "however often"): a later question only as §9.4 第 1、31
+            # 条 allow (an accepted no, 3 turns between, an unsure score, two a session,
+            # counted with the user's own alarms); any other such alarm is held at L1 with
+            # no question (``_model_held``), still never the crisis flow.
+            if first or (again and unsure):
+                self._model_ask_count += 1
+                self._model_denied_turn = None
+                return True
+            self._model_held = True
+            return False
+        if self._minor_denial:
+            # 负责人 2026-10-30 决定 (round 6, re-test q2 F4-5): the turn answers whether the
+            # user is under 18 with a no and the rules find no risk cue in it; a sure model
+            # (score >= 0.6) asks first too, never the crisis flow on its word alone.
+            return True
+        if not (first or again) or not unsure:
             return False
         self._model_ask_count += 1
         self._model_denied_turn = None
