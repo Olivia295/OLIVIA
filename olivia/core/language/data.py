@@ -120,7 +120,9 @@ NOTICES: Final = (
 )
 _NOTICE_MAX: Final = 80
 # utterances.yaml ``substance`` lines (round 3, B2a; 草稿：待 G-0), put before the reply.
-SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink")
+# ``ask_to_drink_crisis`` (#137, 2026-11-25; 草稿：待 G-0) answers the same question in the
+# crisis flow and on the safety question, where the card stays.
+SUBSTANCE_LINES: Final = ("withdrawal", "withdrawal_severe", "ask_to_drink", "ask_to_drink_crisis")
 # Those lines give no amount (no dose, as the #125 withdrawal warning).
 _DOSE_WORDS: Final = ("毫升", "毫克", "两白酒", "一两", "半斤", "一斤", "瓶以内", "杯以内", "剂量")
 # A tips card's framing (S_empower ``tips``, F16b) never calls it a practice or steps.
@@ -493,6 +495,10 @@ class RenderText:
     """After that card: whether what the other person said is a warning sign."""
     third_party_stranger: tuple[str, ...] = ()
     """After that card: the user does not know the other person; what one can still do."""
+    # 2026-11-25 (drafts, G-0).
+    third_party_clue: tuple[str, ...] = ()
+    """After that card: the user gives a clue to where the other person is or who they are;
+    what to do with it (call the police near you, the platform, keep the chat records)."""
     # Round 6 (2026-10-29; drafts, G-0).
     no_feeling_prompts: tuple[str, ...] = ()
     """The closing line of a reply after the user asked not to be asked about feelings."""
@@ -1198,6 +1204,7 @@ def _parse_render(data: Mapping[str, Any], tax: Taxonomy) -> RenderText:
         third_party_police=crisis_lists["third_party_police"],
         third_party_signs=crisis_lists["third_party_signs"],
         third_party_stranger=crisis_lists["third_party_stranger"],
+        third_party_clue=crisis_lists["third_party_clue"],
         no_feeling_prompts=crisis_lists["no_feeling_prompts"],
         help_seeking_school=crisis_lists["help_seeking_school"],
         suds_heard=crisis_lists["suds_heard"],
@@ -2164,6 +2171,7 @@ _CRISIS_LISTS: Final = (
     "third_party_stranger",
     "third_party_police",
     "third_party_signs",
+    "third_party_clue",
     "no_feeling_prompts",
     "help_seeking_school",
     "suds_heard",
